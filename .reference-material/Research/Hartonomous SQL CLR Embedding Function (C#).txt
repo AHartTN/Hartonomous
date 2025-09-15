@@ -1,0 +1,59 @@
+// This C# code is designed to be deployed to SQL Server as a SQL CLR assembly.
+// It uses memory-mapped files to perform high-performance "peek/seek" operations
+// on a large, on-disk model for specialized embedding generation and training.
+
+using System;
+using System.IO;
+using System.IO.MemoryMappedFiles;
+using System.Data.SqlTypes;
+using System.Runtime.InteropServices;
+using Microsoft.SqlServer.Server;
+
+public class EmbeddingsCLR
+{
+    private static MemoryMappedFile _modelFile;
+    private static IntPtr _modelHandle;
+    private static long _modelSize;
+    private static readonly object _lock = new object();
+    private static float[] _modelWeights;
+
+    private static void InitializeModel(string modelFilePath)
+    {
+        lock (_lock)
+        {
+            if (_modelFile == null)
+            {
+                _modelFile = MemoryMappedFile.CreateFromFile(modelFilePath, FileMode.Open, "EmbeddingsModel");
+                _modelHandle = _modelFile.SafeMemoryMappedFileHandle.DangerousGetHandle();
+                _modelSize = _modelFile.SafeMemoryMappedFileHandle.ByteLength;
+                _modelWeights = new float[_modelSize / sizeof(float)];
+                Marshal.Copy(_modelHandle, _modelWeights, 0, (int)_modelSize / sizeof(float));
+            }
+        }
+    }
+
+    [SqlFunction(DataAccess = DataAccessKind.Read)]
+    public static SqlBytes GenerateEmbedding(SqlBytes documentContent, string modelFilePath)
+    {
+        if (_modelFile == null)
+        {
+            InitializeModel(modelFilePath);
+        }
+
+        string text = System.Text.Encoding.UTF8.GetString(documentContent.Value);
+
+        // --- Mock Embedding Generation Logic ---
+        // In a real-world scenario, this would perform a complex inference on the
+        // memory-mapped model.
+        Random rand = new Random(text.Length);
+        float[] vector = new float[128];
+        for (int i = 0; i < vector.Length; i++)
+        {
+            vector[i] = (float)rand.NextDouble();
+        }
+
+        byte[] vectorBytes = new byte[vector.Length * sizeof(float)];
+        Buffer.BlockCopy(vector, 0, vectorBytes, 0, vectorBytes.Length);
+        return new SqlBytes(vectorBytes);
+    }
+}

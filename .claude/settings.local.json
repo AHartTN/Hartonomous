@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git init:*)",
+      "Bash(tree:*)",
+      "Bash(az account:*)",
+      "Bash(az group list:*)",
+      "Bash(az resource list:*)",
+      "Bash(sqlcmd:*)",
+      "Bash(ping:*)",
+      "Bash(dotnet new:*)",
+      "Bash(dotnet sln add:*)",
+      "Bash(dotnet add package:*)",
+      "Bash(dotnet build)",
+      "Bash(dotnet add reference:*)",
+      "Bash(dotnet test:*)",
+      "Read(//e/projects/Claude/**)",
+      "Bash(git add:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
