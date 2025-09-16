@@ -29,7 +29,8 @@
       "Bash(curl:*)",
       "Bash(powershell:*)",
       "Bash(del IntegrationTestRunner.cs)",
-      "Bash(del TestExecutionDemo.cs)"
+      "Bash(del TestExecutionDemo.cs)",
+      "Bash(taskkill:*)"
     ],
     "deny": [],
     "ask": []

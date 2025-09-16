@@ -1,6 +1,9 @@
 using FluentAssertions;
 using Hartonomous.AgentClient.Interfaces;
 using System;
+using System.IO;
+using System.Threading;
+using System.Collections.Generic;
 using Hartonomous.AgentClient.Models;
 using Hartonomous.AgentClient.Services;
 using Hartonomous.Infrastructure.Observability.Interfaces;
