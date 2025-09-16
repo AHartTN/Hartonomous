@@ -1,0 +1,146 @@
+name: Simple Data Processing Workflow
+description: A simple workflow that processes data through multiple stages
+version: "1.0"
+
+parameters:
+  input_data: ""
+  output_format: "json"
+  environment: "development"
+
+trigger:
+  type: manual
+
+nodes:
+  start:
+    name: Start Processing
+    type: start
+    description: Initialize the workflow
+
+  validate_input:
+    name: Validate Input Data
+    type: action
+    description: Validate the input data format and content
+    dependencies:
+      - start
+    configuration:
+      validation_rules:
+        - required_fields: ["id", "name", "data"]
+        - max_size: 1048576
+    timeout: 30
+    retry:
+      maxAttempts: 3
+      initialDelay: 5
+
+  transform_data:
+    name: Transform Data
+    type: script
+    description: Transform the data according to business rules
+    dependencies:
+      - validate_input
+    configuration:
+      script_type: "javascript"
+      script_content: |
+        function transform(input) {
+          return {
+            ...input,
+            processed_at: new Date().toISOString(),
+            transformed: true
+          };
+        }
+    timeout: 60
+
+  quality_check:
+    name: Quality Assurance Check
+    type: condition
+    description: Check if the transformed data meets quality standards
+    dependencies:
+      - transform_data
+    condition:
+      type: javascript
+      expression: "data.quality_score >= 0.8"
+
+  save_to_database:
+    name: Save to Database
+    type: database
+    description: Save the processed data to the database
+    dependencies:
+      - quality_check
+    configuration:
+      connection_string: "{{database_connection}}"
+      table: "processed_data"
+      operation: "insert"
+    errorHandling:
+      onError: retry
+      maxRetries: 3
+
+  send_notification:
+    name: Send Success Notification
+    type: notification
+    description: Send notification about successful processing
+    dependencies:
+      - save_to_database
+    configuration:
+      type: "email"
+      recipients: ["admin@example.com"]
+      template: "data_processing_success"
+
+  handle_failure:
+    name: Handle Processing Failure
+    type: notification
+    description: Handle failure scenarios
+    condition:
+      type: javascript
+      expression: "workflow.hasErrors"
+    configuration:
+      type: "email"
+      recipients: ["admin@example.com"]
+      template: "data_processing_failure"
+
+  end:
+    name: End Processing
+    type: end
+    description: Complete the workflow
+    dependencies:
+      - send_notification
+      - handle_failure
+
+edges:
+  - from: start
+    to: validate_input
+
+  - from: validate_input
+    to: transform_data
+
+  - from: transform_data
+    to: quality_check
+
+  - from: quality_check
+    to: save_to_database
+    condition:
+      type: javascript
+      expression: "quality_check.result === true"
+
+  - from: quality_check
+    to: handle_failure
+    condition:
+      type: javascript
+      expression: "quality_check.result === false"
+
+  - from: save_to_database
+    to: send_notification
+
+  - from: send_notification
+    to: end
+
+  - from: handle_failure
+    to: end
+
+metadata:
+  author: "Hartonomous System"
+  category: "Data Processing"
+  tags:
+    - "data"
+    - "validation"
+    - "transformation"
+  estimated_duration: "5 minutes"
+  complexity: "medium"

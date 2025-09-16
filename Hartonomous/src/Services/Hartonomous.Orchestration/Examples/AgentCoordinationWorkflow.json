@@ -1,0 +1,309 @@
+{
+  "name": "Multi-Agent Coordination Workflow",
+  "description": "A complex workflow that coordinates multiple AI agents for software development tasks",
+  "version": "1.0",
+  "parameters": {
+    "project_requirements": "",
+    "target_language": "typescript",
+    "quality_threshold": 0.9,
+    "review_required": true
+  },
+  "trigger": {
+    "type": "webhook",
+    "configuration": {
+      "endpoint": "/api/workflows/agent-coordination/trigger",
+      "authentication": "bearer"
+    }
+  },
+  "nodes": {
+    "start": {
+      "name": "Initialize Project",
+      "type": "start",
+      "description": "Initialize the software development project"
+    },
+    "analyze_requirements": {
+      "name": "Analyze Requirements",
+      "type": "agent",
+      "description": "Use analysis agent to break down requirements",
+      "dependencies": ["start"],
+      "configuration": {
+        "agent_type": "requirements_analyst",
+        "required_capabilities": ["natural_language_processing", "requirements_analysis"],
+        "timeout": 300,
+        "input_schema": {
+          "requirements": "string",
+          "context": "object"
+        }
+      },
+      "retry": {
+        "maxAttempts": 2,
+        "initialDelay": 10
+      }
+    },
+    "create_architecture": {
+      "name": "Design Architecture",
+      "type": "agent",
+      "description": "Use architecture agent to design system architecture",
+      "dependencies": ["analyze_requirements"],
+      "configuration": {
+        "agent_type": "software_architect",
+        "required_capabilities": ["system_design", "architecture_patterns"],
+        "timeout": 600
+      }
+    },
+    "parallel_development": {
+      "name": "Parallel Development Tasks",
+      "type": "parallel",
+      "description": "Execute development tasks in parallel",
+      "dependencies": ["create_architecture"],
+      "maxParallelism": 3,
+      "configuration": {
+        "wait_for_all": true,
+        "timeout": 1800
+      }
+    },
+    "implement_backend": {
+      "name": "Implement Backend",
+      "type": "agent",
+      "description": "Backend development agent",
+      "dependencies": ["parallel_development"],
+      "configuration": {
+        "agent_type": "backend_developer",
+        "required_capabilities": ["coding", "api_development", "database_design"],
+        "language": "{{target_language}}",
+        "parallel_group": "development"
+      }
+    },
+    "implement_frontend": {
+      "name": "Implement Frontend",
+      "type": "agent",
+      "description": "Frontend development agent",
+      "dependencies": ["parallel_development"],
+      "configuration": {
+        "agent_type": "frontend_developer",
+        "required_capabilities": ["ui_development", "responsive_design"],
+        "language": "{{target_language}}",
+        "parallel_group": "development"
+      }
+    },
+    "write_tests": {
+      "name": "Write Tests",
+      "type": "agent",
+      "description": "Test development agent",
+      "dependencies": ["parallel_development"],
+      "configuration": {
+        "agent_type": "test_engineer",
+        "required_capabilities": ["test_automation", "unit_testing", "integration_testing"],
+        "parallel_group": "development"
+      }
+    },
+    "integrate_components": {
+      "name": "Integrate Components",
+      "type": "action",
+      "description": "Integrate all developed components",
+      "dependencies": ["implement_backend", "implement_frontend", "write_tests"],
+      "configuration": {
+        "integration_type": "automated",
+        "build_system": "webpack",
+        "test_runner": "jest"
+      }
+    },
+    "quality_assessment": {
+      "name": "Quality Assessment",
+      "type": "agent",
+      "description": "Assess code quality and completeness",
+      "dependencies": ["integrate_components"],
+      "configuration": {
+        "agent_type": "quality_assessor",
+        "required_capabilities": ["code_review", "quality_metrics", "static_analysis"],
+        "quality_gates": {
+          "code_coverage": 0.8,
+          "complexity_threshold": 10,
+          "security_scan": true
+        }
+      }
+    },
+    "review_required_check": {
+      "name": "Check Review Requirement",
+      "type": "condition",
+      "description": "Check if human review is required",
+      "dependencies": ["quality_assessment"],
+      "condition": {
+        "type": "javascript",
+        "expression": "input.review_required === true || quality_assessment.score < input.quality_threshold"
+      }
+    },
+    "human_review": {
+      "name": "Human Review",
+      "type": "approval",
+      "description": "Request human review and approval",
+      "dependencies": ["review_required_check"],
+      "configuration": {
+        "approvers": ["lead_developer", "project_manager"],
+        "timeout": 86400,
+        "approval_type": "any"
+      },
+      "condition": {
+        "type": "javascript",
+        "expression": "review_required_check.result === true"
+      }
+    },
+    "deploy_application": {
+      "name": "Deploy Application",
+      "type": "agent",
+      "description": "Deploy the application to target environment",
+      "dependencies": ["human_review", "review_required_check"],
+      "configuration": {
+        "agent_type": "deployment_manager",
+        "required_capabilities": ["deployment", "infrastructure", "monitoring"],
+        "environment": "staging",
+        "deployment_strategy": "blue_green"
+      }
+    },
+    "post_deployment_tests": {
+      "name": "Post-Deployment Tests",
+      "type": "agent",
+      "description": "Run post-deployment verification tests",
+      "dependencies": ["deploy_application"],
+      "configuration": {
+        "agent_type": "test_engineer",
+        "required_capabilities": ["end_to_end_testing", "performance_testing"],
+        "test_suite": "smoke_tests"
+      }
+    },
+    "notify_completion": {
+      "name": "Notify Completion",
+      "type": "notification",
+      "description": "Send completion notification",
+      "dependencies": ["post_deployment_tests"],
+      "configuration": {
+        "type": "slack",
+        "channels": ["#development", "#project-updates"],
+        "template": "project_completion",
+        "include_metrics": true
+      }
+    },
+    "handle_failure": {
+      "name": "Handle Failure",
+      "type": "agent",
+      "description": "Handle any failure in the workflow",
+      "configuration": {
+        "agent_type": "incident_manager",
+        "required_capabilities": ["incident_response", "rollback", "notification"],
+        "escalation_levels": ["team_lead", "engineering_manager"]
+      },
+      "errorHandling": {
+        "onError": "continue"
+      }
+    },
+    "end": {
+      "name": "Complete Workflow",
+      "type": "end",
+      "description": "Complete the software development workflow",
+      "dependencies": ["notify_completion", "handle_failure"]
+    }
+  },
+  "edges": [
+    {
+      "from": "start",
+      "to": "analyze_requirements"
+    },
+    {
+      "from": "analyze_requirements",
+      "to": "create_architecture"
+    },
+    {
+      "from": "create_architecture",
+      "to": "parallel_development"
+    },
+    {
+      "from": "parallel_development",
+      "to": "implement_backend"
+    },
+    {
+      "from": "parallel_development",
+      "to": "implement_frontend"
+    },
+    {
+      "from": "parallel_development",
+      "to": "write_tests"
+    },
+    {
+      "from": "implement_backend",
+      "to": "integrate_components"
+    },
+    {
+      "from": "implement_frontend",
+      "to": "integrate_components"
+    },
+    {
+      "from": "write_tests",
+      "to": "integrate_components"
+    },
+    {
+      "from": "integrate_components",
+      "to": "quality_assessment"
+    },
+    {
+      "from": "quality_assessment",
+      "to": "review_required_check"
+    },
+    {
+      "from": "review_required_check",
+      "to": "human_review",
+      "condition": {
+        "type": "javascript",
+        "expression": "review_required_check.result === true"
+      }
+    },
+    {
+      "from": "review_required_check",
+      "to": "deploy_application",
+      "condition": {
+        "type": "javascript",
+        "expression": "review_required_check.result === false"
+      }
+    },
+    {
+      "from": "human_review",
+      "to": "deploy_application"
+    },
+    {
+      "from": "deploy_application",
+      "to": "post_deployment_tests"
+    },
+    {
+      "from": "post_deployment_tests",
+      "to": "notify_completion"
+    },
+    {
+      "from": "notify_completion",
+      "to": "end"
+    },
+    {
+      "from": "handle_failure",
+      "to": "end"
+    }
+  ],
+  "timeout": {
+    "duration": "PT4H",
+    "onTimeoutAction": "cancel"
+  },
+  "retry": {
+    "maxAttempts": 1,
+    "initialDelay": "PT30S",
+    "backoffMultiplier": 2.0
+  },
+  "metadata": {
+    "author": "Hartonomous AI Platform",
+    "category": "Software Development",
+    "tags": ["ai-agents", "development", "automation", "coordination"],
+    "complexity": "high",
+    "estimated_duration": "2-4 hours",
+    "resource_requirements": {
+      "agents": 6,
+      "memory": "2GB",
+      "cpu": "moderate"
+    }
+  }
+}
