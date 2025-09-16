@@ -1,14 +1,20 @@
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Management;
+using System.Security.Principal;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 using Hartonomous.AgentClient.Interfaces;
 using Hartonomous.AgentClient.Models;
 using Hartonomous.Core.Interfaces;
 using Hartonomous.Infrastructure.Observability.Interfaces;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using System.Collections.Concurrent;
-using System.Diagnostics;
-using System.Management;
-using System.Security.Principal;
-using System.Text.Json;
 
 namespace Hartonomous.AgentClient.Services;
 
@@ -511,7 +517,7 @@ public class AgentRuntimeService : IAgentRuntime, IDisposable
                 logs.AddRange(lines.Select(line => new LogEntry
                 {
                     Message = line,
-                    Level = LogLevel.Information,
+                    Level = Models.LogLevel.Information,
                     Timestamp = DateTimeOffset.UtcNow
                 }));
             }
@@ -928,7 +934,7 @@ public class AgentClientConfiguration
     /// <summary>
     /// Path where agent installations are stored
     /// </summary>
-    public string AgentInstallPath { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramData), "Hartonomous", "Agents");
+    public string AgentInstallPath { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Hartonomous", "Agents");
 
     /// <summary>
     /// Path for agent workspace directories

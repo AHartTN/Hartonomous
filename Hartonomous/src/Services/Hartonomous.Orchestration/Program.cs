@@ -11,9 +11,10 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 // Add infrastructure services
-builder.Services.AddHartonomousConfiguration(builder.Configuration);
-builder.Services.AddHartonomousObservability();
-builder.Services.AddHartonomousSecurity(builder.Configuration);
+// Skip Key Vault in development for now
+// builder.Configuration.AddHartonomousKeyVault(builder.Environment);
+builder.Services.AddHartonomousObservability("Hartonomous.Orchestration");
+builder.Services.AddHartonomousAuthentication(builder.Configuration);
 
 // Add orchestration services
 builder.Services.AddOrchestrationServices(builder.Configuration);

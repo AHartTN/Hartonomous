@@ -349,23 +349,21 @@ public class WorkflowTemplateService : IWorkflowTemplateService
             var template = await GetTemplateByIdAsync(templateId, userId);
             if (template == null)
             {
-                return new WorkflowValidationResult
-                {
-                    IsValid = false,
-                    Errors = new List<ValidationError>
+                return new WorkflowValidationResult(
+                    false,
+                    new List<ValidationError>
                     {
                         new ValidationError("TEMPLATE_NOT_FOUND", $"Template {templateId} not found")
                     },
-                    Warnings = new List<ValidationWarning>()
-                };
+                    new List<ValidationWarning>()
+                );
             }
 
-            var result = new WorkflowValidationResult
-            {
-                IsValid = true,
-                Errors = new List<ValidationError>(),
-                Warnings = new List<ValidationWarning>()
-            };
+            var result = new WorkflowValidationResult(
+                true,
+                new List<ValidationError>(),
+                new List<ValidationWarning>()
+            );
 
             // Validate required parameters
             foreach (var paramDef in template.Parameters.Values.Where(p => p.Required))
@@ -388,33 +386,35 @@ public class WorkflowTemplateService : IWorkflowTemplateService
                 }
                 else
                 {
-                    result.Warnings.Add(new ValidationWarning
-                    {
-                        Code = "UNKNOWN_PARAMETER",
-                        Message = $"Parameter '{kvp.Key}' is not defined in template"
-                    });
+                    result.Warnings.Add(new ValidationWarning(
+                        "UNKNOWN_PARAMETER",
+                        $"Parameter '{kvp.Key}' is not defined in template"
+                    ));
                 }
             }
 
-            result.IsValid = !result.Errors.Any();
+            // Create new result with updated IsValid status
+            result = new WorkflowValidationResult(
+                !result.Errors.Any(),
+                result.Errors,
+                result.Warnings
+            );
             return result;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to validate template parameters for template {TemplateId}", templateId);
-            return new WorkflowValidationResult
-            {
-                IsValid = false,
-                Errors = new List<ValidationError>
+            return new WorkflowValidationResult(
+                false,
+                new List<ValidationError>
                 {
-                    new ValidationError
-                    {
-                        Code = "VALIDATION_ERROR",
-                        Message = ex.Message
-                    }
+                    new ValidationError(
+                        "VALIDATION_ERROR",
+                        ex.Message
+                    )
                 },
-                Warnings = new List<ValidationWarning>()
-            };
+                new List<ValidationWarning>()
+            );
         }
     }
 
@@ -636,11 +636,11 @@ public class WorkflowTemplateService : IWorkflowTemplateService
                 case "integer":
                     return value is int or long || (value is string s && long.TryParse(s, out _));
                 case "number":
-                    return value is double or float or int or long || (value is string s && double.TryParse(s, out _));
+                    return value is double or float or int or long || (value is string numStr && double.TryParse(numStr, out _));
                 case "boolean":
-                    return value is bool || (value is string s && bool.TryParse(s, out _));
+                    return value is bool || (value is string boolStr && bool.TryParse(boolStr, out _));
                 case "datetime":
-                    return value is DateTime || (value is string s && DateTime.TryParse(s, out _));
+                    return value is DateTime || (value is string dateStr && DateTime.TryParse(dateStr, out _));
                 default:
                     return true; // Allow any type for unknown types
             }

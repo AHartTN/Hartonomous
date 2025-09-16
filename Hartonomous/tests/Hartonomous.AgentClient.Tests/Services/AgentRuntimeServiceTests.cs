@@ -1,11 +1,13 @@
 using FluentAssertions;
 using Hartonomous.AgentClient.Models;
+using System;
 using Hartonomous.AgentClient.Services;
 using Hartonomous.Core.Interfaces;
 using Hartonomous.Infrastructure.Observability.Interfaces;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
+using System.Threading.Tasks;
 using Xunit;
 
 namespace Hartonomous.AgentClient.Tests.Services;

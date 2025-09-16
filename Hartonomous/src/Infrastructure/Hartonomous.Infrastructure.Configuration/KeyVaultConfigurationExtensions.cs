@@ -12,20 +12,45 @@ public static class KeyVaultConfigurationExtensions
         this IConfigurationBuilder builder,
         IHostEnvironment environment)
     {
-        // Only use Key Vault in production or when explicitly configured
-        var keyVaultUrl = builder.Build()["KeyVault:VaultUrl"];
-
-        if (string.IsNullOrEmpty(keyVaultUrl))
+        try
         {
-            // Fallback for development - Key Vault URL should be in local config
-            return builder;
+            // Only use Key Vault in production or when explicitly configured
+            var keyVaultUrl = builder.Build()["KeyVault:VaultUrl"];
+
+            if (string.IsNullOrEmpty(keyVaultUrl))
+            {
+                // Fallback for development - Key Vault URL should be in local config
+                return builder;
+            }
+
+            // Skip Key Vault in development environment unless explicitly enabled
+            if (environment.IsDevelopment())
+            {
+                var enableKeyVault = builder.Build()["KeyVault:EnableInDevelopment"];
+                if (string.IsNullOrEmpty(enableKeyVault) || !bool.Parse(enableKeyVault))
+                {
+                    return builder;
+                }
+            }
+
+            var credential = new DefaultAzureCredential();
+            var secretClient = new SecretClient(new Uri(keyVaultUrl), credential);
+
+            // Add Key Vault configuration with secret refresh options
+            builder.AddAzureKeyVault(secretClient, new KeyVaultSecretManager());
         }
-
-        var credential = new DefaultAzureCredential();
-        var secretClient = new SecretClient(new Uri(keyVaultUrl), credential);
-
-        // Add Key Vault configuration with secret refresh options
-        builder.AddAzureKeyVault(secretClient, new KeyVaultSecretManager());
+        catch (Exception)
+        {
+            // Silently fail in development - Key Vault access is optional
+            if (!environment.IsProduction())
+            {
+                // Continue without Key Vault configuration
+            }
+            else
+            {
+                throw; // Re-throw in production environments
+            }
+        }
 
         return builder;
     }

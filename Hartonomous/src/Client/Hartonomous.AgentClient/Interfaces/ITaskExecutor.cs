@@ -1,3 +1,7 @@
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using Hartonomous.AgentClient.Models;
 
 namespace Hartonomous.AgentClient.Interfaces;
@@ -78,7 +82,7 @@ public interface ITaskExecutor
     /// <returns>List of tasks</returns>
     Task<IEnumerable<AgentTask>> ListTasksAsync(
         string? userId = null,
-        TaskStatus? status = null,
+        Models.TaskStatus? status = null,
         string? agentId = null,
         string? instanceId = null,
         int? limit = null,
@@ -211,7 +215,7 @@ public sealed record TaskExecutionRecord
     /// <summary>
     /// Execution status
     /// </summary>
-    public TaskStatus Status { get; init; }
+    public Models.TaskStatus Status { get; init; }
 
     /// <summary>
     /// Execution start time
@@ -267,7 +271,7 @@ public sealed record TaskBatchResult
     /// <summary>
     /// Overall batch status
     /// </summary>
-    public TaskStatus Status { get; init; }
+    public Models.TaskStatus Status { get; init; }
 
     /// <summary>
     /// Individual task results
@@ -379,7 +383,7 @@ public class TaskStatusChangedEventArgs : EventArgs
     /// <summary>
     /// Previous task status
     /// </summary>
-    public TaskStatus PreviousStatus { get; init; }
+    public Models.TaskStatus PreviousStatus { get; init; }
 
     /// <summary>
     /// Status change timestamp

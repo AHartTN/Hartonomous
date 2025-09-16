@@ -15,7 +15,21 @@
       "Bash(dotnet add reference:*)",
       "Bash(dotnet test:*)",
       "Read(//e/projects/Claude/**)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(dir:*)",
+      "Bash(findstr:*)",
+      "Bash(cat:*)",
+      "Bash(dotnet build:*)",
+      "Bash(if not exist \"D:\\HartonomousData\" mkdir \"D:\\HartonomousData\")",
+      "Bash(cmd /c:*)",
+      "Bash(dotnet restore:*)",
+      "Bash(find:*)",
+      "Bash(dotnet run:*)",
+      "Bash(curl:*)",
+      "Bash(powershell:*)",
+      "Bash(del IntegrationTestRunner.cs)",
+      "Bash(del TestExecutionDemo.cs)"
     ],
     "deny": [],
     "ask": []

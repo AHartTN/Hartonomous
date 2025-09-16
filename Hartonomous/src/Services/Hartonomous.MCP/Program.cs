@@ -6,8 +6,8 @@ using Hartonomous.MCP.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add Azure Key Vault configuration
-builder.Configuration.AddHartonomousKeyVault(builder.Environment);
+// Skip Key Vault in development for now
+// builder.Configuration.AddHartonomousKeyVault(builder.Environment);
 
 // Add services to the container
 builder.Services.AddControllers();

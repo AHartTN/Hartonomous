@@ -1,11 +1,16 @@
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Hartonomous.AgentClient.Interfaces;
 using Hartonomous.AgentClient.Models;
 using Hartonomous.Core.Interfaces;
 using Hartonomous.Infrastructure.Observability.Interfaces;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using System.Collections.Concurrent;
-using System.Diagnostics;
 
 namespace Hartonomous.AgentClient.Services;
 
@@ -62,7 +67,7 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
         try
         {
             // Set status to running
-            task = await UpdateTaskStatusAsync(task, TaskStatus.Running, cancellationToken);
+            task = await UpdateTaskStatusAsync(task, Models.TaskStatus.Running, cancellationToken);
 
             var stopwatch = Stopwatch.StartNew();
 
@@ -74,7 +79,7 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
             // Update task with result
             task = task with
             {
-                Status = result.Success ? TaskStatus.Completed : TaskStatus.Failed,
+                Status = result.Success ? Models.TaskStatus.Completed : Models.TaskStatus.Failed,
                 Result = result,
                 CompletedAt = DateTimeOffset.UtcNow,
                 UpdatedAt = DateTimeOffset.UtcNow
@@ -115,7 +120,7 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
         }
         catch (OperationCanceledException)
         {
-            task = await UpdateTaskStatusAsync(task, TaskStatus.Cancelled, cancellationToken: CancellationToken.None);
+            task = await UpdateTaskStatusAsync(task, Models.TaskStatus.Cancelled, cancellationToken: CancellationToken.None);
             _metricsCollector.IncrementCounter("task.cancelled", tags: new Dictionary<string, string>
             {
                 ["task_type"] = task.Type,
@@ -135,7 +140,7 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
 
             task = task with
             {
-                Status = TaskStatus.Failed,
+                Status = Models.TaskStatus.Failed,
                 Error = error,
                 UpdatedAt = DateTimeOffset.UtcNow
             };
@@ -161,13 +166,13 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
         await ValidateTaskAsync(task, cancellationToken);
 
         // Set status to queued
-        task = task with { Status = TaskStatus.Queued, UpdatedAt = DateTimeOffset.UtcNow };
+        task = task with { Status = Models.TaskStatus.Queued, UpdatedAt = DateTimeOffset.UtcNow };
         _tasks.TryAdd(task.TaskId, task);
 
         // Add to queue
         _taskQueue.Enqueue(task);
 
-        OnTaskStatusChanged(task, TaskStatus.Pending);
+        OnTaskStatusChanged(task, Models.TaskStatus.Pending);
 
         _logger.LogInformation("Queued task {TaskId} of type {TaskType}", task.TaskId, task.Type);
 
@@ -187,7 +192,7 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
         if (!_tasks.TryGetValue(taskId, out var task))
             throw new InvalidOperationException($"Task {taskId} not found");
 
-        if (task.Status is TaskStatus.Completed or TaskStatus.Failed or TaskStatus.Cancelled)
+        if (task.Status is Models.TaskStatus.Completed or Models.TaskStatus.Failed or Models.TaskStatus.Cancelled)
             return task; // Already completed
 
         // Cancel the task
@@ -197,7 +202,7 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
         }
 
         // Update status
-        task = await UpdateTaskStatusAsync(task, TaskStatus.Cancelled, cancellationToken);
+        task = await UpdateTaskStatusAsync(task, Models.TaskStatus.Cancelled, cancellationToken);
 
         _logger.LogInformation("Cancelled task {TaskId}: {Reason}", taskId, reason ?? "No reason provided");
 
@@ -217,11 +222,11 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
         if (!_tasks.TryGetValue(taskId, out var task))
             throw new InvalidOperationException($"Task {taskId} not found");
 
-        if (task.Status != TaskStatus.Running)
+        if (task.Status != Models.TaskStatus.Running)
             throw new InvalidOperationException($"Cannot pause task {taskId} in state {task.Status}");
 
         // Pause the task (implementation depends on agent capability)
-        task = await UpdateTaskStatusAsync(task, TaskStatus.Paused, cancellationToken);
+        task = await UpdateTaskStatusAsync(task, Models.TaskStatus.Paused, cancellationToken);
 
         _logger.LogInformation("Paused task {TaskId}", taskId);
 
@@ -235,11 +240,11 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
         if (!_tasks.TryGetValue(taskId, out var task))
             throw new InvalidOperationException($"Task {taskId} not found");
 
-        if (task.Status != TaskStatus.Paused)
+        if (task.Status != Models.TaskStatus.Paused)
             throw new InvalidOperationException($"Cannot resume task {taskId} in state {task.Status}");
 
         // Resume the task
-        task = await UpdateTaskStatusAsync(task, TaskStatus.Running, cancellationToken);
+        task = await UpdateTaskStatusAsync(task, Models.TaskStatus.Running, cancellationToken);
 
         _logger.LogInformation("Resumed task {TaskId}", taskId);
 
@@ -253,7 +258,7 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
         if (!_tasks.TryGetValue(taskId, out var task))
             throw new InvalidOperationException($"Task {taskId} not found");
 
-        if (task.Status != TaskStatus.Failed)
+        if (task.Status != Models.TaskStatus.Failed)
             throw new InvalidOperationException($"Cannot retry task {taskId} in state {task.Status}");
 
         if (task.RetryCount >= task.MaxRetries)
@@ -262,7 +267,7 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
         // Increment retry count
         task = task with
         {
-            Status = TaskStatus.Retrying,
+            Status = Models.TaskStatus.Retrying,
             RetryCount = task.RetryCount + 1,
             Error = null,
             Result = null,
@@ -279,7 +284,7 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
         // Queue for retry
         _taskQueue.Enqueue(task);
 
-        OnTaskStatusChanged(task, TaskStatus.Failed);
+        OnTaskStatusChanged(task, Models.TaskStatus.Failed);
 
         _logger.LogInformation("Retrying task {TaskId} (attempt {RetryCount}/{MaxRetries})",
             taskId, task.RetryCount, task.MaxRetries);
@@ -297,7 +302,7 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
 
     public async Task<IEnumerable<AgentTask>> ListTasksAsync(
         string? userId = null,
-        TaskStatus? status = null,
+        Models.TaskStatus? status = null,
         string? agentId = null,
         string? instanceId = null,
         int? limit = null,
@@ -318,14 +323,15 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
             tasks = tasks.Where(t => t.InstanceId == instanceId);
 
         var orderedTasks = tasks.OrderByDescending(t => t.CreatedAt);
+        IEnumerable<AgentTask> finalTasks = orderedTasks;
 
         if (offset.HasValue)
-            orderedTasks = orderedTasks.Skip(offset.Value);
+            finalTasks = finalTasks.Skip(offset.Value);
 
         if (limit.HasValue)
-            orderedTasks = orderedTasks.Take(limit.Value);
+            finalTasks = finalTasks.Take(limit.Value);
 
-        return orderedTasks;
+        return finalTasks;
     }
 
     public Task<IEnumerable<TaskExecutionRecord>> GetTaskHistoryAsync(string taskId, CancellationToken cancellationToken = default)
@@ -448,7 +454,7 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
                         var result = await ExecuteTaskAsync(task, ct);
                         batchResults.Add(result);
 
-                        if (failFast && result.Status == TaskStatus.Failed)
+                        if (failFast && result.Status == Models.TaskStatus.Failed)
                         {
                             throw new TaskFailedException($"Task {task.TaskId} failed in fail-fast mode");
                         }
@@ -477,7 +483,7 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
                         var result = await ExecuteTaskAsync(task, cancellationToken);
                         results.Add(result);
 
-                        if (failFast && result.Status == TaskStatus.Failed)
+                        if (failFast && result.Status == Models.TaskStatus.Failed)
                         {
                             break;
                         }
@@ -496,9 +502,9 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
                 BatchId = batchId,
                 Status = DetermineBatchStatus(results),
                 TaskResults = results,
-                SuccessCount = results.Count(r => r.Status == TaskStatus.Completed),
-                FailureCount = results.Count(r => r.Status == TaskStatus.Failed),
-                CancelledCount = results.Count(r => r.Status == TaskStatus.Cancelled),
+                SuccessCount = results.Count(r => r.Status == Models.TaskStatus.Completed),
+                FailureCount = results.Count(r => r.Status == Models.TaskStatus.Failed),
+                CancelledCount = results.Count(r => r.Status == Models.TaskStatus.Cancelled),
                 StartedAt = DateTimeOffset.UtcNow - stopwatch.Elapsed,
                 CompletedAt = DateTimeOffset.UtcNow,
                 TotalDurationMs = stopwatch.ElapsedMilliseconds
@@ -521,11 +527,11 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
             return new TaskBatchResult
             {
                 BatchId = batchId,
-                Status = TaskStatus.Failed,
+                Status = Models.TaskStatus.Failed,
                 TaskResults = results,
-                SuccessCount = results.Count(r => r.Status == TaskStatus.Completed),
-                FailureCount = results.Count(r => r.Status == TaskStatus.Failed),
-                CancelledCount = results.Count(r => r.Status == TaskStatus.Cancelled),
+                SuccessCount = results.Count(r => r.Status == Models.TaskStatus.Completed),
+                FailureCount = results.Count(r => r.Status == Models.TaskStatus.Failed),
+                CancelledCount = results.Count(r => r.Status == Models.TaskStatus.Cancelled),
                 StartedAt = DateTimeOffset.UtcNow - stopwatch.Elapsed,
                 TotalDurationMs = stopwatch.ElapsedMilliseconds,
                 Error = new AgentError
@@ -549,7 +555,7 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
 
         task = task with
         {
-            Status = TaskStatus.Pending,
+            Status = Models.TaskStatus.Pending,
             ScheduledFor = scheduledFor,
             UpdatedAt = DateTimeOffset.UtcNow
         };
@@ -568,11 +574,11 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
 
         var stats = new TaskQueueStatistics
         {
-            PendingTasks = _tasks.Values.Count(t => t.Status == TaskStatus.Pending),
-            QueuedTasks = _tasks.Values.Count(t => t.Status == TaskStatus.Queued),
-            RunningTasks = _tasks.Values.Count(t => t.Status == TaskStatus.Running),
-            CompletedToday = _tasks.Values.Count(t => t.Status == TaskStatus.Completed && t.CompletedAt >= todayStart),
-            FailedToday = _tasks.Values.Count(t => t.Status == TaskStatus.Failed && t.UpdatedAt >= todayStart),
+            PendingTasks = _tasks.Values.Count(t => t.Status == Models.TaskStatus.Pending),
+            QueuedTasks = _tasks.Values.Count(t => t.Status == Models.TaskStatus.Queued),
+            RunningTasks = _tasks.Values.Count(t => t.Status == Models.TaskStatus.Running),
+            CompletedToday = _tasks.Values.Count(t => t.Status == Models.TaskStatus.Completed && t.CompletedAt >= todayStart),
+            FailedToday = _tasks.Values.Count(t => t.Status == Models.TaskStatus.Failed && t.UpdatedAt >= todayStart),
             AverageExecutionTimeMs = CalculateAverageExecutionTime(),
             ThroughputPerMinute = CalculateThroughput(),
             ErrorRate = CalculateErrorRate()
@@ -588,7 +594,7 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
         // Find similar completed tasks
         var similarTasks = _tasks.Values
             .Where(t => t.Type == task.Type &&
-                       t.Status == TaskStatus.Completed &&
+                       t.Status == Models.TaskStatus.Completed &&
                        t.Result != null)
             .ToList();
 
@@ -706,7 +712,7 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
             throw new ArgumentException("Invalid max retries value", nameof(task));
     }
 
-    private async Task<AgentTask> UpdateTaskStatusAsync(AgentTask task, TaskStatus newStatus, CancellationToken cancellationToken)
+    private async Task<AgentTask> UpdateTaskStatusAsync(AgentTask task, Models.TaskStatus newStatus, CancellationToken cancellationToken)
     {
         var previousStatus = task.Status;
 
@@ -716,12 +722,12 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
             UpdatedAt = DateTimeOffset.UtcNow
         };
 
-        if (newStatus == TaskStatus.Running && task.StartedAt == null)
+        if (newStatus == Models.TaskStatus.Running && task.StartedAt == null)
         {
             task = task with { StartedAt = DateTimeOffset.UtcNow };
         }
 
-        if (newStatus is TaskStatus.Completed or TaskStatus.Failed or TaskStatus.Cancelled && task.CompletedAt == null)
+        if (newStatus is Models.TaskStatus.Completed or Models.TaskStatus.Failed or Models.TaskStatus.Cancelled && task.CompletedAt == null)
         {
             task = task with { CompletedAt = DateTimeOffset.UtcNow };
         }
@@ -789,7 +795,7 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
         {
             if (_tasks.TryGetValue(dependencyId, out var dependency))
             {
-                if (dependency.Status != TaskStatus.Completed)
+                if (dependency.Status != Models.TaskStatus.Completed)
                     return false;
             }
             else
@@ -808,7 +814,7 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
             var cutoffTime = DateTimeOffset.UtcNow.AddDays(-7); // Keep tasks for 7 days
 
             var tasksToRemove = _tasks.Values
-                .Where(t => t.Status is TaskStatus.Completed or TaskStatus.Failed or TaskStatus.Cancelled &&
+                .Where(t => t.Status is Models.TaskStatus.Completed or Models.TaskStatus.Failed or Models.TaskStatus.Cancelled &&
                            t.UpdatedAt < cutoffTime)
                 .Select(t => t.TaskId)
                 .ToList();
@@ -834,7 +840,7 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
     private double CalculateAverageExecutionTime()
     {
         var completedTasks = _tasks.Values
-            .Where(t => t.Status == TaskStatus.Completed && t.Result != null)
+            .Where(t => t.Status == Models.TaskStatus.Completed && t.Result != null)
             .ToList();
 
         return completedTasks.Count > 0 ? completedTasks.Average(t => t.Result!.DurationMs) : 0;
@@ -844,34 +850,34 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
     {
         var oneHourAgo = DateTimeOffset.UtcNow.AddHours(-1);
         var completedInLastHour = _tasks.Values
-            .Count(t => t.Status == TaskStatus.Completed && t.CompletedAt >= oneHourAgo);
+            .Count(t => t.Status == Models.TaskStatus.Completed && t.CompletedAt >= oneHourAgo);
 
         return completedInLastHour; // Tasks per hour, converted to per minute would be / 60
     }
 
     private double CalculateErrorRate()
     {
-        var totalTasks = _tasks.Values.Count(t => t.Status is TaskStatus.Completed or TaskStatus.Failed);
-        var failedTasks = _tasks.Values.Count(t => t.Status == TaskStatus.Failed);
+        var totalTasks = _tasks.Values.Count(t => t.Status is Models.TaskStatus.Completed or Models.TaskStatus.Failed);
+        var failedTasks = _tasks.Values.Count(t => t.Status == Models.TaskStatus.Failed);
 
         return totalTasks > 0 ? (double)failedTasks / totalTasks * 100 : 0;
     }
 
-    private static TaskStatus DetermineBatchStatus(List<AgentTask> results)
+    private static Models.TaskStatus DetermineBatchStatus(List<AgentTask> results)
     {
-        if (results.All(r => r.Status == TaskStatus.Completed))
-            return TaskStatus.Completed;
+        if (results.All(r => r.Status == Models.TaskStatus.Completed))
+            return Models.TaskStatus.Completed;
 
-        if (results.Any(r => r.Status == TaskStatus.Failed))
-            return TaskStatus.Failed;
+        if (results.Any(r => r.Status == Models.TaskStatus.Failed))
+            return Models.TaskStatus.Failed;
 
-        if (results.Any(r => r.Status == TaskStatus.Cancelled))
-            return TaskStatus.Cancelled;
+        if (results.Any(r => r.Status == Models.TaskStatus.Cancelled))
+            return Models.TaskStatus.Cancelled;
 
-        return TaskStatus.Running;
+        return Models.TaskStatus.Running;
     }
 
-    private void OnTaskStatusChanged(AgentTask task, TaskStatus previousStatus)
+    private void OnTaskStatusChanged(AgentTask task, Models.TaskStatus previousStatus)
     {
         TaskStatusChanged?.Invoke(this, new TaskStatusChangedEventArgs
         {
