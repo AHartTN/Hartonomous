@@ -2,6 +2,8 @@ using Microsoft.Extensions.DependencyInjection;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
 using OpenTelemetry.Resources;
+using Hartonomous.Infrastructure.Observability.Interfaces;
+using Hartonomous.Infrastructure.Observability.Services;
 
 namespace Hartonomous.Infrastructure.Observability;
 
@@ -22,6 +24,9 @@ public static class ObservabilityServiceExtensions
                 .AddHttpClientInstrumentation()
                 .AddSqlClientInstrumentation()
                 .AddConsoleExporter());
+
+        // Register metrics collector
+        services.AddSingleton<IMetricsCollector, NoOpMetricsCollector>();
 
         return services;
     }
