@@ -71,11 +71,16 @@ public class MilvusService : IDisposable
 
             await _client.CreateCollectionAsync(schema);
 
-            // Create index for vector search - using compatible API
-            await _client.CreateIndexAsync(_collectionName, "embedding",
-                Milvus.Client.IndexType.IvfFlat,
-                Milvus.Client.MetricType.L2,
-                new Dictionary<string, object> { { "nlist", 1024 } });
+            // Create index for vector search
+            var indexParams = new IndexParams
+            {
+                FieldName = "embedding",
+                IndexType = IndexType.IvfFlat,
+                MetricType = MetricType.L2,
+                ExtraParams = new Dictionary<string, object> { { "nlist", 1024 } }
+            };
+
+            await _client.CreateIndexAsync(_collectionName, indexParams);
             await _client.LoadCollectionAsync(_collectionName);
 
             _logger.LogInformation("Created and loaded collection: {CollectionName}", _collectionName);
@@ -138,7 +143,15 @@ public class MilvusService : IDisposable
         {
             _logger.LogDebug("Searching for similar components (topK: {TopK}, type: {ComponentType})", topK, componentType ?? "any");
 
-            var outputFields = new[] { "component_id", "model_id", "component_name", "component_type", "created_at" };
+            var searchParams = new SearchParams
+            {
+                CollectionName = _collectionName,
+                VectorFieldName = "embedding",
+                Vectors = new[] { queryEmbedding },
+                TopK = topK,
+                MetricType = MetricType.L2,
+                OutputFields = new[] { "component_id", "model_id", "component_name", "component_type", "created_at" }
+            };
 
             // Add user filter for security
             var filter = $"user_id == \"{userId}\"";
@@ -149,8 +162,9 @@ public class MilvusService : IDisposable
                 filter += $" && component_type == \"{componentType}\"";
             }
 
-            var results = await _client.SearchAsync(_collectionName, new[] { queryEmbedding },
-                "embedding", Milvus.Client.MetricType.L2, topK, filter, outputFields);
+            searchParams.Expression = filter;
+
+            var results = await _client.SearchAsync(searchParams);
 
             var similarComponents = new List<SimilarComponent>();
 

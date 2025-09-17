@@ -242,13 +242,63 @@ public class AgentRepository : IAgentRepository
         );
     }
 
-    public Task<Guid> CreateAsync(AgentDto entity, string userId)
+    public async Task<Guid> CreateAsync(AgentDto entity, string userId)
     {
-        throw new NotImplementedException();
+        const string sql = @"
+            INSERT INTO dbo.Agents (AgentId, UserId, AgentName, AgentType, ConnectionId, Capabilities, Description, Configuration, Status, RegisteredAt, LastHeartbeat)
+            VALUES (@AgentId, @UserId, @AgentName, @AgentType, @ConnectionId, @Capabilities, @Description, @Configuration, @Status, @RegisteredAt, @LastHeartbeat);";
+
+        var agentId = entity.AgentId != Guid.Empty ? entity.AgentId : Guid.NewGuid();
+        var now = DateTime.UtcNow;
+
+        using var connection = new SqlConnection(_connectionString);
+        await connection.ExecuteAsync(sql, new
+        {
+            AgentId = agentId,
+            UserId = userId,
+            AgentName = entity.AgentName,
+            AgentType = entity.AgentType,
+            ConnectionId = entity.ConnectionId,
+            Capabilities = JsonSerializer.Serialize(entity.Capabilities),
+            Description = entity.Description,
+            Configuration = entity.Configuration != null ? JsonSerializer.Serialize(entity.Configuration) : null,
+            Status = (int)entity.Status,
+            RegisteredAt = now,
+            LastHeartbeat = now
+        });
+
+        return agentId;
     }
 
-    public Task<bool> UpdateAsync(AgentDto entity, string userId)
+    public async Task<bool> UpdateAsync(AgentDto entity, string userId)
     {
-        throw new NotImplementedException();
+        const string sql = @"
+            UPDATE dbo.Agents
+            SET AgentName = @AgentName,
+                AgentType = @AgentType,
+                ConnectionId = @ConnectionId,
+                Capabilities = @Capabilities,
+                Description = @Description,
+                Configuration = @Configuration,
+                Status = @Status,
+                LastHeartbeat = @LastHeartbeat
+            WHERE AgentId = @AgentId AND UserId = @UserId;";
+
+        using var connection = new SqlConnection(_connectionString);
+        var rowsAffected = await connection.ExecuteAsync(sql, new
+        {
+            entity.AgentId,
+            UserId = userId,
+            entity.AgentName,
+            entity.AgentType,
+            entity.ConnectionId,
+            Capabilities = JsonSerializer.Serialize(entity.Capabilities),
+            entity.Description,
+            Configuration = entity.Configuration != null ? JsonSerializer.Serialize(entity.Configuration) : null,
+            Status = (int)entity.Status,
+            LastHeartbeat = DateTime.UtcNow
+        });
+
+        return rowsAffected > 0;
     }
 }

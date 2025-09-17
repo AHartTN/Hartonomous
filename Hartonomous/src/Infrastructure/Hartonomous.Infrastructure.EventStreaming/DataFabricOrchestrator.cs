@@ -191,13 +191,25 @@ public class DataFabricOrchestrator
     /// </summary>
     private async Task<ModelComponentInfo?> GetSampleComponentAsync(Guid modelId, string userId)
     {
-        // Placeholder: In real implementation, query SQL Server for components of this model
-        await Task.CompletedTask;
+        const string sql = @"
+            SELECT TOP 1 c.ComponentId, c.ComponentName, c.ComponentType, c.Description
+            FROM dbo.ModelComponents c
+            INNER JOIN dbo.Models m ON c.ModelId = m.ModelId
+            WHERE m.ModelId = @ModelId AND m.UserId = @UserId
+            ORDER BY c.CreatedAt DESC;";
+
+        using var connection = new SqlConnection(_connectionString);
+        var component = await connection.QueryFirstOrDefaultAsync(sql, new { ModelId = modelId, UserId = userId });
+
+        if (component == null)
+            return null;
+
         return new ModelComponentInfo
         {
-            Id = Guid.NewGuid(),
-            Name = "SampleComponent",
-            Type = "Layer"
+            Id = component.ComponentId,
+            Name = component.ComponentName,
+            Type = component.ComponentType,
+            Description = component.Description
         };
     }
 }

@@ -269,9 +269,18 @@ public class MessageRepository : Hartonomous.Core.Shared.Interfaces.IMessageRepo
 
     public async Task<IEnumerable<McpMessage>> GetMessagesByProjectAsync(Guid projectId, string userId, int limit = 100)
     {
-        // This is a placeholder implementation. You will need to adjust your database schema to link messages to projects.
-        await Task.CompletedTask;
-        return Enumerable.Empty<McpMessage>();
+        const string sql = @"
+            SELECT TOP (@Limit) m.MessageId, m.FromAgentId, m.ToAgentId, m.MessageType, m.Payload, m.Metadata, m.Timestamp, m.ProcessedAt
+            FROM dbo.McpMessages m
+            INNER JOIN dbo.Agents a ON (m.FromAgentId = a.AgentId OR m.ToAgentId = a.AgentId)
+            INNER JOIN dbo.Projects p ON p.UserId = @UserId
+            WHERE m.UserId = @UserId AND p.ProjectId = @ProjectId
+            ORDER BY m.Timestamp DESC;";
+
+        using var connection = new SqlConnection(_connectionString);
+        var results = await connection.QueryAsync(sql, new { ProjectId = projectId, UserId = userId, Limit = limit });
+
+        return results.Select(MapToMcpMessage);
     }
 
     public Task<IEnumerable<McpMessage>> GetUnreadMessagesAsync(Guid agentId, string userId) => GetUnprocessedMessagesAsync(agentId, userId);

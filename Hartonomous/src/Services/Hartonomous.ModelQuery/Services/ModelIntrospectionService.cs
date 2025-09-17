@@ -235,24 +235,123 @@ public class ModelIntrospectionService : IModelIntrospectionService
 
     private async Task SearchLayersAsync(string[] searchTerms, SemanticSearchRequestDto request, string userId, List<SemanticSearchResultDto> results)
     {
-        // This is a simplified implementation
-        // In practice, you would have indexed layer data and use proper similarity search
+        const string sql = @"
+            SELECT l.LayerId, l.LayerName, l.LayerType, l.Description, l.Parameters, l.ModelId, m.ModelName
+            FROM dbo.ModelLayers l
+            INNER JOIN dbo.Models m ON l.ModelId = m.ModelId
+            WHERE m.UserId = @UserId
+            AND (l.LayerName LIKE @SearchPattern OR l.Description LIKE @SearchPattern OR l.LayerType LIKE @SearchPattern)
+            ORDER BY l.LayerName;";
 
-        // For now, we'll search through a hypothetical set of layers
-        // This would typically query your layer repository with text search capabilities
-        await Task.CompletedTask; // Placeholder for actual implementation
+        var searchPattern = $"%{string.Join("%", searchTerms)}%";
+
+        using var connection = new SqlConnection(_connectionString);
+        var layers = await connection.QueryAsync(sql, new { UserId = userId, SearchPattern = searchPattern });
+
+        foreach (var layer in layers)
+        {
+            var similarity = CalculateTextSimilarity($"{layer.LayerName} {layer.Description} {layer.LayerType}", searchTerms);
+            if (similarity > 0.1)
+            {
+                results.Add(new SemanticSearchResultDto
+                {
+                    Id = layer.LayerId,
+                    Type = "layer",
+                    Name = layer.LayerName,
+                    Description = layer.Description,
+                    Similarity = similarity,
+                    ModelId = layer.ModelId,
+                    ModelName = layer.ModelName,
+                    Metadata = new Dictionary<string, object>
+                    {
+                        { "layerType", layer.LayerType },
+                        { "parameters", layer.Parameters }
+                    }
+                });
+            }
+        }
     }
 
     private async Task SearchWeightsAsync(string[] searchTerms, SemanticSearchRequestDto request, string userId, List<SemanticSearchResultDto> results)
     {
-        // Similar placeholder for weight search
-        await Task.CompletedTask;
+        const string sql = @"
+            SELECT w.WeightId, w.WeightName, w.Description, w.Shape, w.LayerId, l.LayerName, m.ModelId, m.ModelName
+            FROM dbo.ModelWeights w
+            INNER JOIN dbo.ModelLayers l ON w.LayerId = l.LayerId
+            INNER JOIN dbo.Models m ON l.ModelId = m.ModelId
+            WHERE m.UserId = @UserId
+            AND (w.WeightName LIKE @SearchPattern OR w.Description LIKE @SearchPattern)
+            ORDER BY w.WeightName;";
+
+        var searchPattern = $"%{string.Join("%", searchTerms)}%";
+
+        using var connection = new SqlConnection(_connectionString);
+        var weights = await connection.QueryAsync(sql, new { UserId = userId, SearchPattern = searchPattern });
+
+        foreach (var weight in weights)
+        {
+            var similarity = CalculateTextSimilarity($"{weight.WeightName} {weight.Description}", searchTerms);
+            if (similarity > 0.1)
+            {
+                results.Add(new SemanticSearchResultDto
+                {
+                    Id = weight.WeightId,
+                    Type = "weight",
+                    Name = weight.WeightName,
+                    Description = weight.Description,
+                    Similarity = similarity,
+                    ModelId = weight.ModelId,
+                    ModelName = weight.ModelName,
+                    Metadata = new Dictionary<string, object>
+                    {
+                        { "layerId", weight.LayerId },
+                        { "layerName", weight.LayerName },
+                        { "shape", weight.Shape }
+                    }
+                });
+            }
+        }
     }
 
     private async Task SearchNodesAsync(string[] searchTerms, SemanticSearchRequestDto request, string userId, List<SemanticSearchResultDto> results)
     {
-        // Similar placeholder for node search
-        await Task.CompletedTask;
+        const string sql = @"
+            SELECT n.NodeId, n.NodeName, n.NodeType, n.Description, n.LayerId, l.LayerName, m.ModelId, m.ModelName
+            FROM dbo.ModelNodes n
+            INNER JOIN dbo.ModelLayers l ON n.LayerId = l.LayerId
+            INNER JOIN dbo.Models m ON l.ModelId = m.ModelId
+            WHERE m.UserId = @UserId
+            AND (n.NodeName LIKE @SearchPattern OR n.Description LIKE @SearchPattern OR n.NodeType LIKE @SearchPattern)
+            ORDER BY n.NodeName;";
+
+        var searchPattern = $"%{string.Join("%", searchTerms)}%";
+
+        using var connection = new SqlConnection(_connectionString);
+        var nodes = await connection.QueryAsync(sql, new { UserId = userId, SearchPattern = searchPattern });
+
+        foreach (var node in nodes)
+        {
+            var similarity = CalculateTextSimilarity($"{node.NodeName} {node.Description} {node.NodeType}", searchTerms);
+            if (similarity > 0.1)
+            {
+                results.Add(new SemanticSearchResultDto
+                {
+                    Id = node.NodeId,
+                    Type = "node",
+                    Name = node.NodeName,
+                    Description = node.Description,
+                    Similarity = similarity,
+                    ModelId = node.ModelId,
+                    ModelName = node.ModelName,
+                    Metadata = new Dictionary<string, object>
+                    {
+                        { "nodeType", node.NodeType },
+                        { "layerId", node.LayerId },
+                        { "layerName", node.LayerName }
+                    }
+                });
+            }
+        }
     }
 
     private double CalculateTextSimilarity(string text, string[] searchTerms)
