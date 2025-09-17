@@ -1,4 +1,4 @@
-using Hartonomous.Core.Shared.DTOs;
+using Hartonomous.Core.DTOs;
 
 namespace Hartonomous.MCP.Tests.DTOs;
 

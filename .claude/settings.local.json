@@ -37,7 +37,9 @@
       "Bash(git remote add:*)",
       "Bash(git push:*)",
       "Bash(git remote set-url:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(head:*)",
+      "Bash(sed:*)"
     ],
     "deny": [],
     "ask": []

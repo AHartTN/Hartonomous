@@ -47,7 +47,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hartonomous.MCP.Tests", "te
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hartonomous.AgentClient.Tests", "tests\Hartonomous.AgentClient.Tests\Hartonomous.AgentClient.Tests.csproj", "{D0415266-789A-0234-F012-345678901234}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hartonomous.Core.Shared", "src\Core\Hartonomous.Core.Shared\Hartonomous.Core.Shared.csproj", "{4B688D1F-9A60-4953-8EF2-EE66BDE0A290}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hartonomous.Infrastructure.Neo4j", "src\Infrastructure\Hartonomous.Infrastructure.Neo4j\Hartonomous.Infrastructure.Neo4j.csproj", "{D66296A9-AAFC-405B-835E-D6B8430DC756}"
 EndProject

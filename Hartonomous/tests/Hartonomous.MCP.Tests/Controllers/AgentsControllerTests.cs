@@ -1,6 +1,6 @@
 using Hartonomous.MCP.Controllers;
-using Hartonomous.Core.Shared.DTOs;
-using Hartonomous.Core.Shared.Interfaces;
+using Hartonomous.Core.DTOs;
+using Hartonomous.Core.Interfaces;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;

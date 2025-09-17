@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace Hartonomous.Core.Shared.DTOs;
+namespace Hartonomous.Core.DTOs;
 
 /// <summary>
 /// Agent registration request for MCP system

@@ -1,4 +1,4 @@
-using Hartonomous.Core.Shared.Interfaces;
+using Hartonomous.Core.Interfaces;
 using Hartonomous.MCP.Repositories;
 
 namespace Hartonomous.MCP;

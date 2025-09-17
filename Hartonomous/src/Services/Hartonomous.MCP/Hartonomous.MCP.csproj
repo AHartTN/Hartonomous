@@ -18,7 +18,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Core\Hartonomous.Core\Hartonomous.Core.csproj" />
-    <ProjectReference Include="..\..\Core\Hartonomous.Core.Shared\Hartonomous.Core.Shared.csproj" />
     <ProjectReference Include="..\..\Infrastructure\Hartonomous.Infrastructure.Configuration\Hartonomous.Infrastructure.Configuration.csproj" />
     <ProjectReference Include="..\..\Infrastructure\Hartonomous.Infrastructure.Observability\Hartonomous.Infrastructure.Observability.csproj" />
     <ProjectReference Include="..\..\Infrastructure\Hartonomous.Infrastructure.Security\Hartonomous.Infrastructure.Security.csproj" />

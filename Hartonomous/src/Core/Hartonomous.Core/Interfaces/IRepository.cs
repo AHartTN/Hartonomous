@@ -1,4 +1,4 @@
-namespace Hartonomous.Core.Shared.Interfaces;
+namespace Hartonomous.Core.Interfaces;
 
 public interface IRepository<T> where T : class
 {

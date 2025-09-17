@@ -1,6 +1,6 @@
 using Dapper;
-using Hartonomous.Core.Shared.DTOs;
-using Hartonomous.Core.Shared.Interfaces;
+using Hartonomous.Core.DTOs;
+using Hartonomous.Core.Interfaces;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using System.Text.Json;

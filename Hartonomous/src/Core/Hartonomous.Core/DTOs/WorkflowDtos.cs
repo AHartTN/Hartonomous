@@ -1,4 +1,4 @@
-namespace Hartonomous.Core.Shared.DTOs;
+namespace Hartonomous.Core.DTOs;
 
 /// <summary>
 /// MCP workflow definition

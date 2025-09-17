@@ -1,6 +1,6 @@
-using Hartonomous.Core.Shared.DTOs;
+using Hartonomous.Core.DTOs;
 
-namespace Hartonomous.Core.Shared.Interfaces;
+namespace Hartonomous.Core.Interfaces;
 
 /// <summary>
 /// Repository interface for workflow management in MCP system
