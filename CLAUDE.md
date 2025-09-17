@@ -4,7 +4,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is the Hartonomous project - an autonomous AI software development agent platform. The codebase is currently in the planning/initialization phase with comprehensive architectural documentation stored in `.reference-material/`.
+This is the Hartonomous Platform - a multi-tenant SaaS **AI Agent Factory** that enables users to create, deploy, and monetize specialized AI agents for any domain. Think "Shopify for AI Agents" - we provide the infrastructure, tools, and marketplace for the AI agent economy.
+
+### Core Components
+
+- **NinaDB**: SQL Server 2025 as AI-native NoSQL replacement with vector capabilities, native JSON, and FILESTREAM for model storage
+- **Model Query Engine (MQE)**: "ESRI for AI Models" - ingest, index, and query large language models using T-SQL
+- **Agent Factory**: Transform model capabilities into specialized, deployable agents (chess AI, customer service, domain experts)
+- **Multi-Context Protocol (MCP)**: Agent communication and orchestration framework
+- **Thin Client Architecture**: Deploy agents anywhere (cloud, edge, on-premises) without platform lock-in
+
+The codebase is currently in implementation phase with comprehensive architectural documentation in `docs/`.
 
 ## Development Approach
 
@@ -34,18 +44,24 @@ When working on this project, you must follow the **Guiding Principles** outline
 
 ## Architecture Overview
 
-The planned system follows a multi-layered architecture:
+The system follows a multi-layered, multi-tenant SaaS architecture:
 
-- **Database Layer:** SQL Server with FILESTREAM, graph capabilities, and CLR integration (HartonomousDB)
-- **Core Layer:** Shared DTOs and business logic (Hartonomous.Core)
-- **Infrastructure Layer:** Security (JWT/Microsoft Identity), Observability (OpenTelemetry)
-- **API Layer:** RESTful services for ingestion, querying, and orchestration
-- **UI Layer:** React-based frontend
+- **NinaDB (Data Layer):** SQL Server 2025 with AI-native capabilities (vector indices, native JSON, FILESTREAM, SQL CLR)
+- **Model Query Engine (MQE):** Core innovation enabling T-SQL queries against large language models
+- **Core Layer:** Shared DTOs, business logic, and multi-tenant security (Hartonomous.Core)
+- **Infrastructure Layer:** Security (JWT/Microsoft Identity), observability, event streaming (CDC)
+- **API Layer:** RESTful services for model ingestion, agent creation, and marketplace operations
+- **Agent Runtime:** Thin client architecture for deployable agents
+- **UI Layer:** React-based agent factory interface and marketplace
 
 ## Key References
 
-- Master development steps: `.reference-material/Hartonomous Project_ Master Development Steps (Zero-Context Edition v3).md`
-- Detailed research and architectural plans available in `.reference-material/Research/`
+- **Technical Documentation:** Complete specs in `docs/` directory
+- **Architecture Overview:** `docs/architecture/system-overview.md`
+- **NinaDB Specifications:** `docs/architecture/ninadb-specifications.md`
+- **MQE Documentation:** `docs/mge/mge-overview.md`
+- **Business Strategy:** `docs/business/business-strategy.md`
+- **Original Research:** `.reference-material/` (preserve, do not modify)
 
 ## Security Requirements
 
