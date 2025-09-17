@@ -8,6 +8,10 @@ namespace Hartonomous.Core.Shared.Interfaces;
 public interface IMessageRepository : IRepository<McpMessage>
 {
     /// <summary>
+    /// Store a message
+    /// </summary>
+    Task<Guid> StoreMessageAsync(McpMessage message, string userId);
+    /// <summary>
     /// Get messages for a specific agent
     /// </summary>
     Task<IEnumerable<McpMessage>> GetMessagesForAgentAsync(Guid agentId, string userId, int limit = 100);

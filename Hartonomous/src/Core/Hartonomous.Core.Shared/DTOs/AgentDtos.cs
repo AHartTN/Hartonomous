@@ -47,7 +47,8 @@ public record McpMessage(
     string MessageType,
     object Payload,
     Dictionary<string, object>? Metadata = null,
-    DateTime Timestamp = default
+    DateTime Timestamp = default,
+    DateTime? ProcessedAt = null
 )
 {
     public DateTime Timestamp { get; init; } = Timestamp == default ? DateTime.UtcNow : Timestamp;

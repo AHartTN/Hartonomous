@@ -8,6 +8,25 @@ namespace Hartonomous.Core.Shared.Interfaces;
 public interface IWorkflowRepository : IRepository<WorkflowDefinition>
 {
     /// <summary>
+    /// Get workflows by user ID
+    /// </summary>
+    Task<IEnumerable<WorkflowDefinition>> GetWorkflowsByUserAsync(string userId);
+
+    /// <summary>
+    /// Get workflow by ID
+    /// </summary>
+    Task<WorkflowDefinition?> GetWorkflowAsync(Guid workflowId, string userId);
+
+    /// <summary>
+    /// Create new workflow
+    /// </summary>
+    Task<Guid> CreateWorkflowAsync(WorkflowDefinition workflow, string userId);
+
+    /// <summary>
+    /// Delete workflow
+    /// </summary>
+    Task<bool> DeleteWorkflowAsync(Guid workflowId, string userId);
+    /// <summary>
     /// Start workflow execution
     /// </summary>
     Task<Guid> StartWorkflowExecutionAsync(Guid workflowId, Guid projectId, string userId, Dictionary<string, object>? parameters = null);
