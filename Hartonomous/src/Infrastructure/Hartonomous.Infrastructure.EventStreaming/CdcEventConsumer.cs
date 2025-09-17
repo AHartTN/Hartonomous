@@ -253,7 +253,7 @@ public class CdcEventConsumer : BackgroundService
                         var componentName = "component"; // Resolve from component
                         var componentType = "layer"; // Resolve from component
 
-                        await _milvusService.InsertEmbeddingAsync(componentId, modelId, userId, componentName, componentType, embedding);
+                        await _milvusService.InsertEmbeddingAsync(componentId, modelId, userId, embedding, componentType, componentName);
                         _logger.LogDebug("Successfully processed ComponentEmbedding {Operation} for {ComponentId}", operation, componentId);
                     }
                     break;

@@ -1,6 +1,11 @@
+using Dapper;
 using Hartonomous.ModelQuery.DTOs;
 using Hartonomous.ModelQuery.Interfaces;
 using Hartonomous.Core.Interfaces;
+using Hartonomous.Core.DTOs;
+using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace Hartonomous.ModelQuery.Services;
 
@@ -10,17 +15,24 @@ public class ModelIntrospectionService : IModelIntrospectionService
     private readonly IModelWeightRepository _weightRepository;
     private readonly INeuralMapRepository _neuralMapRepository;
     private readonly IModelRepository _modelRepository;
+    private readonly string _connectionString;
+    private readonly ILogger<ModelIntrospectionService> _logger;
 
     public ModelIntrospectionService(
         IModelArchitectureRepository architectureRepository,
         IModelWeightRepository weightRepository,
         INeuralMapRepository neuralMapRepository,
-        IModelRepository modelRepository)
+        IModelRepository modelRepository,
+        IConfiguration configuration,
+        ILogger<ModelIntrospectionService> logger)
     {
         _architectureRepository = architectureRepository;
         _weightRepository = weightRepository;
         _neuralMapRepository = neuralMapRepository;
         _modelRepository = modelRepository;
+        _connectionString = configuration.GetConnectionString("DefaultConnection") ??
+            throw new ArgumentNullException(nameof(configuration), "DefaultConnection is required");
+        _logger = logger;
     }
 
     public async Task<ModelIntrospectionDto?> AnalyzeModelAsync(Guid modelId, string userId)
@@ -253,21 +265,20 @@ public class ModelIntrospectionService : IModelIntrospectionService
             var similarity = CalculateTextSimilarity($"{layer.LayerName} {layer.Description} {layer.LayerType}", searchTerms);
             if (similarity > 0.1)
             {
-                results.Add(new SemanticSearchResultDto
-                {
-                    Id = layer.LayerId,
-                    Type = "layer",
-                    Name = layer.LayerName,
-                    Description = layer.Description,
-                    Similarity = similarity,
-                    ModelId = layer.ModelId,
-                    ModelName = layer.ModelName,
-                    Metadata = new Dictionary<string, object>
+                results.Add(new SemanticSearchResultDto(
+                    layer.LayerId,
+                    "layer",
+                    layer.LayerName,
+                    similarity,
+                    new Dictionary<string, object>
                     {
                         { "layerType", layer.LayerType },
-                        { "parameters", layer.Parameters }
-                    }
-                });
+                        { "parameters", layer.Parameters },
+                        { "modelId", layer.ModelId },
+                        { "modelName", layer.ModelName }
+                    },
+                    layer.Description
+                ));
             }
         }
     }
@@ -293,22 +304,21 @@ public class ModelIntrospectionService : IModelIntrospectionService
             var similarity = CalculateTextSimilarity($"{weight.WeightName} {weight.Description}", searchTerms);
             if (similarity > 0.1)
             {
-                results.Add(new SemanticSearchResultDto
-                {
-                    Id = weight.WeightId,
-                    Type = "weight",
-                    Name = weight.WeightName,
-                    Description = weight.Description,
-                    Similarity = similarity,
-                    ModelId = weight.ModelId,
-                    ModelName = weight.ModelName,
-                    Metadata = new Dictionary<string, object>
+                results.Add(new SemanticSearchResultDto(
+                    weight.WeightId,
+                    "weight",
+                    weight.WeightName,
+                    similarity,
+                    new Dictionary<string, object>
                     {
                         { "layerId", weight.LayerId },
                         { "layerName", weight.LayerName },
-                        { "shape", weight.Shape }
-                    }
-                });
+                        { "shape", weight.Shape },
+                        { "modelId", weight.ModelId },
+                        { "modelName", weight.ModelName }
+                    },
+                    weight.Description
+                ));
             }
         }
     }
@@ -334,22 +344,21 @@ public class ModelIntrospectionService : IModelIntrospectionService
             var similarity = CalculateTextSimilarity($"{node.NodeName} {node.Description} {node.NodeType}", searchTerms);
             if (similarity > 0.1)
             {
-                results.Add(new SemanticSearchResultDto
-                {
-                    Id = node.NodeId,
-                    Type = "node",
-                    Name = node.NodeName,
-                    Description = node.Description,
-                    Similarity = similarity,
-                    ModelId = node.ModelId,
-                    ModelName = node.ModelName,
-                    Metadata = new Dictionary<string, object>
+                results.Add(new SemanticSearchResultDto(
+                    node.NodeId,
+                    "node",
+                    node.NodeName,
+                    similarity,
+                    new Dictionary<string, object>
                     {
                         { "nodeType", node.NodeType },
                         { "layerId", node.LayerId },
-                        { "layerName", node.LayerName }
-                    }
-                });
+                        { "layerName", node.LayerName },
+                        { "modelId", node.ModelId },
+                        { "modelName", node.ModelName }
+                    },
+                    node.Description
+                ));
             }
         }
     }

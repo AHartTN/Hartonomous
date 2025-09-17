@@ -62,22 +62,6 @@ public record ModelArchitectureDto(
     DateTime CreatedAt
 );
 
-public record SemanticSearchRequestDto(
-    string Query,
-    string SearchType,
-    int MaxResults = 10,
-    double SimilarityThreshold = 0.7,
-    Dictionary<string, object>? Filters = null
-);
-
-public record SemanticSearchResultDto(
-    Guid ItemId,
-    string ItemType,
-    string Name,
-    double SimilarityScore,
-    Dictionary<string, object> Properties,
-    string? Description
-);
 
 public record ModelIntrospectionDto(
     Guid ModelId,

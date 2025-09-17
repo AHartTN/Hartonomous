@@ -10,7 +10,7 @@ namespace Hartonomous.MCP.Repositories;
 /// <summary>
 /// Repository implementation for MCP message management using Dapper
 /// </summary>
-public class MessageRepository : Hartonomous.Core.Shared.Interfaces.IMessageRepository
+public class MessageRepository : Hartonomous.Core.Interfaces.IMessageRepository
 {
     private readonly string _connectionString;
 

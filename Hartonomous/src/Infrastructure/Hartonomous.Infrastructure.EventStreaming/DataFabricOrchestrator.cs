@@ -1,3 +1,5 @@
+using Dapper;
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Hartonomous.Infrastructure.Neo4j;
@@ -14,15 +16,19 @@ public class DataFabricOrchestrator
     private readonly Neo4jService _neo4jService;
     private readonly MilvusService _milvusService;
     private readonly ILogger<DataFabricOrchestrator> _logger;
+    private readonly string _connectionString;
 
     public DataFabricOrchestrator(
         Neo4jService neo4jService,
         MilvusService milvusService,
-        ILogger<DataFabricOrchestrator> logger)
+        ILogger<DataFabricOrchestrator> logger,
+        IConfiguration configuration)
     {
         _neo4jService = neo4jService ?? throw new ArgumentNullException(nameof(neo4jService));
         _milvusService = milvusService ?? throw new ArgumentNullException(nameof(milvusService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _connectionString = configuration.GetConnectionString("DefaultConnection") ??
+            throw new ArgumentNullException(nameof(configuration), "DefaultConnection is required");
     }
 
     /// <summary>
@@ -208,8 +214,7 @@ public class DataFabricOrchestrator
         {
             Id = component.ComponentId,
             Name = component.ComponentName,
-            Type = component.ComponentType,
-            Description = component.Description
+            Type = component.ComponentType
         };
     }
 }

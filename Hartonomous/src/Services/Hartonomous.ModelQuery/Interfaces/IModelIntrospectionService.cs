@@ -1,4 +1,5 @@
 using Hartonomous.ModelQuery.DTOs;
+using Hartonomous.Core.DTOs;
 
 namespace Hartonomous.ModelQuery.Interfaces;
 

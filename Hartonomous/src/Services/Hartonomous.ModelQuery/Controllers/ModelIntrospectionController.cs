@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using System.Security.Claims;
 using Hartonomous.ModelQuery.DTOs;
 using Hartonomous.ModelQuery.Interfaces;
+using Hartonomous.Core.DTOs;
 
 namespace Hartonomous.ModelQuery.Controllers;
 
