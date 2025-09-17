@@ -36,7 +36,8 @@
       "Bash(az keyvault set-policy:*)",
       "Bash(git remote add:*)",
       "Bash(git push:*)",
-      "Bash(git remote set-url:*)"
+      "Bash(git remote set-url:*)",
+      "Bash(git checkout:*)"
     ],
     "deny": [],
     "ask": []
