@@ -34,7 +34,9 @@
       "Bash(dotnet sln:*)",
       "Bash(dotnet add:*)",
       "Bash(az keyvault set-policy:*)",
-      "Bash(git remote add:*)"
+      "Bash(git remote add:*)",
+      "Bash(git push:*)",
+      "Bash(git remote set-url:*)"
     ],
     "deny": [],
     "ask": []

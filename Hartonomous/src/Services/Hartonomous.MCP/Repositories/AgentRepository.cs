@@ -96,6 +96,27 @@ public class AgentRepository : IAgentRepository
         return results.Select(MapToAgentDto);
     }
 
+    public async Task<IEnumerable<AgentDto>> GetAgentsByUserAsync(string userId)
+    {
+        return await GetAllAsync(userId);
+    }
+
+    public async Task<AgentDto?> GetAgentByIdAsync(Guid agentId, string userId)
+    {
+        return await GetByIdAsync(agentId, userId);
+    }
+
+    public async Task<bool> UnregisterAgentAsync(Guid agentId, string userId)
+    {
+        const string sql = @"
+            DELETE FROM dbo.Agents
+            WHERE AgentId = @AgentId AND UserId = @UserId;";
+
+        using var connection = new SqlConnection(_connectionString);
+        var rowsAffected = await connection.ExecuteAsync(sql, new { AgentId = agentId, UserId = userId });
+        return rowsAffected > 0;
+    }
+
     public async Task<bool> UpdateAgentHeartbeatAsync(Guid agentId, AgentStatus status, string userId, Dictionary<string, object>? metrics = null)
     {
         const string sql = @"
