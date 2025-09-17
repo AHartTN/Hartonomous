@@ -1,27 +1,12 @@
-using Hartonomous.MCP.DTOs;
+using Hartonomous.Core.Shared.DTOs;
 
-namespace Hartonomous.MCP.Interfaces;
+namespace Hartonomous.Core.Shared.Interfaces;
 
 /// <summary>
 /// Repository interface for workflow management in MCP system
 /// </summary>
-public interface IWorkflowRepository
+public interface IWorkflowRepository : IRepository<WorkflowDefinition>
 {
-    /// <summary>
-    /// Create a new workflow definition
-    /// </summary>
-    Task<Guid> CreateWorkflowAsync(WorkflowDefinition workflow, string userId);
-
-    /// <summary>
-    /// Get workflow definition by ID with user scope
-    /// </summary>
-    Task<WorkflowDefinition?> GetWorkflowAsync(Guid workflowId, string userId);
-
-    /// <summary>
-    /// Get all workflows for a user
-    /// </summary>
-    Task<IEnumerable<WorkflowDefinition>> GetWorkflowsByUserAsync(string userId);
-
     /// <summary>
     /// Start workflow execution
     /// </summary>
@@ -56,9 +41,4 @@ public interface IWorkflowRepository
     /// Get workflow executions by project
     /// </summary>
     Task<IEnumerable<WorkflowExecution>> GetWorkflowExecutionsByProjectAsync(Guid projectId, string userId);
-
-    /// <summary>
-    /// Delete workflow definition
-    /// </summary>
-    Task<bool> DeleteWorkflowAsync(Guid workflowId, string userId);
 }

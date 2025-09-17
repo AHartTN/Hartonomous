@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Hartonomous.AgentClient.Interfaces;
 using Hartonomous.AgentClient.Models;
 using System;
 using System.IO;
@@ -71,7 +72,7 @@ public class AgentRuntimeServiceTests : IDisposable
 
         // Verify metrics were recorded
         _metricsCollectorMock.Verify(
-            x => x.IncrementCounter("agent.instances.created", It.IsAny<Dictionary<string, string>>()),
+            x => x.IncrementCounter("agent.instances.created", 1.0, null),
             Times.Once);
     }
 
@@ -182,7 +183,7 @@ public class AgentRuntimeServiceTests : IDisposable
 
         // Verify metrics were recorded
         _metricsCollectorMock.Verify(
-            x => x.IncrementCounter("agent.instances.destroyed", It.IsAny<Dictionary<string, string>>()),
+            x => x.IncrementCounter("agent.instances.destroyed", 1.0, null),
             Times.Once);
     }
 

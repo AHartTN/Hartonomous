@@ -16,6 +16,7 @@
     <ProjectReference Include="..\..\Infrastructure\Hartonomous.Infrastructure.Security\Hartonomous.Infrastructure.Security.csproj" />
     <ProjectReference Include="..\..\Infrastructure\Hartonomous.Infrastructure.Observability\Hartonomous.Infrastructure.Observability.csproj" />
     <ProjectReference Include="..\..\Infrastructure\Hartonomous.Infrastructure.Configuration\Hartonomous.Infrastructure.Configuration.csproj" />
+    <ProjectReference Include="..\..\Infrastructure\Hartonomous.Infrastructure.EventStreaming\Hartonomous.Infrastructure.EventStreaming.csproj" />
   </ItemGroup>
 
 </Project>

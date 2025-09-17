@@ -1,6 +1,6 @@
 using Dapper;
-using Hartonomous.MCP.DTOs;
-using Hartonomous.MCP.Interfaces;
+using Hartonomous.Core.Shared.DTOs;
+using Hartonomous.Core.Shared.Interfaces;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using System.Data;
@@ -69,7 +69,7 @@ public class AgentRepository : IAgentRepository
         return rowsAffected > 0;
     }
 
-    public async Task<AgentDto?> GetAgentByIdAsync(Guid agentId, string userId)
+    public async Task<AgentDto?> GetByIdAsync(Guid agentId, string userId)
     {
         const string sql = @"
             SELECT AgentId, AgentName, AgentType, ConnectionId, Capabilities, Description, Configuration, RegisteredAt, LastHeartbeat, Status
@@ -82,7 +82,7 @@ public class AgentRepository : IAgentRepository
         return result != null ? MapToAgentDto(result) : null;
     }
 
-    public async Task<IEnumerable<AgentDto>> GetAgentsByUserAsync(string userId)
+    public async Task<IEnumerable<AgentDto>> GetAllAsync(string userId)
     {
         const string sql = @"
             SELECT AgentId, AgentName, AgentType, ConnectionId, Capabilities, Description, Configuration, RegisteredAt, LastHeartbeat, Status
@@ -153,7 +153,7 @@ public class AgentRepository : IAgentRepository
         return agents;
     }
 
-    public async Task<bool> UnregisterAgentAsync(Guid agentId, string userId)
+    public async Task<bool> DeleteAsync(Guid agentId, string userId)
     {
         const string sql = @"
             DELETE FROM dbo.Agents
@@ -219,5 +219,15 @@ public class AgentRepository : IAgentRepository
             row.LastHeartbeat,
             (AgentStatus)row.Status
         );
+    }
+
+    public Task<Guid> CreateAsync(AgentDto entity, string userId)
+    {
+        throw new NotImplementedException();
+    }
+
+    public Task<bool> UpdateAsync(AgentDto entity, string userId)
+    {
+        throw new NotImplementedException();
     }
 }

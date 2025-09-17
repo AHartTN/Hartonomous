@@ -1,4 +1,4 @@
-using Hartonomous.MCP.DTOs;
+using Hartonomous.Core.Shared.DTOs;
 using Hartonomous.MCP.Repositories;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;

@@ -30,7 +30,11 @@
       "Bash(powershell:*)",
       "Bash(del IntegrationTestRunner.cs)",
       "Bash(del TestExecutionDemo.cs)",
-      "Bash(taskkill:*)"
+      "Bash(taskkill:*)",
+      "Bash(dotnet sln:*)",
+      "Bash(dotnet add:*)",
+      "Bash(az keyvault set-policy:*)",
+      "Bash(git remote add:*)"
     ],
     "deny": [],
     "ask": []

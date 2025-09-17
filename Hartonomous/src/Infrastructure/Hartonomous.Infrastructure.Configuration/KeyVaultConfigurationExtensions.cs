@@ -3,6 +3,7 @@ using Azure.Identity;
 using Azure.Security.KeyVault.Secrets;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace Hartonomous.Infrastructure.Configuration;
 
@@ -14,6 +15,17 @@ public static class KeyVaultConfigurationExtensions
     {
         try
         {
+            // Skip Key Vault in development environment unless explicitly enabled
+            if (environment.IsDevelopment())
+            {
+                var config = builder.Build();
+                var enableKeyVault = config["KeyVault:EnableInDevelopment"];
+                if (string.IsNullOrEmpty(enableKeyVault) || !bool.Parse(enableKeyVault))
+                {
+                    return builder;
+                }
+            }
+
             // Only use Key Vault in production or when explicitly configured
             var keyVaultUrl = builder.Build()["KeyVault:VaultUrl"];
 
@@ -21,16 +33,6 @@ public static class KeyVaultConfigurationExtensions
             {
                 // Fallback for development - Key Vault URL should be in local config
                 return builder;
-            }
-
-            // Skip Key Vault in development environment unless explicitly enabled
-            if (environment.IsDevelopment())
-            {
-                var enableKeyVault = builder.Build()["KeyVault:EnableInDevelopment"];
-                if (string.IsNullOrEmpty(enableKeyVault) || !bool.Parse(enableKeyVault))
-                {
-                    return builder;
-                }
             }
 
             var credential = new DefaultAzureCredential();

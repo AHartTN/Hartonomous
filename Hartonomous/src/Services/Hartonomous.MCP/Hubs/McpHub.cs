@@ -1,5 +1,5 @@
-using Hartonomous.MCP.DTOs;
-using Hartonomous.MCP.Interfaces;
+using Hartonomous.Core.Shared.DTOs;
+using Hartonomous.Core.Shared.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using System.Security.Claims;

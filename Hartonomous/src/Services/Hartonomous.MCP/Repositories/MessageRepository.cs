@@ -1,6 +1,6 @@
 using Dapper;
-using Hartonomous.MCP.DTOs;
-using Hartonomous.MCP.Interfaces;
+using Hartonomous.Core.Shared.DTOs;
+using Hartonomous.Core.Shared.Interfaces;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using System.Text.Json;
@@ -10,7 +10,7 @@ namespace Hartonomous.MCP.Repositories;
 /// <summary>
 /// Repository implementation for MCP message management using Dapper
 /// </summary>
-public class MessageRepository : IMessageRepository
+public class MessageRepository : Hartonomous.Core.Shared.Interfaces.IMessageRepository
 {
     private readonly string _connectionString;
 
@@ -18,6 +18,64 @@ public class MessageRepository : IMessageRepository
     {
         _connectionString = configuration.GetConnectionString("DefaultConnection") ??
             throw new ArgumentNullException(nameof(configuration), "DefaultConnection is required");
+    }
+
+    public Task<McpMessage?> GetByIdAsync(Guid id, string userId) => GetMessageAsync(id, userId);
+
+    public async Task<IEnumerable<McpMessage>> GetAllAsync(string userId)
+    {
+        const string sql = @"
+            SELECT MessageId, FromAgentId, ToAgentId, MessageType, Payload, Metadata, Timestamp, ProcessedAt
+            FROM dbo.McpMessages
+            WHERE UserId = @UserId
+            ORDER BY Timestamp DESC;";
+
+        using var connection = new SqlConnection(_connectionString);
+        var results = await connection.QueryAsync(sql, new { UserId = userId });
+
+        return results.Select(MapToMcpMessage);
+    }
+
+    public Task<Guid> CreateAsync(McpMessage entity, string userId) => StoreMessageAsync(entity, userId);
+
+    public async Task<bool> UpdateAsync(McpMessage entity, string userId)
+    {
+        const string sql = @"
+            UPDATE dbo.McpMessages
+            SET FromAgentId = @FromAgentId,
+                ToAgentId = @ToAgentId,
+                MessageType = @MessageType,
+                Payload = @Payload,
+                Metadata = @Metadata,
+                ProcessedAt = @ProcessedAt
+            WHERE MessageId = @MessageId AND UserId = @UserId;";
+
+        using var connection = new SqlConnection(_connectionString);
+        var rowsAffected = await connection.ExecuteAsync(sql, new
+        {
+            entity.MessageId,
+            UserId = userId,
+            entity.FromAgentId,
+            entity.ToAgentId,
+            entity.MessageType,
+            Payload = JsonSerializer.Serialize(entity.Payload),
+            Metadata = entity.Metadata != null ? JsonSerializer.Serialize(entity.Metadata) : null,
+            entity.ProcessedAt
+        });
+
+        return rowsAffected > 0;
+    }
+
+    public async Task<bool> DeleteAsync(Guid id, string userId)
+    {
+        const string sql = @"
+            DELETE FROM dbo.McpMessages
+            WHERE MessageId = @MessageId AND UserId = @UserId;";
+
+        using var connection = new SqlConnection(_connectionString);
+        var rowsAffected = await connection.ExecuteAsync(sql, new { MessageId = id, UserId = userId });
+
+        return rowsAffected > 0;
     }
 
     public async Task<Guid> StoreMessageAsync(McpMessage message, string userId)
@@ -123,14 +181,14 @@ public class MessageRepository : IMessageRepository
         return results.Select(MapToMcpMessage);
     }
 
-    public async Task<Guid> StoreTaskAssignmentAsync(TaskAssignment task, string userId)
+    public async Task<bool> StoreTaskAssignmentAsync(TaskAssignment task, string userId)
     {
         const string sql = @"
             INSERT INTO dbo.TaskAssignments (TaskId, UserId, AgentId, TaskType, TaskData, Priority, DueDate, Metadata, CreatedAt)
             VALUES (@TaskId, @UserId, @AgentId, @TaskType, @TaskData, @Priority, @DueDate, @Metadata, @CreatedAt);";
 
         using var connection = new SqlConnection(_connectionString);
-        await connection.ExecuteAsync(sql, new
+        var rowsAffected = await connection.ExecuteAsync(sql, new
         {
             TaskId = task.TaskId,
             UserId = userId,
@@ -143,7 +201,7 @@ public class MessageRepository : IMessageRepository
             CreatedAt = DateTime.UtcNow
         });
 
-        return task.TaskId;
+        return rowsAffected > 0;
     }
 
     public async Task<TaskAssignment?> GetTaskAssignmentAsync(Guid taskId, string userId)
@@ -208,6 +266,36 @@ public class MessageRepository : IMessageRepository
 
         return result != null ? MapToTaskResult(result) : null;
     }
+
+    public async Task<IEnumerable<McpMessage>> GetMessagesByProjectAsync(Guid projectId, string userId, int limit = 100)
+    {
+        // This is a placeholder implementation. You will need to adjust your database schema to link messages to projects.
+        await Task.CompletedTask;
+        return Enumerable.Empty<McpMessage>();
+    }
+
+    public Task<IEnumerable<McpMessage>> GetUnreadMessagesAsync(Guid agentId, string userId) => GetUnprocessedMessagesAsync(agentId, userId);
+
+    public async Task<bool> MarkMessagesAsReadAsync(Guid agentId, IEnumerable<Guid> messageIds, string userId)
+    {
+        const string sql = @"
+            UPDATE dbo.McpMessages
+            SET ProcessedAt = @ProcessedAt
+            WHERE ToAgentId = @AgentId AND MessageId IN @MessageIds AND UserId = @UserId;";
+
+        using var connection = new SqlConnection(_connectionString);
+        var rowsAffected = await connection.ExecuteAsync(sql, new
+        {
+            ProcessedAt = DateTime.UtcNow,
+            AgentId = agentId,
+            MessageIds = messageIds,
+            UserId = userId
+        });
+
+        return rowsAffected > 0;
+    }
+
+    public Task<IEnumerable<TaskAssignment>> GetTaskAssignmentsForAgentAsync(Guid agentId, string userId) => GetPendingTasksForAgentAsync(agentId, userId);
 
     private static McpMessage MapToMcpMessage(dynamic row)
     {

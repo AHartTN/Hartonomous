@@ -1,6 +1,9 @@
 using FluentAssertions;
 using Hartonomous.AgentClient.Interfaces;
 using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Threading;
 using Hartonomous.AgentClient.Models;
 using Hartonomous.AgentClient.Services;
 using Hartonomous.Core.Interfaces;
@@ -10,6 +13,7 @@ using Microsoft.Extensions.Options;
 using Moq;
 using System.Threading.Tasks;
 using Xunit;
+using Hartonomous.AgentClient.Events;
 
 namespace Hartonomous.AgentClient.Tests.Services;
 
@@ -66,12 +70,12 @@ public class TaskExecutorServiceTests : IDisposable
 
         // Assert
         queuedTask.Should().NotBeNull();
-        queuedTask.Status.Should().Be(TaskStatus.Queued);
+        queuedTask.Status.Should().Be(Hartonomous.AgentClient.Models.TaskStatus.Queued);
         queuedTask.UpdatedAt.Should().BeAfter(task.UpdatedAt);
 
         // Verify metrics were recorded
         _metricsCollectorMock.Verify(
-            x => x.IncrementCounter("task.queued", It.IsAny<Dictionary<string, string>>()),
+            x => x.IncrementCounter("task.queued", 1.0, It.IsAny<Dictionary<string, string>>()),
             Times.Once);
     }
 
@@ -146,8 +150,8 @@ public class TaskExecutorServiceTests : IDisposable
         await _service.QueueTaskAsync(task);
 
         // Act
-        var queuedTasks = await _service.ListTasksAsync(status: TaskStatus.Queued);
-        var runningTasks = await _service.ListTasksAsync(status: TaskStatus.Running);
+        var queuedTasks = await _service.ListTasksAsync(status: Hartonomous.AgentClient.Models.TaskStatus.Queued);
+        var runningTasks = await _service.ListTasksAsync(status: Hartonomous.AgentClient.Models.TaskStatus.Running);
 
         // Assert
         queuedTasks.Should().HaveCount(1);
@@ -166,11 +170,11 @@ public class TaskExecutorServiceTests : IDisposable
 
         // Assert
         cancelledTask.Should().NotBeNull();
-        cancelledTask.Status.Should().Be(TaskStatus.Cancelled);
+        cancelledTask.Status.Should().Be(Hartonomous.AgentClient.Models.TaskStatus.Cancelled);
 
         // Verify metrics were recorded
         _metricsCollectorMock.Verify(
-            x => x.IncrementCounter("task.cancelled", It.IsAny<Dictionary<string, string>>()),
+            x => x.IncrementCounter("task.cancelled", 1.0, It.IsAny<Dictionary<string, string>>()),
             Times.Once);
     }
 
@@ -213,7 +217,7 @@ public class TaskExecutorServiceTests : IDisposable
 
         // Verify metrics were recorded
         _metricsCollectorMock.Verify(
-            x => x.RecordGauge("task.progress", 50.0, It.IsAny<Dictionary<string, string>>()),
+            x => x.RecordGauge("task.progress", 50.0, null),
             Times.Once);
     }
 
@@ -312,7 +316,7 @@ public class TaskExecutorServiceTests : IDisposable
         batchResult.Should().NotBeNull();
         batchResult.BatchId.Should().NotBeNullOrEmpty();
         batchResult.TaskResults.Should().HaveCount(2);
-        batchResult.StartedAt.Should().BeBefore(batchResult.CompletedAt);
+        batchResult.StartedAt.Should().BeBefore(batchResult.CompletedAt!.Value);
         batchResult.TotalDurationMs.Should().BeGreaterThan(0);
     }
 
@@ -347,7 +351,7 @@ public class TaskExecutorServiceTests : IDisposable
 
         // Assert
         scheduledTask.Should().NotBeNull();
-        scheduledTask.Status.Should().Be(TaskStatus.Pending);
+        scheduledTask.Status.Should().Be(Hartonomous.AgentClient.Models.TaskStatus.Pending);
         scheduledTask.ScheduledFor.Should().Be(scheduledFor);
     }
 
@@ -384,13 +388,13 @@ public class TaskExecutorServiceTests : IDisposable
 
         // Setup agent runtime to return logs
         _agentRuntimeMock
-            .Setup(x => x.GetInstanceLogsAsync(It.IsAny<string>(), It.IsAny<DateTimeOffset?>(), It.IsAny<int?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.GetInstanceLogsAsync(It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<int?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new[]
             {
                 new LogEntry
                 {
                     Message = "Test log entry",
-                    Level = LogLevel.Information,
+                    Level = Hartonomous.AgentClient.Models.LogLevel.Information,
                     Timestamp = DateTimeOffset.UtcNow
                 }
             });
@@ -468,7 +472,7 @@ public class TaskExecutorServiceTests : IDisposable
             Description = "A test task for unit testing",
             Type = "test",
             Priority = 5,
-            Status = TaskStatus.Pending,
+            Status = Hartonomous.AgentClient.Models.TaskStatus.Pending,
             AgentId = "test-agent",
             Input = new Dictionary<string, object> { ["input1"] = "value1" },
             Configuration = new Dictionary<string, object> { ["config1"] = "value1" },

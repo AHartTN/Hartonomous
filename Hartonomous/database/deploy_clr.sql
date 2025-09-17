@@ -31,3 +31,16 @@ CREATE PROCEDURE dbo.usp_SaveComponentWeight
     @data VARBINARY(MAX)
 AS EXTERNAL NAME HartonomousDatabaseAssembly.[FileStreamManager].SaveComponentWeight;
 GO
+
+-- Model Query Engine functions for neural map capabilities
+CREATE FUNCTION dbo.QueryModelBytes(@componentId UNIQUEIDENTIFIER, @offset BIGINT, @length INT)
+RETURNS VARBINARY(MAX) AS EXTERNAL NAME HartonomousDatabaseAssembly.[ModelQueryEngine].QueryModelBytes;
+GO
+
+CREATE FUNCTION dbo.FindPatternInWeights(@componentId UNIQUEIDENTIFIER, @pattern VARBINARY(MAX), @tolerance FLOAT)
+RETURNS BIT AS EXTERNAL NAME HartonomousDatabaseAssembly.[ModelQueryEngine].FindPatternInWeights;
+GO
+
+CREATE FUNCTION dbo.GetModelStats(@componentId UNIQUEIDENTIFIER)
+RETURNS NVARCHAR(MAX) AS EXTERNAL NAME HartonomousDatabaseAssembly.[ModelQueryEngine].GetModelStats;
+GO

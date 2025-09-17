@@ -1,6 +1,6 @@
 using Dapper;
-using Hartonomous.MCP.DTOs;
-using Hartonomous.MCP.Interfaces;
+using Hartonomous.Core.Shared.DTOs;
+using Hartonomous.Core.Shared.Interfaces;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using System.Text.Json;
@@ -18,6 +18,38 @@ public class WorkflowRepository : IWorkflowRepository
     {
         _connectionString = configuration.GetConnectionString("DefaultConnection") ??
             throw new ArgumentNullException(nameof(configuration), "DefaultConnection is required");
+    }
+
+    public Task<WorkflowDefinition?> GetByIdAsync(Guid id, string userId) => GetWorkflowAsync(id, userId);
+
+    public Task<IEnumerable<WorkflowDefinition>> GetAllAsync(string userId) => GetWorkflowsByUserAsync(userId);
+
+    public Task<Guid> CreateAsync(WorkflowDefinition entity, string userId) => CreateWorkflowAsync(entity, userId);
+
+    public Task<bool> DeleteAsync(Guid id, string userId) => DeleteWorkflowAsync(id, userId);
+
+    public async Task<bool> UpdateAsync(WorkflowDefinition entity, string userId)
+    {
+        const string sql = @"
+            UPDATE dbo.WorkflowDefinitions
+            SET WorkflowName = @WorkflowName,
+                Description = @Description,
+                Steps = @Steps,
+                Parameters = @Parameters
+            WHERE WorkflowId = @WorkflowId AND UserId = @UserId;";
+
+        using var connection = new SqlConnection(_connectionString);
+        var rowsAffected = await connection.ExecuteAsync(sql, new
+        {
+            entity.WorkflowId,
+            UserId = userId,
+            entity.WorkflowName,
+            entity.Description,
+            Steps = JsonSerializer.Serialize(entity.Steps),
+            Parameters = entity.Parameters != null ? JsonSerializer.Serialize(entity.Parameters) : null
+        });
+
+        return rowsAffected > 0;
     }
 
     public async Task<Guid> CreateWorkflowAsync(WorkflowDefinition workflow, string userId)
