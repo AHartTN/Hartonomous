@@ -40,7 +40,21 @@
       "Bash(git checkout:*)",
       "Bash(head:*)",
       "Bash(sed:*)",
-      "Bash(az keyvault list:*)"
+      "Bash(az keyvault list:*)",
+      "Bash(grep:*)",
+      "Bash(netstat:*)",
+      "Bash(wmic:*)",
+      "WebSearch",
+      "Bash(az group show:*)",
+      "Bash(az keyvault show:*)",
+      "Bash(az keyvault secret list:*)",
+      "Bash(az login:*)",
+      "Bash(az ad sp list:*)",
+      "Bash(az ad sp show:*)",
+      "Bash(az keyvault secret set:*)",
+      "Bash(az appconfig show:*)",
+      "Bash(az appconfig kv list:*)",
+      "Bash(az appconfig kv delete:*)"
     ],
     "deny": [],
     "ask": []

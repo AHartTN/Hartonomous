@@ -240,4 +240,44 @@ public class MessageRepository : BaseRepository<Message, Guid>, IMessageReposito
             entity.CreatedDate
         );
     }
+
+    // IRepository<McpMessage> bridge implementations
+    async Task<McpMessage?> IRepository<McpMessage>.GetByIdAsync(Guid id, string userId)
+    {
+        var entity = await GetByIdAsync(id);
+        return entity?.UserId == userId ? ConvertToMcpMessage(entity) : null;
+    }
+
+    async Task<IEnumerable<McpMessage>> IRepository<McpMessage>.GetAllAsync(string userId)
+    {
+        var entities = await GetByUserAsync(userId);
+        return entities.Select(ConvertToMcpMessage);
+    }
+
+    async Task<Guid> IRepository<McpMessage>.CreateAsync(McpMessage entity, string userId)
+    {
+        return await StoreMessageAsync(entity, userId);
+    }
+
+    async Task<bool> IRepository<McpMessage>.UpdateAsync(McpMessage entity, string userId)
+    {
+        var message = new Message
+        {
+            Id = entity.MessageId,
+            UserId = userId,
+            ConversationId = entity.FromAgentId,
+            AgentId = entity.ToAgentId,
+            Content = SerializeToJson(entity.Payload),
+            MessageType = Enum.Parse<MessageType>(entity.MessageType),
+            Metadata = entity.Metadata ?? new Dictionary<string, object>(),
+            CreatedDate = entity.Timestamp,
+            ModifiedDate = DateTime.UtcNow
+        };
+        return await UpdateAsync(message);
+    }
+
+    async Task<bool> IRepository<McpMessage>.DeleteAsync(Guid id, string userId)
+    {
+        return await DeleteAsync(id);
+    }
 }

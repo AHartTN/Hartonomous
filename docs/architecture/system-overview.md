@@ -1,10 +1,18 @@
 # Hartonomous Platform: System Architecture Overview
 
-**The Multi-Tenant AI Agent Factory Platform**
+**Production-Ready Multi-Tenant AI Agent Factory**
 
 ## Executive Summary
 
-The Hartonomous Platform is a comprehensive SaaS solution for creating, deploying, and monetizing specialized AI agents. Built on a foundation of SQL Server 2025's AI-native capabilities, the platform enables users to transform large language models into domain-specific agents for any industry or use case.
+The Hartonomous Platform is an enterprise-grade SaaS solution for creating, deploying, and monetizing specialized AI agents. Built on NinaDB (SQL Server with native vector capabilities) as a unified data platform, the system enables users to ingest, analyze, and distill large language models into deployable agents for any domain.
+
+## Core Innovation: NinaDB
+
+**NinaDB = SQL Server as AI-Native NoSQL Replacement**
+- **Replaces MongoDB/NoSQL** with native JSON + vector + FILESTREAM capabilities
+- **Single source of truth** for all enterprise data types
+- **Horizontal scalability** through SQL Server 2025's enhanced architecture
+- **Production Status**: Azure SQL Database (GA), SQL Server 2025 (Preview → GA late 2025)
 
 ## Core Architecture Principles
 
@@ -14,17 +22,19 @@ The Hartonomous Platform is a comprehensive SaaS solution for creating, deployin
 - **Tenant Separation**: Logical isolation in shared infrastructure
 - **Enterprise Integration**: SSO and on-premises deployment options
 
-### **2. Agent Factory Pattern**
-- **Model Ingestion**: MQE processes large models into queryable components
-- **Capability Discovery**: T-SQL queries to find specific model abilities
-- **Agent Distillation**: Extract and combine capabilities into specialized agents
-- **Deployment Flexibility**: Thin clients deployable anywhere
+### **2. AI Agent Factory Pattern**
+- **Model Ingestion**: External llama.cpp service processes models → stores metadata/weights in NinaDB
+- **Capability Mapping**: Neo4j stores activation patterns and neural pathways
+- **Agent Distillation**: Combine stored capabilities to create targeted agents
+- **Deployment Flexibility**: Thin clients with constitutional AI safety, deployable anywhere
+- **Original Model Disposal**: After ingestion and mapping, original large models can be deleted
 
-### **3. Unified Data Fabric**
-- **Single Source of Truth**: SQL Server 2025 as immutable system of record
-- **Event-Driven Replication**: Real-time CDC to specialized data stores
-- **Zero-Copy Performance**: Memory-mapped file access for model operations
-- **Transactional Consistency**: ACID guarantees across all operations
+### **3. Production-Ready Data Architecture**
+- **NinaDB Core**: SQL Server with native vector, JSON, FILESTREAM, and graph capabilities
+- **Neo4j Knowledge Graph**: Neural pathway mapping and activation storage via CDC
+- **External ML Services**: llama.cpp containers for model processing
+- **Memory-Mapped Access**: FILESTREAM for efficient model component storage
+- **Enterprise Security**: Multi-tenant isolation with Azure AD/Entra External ID
 
 ## System Components
 

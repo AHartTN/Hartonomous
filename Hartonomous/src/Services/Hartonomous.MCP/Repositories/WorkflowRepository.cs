@@ -162,4 +162,40 @@ public class WorkflowRepository : BaseRepository<Workflow, Guid>, IWorkflowRepos
             entity.Parameters
         );
     }
+
+    // IRepository<WorkflowDefinition> bridge implementations
+    async Task<WorkflowDefinition?> IRepository<WorkflowDefinition>.GetByIdAsync(Guid id, string userId)
+    {
+        return await GetWorkflowAsync(id, userId);
+    }
+
+    async Task<IEnumerable<WorkflowDefinition>> IRepository<WorkflowDefinition>.GetAllAsync(string userId)
+    {
+        return await GetWorkflowsByUserAsync(userId);
+    }
+
+    async Task<Guid> IRepository<WorkflowDefinition>.CreateAsync(WorkflowDefinition entity, string userId)
+    {
+        return await CreateWorkflowAsync(entity, userId);
+    }
+
+    async Task<bool> IRepository<WorkflowDefinition>.UpdateAsync(WorkflowDefinition entity, string userId)
+    {
+        var workflow = new Workflow
+        {
+            Id = entity.WorkflowId,
+            UserId = userId,
+            Name = entity.WorkflowName,
+            Description = entity.Description,
+            Definition = SerializeToJson(entity.Steps),
+            Parameters = entity.Parameters ?? new Dictionary<string, object>(),
+            ModifiedDate = DateTime.UtcNow
+        };
+        return await UpdateAsync(workflow);
+    }
+
+    async Task<bool> IRepository<WorkflowDefinition>.DeleteAsync(Guid id, string userId)
+    {
+        return await DeleteWorkflowAsync(id, userId);
+    }
 }
