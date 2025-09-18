@@ -183,7 +183,7 @@ public class AgentRuntimeServiceTests : IDisposable
 
         // Verify metrics were recorded
         _metricsCollectorMock.Verify(
-            x => x.IncrementCounter("agent.instances.destroyed", 1.0, null),
+            x => x.IncrementCounter("agent.instances.destroyed", 1.0, It.IsAny<Dictionary<string, string>>()),
             Times.Once);
     }
 

@@ -1,24 +1,72 @@
 using Dapper;
 using Hartonomous.Core.DTOs;
 using Hartonomous.Core.Interfaces;
+using Hartonomous.Core.Abstractions;
+using Hartonomous.Core.Configuration;
 using Microsoft.Data.SqlClient;
-using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
 using System.Data;
 using System.Text.Json;
 
 namespace Hartonomous.MCP.Repositories;
 
 /// <summary>
-/// Repository implementation for agent management using Dapper
+/// Repository implementation for agent management using proper architecture patterns
 /// </summary>
-public class AgentRepository : IAgentRepository
+public class AgentRepository : BaseRepository<Agent, Guid>, IAgentRepository
 {
-    private readonly string _connectionString;
-
-    public AgentRepository(IConfiguration configuration)
+    public AgentRepository(IOptions<SqlServerOptions> sqlOptions) : base(sqlOptions)
     {
-        _connectionString = configuration.GetConnectionString("DefaultConnection") ??
-            throw new ArgumentNullException(nameof(configuration), "DefaultConnection is required");
+    }
+
+    protected override string GetTableName() => "dbo.Agents";
+
+    protected override string GetSelectColumns() =>
+        "AgentId as Id, UserId, AgentName, AgentType, ConnectionId, Capabilities, Description, Configuration, Status, RegisteredAt as CreatedDate, LastHeartbeat, Metrics";
+
+    protected override (string Columns, string Parameters) GetInsertColumnsAndParameters() =>
+        ("AgentId, UserId, AgentName, AgentType, ConnectionId, Capabilities, Description, Configuration, Status, RegisteredAt, LastHeartbeat",
+         "@Id, @UserId, @AgentName, @AgentType, @ConnectionId, @Capabilities, @Description, @Configuration, @Status, @CreatedDate, @LastHeartbeat");
+
+    protected override string GetUpdateSetClause() =>
+        "AgentName = @AgentName, AgentType = @AgentType, ConnectionId = @ConnectionId, Capabilities = @Capabilities, Description = @Description, Configuration = @Configuration, Status = @Status, LastHeartbeat = @LastHeartbeat, Metrics = @Metrics";
+
+    protected override Agent MapToEntity(dynamic row)
+    {
+        return new Agent
+        {
+            Id = row.Id,
+            UserId = row.UserId,
+            AgentName = row.AgentName,
+            AgentType = row.AgentType,
+            ConnectionId = row.ConnectionId,
+            Capabilities = DeserializeFromJson<string[]>(row.Capabilities) ?? Array.Empty<string>(),
+            Description = row.Description,
+            Configuration = DeserializeFromJson<Dictionary<string, object>>(row.Configuration) ?? new Dictionary<string, object>(),
+            Status = (AgentStatus)row.Status,
+            CreatedDate = row.CreatedDate,
+            LastHeartbeat = row.LastHeartbeat,
+            Metrics = DeserializeFromJson<Dictionary<string, object>>(row.Metrics) ?? new Dictionary<string, object>()
+        };
+    }
+
+    protected override object GetParameters(Agent entity)
+    {
+        return new
+        {
+            Id = entity.Id,
+            UserId = entity.UserId,
+            AgentName = entity.AgentName,
+            AgentType = entity.AgentType,
+            ConnectionId = entity.ConnectionId,
+            Capabilities = SerializeToJson(entity.Capabilities),
+            Description = entity.Description,
+            Configuration = SerializeToJson(entity.Configuration),
+            Status = (int)entity.Status,
+            CreatedDate = entity.CreatedDate,
+            LastHeartbeat = entity.LastHeartbeat,
+            Metrics = SerializeToJson(entity.Metrics)
+        };
     }
 
     public async Task<Guid> RegisterAgentAsync(AgentRegistrationRequest request, string connectionId, string userId)
