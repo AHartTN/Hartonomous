@@ -1,6 +1,7 @@
 using Hartonomous.Core.DTOs;
 using Hartonomous.MCP.Repositories;
 using Microsoft.Data.Sqlite;
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using System.Data;
@@ -11,17 +12,20 @@ public class AgentRepositoryTests : IDisposable
 {
     private readonly SqliteConnection _connection;
     private readonly AgentRepository _repository;
-    private readonly string _testUserId = "test-user-123";
+    private readonly string _testUserId = $"test-user-{Guid.NewGuid()}";
 
     public AgentRepositoryTests()
     {
+        // Use localhost SQL Server with test database for testing
+        var connectionString = "Server=localhost;Database=HartonomousDB;Trusted_Connection=true;MultipleActiveResultSets=true;TrustServerCertificate=true;";
+
         _connection = new SqliteConnection("DataSource=:memory:");
         _connection.Open();
 
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["ConnectionStrings:DefaultConnection"] = _connection.ConnectionString
+                ["ConnectionStrings:DefaultConnection"] = connectionString
             })
             .Build();
 
@@ -32,23 +36,11 @@ public class AgentRepositoryTests : IDisposable
 
     private void InitializeDatabase()
     {
-        var sql = @"
-            CREATE TABLE Agents (
-                AgentId TEXT PRIMARY KEY,
-                UserId TEXT NOT NULL,
-                AgentName TEXT NOT NULL,
-                AgentType TEXT NOT NULL,
-                ConnectionId TEXT NOT NULL,
-                Capabilities TEXT NOT NULL,
-                Description TEXT,
-                Configuration TEXT,
-                Status INTEGER NOT NULL DEFAULT 1,
-                RegisteredAt TEXT NOT NULL,
-                LastHeartbeat TEXT NOT NULL,
-                Metrics TEXT
-            );";
-
-        using var command = new SqliteCommand(sql, _connection);
+        // Clean up any existing test data for this user
+        using var connection = new SqlConnection("Server=localhost;Database=HartonomousDB;Trusted_Connection=true;MultipleActiveResultSets=true;TrustServerCertificate=true;");
+        connection.Open();
+        using var command = new SqlCommand("DELETE FROM dbo.Agents WHERE UserId = @UserId", connection);
+        command.Parameters.AddWithValue("@UserId", _testUserId);
         command.ExecuteNonQuery();
     }
 
@@ -215,6 +207,13 @@ public class AgentRepositoryTests : IDisposable
 
     public void Dispose()
     {
+        // Clean up test data
+        using var connection = new SqlConnection("Server=localhost;Database=HartonomousDB;Trusted_Connection=true;MultipleActiveResultSets=true;TrustServerCertificate=true;");
+        connection.Open();
+        using var command = new SqlCommand("DELETE FROM dbo.Agents WHERE UserId = @UserId", connection);
+        command.Parameters.AddWithValue("@UserId", _testUserId);
+        command.ExecuteNonQuery();
+
         _connection?.Dispose();
     }
 }
