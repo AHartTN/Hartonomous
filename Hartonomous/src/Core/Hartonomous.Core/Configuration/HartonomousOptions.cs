@@ -240,6 +240,10 @@ public class SqlServerOptions
     public bool EnableFileStreamAccess { get; set; } = true;
 
     public string FileStreamDirectory { get; set; } = @"D:\HartonomousData";
+
+    public bool EnableRetryOnFailure { get; set; } = true;
+
+    public int MaxRetryCount { get; set; } = 3;
 }
 
 /// <summary>

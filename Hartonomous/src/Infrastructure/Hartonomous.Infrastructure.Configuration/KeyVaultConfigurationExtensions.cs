@@ -15,15 +15,10 @@ public static class KeyVaultConfigurationExtensions
     {
         try
         {
-            // Skip Key Vault in development environment unless explicitly enabled
+            // Always skip Key Vault in development
             if (environment.IsDevelopment())
             {
-                var config = builder.Build();
-                var enableKeyVault = config["KeyVault:EnableInDevelopment"];
-                if (string.IsNullOrEmpty(enableKeyVault) || !bool.Parse(enableKeyVault))
-                {
-                    return builder;
-                }
+                return builder;
             }
 
             // Only use Key Vault in production or when explicitly configured

@@ -3,6 +3,7 @@ using Hartonomous.Core.DTOs;
 using Hartonomous.Core.Interfaces;
 using Hartonomous.Core.Abstractions;
 using Hartonomous.Core.Configuration;
+using Hartonomous.Core.Entities;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Options;
 using System.Data;

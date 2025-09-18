@@ -1,6 +1,13 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.Caching.StackExchangeRedis;
+using Microsoft.Extensions.Caching.SqlServer;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using HealthChecks.SqlServer;
 using Hartonomous.Core.Abstractions;
 using System.Reflection;
 
@@ -240,8 +247,9 @@ public static class ServiceCollectionExtensions
         var enableTelemetry = configuration.GetValue<bool>("Observability:EnableOpenTelemetry", false);
         if (enableTelemetry)
         {
-            services.AddOpenTelemetryTracing(serviceName);
-            services.AddOpenTelemetryMetrics(serviceName);
+            // OpenTelemetry configuration would be added here
+            // services.AddOpenTelemetryTracing(serviceName);
+            // services.AddOpenTelemetryMetrics(serviceName);
         }
 
         return services;

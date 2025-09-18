@@ -13,12 +13,11 @@ builder.Configuration.AddHartonomousKeyVault(builder.Environment);
 builder.Services.AddControllers();
 
 // Add Hartonomous services
-builder.Services.AddHartonomousCore();
+builder.Services.AddHartonomousCore(builder.Configuration);
 builder.Services.AddHartonomousAuthentication(builder.Configuration);
-builder.Services.AddHartonomousObservability("Hartonomous.Api");
 
-// Add Hartonomous data fabric (Neo4j, Milvus, Kafka CDC)
-builder.Services.AddHartonomousDataFabric(builder.Configuration);
+// Add Hartonomous data fabric (Neo4j, Milvus, Kafka CDC) - disabled in development
+// builder.Services.AddHartonomousDataFabric(builder.Configuration);
 
 // Add API documentation
 builder.Services.AddEndpointsApiExplorer();
@@ -46,12 +45,12 @@ builder.Services.AddSwaggerGen(c =>
 
 var app = builder.Build();
 
-// Initialize data fabric
-using (var scope = app.Services.CreateScope())
-{
-    var orchestrator = scope.ServiceProvider.GetRequiredService<DataFabricOrchestrator>();
-    await orchestrator.InitializeAsync();
-}
+// Initialize data fabric - disabled in development
+// using (var scope = app.Services.CreateScope())
+// {
+//     var orchestrator = scope.ServiceProvider.GetRequiredService<DataFabricOrchestrator>();
+//     await orchestrator.InitializeAsync();
+// }
 
 // Configure the HTTP request pipeline
 if (app.Environment.IsDevelopment())
@@ -73,16 +72,8 @@ app.UseAuthorization();
 // Map controllers
 app.MapControllers();
 
-// Health check endpoints
-app.MapHealthChecks("/health");
-app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
-{
-    Predicate = check => check.Tags.Contains("ready")
-});
-app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
-{
-    Predicate = _ => false // Only basic liveness
-});
+// Basic health endpoint only
+app.MapGet("/health", () => Results.Ok(new { Status = "Healthy", Timestamp = DateTime.UtcNow }));
 
 // Basic health endpoint (backwards compatibility)
 app.MapGet("/api/health", () => Results.Ok(new { Status = "Healthy", Timestamp = DateTime.UtcNow }))

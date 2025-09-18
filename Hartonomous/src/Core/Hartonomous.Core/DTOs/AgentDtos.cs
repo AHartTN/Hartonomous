@@ -123,8 +123,36 @@ public enum AgentStatus
 /// </summary>
 public enum TaskResultStatus
 {
+    Pending,
     Success,
+    Completed,
     Failed,
     Cancelled,
     Timeout
+}
+
+/// <summary>
+/// Message type enumeration
+/// </summary>
+public enum MessageType
+{
+    Text,
+    Command,
+    Response,
+    Error,
+    Task,
+    Heartbeat
+}
+
+/// <summary>
+/// Workflow status enumeration
+/// </summary>
+public enum WorkflowStatus
+{
+    Draft,
+    Active,
+    Paused,
+    Completed,
+    Failed,
+    Cancelled
 }

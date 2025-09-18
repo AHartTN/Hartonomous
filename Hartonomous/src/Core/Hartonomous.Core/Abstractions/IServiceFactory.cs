@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Hartonomous.Core.Configuration;
 
 namespace Hartonomous.Core.Abstractions;
 

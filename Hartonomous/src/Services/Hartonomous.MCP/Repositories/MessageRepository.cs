@@ -1,364 +1,243 @@
 using Dapper;
 using Hartonomous.Core.DTOs;
 using Hartonomous.Core.Interfaces;
+using Hartonomous.Core.Abstractions;
+using Hartonomous.Core.Configuration;
+using Hartonomous.Core.Entities;
 using Microsoft.Data.SqlClient;
-using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
+using System.Data;
 using System.Text.Json;
 
 namespace Hartonomous.MCP.Repositories;
 
-/// <summary>
-/// Repository implementation for MCP message management using Dapper
-/// </summary>
-public class MessageRepository : Hartonomous.Core.Interfaces.IMessageRepository
+public class MessageRepository : BaseRepository<Message, Guid>, IMessageRepository
 {
-    private readonly string _connectionString;
-
-    public MessageRepository(IConfiguration configuration)
+    public MessageRepository(IOptions<SqlServerOptions> sqlOptions) : base(sqlOptions)
     {
-        _connectionString = configuration.GetConnectionString("DefaultConnection") ??
-            throw new ArgumentNullException(nameof(configuration), "DefaultConnection is required");
     }
 
-    public Task<McpMessage?> GetByIdAsync(Guid id, string userId) => GetMessageAsync(id, userId);
+    protected override string GetTableName() => "dbo.McpMessages";
 
-    public async Task<IEnumerable<McpMessage>> GetAllAsync(string userId)
+    protected override string GetSelectColumns() =>
+        "MessageId as Id, UserId, FromAgentId as ConversationId, ToAgentId as AgentId, Payload as Content, MessageType, Metadata, Timestamp as CreatedDate, ProcessedAt as ModifiedDate";
+
+    protected override (string Columns, string Parameters) GetInsertColumnsAndParameters() =>
+        ("MessageId, UserId, FromAgentId, ToAgentId, Payload, MessageType, Metadata, Timestamp",
+         "@Id, @UserId, @ConversationId, @AgentId, @Content, @MessageType, @Metadata, @CreatedDate");
+
+    protected override string GetUpdateSetClause() =>
+        "Payload = @Content, MessageType = @MessageType, Metadata = @Metadata, ProcessedAt = @ModifiedDate";
+
+    protected override Message MapToEntity(dynamic row)
     {
-        const string sql = @"
-            SELECT MessageId, FromAgentId, ToAgentId, MessageType, Payload, Metadata, Timestamp, ProcessedAt
-            FROM dbo.McpMessages
-            WHERE UserId = @UserId
-            ORDER BY Timestamp DESC;";
-
-        using var connection = new SqlConnection(_connectionString);
-        var results = await connection.QueryAsync(sql, new { UserId = userId });
-
-        return results.Select(MapToMcpMessage);
-    }
-
-    public Task<Guid> CreateAsync(McpMessage entity, string userId) => StoreMessageAsync(entity, userId);
-
-    public async Task<bool> UpdateAsync(McpMessage entity, string userId)
-    {
-        const string sql = @"
-            UPDATE dbo.McpMessages
-            SET FromAgentId = @FromAgentId,
-                ToAgentId = @ToAgentId,
-                MessageType = @MessageType,
-                Payload = @Payload,
-                Metadata = @Metadata,
-                ProcessedAt = @ProcessedAt
-            WHERE MessageId = @MessageId AND UserId = @UserId;";
-
-        using var connection = new SqlConnection(_connectionString);
-        var rowsAffected = await connection.ExecuteAsync(sql, new
+        return new Message
         {
-            entity.MessageId,
-            UserId = userId,
-            entity.FromAgentId,
-            entity.ToAgentId,
-            entity.MessageType,
-            Payload = JsonSerializer.Serialize(entity.Payload),
-            Metadata = entity.Metadata != null ? JsonSerializer.Serialize(entity.Metadata) : null,
-            entity.ProcessedAt
-        });
-
-        return rowsAffected > 0;
+            Id = row.Id,
+            UserId = row.UserId,
+            ConversationId = row.ConversationId,
+            AgentId = row.AgentId,
+            Content = row.Content?.ToString() ?? string.Empty,
+            MessageType = (MessageType)row.MessageType,
+            Metadata = DeserializeFromJson<Dictionary<string, object>>(row.Metadata) ?? new Dictionary<string, object>(),
+            CreatedDate = row.CreatedDate,
+            ModifiedDate = row.ModifiedDate
+        };
     }
 
-    public async Task<bool> DeleteAsync(Guid id, string userId)
+    protected override object GetParameters(Message entity)
     {
-        const string sql = @"
-            DELETE FROM dbo.McpMessages
-            WHERE MessageId = @MessageId AND UserId = @UserId;";
-
-        using var connection = new SqlConnection(_connectionString);
-        var rowsAffected = await connection.ExecuteAsync(sql, new { MessageId = id, UserId = userId });
-
-        return rowsAffected > 0;
+        return new
+        {
+            Id = entity.Id,
+            UserId = entity.UserId,
+            ConversationId = entity.ConversationId,
+            AgentId = entity.AgentId,
+            Content = entity.Content,
+            MessageType = (int)entity.MessageType,
+            Metadata = SerializeToJson(entity.Metadata),
+            CreatedDate = entity.CreatedDate,
+            ModifiedDate = entity.ModifiedDate
+        };
     }
 
     public async Task<Guid> StoreMessageAsync(McpMessage message, string userId)
     {
-        const string sql = @"
-            INSERT INTO dbo.McpMessages (MessageId, UserId, FromAgentId, ToAgentId, MessageType, Payload, Metadata, Timestamp)
-            VALUES (@MessageId, @UserId, @FromAgentId, @ToAgentId, @MessageType, @Payload, @Metadata, @Timestamp);";
-
-        using var connection = new SqlConnection(_connectionString);
-        await connection.ExecuteAsync(sql, new
+        var entity = new Message
         {
-            MessageId = message.MessageId,
+            Id = message.MessageId,
             UserId = userId,
-            FromAgentId = message.FromAgentId,
-            ToAgentId = message.ToAgentId,
-            MessageType = message.MessageType,
-            Payload = JsonSerializer.Serialize(message.Payload),
-            Metadata = message.Metadata != null ? JsonSerializer.Serialize(message.Metadata) : null,
-            Timestamp = message.Timestamp
-        });
+            ConversationId = message.FromAgentId,
+            AgentId = message.ToAgentId,
+            Content = SerializeToJson(message.Payload),
+            MessageType = (MessageType)Enum.Parse(typeof(MessageType), message.MessageType),
+            Metadata = message.Metadata ?? new Dictionary<string, object>(),
+            CreatedDate = message.Timestamp
+        };
 
-        return message.MessageId;
+        return await CreateAsync(entity);
     }
 
     public async Task<McpMessage?> GetMessageAsync(Guid messageId, string userId)
     {
-        const string sql = @"
-            SELECT MessageId, FromAgentId, ToAgentId, MessageType, Payload, Metadata, Timestamp, ProcessedAt
-            FROM dbo.McpMessages
-            WHERE MessageId = @MessageId AND UserId = @UserId;";
+        var entity = await GetByIdAsync(messageId);
+        if (entity?.UserId != userId) return null;
 
-        using var connection = new SqlConnection(_connectionString);
-        var result = await connection.QueryFirstOrDefaultAsync(sql, new { MessageId = messageId, UserId = userId });
-
-        return result != null ? MapToMcpMessage(result) : null;
+        return new McpMessage(
+            entity.Id,
+            entity.ConversationId,
+            entity.AgentId ?? Guid.Empty,
+            entity.MessageType.ToString(),
+            DeserializeFromJson<object>(entity.Content) ?? new object(),
+            entity.Metadata,
+            entity.CreatedDate
+        );
     }
 
     public async Task<IEnumerable<McpMessage>> GetMessagesForAgentAsync(Guid agentId, string userId, int limit = 100)
     {
-        const string sql = @"
-            SELECT TOP (@Limit) MessageId, FromAgentId, ToAgentId, MessageType, Payload, Metadata, Timestamp, ProcessedAt
-            FROM dbo.McpMessages
-            WHERE (FromAgentId = @AgentId OR ToAgentId = @AgentId) AND UserId = @UserId
-            ORDER BY Timestamp DESC;";
-
-        using var connection = new SqlConnection(_connectionString);
-        var results = await connection.QueryAsync(sql, new { AgentId = agentId, UserId = userId, Limit = limit });
-
-        return results.Select(MapToMcpMessage);
+        var entities = await GetByUserAsync(userId);
+        return entities.Where(e => e.AgentId == agentId || e.ConversationId == agentId)
+                      .Take(limit)
+                      .Select(ConvertToMcpMessage);
     }
 
     public async Task<IEnumerable<McpMessage>> GetConversationAsync(Guid fromAgentId, Guid toAgentId, string userId, int limit = 100)
     {
-        const string sql = @"
-            SELECT TOP (@Limit) MessageId, FromAgentId, ToAgentId, MessageType, Payload, Metadata, Timestamp, ProcessedAt
-            FROM dbo.McpMessages
-            WHERE ((FromAgentId = @FromAgentId AND ToAgentId = @ToAgentId) OR
-                   (FromAgentId = @ToAgentId AND ToAgentId = @FromAgentId))
-                  AND UserId = @UserId
-            ORDER BY Timestamp DESC;";
-
-        using var connection = new SqlConnection(_connectionString);
-        var results = await connection.QueryAsync(sql, new
-        {
-            FromAgentId = fromAgentId,
-            ToAgentId = toAgentId,
-            UserId = userId,
-            Limit = limit
-        });
-
-        return results.Select(MapToMcpMessage);
+        var entities = await GetByUserAsync(userId);
+        return entities.Where(e => (e.ConversationId == fromAgentId && e.AgentId == toAgentId) ||
+                                   (e.ConversationId == toAgentId && e.AgentId == fromAgentId))
+                      .Take(limit)
+                      .Select(ConvertToMcpMessage);
     }
 
     public async Task<bool> MarkMessageProcessedAsync(Guid messageId, string userId)
     {
-        const string sql = @"
-            UPDATE dbo.McpMessages
-            SET ProcessedAt = @ProcessedAt
-            WHERE MessageId = @MessageId AND UserId = @UserId;";
+        var entity = await GetByIdAsync(messageId);
+        if (entity?.UserId != userId) return false;
 
-        using var connection = new SqlConnection(_connectionString);
-        var rowsAffected = await connection.ExecuteAsync(sql, new
-        {
-            ProcessedAt = DateTime.UtcNow,
-            MessageId = messageId,
-            UserId = userId
-        });
-
-        return rowsAffected > 0;
+        entity.ModifiedDate = DateTime.UtcNow;
+        return await UpdateAsync(entity);
     }
 
     public async Task<IEnumerable<McpMessage>> GetUnprocessedMessagesAsync(Guid agentId, string userId)
     {
-        const string sql = @"
-            SELECT MessageId, FromAgentId, ToAgentId, MessageType, Payload, Metadata, Timestamp, ProcessedAt
-            FROM dbo.McpMessages
-            WHERE ToAgentId = @AgentId AND UserId = @UserId AND ProcessedAt IS NULL
-            ORDER BY Timestamp ASC;";
-
-        using var connection = new SqlConnection(_connectionString);
-        var results = await connection.QueryAsync(sql, new { AgentId = agentId, UserId = userId });
-
-        return results.Select(MapToMcpMessage);
-    }
-
-    public async Task<bool> StoreTaskAssignmentAsync(TaskAssignment task, string userId)
-    {
-        const string sql = @"
-            INSERT INTO dbo.TaskAssignments (TaskId, UserId, AgentId, TaskType, TaskData, Priority, DueDate, Metadata, CreatedAt)
-            VALUES (@TaskId, @UserId, @AgentId, @TaskType, @TaskData, @Priority, @DueDate, @Metadata, @CreatedAt);";
-
-        using var connection = new SqlConnection(_connectionString);
-        var rowsAffected = await connection.ExecuteAsync(sql, new
-        {
-            TaskId = task.TaskId,
-            UserId = userId,
-            AgentId = task.AgentId,
-            TaskType = task.TaskType,
-            TaskData = JsonSerializer.Serialize(task.TaskData),
-            Priority = task.Priority,
-            DueDate = task.DueDate,
-            Metadata = task.Metadata != null ? JsonSerializer.Serialize(task.Metadata) : null,
-            CreatedAt = DateTime.UtcNow
-        });
-
-        return rowsAffected > 0;
-    }
-
-    public async Task<TaskAssignment?> GetTaskAssignmentAsync(Guid taskId, string userId)
-    {
-        const string sql = @"
-            SELECT TaskId, AgentId, TaskType, TaskData, Priority, DueDate, Metadata
-            FROM dbo.TaskAssignments
-            WHERE TaskId = @TaskId AND UserId = @UserId;";
-
-        using var connection = new SqlConnection(_connectionString);
-        var result = await connection.QueryFirstOrDefaultAsync(sql, new { TaskId = taskId, UserId = userId });
-
-        return result != null ? MapToTaskAssignment(result) : null;
-    }
-
-    public async Task<IEnumerable<TaskAssignment>> GetPendingTasksForAgentAsync(Guid agentId, string userId)
-    {
-        const string sql = @"
-            SELECT t.TaskId, t.AgentId, t.TaskType, t.TaskData, t.Priority, t.DueDate, t.Metadata
-            FROM dbo.TaskAssignments t
-            LEFT JOIN dbo.TaskResults r ON t.TaskId = r.TaskId
-            WHERE t.AgentId = @AgentId AND t.UserId = @UserId AND r.TaskId IS NULL
-            ORDER BY t.Priority DESC, t.CreatedAt ASC;";
-
-        using var connection = new SqlConnection(_connectionString);
-        var results = await connection.QueryAsync(sql, new { AgentId = agentId, UserId = userId });
-
-        return results.Select(MapToTaskAssignment);
-    }
-
-    public async Task<bool> StoreTaskResultAsync(TaskResult result, string userId)
-    {
-        const string sql = @"
-            INSERT INTO dbo.TaskResults (TaskId, AgentId, UserId, Status, Result, ErrorMessage, Metrics, CompletedAt)
-            VALUES (@TaskId, @AgentId, @UserId, @Status, @Result, @ErrorMessage, @Metrics, @CompletedAt);";
-
-        using var connection = new SqlConnection(_connectionString);
-        var rowsAffected = await connection.ExecuteAsync(sql, new
-        {
-            TaskId = result.TaskId,
-            AgentId = result.AgentId,
-            UserId = userId,
-            Status = (int)result.Status,
-            Result = result.Result != null ? JsonSerializer.Serialize(result.Result) : null,
-            ErrorMessage = result.ErrorMessage,
-            Metrics = result.Metrics != null ? JsonSerializer.Serialize(result.Metrics) : null,
-            CompletedAt = DateTime.UtcNow
-        });
-
-        return rowsAffected > 0;
-    }
-
-    public async Task<TaskResult?> GetTaskResultAsync(Guid taskId, string userId)
-    {
-        const string sql = @"
-            SELECT TaskId, AgentId, Status, Result, ErrorMessage, Metrics
-            FROM dbo.TaskResults
-            WHERE TaskId = @TaskId AND UserId = @UserId;";
-
-        using var connection = new SqlConnection(_connectionString);
-        var result = await connection.QueryFirstOrDefaultAsync(sql, new { TaskId = taskId, UserId = userId });
-
-        return result != null ? MapToTaskResult(result) : null;
+        var entities = await GetByUserAsync(userId);
+        return entities.Where(e => e.AgentId == agentId && e.ModifiedDate == null)
+                      .Select(ConvertToMcpMessage);
     }
 
     public async Task<IEnumerable<McpMessage>> GetMessagesByProjectAsync(Guid projectId, string userId, int limit = 100)
     {
-        const string sql = @"
-            SELECT TOP (@Limit) m.MessageId, m.FromAgentId, m.ToAgentId, m.MessageType, m.Payload, m.Metadata, m.Timestamp, m.ProcessedAt
-            FROM dbo.McpMessages m
-            INNER JOIN dbo.Agents a ON (m.FromAgentId = a.AgentId OR m.ToAgentId = a.AgentId)
-            INNER JOIN dbo.Projects p ON p.UserId = @UserId
-            WHERE m.UserId = @UserId AND p.ProjectId = @ProjectId
-            ORDER BY m.Timestamp DESC;";
-
-        using var connection = new SqlConnection(_connectionString);
-        var results = await connection.QueryAsync(sql, new { ProjectId = projectId, UserId = userId, Limit = limit });
-
-        return results.Select(MapToMcpMessage);
+        var entities = await GetByUserAsync(userId);
+        return entities.Take(limit).Select(ConvertToMcpMessage);
     }
 
-    public Task<IEnumerable<McpMessage>> GetUnreadMessagesAsync(Guid agentId, string userId) => GetUnprocessedMessagesAsync(agentId, userId);
+    public Task<IEnumerable<McpMessage>> GetUnreadMessagesAsync(Guid agentId, string userId) =>
+        GetUnprocessedMessagesAsync(agentId, userId);
 
     public async Task<bool> MarkMessagesAsReadAsync(Guid agentId, IEnumerable<Guid> messageIds, string userId)
     {
-        const string sql = @"
-            UPDATE dbo.McpMessages
-            SET ProcessedAt = @ProcessedAt
-            WHERE ToAgentId = @AgentId AND MessageId IN @MessageIds AND UserId = @UserId;";
+        var entities = await GetByUserAsync(userId);
+        var toUpdate = entities.Where(e => e.AgentId == agentId && messageIds.Contains(e.Id));
 
-        using var connection = new SqlConnection(_connectionString);
-        var rowsAffected = await connection.ExecuteAsync(sql, new
+        var results = new List<bool>();
+        foreach (var entity in toUpdate)
         {
-            ProcessedAt = DateTime.UtcNow,
-            AgentId = agentId,
-            MessageIds = messageIds,
-            UserId = userId
-        });
+            entity.ModifiedDate = DateTime.UtcNow;
+            results.Add(await UpdateAsync(entity));
+        }
 
-        return rowsAffected > 0;
+        return results.All(r => r);
     }
 
-    public Task<IEnumerable<TaskAssignment>> GetTaskAssignmentsForAgentAsync(Guid agentId, string userId) => GetPendingTasksForAgentAsync(agentId, userId);
-
-    private static McpMessage MapToMcpMessage(dynamic row)
+    public async Task<bool> StoreTaskAssignmentAsync(TaskAssignment task, string userId)
     {
-        var payload = JsonSerializer.Deserialize<object>(row.Payload);
-        var metadata = string.IsNullOrEmpty(row.Metadata)
-            ? null
-            : JsonSerializer.Deserialize<Dictionary<string, object>>(row.Metadata);
+        // Store as message for now - would need separate entity/repository for proper implementation
+        var entity = new Message
+        {
+            Id = task.TaskId,
+            UserId = userId,
+            AgentId = task.AgentId,
+            Content = SerializeToJson(task.TaskData),
+            MessageType = MessageType.Task,
+            Metadata = task.Metadata ?? new Dictionary<string, object>(),
+            CreatedDate = DateTime.UtcNow
+        };
 
-        return new McpMessage(
-            row.MessageId,
-            row.FromAgentId,
-            row.ToAgentId,
-            row.MessageType,
-            payload!,
-            metadata,
-            row.Timestamp
-        );
+        await CreateAsync(entity);
+        return true;
     }
 
-    private static TaskAssignment MapToTaskAssignment(dynamic row)
+    public async Task<TaskAssignment?> GetTaskAssignmentAsync(Guid taskId, string userId)
     {
-        var taskData = JsonSerializer.Deserialize<object>(row.TaskData);
-        var metadata = string.IsNullOrEmpty(row.Metadata)
-            ? null
-            : JsonSerializer.Deserialize<Dictionary<string, object>>(row.Metadata);
+        var entity = await GetByIdAsync(taskId);
+        if (entity?.UserId != userId || entity.MessageType != MessageType.Task) return null;
 
         return new TaskAssignment(
-            row.TaskId,
-            row.AgentId,
-            row.TaskType,
-            taskData!,
-            row.Priority,
-            row.DueDate,
-            metadata
+            entity.Id,
+            entity.AgentId ?? Guid.Empty,
+            "default",
+            DeserializeFromJson<object>(entity.Content) ?? new object(),
+            1,
+            DateTime.UtcNow.AddDays(1),
+            entity.Metadata
         );
     }
 
-    private static TaskResult MapToTaskResult(dynamic row)
+    public async Task<IEnumerable<TaskAssignment>> GetPendingTasksForAgentAsync(Guid agentId, string userId)
     {
-        var result = string.IsNullOrEmpty(row.Result)
-            ? null
-            : JsonSerializer.Deserialize<object>(row.Result);
+        var entities = await GetByUserAsync(userId);
+        return entities.Where(e => e.AgentId == agentId && e.MessageType == MessageType.Task && e.ModifiedDate == null)
+                      .Select(e => new TaskAssignment(
+                          e.Id,
+                          e.AgentId ?? Guid.Empty,
+                          "default",
+                          DeserializeFromJson<object>(e.Content) ?? new object(),
+                          1,
+                          DateTime.UtcNow.AddDays(1),
+                          e.Metadata
+                      ));
+    }
 
-        var metrics = string.IsNullOrEmpty(row.Metrics)
-            ? null
-            : JsonSerializer.Deserialize<Dictionary<string, object>>(row.Metrics);
+    public async Task<bool> StoreTaskResultAsync(TaskResult result, string userId)
+    {
+        var entity = await GetByIdAsync(result.TaskId);
+        if (entity?.UserId != userId) return false;
+
+        entity.Content = SerializeToJson(result.Result);
+        entity.ModifiedDate = DateTime.UtcNow;
+        return await UpdateAsync(entity);
+    }
+
+    public async Task<TaskResult?> GetTaskResultAsync(Guid taskId, string userId)
+    {
+        var entity = await GetByIdAsync(taskId);
+        if (entity?.UserId != userId) return null;
 
         return new TaskResult(
-            row.TaskId,
-            row.AgentId,
-            (TaskResultStatus)row.Status,
-            result,
-            row.ErrorMessage,
-            metrics
+            entity.Id,
+            entity.AgentId ?? Guid.Empty,
+            entity.ModifiedDate.HasValue ? TaskResultStatus.Completed : TaskResultStatus.Pending,
+            DeserializeFromJson<object>(entity.Content),
+            null,
+            entity.Metadata
+        );
+    }
+
+    public Task<IEnumerable<TaskAssignment>> GetTaskAssignmentsForAgentAsync(Guid agentId, string userId) =>
+        GetPendingTasksForAgentAsync(agentId, userId);
+
+    private McpMessage ConvertToMcpMessage(Message entity)
+    {
+        return new McpMessage(
+            entity.Id,
+            entity.ConversationId,
+            entity.AgentId ?? Guid.Empty,
+            entity.MessageType.ToString(),
+            DeserializeFromJson<object>(entity.Content) ?? new object(),
+            entity.Metadata,
+            entity.CreatedDate
         );
     }
 }
