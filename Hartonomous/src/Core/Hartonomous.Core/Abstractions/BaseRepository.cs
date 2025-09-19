@@ -1,3 +1,13 @@
+/*
+ * Copyright (c) 2024-2025 Hartonomous AI Agent Factory Platform. All Rights Reserved.
+ *
+ * This software is proprietary and confidential. Unauthorized copying, distribution,
+ * modification, or use of this software, in whole or in part, is strictly prohibited.
+ *
+ * This file contains the abstract base repository implementing AI-native data access patterns.
+ * Features advanced retry logic, connection management, and generic data operations optimized for SQL Server 2025.
+ */
+
 using Dapper;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Options;

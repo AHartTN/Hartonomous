@@ -1,3 +1,13 @@
+/*
+ * Copyright (c) 2024-2025 Hartonomous AI Agent Factory Platform. All Rights Reserved.
+ *
+ * This software is proprietary and confidential. Unauthorized copying, distribution,
+ * modification, or use of this software, in whole or in part, is strictly prohibited.
+ *
+ * This file contains the project repository implementation for multi-tenant project management.
+ * Features user-scoped data access patterns ensuring tenant isolation and secure project operations.
+ */
+
 using Dapper;
 using Hartonomous.Core.DTOs;
 using Hartonomous.Core.Interfaces;

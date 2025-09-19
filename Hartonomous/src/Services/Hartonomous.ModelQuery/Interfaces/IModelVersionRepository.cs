@@ -1,3 +1,13 @@
+/*
+ * Copyright (c) 2024-2025 Hartonomous AI Agent Factory Platform. All Rights Reserved.
+ *
+ * This software is proprietary and confidential. Unauthorized copying, distribution,
+ * modification, or use of this software, in whole or in part, is strictly prohibited.
+ *
+ * This file contains the model version repository interface for Model Query Engine (MQE).
+ * Features model versioning, change detection, comparison analytics, and version lineage tracking.
+ */
+
 using Hartonomous.ModelQuery.DTOs;
 
 namespace Hartonomous.ModelQuery.Interfaces;

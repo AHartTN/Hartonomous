@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2024-2025 Hartonomous AI Agent Factory Platform. All Rights Reserved.
+ *
+ * This software is proprietary and confidential. Unauthorized copying, distribution,
+ * modification, or use of this software, in whole or in part, is strictly prohibited.
+ *
+ * This file contains the Neo4j Circuit Bridge - a revolutionary SQL CLR component that
+ * enables T-SQL to directly interact with Neo4j for computational circuit discovery.
+ * The algorithms for circuit mapping, causal relationship discovery, and unified
+ * data fabric integration represent proprietary intellectual property.
+ *
+ * Key Innovations Protected:
+ * - Real-time T-SQL to Neo4j bridge for circuit queries
+ * - Causal relationship discovery algorithms for mechanistic interpretability
+ * - Feature node creation and graph relationship mapping
+ * - Circuit discovery through connected subgraph analysis
+ *
+ * Any attempt to reverse engineer, extract, or replicate these circuit discovery
+ * algorithms is prohibited by law and subject to legal action.
+ */
+
 using System;
 using System.Collections.Generic;
 using System.Data;

@@ -1,3 +1,13 @@
+/*
+ * Copyright (c) 2024-2025 Hartonomous AI Agent Factory Platform. All Rights Reserved.
+ *
+ * This software is proprietary and confidential. Unauthorized copying, distribution,
+ * modification, or use of this software, in whole or in part, is strictly prohibited.
+ *
+ * This file contains the model weight repository for Model Query Engine (MQE) weight management.
+ * Features SQL Server FILESTREAM integration, weight data streaming, and checksum validation.
+ */
+
 using Dapper;
 using Hartonomous.ModelQuery.DTOs;
 using Hartonomous.ModelQuery.Interfaces;

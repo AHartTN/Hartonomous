@@ -1,3 +1,13 @@
+/*
+ * Copyright (c) 2024-2025 Hartonomous AI Agent Factory Platform. All Rights Reserved.
+ *
+ * This software is proprietary and confidential. Unauthorized copying, distribution,
+ * modification, or use of this software, in whole or in part, is strictly prohibited.
+ *
+ * This file contains the model architecture repository for Model Query Engine (MQE) operations.
+ * Features deep model structure analysis, layer configuration management, and architectural pattern recognition.
+ */
+
 using Dapper;
 using Hartonomous.ModelQuery.DTOs;
 using Hartonomous.ModelQuery.Interfaces;

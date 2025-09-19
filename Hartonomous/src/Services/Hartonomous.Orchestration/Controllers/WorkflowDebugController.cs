@@ -1,3 +1,13 @@
+/*
+ * Copyright (c) 2024-2025 Hartonomous AI Agent Factory Platform. All Rights Reserved.
+ *
+ * This software is proprietary and confidential. Unauthorized copying, distribution,
+ * modification, or use of this software, in whole or in part, is strictly prohibited.
+ *
+ * This file contains the workflow debugging and monitoring API controller,
+ * providing real-time execution tracking, breakpoint management, and performance analytics.
+ */
+
 using Hartonomous.Infrastructure.Security;
 using Hartonomous.Orchestration.DTOs;
 using Hartonomous.Orchestration.Interfaces;

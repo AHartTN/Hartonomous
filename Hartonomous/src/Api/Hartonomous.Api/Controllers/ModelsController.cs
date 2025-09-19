@@ -1,3 +1,14 @@
+/*
+ * Copyright (c) 2024-2025 Hartonomous AI Agent Factory Platform. All Rights Reserved.
+ *
+ * This software is proprietary and confidential. Unauthorized copying, distribution,
+ * modification, or use of this software, in whole or in part, is strictly prohibited.
+ *
+ * This file contains the Models Controller - API endpoints for model lifecycle
+ * management within projects. The user-scoped access patterns and model metadata
+ * handling represent core platform functionality.
+ */
+
 using Hartonomous.Core.DTOs;
 using Hartonomous.Core.Interfaces;
 using Hartonomous.Infrastructure.Security;

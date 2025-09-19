@@ -1,3 +1,13 @@
+/*
+ * Copyright (c) 2024-2025 Hartonomous AI Agent Factory Platform. All Rights Reserved.
+ *
+ * This software is proprietary and confidential. Unauthorized copying, distribution,
+ * modification, or use of this software, in whole or in part, is strictly prohibited.
+ *
+ * This file contains the core repository abstraction interfaces for AI-native data access patterns.
+ * Features generic entity operations, repository factory patterns, and unit of work transaction management.
+ */
+
 using System.Linq.Expressions;
 
 namespace Hartonomous.Core.Abstractions;

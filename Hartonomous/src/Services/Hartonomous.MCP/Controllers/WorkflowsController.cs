@@ -1,3 +1,13 @@
+/*
+ * Copyright (c) 2024-2025 Hartonomous AI Agent Factory Platform. All Rights Reserved.
+ *
+ * This software is proprietary and confidential. Unauthorized copying, distribution,
+ * modification, or use of this software, in whole or in part, is strictly prohibited.
+ *
+ * This file contains the Multi-Context Protocol (MCP) workflow orchestration API controller,
+ * managing workflow definitions, executions, and inter-agent communication sequences.
+ */
+
 using Hartonomous.Core.DTOs;
 using Hartonomous.Core.Interfaces;
 using Microsoft.AspNetCore.Authorization;

@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2024-2025 Hartonomous AI Agent Factory Platform. All Rights Reserved.
+ *
+ * This software is proprietary and confidential. Unauthorized copying, distribution,
+ * modification, or use of this software, in whole or in part, is strictly prohibited.
+ *
+ * This file contains the Activation Processor - a specialized SQL CLR component for
+ * activation capture and FILESTREAM operations. The algorithms for efficient neural
+ * activation processing, streaming analysis, and embedding computation represent
+ * proprietary intellectual property and trade secrets.
+ *
+ * Key Innovations Protected:
+ * - High-performance activation capture from external model endpoints
+ * - Streaming processing of massive activation datasets using FILESTREAM
+ * - Real-time validation and repair of neural activation data
+ * - Advanced embedding computation methods (PCA, random projection, mean pooling)
+ *
+ * Any attempt to reverse engineer, extract, or replicate these activation processing
+ * algorithms is prohibited by law and subject to legal action.
+ */
+
 using System;
 using System.Collections.Generic;
 using System.Data;

@@ -1,3 +1,13 @@
+/*
+ * Copyright (c) 2024-2025 Hartonomous AI Agent Factory Platform. All Rights Reserved.
+ *
+ * This software is proprietary and confidential. Unauthorized copying, distribution,
+ * modification, or use of this software, in whole or in part, is strictly prohibited.
+ *
+ * This file contains the AgentCapability models for the thin client architecture,
+ * supporting deployable agent capability registration, discovery, and execution.
+ */
+
 using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;

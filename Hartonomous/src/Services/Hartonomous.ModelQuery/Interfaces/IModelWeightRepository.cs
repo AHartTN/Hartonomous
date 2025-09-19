@@ -1,3 +1,13 @@
+/*
+ * Copyright (c) 2024-2025 Hartonomous AI Agent Factory Platform. All Rights Reserved.
+ *
+ * This software is proprietary and confidential. Unauthorized copying, distribution,
+ * modification, or use of this software, in whole or in part, is strictly prohibited.
+ *
+ * This file contains the model weight repository interface for Model Query Engine (MQE).
+ * Features weight data management, FILESTREAM operations, and secure weight streaming with checksums.
+ */
+
 using Hartonomous.ModelQuery.DTOs;
 
 namespace Hartonomous.ModelQuery.Interfaces;

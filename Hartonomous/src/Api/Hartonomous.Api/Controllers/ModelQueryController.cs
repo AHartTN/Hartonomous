@@ -1,3 +1,15 @@
+/*
+ * Copyright (c) 2024-2025 Hartonomous AI Agent Factory Platform. All Rights Reserved.
+ *
+ * This software is proprietary and confidential. Unauthorized copying, distribution,
+ * modification, or use of this software, in whole or in part, is strictly prohibited.
+ *
+ * This file contains the Model Query Controller - API endpoints for the revolutionary
+ * Model Query Engine that enables T-SQL queries against large language models.
+ * The neural mapping and memory-mapped file access patterns represent proprietary
+ * intellectual property and trade secrets.
+ */
+
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;

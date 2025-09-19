@@ -1,3 +1,13 @@
+/*
+ * Copyright (c) 2024-2025 Hartonomous AI Agent Factory Platform. All Rights Reserved.
+ *
+ * This software is proprietary and confidential. Unauthorized copying, distribution,
+ * modification, or use of this software, in whole or in part, is strictly prohibited.
+ *
+ * This file contains the base repository implementation providing common multi-tenant data access patterns.
+ * Features user-scoped security, parameterized queries, and centralized CRUD operations for the platform.
+ */
+
 using Dapper;
 using Hartonomous.Core.Interfaces;
 using Microsoft.Data.SqlClient;

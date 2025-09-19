@@ -1,3 +1,13 @@
+/*
+ * Copyright (c) 2024-2025 Hartonomous AI Agent Factory Platform. All Rights Reserved.
+ *
+ * This software is proprietary and confidential. Unauthorized copying, distribution,
+ * modification, or use of this software, in whole or in part, is strictly prohibited.
+ *
+ * This file contains the Multi-Context Protocol (MCP) workflow repository for workflow definition management.
+ * Features workflow definition storage, execution tracking, and step orchestration with multi-tenant support.
+ */
+
 using Dapper;
 using Hartonomous.Core.DTOs;
 using Hartonomous.Core.Interfaces;

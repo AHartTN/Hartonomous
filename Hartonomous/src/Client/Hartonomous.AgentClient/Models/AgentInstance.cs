@@ -1,3 +1,13 @@
+/*
+ * Copyright (c) 2024-2025 Hartonomous AI Agent Factory Platform. All Rights Reserved.
+ *
+ * This software is proprietary and confidential. Unauthorized copying, distribution,
+ * modification, or use of this software, in whole or in part, is strictly prohibited.
+ *
+ * This file contains the AgentInstance models for running agent lifecycle management,
+ * supporting distributed agent execution with resource monitoring and health tracking.
+ */
+
 using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;

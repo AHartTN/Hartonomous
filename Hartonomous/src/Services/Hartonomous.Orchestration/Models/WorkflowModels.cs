@@ -1,3 +1,13 @@
+/*
+ * Copyright (c) 2024-2025 Hartonomous AI Agent Factory Platform. All Rights Reserved.
+ *
+ * This software is proprietary and confidential. Unauthorized copying, distribution,
+ * modification, or use of this software, in whole or in part, is strictly prohibited.
+ *
+ * This file contains the WorkflowModels for Multi-Context Protocol (MCP) orchestration,
+ * enabling complex agent workflow definitions, execution tracking, and distributed coordination.
+ */
+
 namespace Hartonomous.Orchestration.Models;
 
 /// <summary>

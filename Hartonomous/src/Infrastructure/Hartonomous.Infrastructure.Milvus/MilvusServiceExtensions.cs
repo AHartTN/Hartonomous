@@ -4,28 +4,60 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Hartonomous.Infrastructure.Milvus;
 
 /// <summary>
-/// Extension methods for registering Milvus services
-/// Follows Hartonomous infrastructure pattern
+/// Extension methods for registering SQL Server vector services
+/// Implements NinaDB vector capabilities using SQL Server 2025 native VECTOR type
 /// </summary>
-public static class MilvusServiceExtensions
+public static class SqlServerVectorServiceExtensions
 {
     /// <summary>
-    /// Add Milvus vector database services to the container
+    /// Add SQL Server 2025 native vector database services to the container
+    /// Replaces legacy Milvus dependency with integrated SQL Server solution
     /// </summary>
-    public static IServiceCollection AddHartonomousMilvus(this IServiceCollection services, IConfiguration configuration)
+    public static IServiceCollection AddHartonomousVectors(this IServiceCollection services, IConfiguration configuration)
     {
-        // Validate configuration
-        var host = configuration["Milvus:Host"];
-        var port = configuration["Milvus:Port"];
+        // Validate SQL Server connection string
+        var connectionString = configuration.GetConnectionString("DefaultConnection");
+        if (string.IsNullOrEmpty(connectionString))
+            throw new ArgumentException("DefaultConnection string is required for SQL Server vector operations");
 
-        if (string.IsNullOrEmpty(host))
-            throw new ArgumentException("Milvus:Host configuration is required");
-        if (string.IsNullOrEmpty(port))
-            throw new ArgumentException("Milvus:Port configuration is required");
+        // Register SQL Server vector service as singleton for connection pooling
+        services.AddSingleton<SqlServerVectorService>();
 
-        // Register Milvus service as singleton for connection pooling
-        services.AddSingleton<MilvusService>();
+        // Initialize vector tables on startup
+        services.AddHostedService<VectorTableInitializationService>();
 
         return services;
+    }
+}
+
+/// <summary>
+/// Background service to initialize vector tables on application startup
+/// </summary>
+public class VectorTableInitializationService : Microsoft.Extensions.Hosting.BackgroundService
+{
+    private readonly SqlServerVectorService _vectorService;
+    private readonly Microsoft.Extensions.Logging.ILogger<VectorTableInitializationService> _logger;
+
+    public VectorTableInitializationService(
+        SqlServerVectorService vectorService,
+        Microsoft.Extensions.Logging.ILogger<VectorTableInitializationService> logger)
+    {
+        _vectorService = vectorService;
+        _logger = logger;
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        try
+        {
+            _logger.LogInformation("Initializing SQL Server vector tables...");
+            await _vectorService.EnsureVectorTablesExistAsync();
+            _logger.LogInformation("SQL Server vector tables initialized successfully");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to initialize SQL Server vector tables");
+            throw;
+        }
     }
 }

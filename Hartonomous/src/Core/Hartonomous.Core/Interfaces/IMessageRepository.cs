@@ -1,3 +1,13 @@
+/*
+ * Copyright (c) 2024-2025 Hartonomous AI Agent Factory Platform. All Rights Reserved.
+ *
+ * This software is proprietary and confidential. Unauthorized copying, distribution,
+ * modification, or use of this software, in whole or in part, is strictly prohibited.
+ *
+ * This file contains the message repository interface for Multi-Context Protocol (MCP) message handling.
+ * Features secure message storage, task assignment tracking, and project-scoped message operations.
+ */
+
 using Hartonomous.Core.DTOs;
 
 namespace Hartonomous.Core.Interfaces;

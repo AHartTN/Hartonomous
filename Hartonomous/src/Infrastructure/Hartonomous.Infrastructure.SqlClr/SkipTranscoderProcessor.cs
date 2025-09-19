@@ -1,3 +1,23 @@
+/*
+ * Hartonomous AI Agent Factory Platform
+ * Skip Transcoder Processor - Advanced Neural Network Training for Mechanistic Interpretability
+ *
+ * Copyright (c) 2024-2025 All Rights Reserved.
+ * This software is proprietary and confidential. No part of this software may be reproduced,
+ * distributed, or transmitted in any form or by any means without the prior written permission
+ * of the copyright holder.
+ *
+ * This module implements Skip Transcoder neural networks directly within SQL Server CLR,
+ * enabling mechanistic interpretability through neural pattern analysis and feature discovery.
+ *
+ * CRITICAL SECURITY NOTICE: This component performs neural network training within SQL Server.
+ * Unauthorized access or modification could compromise model security and data integrity.
+ *
+ * Author: AI Agent Factory Development Team
+ * Created: 2024
+ * Last Modified: 2025
+ */
+
 using System;
 using System.Collections.Generic;
 using System.Data;

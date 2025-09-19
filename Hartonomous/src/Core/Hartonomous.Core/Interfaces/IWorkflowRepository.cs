@@ -1,3 +1,13 @@
+/*
+ * Copyright (c) 2024-2025 Hartonomous AI Agent Factory Platform. All Rights Reserved.
+ *
+ * This software is proprietary and confidential. Unauthorized copying, distribution,
+ * modification, or use of this software, in whole or in part, is strictly prohibited.
+ *
+ * This file contains the workflow repository interface for Multi-Context Protocol (MCP) workflow orchestration.
+ * Features workflow execution tracking, step management, and agent assignment with user-scoped operations.
+ */
+
 using Hartonomous.Core.DTOs;
 
 namespace Hartonomous.Core.Interfaces;
