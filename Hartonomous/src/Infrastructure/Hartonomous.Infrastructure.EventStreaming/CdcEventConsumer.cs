@@ -10,22 +10,22 @@ namespace Hartonomous.Infrastructure.EventStreaming;
 
 /// <summary>
 /// Consumer for Debezium CDC events from SQL Server
-/// Processes changes and propagates to read replicas (Neo4j, Milvus)
+/// Processes changes and propagates to read replicas (Neo4j, SQL Server Vector)
 /// Implements the core data fabric pattern from Hartonomous blueprint
 /// </summary>
 public class CdcEventConsumer : BackgroundService
 {
     private readonly IConsumer<string, string> _consumer;
     private readonly Neo4jService _neo4jService;
-    private readonly MilvusService _milvusService;
+    private readonly SqlServerVectorService _vectorService;
     private readonly ILogger<CdcEventConsumer> _logger;
     private readonly List<string> _topics;
 
     public CdcEventConsumer(IConfiguration configuration, Neo4jService neo4jService,
-        MilvusService milvusService, ILogger<CdcEventConsumer> logger)
+        SqlServerVectorService vectorService, ILogger<CdcEventConsumer> logger)
     {
         _neo4jService = neo4jService ?? throw new ArgumentNullException(nameof(neo4jService));
-        _milvusService = milvusService ?? throw new ArgumentNullException(nameof(milvusService));
+        _vectorService = vectorService ?? throw new ArgumentNullException(nameof(vectorService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
         try
@@ -253,7 +253,7 @@ public class CdcEventConsumer : BackgroundService
                         var componentName = "component"; // Resolve from component
                         var componentType = "layer"; // Resolve from component
 
-                        await _milvusService.InsertEmbeddingAsync(componentId, modelId, userId, embedding, componentType, componentName);
+                        await _vectorService.InsertEmbeddingAsync(componentId, modelId, userId, embedding, componentType, componentName);
                         _logger.LogDebug("Successfully processed ComponentEmbedding {Operation} for {ComponentId}", operation, componentId);
                     }
                     break;
@@ -264,7 +264,7 @@ public class CdcEventConsumer : BackgroundService
                         var componentId = Guid.Parse(before["ComponentId"].ToString()!);
                         var userId = "system";
 
-                        await _milvusService.DeleteEmbeddingsAsync(componentId, userId);
+                        await _vectorService.DeleteEmbeddingsAsync(componentId, userId);
                         _logger.LogDebug("Successfully processed ComponentEmbedding delete for {ComponentId}", componentId);
                     }
                     break;

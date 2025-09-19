@@ -1,6 +1,7 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using System.Data;
 using System.Text.Json;
 
 namespace Hartonomous.Infrastructure.Milvus;
@@ -14,41 +15,46 @@ public class SqlServerVectorService : IDisposable
 {
     private readonly string _connectionString;
     private readonly ILogger<SqlServerVectorService> _logger;
-    private SqlConnection? _connection;
+    private readonly object _lockObject = new object();
+    private bool _tablesInitialized = false;
 
     public SqlServerVectorService(IConfiguration configuration, ILogger<SqlServerVectorService> logger)
     {
-        _logger = logger;
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _connectionString = configuration.GetConnectionString("DefaultConnection")
             ?? throw new ArgumentException("DefaultConnection string required for SQL Server vector operations");
 
-        InitializeConnection();
+        _logger.LogInformation("SQL Server Vector Service initialized with connection");
     }
 
-    private void InitializeConnection()
+    /// <summary>
+    /// Initialize the component embeddings collection
+    /// Called during system startup
+    /// </summary>
+    public async Task InitializeCollectionAsync()
     {
-        try
-        {
-            _connection = new SqlConnection(_connectionString);
-            _connection.Open();
-            _logger.LogInformation("SQL Server vector service initialized using native VECTOR capabilities");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to initialize SQL Server vector service");
-            throw;
-        }
+        await EnsureVectorTablesExistAsync();
     }
 
     /// <summary>
     /// Ensures the vector storage tables exist
     /// Creates ComponentEmbeddings table with VECTOR column if not exists
     /// </summary>
-    public async Task EnsureVectorTablesExistAsync()
+    public Task EnsureVectorTablesExistAsync()
     {
-        try
+        if (_tablesInitialized)
+            return Task.CompletedTask;
+
+        lock (_lockObject)
         {
-            var createTableSql = @"
+            if (_tablesInitialized)
+                return Task.CompletedTask;
+
+            try
+            {
+                using var connection = new SqlConnection(_connectionString);
+                connection.Open();
+                var createTableSql = @"
                 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ComponentEmbeddings')
                 BEGIN
                     CREATE TABLE dbo.ComponentEmbeddings (
@@ -72,16 +78,20 @@ public class SqlServerVectorService : IDisposable
                     USING VECTOR;
                 END";
 
-            using var command = new SqlCommand(createTableSql, _connection);
-            await command.ExecuteNonQueryAsync();
+                using var command = new SqlCommand(createTableSql, connection);
+                command.CommandTimeout = 120; // Allow time for index creation
+                command.ExecuteNonQuery();
 
-            _logger.LogDebug("Vector tables initialized successfully");
+                _tablesInitialized = true;
+                _logger.LogDebug("Vector tables initialized successfully");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to ensure vector tables exist");
+                throw;
+            }
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to ensure vector tables exist");
-            throw;
-        }
+        return Task.CompletedTask;
     }
 
     /// <summary>
@@ -113,7 +123,9 @@ public class SqlServerVectorService : IDisposable
                     VALUES (@ComponentId, @ModelId, @UserId, @ComponentType, @Description,
                             CAST(@VectorJson AS VECTOR(1536)));";
 
-            using var command = new SqlCommand(insertSql, _connection);
+            using var connection = new SqlConnection(_connectionString);
+            await connection.OpenAsync();
+            using var command = new SqlCommand(insertSql, connection);
             command.Parameters.AddWithValue("@ComponentId", componentId);
             command.Parameters.AddWithValue("@ModelId", modelId);
             command.Parameters.AddWithValue("@UserId", userId);
@@ -157,7 +169,9 @@ public class SqlServerVectorService : IDisposable
                 " + (componentType != null ? "AND ce.ComponentType = @ComponentType" : "") + @"
                 ORDER BY VECTOR_DISTANCE('cosine', ce.EmbeddingVector, CAST(@QueryVector AS VECTOR(1536))) ASC";
 
-            using var command = new SqlCommand(searchSql, _connection);
+            using var connection = new SqlConnection(_connectionString);
+            await connection.OpenAsync();
+            using var command = new SqlCommand(searchSql, connection);
             command.Parameters.AddWithValue("@TopK", topK);
             command.Parameters.AddWithValue("@QueryVector", queryVectorJson);
             command.Parameters.AddWithValue("@UserId", userId);
@@ -175,9 +189,13 @@ public class SqlServerVectorService : IDisposable
                     ComponentId = reader.GetGuid("ComponentId"),
                     ModelId = reader.GetGuid("ModelId"),
                     ComponentType = reader.GetString("ComponentType"),
-                    Description = reader.IsDBNull("Description") ? null : reader.GetString("Description"),
-                    Distance = reader.GetDouble("Distance"),
-                    SimilarityScore = reader.GetDouble("SimilarityScore")
+                    Description = reader.IsDBNull("Description") ? string.Empty : reader.GetString("Description"),
+                    SimilarityScore = reader.GetDouble("SimilarityScore"),
+                    Metadata = new Dictionary<string, object>
+                    {
+                        ["distance"] = reader.GetDouble("Distance"),
+                        ["search_method"] = "sql_server_vector"
+                    }
                 });
             }
 
@@ -192,9 +210,10 @@ public class SqlServerVectorService : IDisposable
     }
 
     /// <summary>
-    /// Delete component embedding
+    /// Delete embeddings for a specific component
+    /// Called when components are removed
     /// </summary>
-    public async Task DeleteEmbeddingAsync(Guid componentId, string userId)
+    public async Task DeleteEmbeddingsAsync(Guid componentId, string userId)
     {
         try
         {
@@ -202,7 +221,9 @@ public class SqlServerVectorService : IDisposable
                 DELETE FROM dbo.ComponentEmbeddings
                 WHERE ComponentId = @ComponentId AND UserId = @UserId";
 
-            using var command = new SqlCommand(deleteSql, _connection);
+            using var connection = new SqlConnection(_connectionString);
+            await connection.OpenAsync();
+            using var command = new SqlCommand(deleteSql, connection);
             command.Parameters.AddWithValue("@ComponentId", componentId);
             command.Parameters.AddWithValue("@UserId", userId);
 
@@ -219,36 +240,46 @@ public class SqlServerVectorService : IDisposable
 
     /// <summary>
     /// Get collection statistics
+    /// For monitoring and administration
     /// </summary>
-    public async Task<VectorCollectionStats> GetCollectionStatsAsync(string userId)
+    public async Task<MilvusCollectionStats> GetCollectionStatsAsync()
     {
         try
         {
             var statsSql = @"
                 SELECT
-                    COUNT(*) AS TotalEmbeddings,
-                    COUNT(DISTINCT ModelId) AS UniqueModels,
-                    COUNT(DISTINCT ComponentType) AS UniqueComponentTypes,
-                    AVG(CAST(LEN(CAST(EmbeddingVector AS NVARCHAR(MAX))) AS FLOAT)) AS AvgVectorSize
-                FROM dbo.ComponentEmbeddings
-                WHERE UserId = @UserId";
+                    COUNT(*) as RowCount,
+                    COUNT(DISTINCT UserId) as UniqueUsers,
+                    COUNT(DISTINCT ModelId) as UniqueModels,
+                    COUNT(DISTINCT ComponentId) as UniqueComponents,
+                    AVG(ConfidenceScore) as AvgConfidenceScore,
+                    MIN(CreatedAt) as OldestEntry,
+                    MAX(CreatedAt) as NewestEntry
+                FROM dbo.ComponentEmbeddings";
 
-            using var command = new SqlCommand(statsSql, _connection);
-            command.Parameters.AddWithValue("@UserId", userId);
+            using var connection = new SqlConnection(_connectionString);
+            await connection.OpenAsync();
+            using var command = new SqlCommand(statsSql, connection);
+            // No parameters needed for global stats
 
             using var reader = await command.ExecuteReaderAsync();
             if (await reader.ReadAsync())
             {
-                return new VectorCollectionStats
+                var rowCount = reader.GetInt32("RowCount");
+                return new MilvusCollectionStats
                 {
-                    TotalEmbeddings = reader.GetInt32("TotalEmbeddings"),
-                    UniqueModels = reader.GetInt32("UniqueModels"),
-                    UniqueComponentTypes = reader.GetInt32("UniqueComponentTypes"),
-                    AvgVectorSize = reader.IsDBNull("AvgVectorSize") ? 0 : reader.GetDouble("AvgVectorSize")
+                    CollectionName = "ComponentEmbeddings",
+                    RowCount = rowCount,
+                    DataSize = (long)(rowCount * 1536 * 4) // Estimate: 1536 floats * 4 bytes
                 };
             }
 
-            return new VectorCollectionStats();
+            return new MilvusCollectionStats
+            {
+                CollectionName = "ComponentEmbeddings",
+                RowCount = 0,
+                DataSize = 0
+            };
         }
         catch (Exception ex)
         {
@@ -267,16 +298,26 @@ public class SqlServerVectorService : IDisposable
             var embeddingsList = embeddings.ToList();
             _logger.LogDebug("Batch inserting {Count} embeddings for user {UserId}", embeddingsList.Count, userId);
 
-            using var transaction = _connection!.BeginTransaction();
+            using var connection = new SqlConnection(_connectionString);
+            await connection.OpenAsync();
+            using var transaction = connection.BeginTransaction();
 
-            foreach (var embedding in embeddingsList)
+            try
             {
-                await InsertEmbeddingAsync(embedding.ComponentId, embedding.ModelId, userId,
-                    embedding.Vector, embedding.ComponentType, embedding.Description);
-            }
+                foreach (var embeddingItem in embeddingsList)
+                {
+                    await InsertEmbeddingAsync(embeddingItem.ComponentId, embeddingItem.ModelId, userId,
+                        embeddingItem.Vector, embeddingItem.ComponentType, embeddingItem.Description ?? string.Empty);
+                }
 
-            transaction.Commit();
-            _logger.LogDebug("Successfully batch inserted {Count} embeddings", embeddingsList.Count);
+                transaction.Commit();
+                _logger.LogDebug("Successfully batch inserted {Count} embeddings", embeddingsList.Count);
+            }
+            catch
+            {
+                transaction.Rollback();
+                throw;
+            }
         }
         catch (Exception ex)
         {
@@ -287,8 +328,14 @@ public class SqlServerVectorService : IDisposable
 
     public void Dispose()
     {
-        _connection?.Close();
-        _connection?.Dispose();
+        try
+        {
+            _logger.LogDebug("SQL Server Vector Service disposed");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error during SQL Server Vector Service disposal");
+        }
     }
 }
 
@@ -305,25 +352,26 @@ public class ComponentEmbedding
 }
 
 /// <summary>
-/// Vector collection statistics
+/// Collection statistics from SQL Server vector database
+/// Compatible with MilvusCollectionStats interface
 /// </summary>
-public class VectorCollectionStats
+public class MilvusCollectionStats
 {
-    public int TotalEmbeddings { get; set; }
-    public int UniqueModels { get; set; }
-    public int UniqueComponentTypes { get; set; }
-    public double AvgVectorSize { get; set; }
+    public string CollectionName { get; set; } = string.Empty;
+    public long RowCount { get; set; }
+    public long DataSize { get; set; }
 }
 
 /// <summary>
 /// Similar component result from vector search
+/// Compatible with MilvusService interface
 /// </summary>
 public class SimilarComponent
 {
     public Guid ComponentId { get; set; }
     public Guid ModelId { get; set; }
     public string ComponentType { get; set; } = string.Empty;
-    public string? Description { get; set; }
-    public double Distance { get; set; }
+    public string Description { get; set; } = string.Empty;
     public double SimilarityScore { get; set; }
+    public Dictionary<string, object> Metadata { get; set; } = new();
 }

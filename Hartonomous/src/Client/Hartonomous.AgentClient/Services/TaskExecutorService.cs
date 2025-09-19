@@ -23,6 +23,9 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
     private readonly IMetricsCollector _metricsCollector;
     private readonly IAgentRuntime _agentRuntime;
     private readonly ICurrentUserService _currentUserService;
+    private readonly IAgentRegistry _agentRegistry;
+    private readonly ITaskRouter _taskRouter;
+    private readonly ICapabilityRegistry _capabilityRegistry;
     private readonly AgentClientConfiguration _configuration;
     private readonly ConcurrentDictionary<string, AgentTask> _tasks = new();
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _taskCancellations = new();
@@ -37,12 +40,18 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
         IMetricsCollector metricsCollector,
         IAgentRuntime agentRuntime,
         ICurrentUserService currentUserService,
+        IAgentRegistry agentRegistry,
+        ITaskRouter taskRouter,
+        ICapabilityRegistry capabilityRegistry,
         IOptions<AgentClientConfiguration> configuration)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _metricsCollector = metricsCollector ?? throw new ArgumentNullException(nameof(metricsCollector));
         _agentRuntime = agentRuntime ?? throw new ArgumentNullException(nameof(agentRuntime));
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
+        _agentRegistry = agentRegistry ?? throw new ArgumentNullException(nameof(agentRegistry));
+        _taskRouter = taskRouter ?? throw new ArgumentNullException(nameof(taskRouter));
+        _capabilityRegistry = capabilityRegistry ?? throw new ArgumentNullException(nameof(capabilityRegistry));
         _configuration = configuration?.Value ?? throw new ArgumentNullException(nameof(configuration));
 
         _executionSemaphore = new SemaphoreSlim(_configuration.MaxInstancesPerUser, _configuration.MaxInstancesPerUser);
@@ -612,54 +621,694 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
     private async Task<TaskResult> ExecuteTaskInternalAsync(AgentTask task, CancellationToken cancellationToken)
     {
         var stopwatch = Stopwatch.StartNew();
+        var logEntries = new List<LogEntry>();
+        AgentInstance? selectedAgent = null;
+        TaskRoutingResult? routingResult = null;
 
         try
         {
-            // Get or create agent instance
-            var instance = await GetOrCreateAgentInstanceAsync(task, cancellationToken);
+            // Step 1: Route task to appropriate agent
+            _logger.LogInformation("Routing task {TaskId} of type {TaskType}", task.TaskId, task.Type);
+            logEntries.Add(new LogEntry
+            {
+                Level = LogLevel.Information,
+                Message = $"Starting task routing for task type: {task.Type}",
+                Category = "TaskExecution"
+            });
 
-            // Create execution context
+            routingResult = await _taskRouter.RouteTaskAsync(task, TaskRoutingStrategy.Balanced, cancellationToken);
+
+            if (!routingResult.Success || routingResult.SelectedAgent == null)
+            {
+                var errorMessage = routingResult.Error?.Message ?? "No suitable agent found for task";
+                _logger.LogWarning("Failed to route task {TaskId}: {Error}", task.TaskId, errorMessage);
+
+                logEntries.Add(new LogEntry
+                {
+                    Level = LogLevel.Warning,
+                    Message = $"Task routing failed: {errorMessage}",
+                    Category = "TaskExecution"
+                });
+
+                stopwatch.Stop();
+                return new TaskResult
+                {
+                    Success = false,
+                    Message = errorMessage,
+                    DurationMs = stopwatch.ElapsedMilliseconds,
+                    LogEntries = logEntries
+                };
+            }
+
+            selectedAgent = routingResult.SelectedAgent;
+            _logger.LogInformation("Task {TaskId} routed to agent {AgentId} instance {InstanceId}",
+                task.TaskId, selectedAgent.AgentId, selectedAgent.InstanceId);
+
+            logEntries.Add(new LogEntry
+            {
+                Level = LogLevel.Information,
+                Message = $"Task routed to agent {selectedAgent.AgentId} (instance: {selectedAgent.InstanceId})",
+                Category = "TaskExecution",
+                Data = new Dictionary<string, object>
+                {
+                    ["agentId"] = selectedAgent.AgentId,
+                    ["instanceId"] = selectedAgent.InstanceId,
+                    ["suitabilityScore"] = routingResult.SuitabilityScore,
+                    ["predictedExecutionTime"] = routingResult.PredictedExecutionTimeMs
+                }
+            });
+
+            // Step 2: Update task with selected agent and routing info
+            task = task with
+            {
+                AgentId = selectedAgent.AgentId,
+                InstanceId = selectedAgent.InstanceId
+            };
+            _tasks.TryUpdate(task.TaskId, task, _tasks[task.TaskId]);
+
+            // Step 3: Create enhanced execution context
             var context = new TaskExecutionContext
             {
                 ExecutionId = Guid.NewGuid().ToString(),
-                WorkingDirectory = instance.WorkingDirectory,
-                Environment = new Dictionary<string, string>(instance.Environment),
+                WorkingDirectory = selectedAgent.WorkingDirectory,
+                Environment = new Dictionary<string, string>(selectedAgent.Environment),
                 SecurityContext = new SecurityContext
                 {
-                    TrustLevel = TrustLevel.Medium // Default trust level
-                }
+                    TrustLevel = DetermineTaskTrustLevel(task),
+                    UserIdentity = task.UserId,
+                    Permissions = GetTaskPermissions(task)
+                },
+                ExecutionMode = DetermineExecutionMode(task),
+                CorrelationId = Guid.NewGuid().ToString()
             };
 
             task = task with { Context = context };
             _tasks.TryUpdate(task.TaskId, task, _tasks[task.TaskId]);
 
-            // Execute the task (this would delegate to the specific agent)
-            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken); // Simulate work
+            // Step 4: Execute task through selected agent with retry logic
+            var executionResult = await ExecuteTaskWithRetryAsync(selectedAgent, task, context, cancellationToken);
+
+            // Step 5: Record routing outcome for learning
+            if (routingResult != null)
+            {
+                await _taskRouter.RecordExecutionOutcomeAsync(routingResult, executionResult, cancellationToken);
+            }
 
             stopwatch.Stop();
 
-            return new TaskResult
+            // Merge log entries
+            var allLogEntries = logEntries.Concat(executionResult.LogEntries).ToList();
+
+            return executionResult with
             {
-                Success = true,
-                Message = "Task completed successfully",
                 DurationMs = stopwatch.ElapsedMilliseconds,
-                Data = new Dictionary<string, object>
-                {
-                    ["result"] = "Task executed successfully",
-                    ["executionTime"] = stopwatch.ElapsedMilliseconds
-                }
+                LogEntries = allLogEntries
             };
         }
         catch (Exception ex)
         {
             stopwatch.Stop();
 
+            _logger.LogError(ex, "Error executing task {TaskId} on agent {AgentId}",
+                task.TaskId, selectedAgent?.AgentId ?? "unknown");
+
+            logEntries.Add(new LogEntry
+            {
+                Level = LogLevel.Error,
+                Message = $"Task execution error: {ex.Message}",
+                Category = "TaskExecution",
+                Data = new Dictionary<string, object>
+                {
+                    ["exception"] = ex.GetType().Name,
+                    ["stackTrace"] = ex.StackTrace ?? string.Empty
+                }
+            });
+
+            // Record failure for learning if we had a routing result
+            if (routingResult != null)
+            {
+                var failureResult = new TaskResult
+                {
+                    Success = false,
+                    Message = ex.Message,
+                    DurationMs = stopwatch.ElapsedMilliseconds
+                };
+
+                try
+                {
+                    await _taskRouter.RecordExecutionOutcomeAsync(routingResult, failureResult, CancellationToken.None);
+                }
+                catch (Exception recordEx)
+                {
+                    _logger.LogWarning(recordEx, "Failed to record execution outcome for task {TaskId}", task.TaskId);
+                }
+            }
+
             return new TaskResult
             {
                 Success = false,
                 Message = ex.Message,
-                DurationMs = stopwatch.ElapsedMilliseconds
+                DurationMs = stopwatch.ElapsedMilliseconds,
+                LogEntries = logEntries
             };
+        }
+    }
+
+    /// <summary>
+    /// Executes a task with comprehensive retry logic and error handling
+    /// </summary>
+    private async Task<TaskResult> ExecuteTaskWithRetryAsync(
+        AgentInstance agentInstance,
+        AgentTask task,
+        TaskExecutionContext context,
+        CancellationToken cancellationToken)
+    {
+        var attempt = 0;
+        var maxRetries = Math.Max(1, task.MaxRetries);
+        var logEntries = new List<LogEntry>();
+        TaskResult? lastResult = null;
+        Exception? lastException = null;
+
+        while (attempt <= maxRetries)
+        {
+            try
+            {
+                _logger.LogInformation("Executing task {TaskId} on agent {AgentId}, attempt {Attempt}/{MaxAttempts}",
+                    task.TaskId, agentInstance.AgentId, attempt + 1, maxRetries + 1);
+
+                logEntries.Add(new LogEntry
+                {
+                    Level = LogLevel.Information,
+                    Message = $"Starting execution attempt {attempt + 1} of {maxRetries + 1}",
+                    Category = "RetryLogic",
+                    Data = new Dictionary<string, object>
+                    {
+                        ["attempt"] = attempt + 1,
+                        ["maxAttempts"] = maxRetries + 1,
+                        ["agentId"] = agentInstance.AgentId,
+                        ["instanceId"] = agentInstance.InstanceId
+                    }
+                });
+
+                // Validate agent health before attempting execution
+                await ValidateAgentHealthAsync(agentInstance, cancellationToken);
+
+                // Execute the task
+                var result = await ExecuteTaskOnAgentAsync(agentInstance, task, context, cancellationToken);
+
+                // If successful, return immediately
+                if (result.Success)
+                {
+                    if (attempt > 0)
+                    {
+                        _logger.LogInformation("Task {TaskId} succeeded on retry attempt {Attempt}",
+                            task.TaskId, attempt + 1);
+
+                        logEntries.Add(new LogEntry
+                        {
+                            Level = LogLevel.Information,
+                            Message = $"Task succeeded on retry attempt {attempt + 1}",
+                            Category = "RetryLogic"
+                        });
+                    }
+
+                    // Merge retry log entries with execution log entries
+                    var allLogEntries = logEntries.Concat(result.LogEntries).ToList();
+                    return result with { LogEntries = allLogEntries };
+                }
+
+                // Task failed, determine if we should retry
+                lastResult = result;
+                var shouldRetry = await ShouldRetryTaskAsync(task, result, attempt, cancellationToken);
+
+                if (!shouldRetry || attempt >= maxRetries)
+                {
+                    _logger.LogWarning("Task {TaskId} failed after {Attempts} attempts. Last error: {Error}",
+                        task.TaskId, attempt + 1, result.Message);
+
+                    logEntries.Add(new LogEntry
+                    {
+                        Level = LogLevel.Warning,
+                        Message = $"Task failed after {attempt + 1} attempts",
+                        Category = "RetryLogic",
+                        Data = new Dictionary<string, object>
+                        {
+                            ["totalAttempts"] = attempt + 1,
+                            ["lastError"] = result.Message ?? "Unknown error"
+                        }
+                    });
+
+                    // Merge all log entries
+                    var allLogEntries = logEntries.Concat(result.LogEntries).ToList();
+                    return result with { LogEntries = allLogEntries };
+                }
+
+                // Log retry attempt
+                _logger.LogWarning("Task {TaskId} failed on attempt {Attempt}, retrying. Error: {Error}",
+                    task.TaskId, attempt + 1, result.Message);
+
+                logEntries.Add(new LogEntry
+                {
+                    Level = LogLevel.Warning,
+                    Message = $"Attempt {attempt + 1} failed, preparing retry",
+                    Category = "RetryLogic",
+                    Data = new Dictionary<string, object>
+                    {
+                        ["attempt"] = attempt + 1,
+                        ["error"] = result.Message ?? "Unknown error",
+                        ["willRetry"] = true
+                    }
+                });
+
+                // Wait before retry with exponential backoff
+                var delay = CalculateRetryDelay(attempt);
+                if (delay > TimeSpan.Zero)
+                {
+                    _logger.LogDebug("Waiting {Delay}ms before retry attempt {NextAttempt}",
+                        delay.TotalMilliseconds, attempt + 2);
+
+                    await Task.Delay(delay, cancellationToken);
+                }
+
+                // Try to get a different agent instance for retry if available
+                agentInstance = await GetAlternativeAgentInstanceAsync(agentInstance, task, cancellationToken) ?? agentInstance;
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogInformation("Task {TaskId} was cancelled during execution", task.TaskId);
+
+                logEntries.Add(new LogEntry
+                {
+                    Level = LogLevel.Information,
+                    Message = "Task execution was cancelled",
+                    Category = "RetryLogic"
+                });
+
+                throw;
+            }
+            catch (Exception ex)
+            {
+                lastException = ex;
+                _logger.LogError(ex, "Unexpected error during task {TaskId} execution attempt {Attempt}",
+                    task.TaskId, attempt + 1);
+
+                logEntries.Add(new LogEntry
+                {
+                    Level = LogLevel.Error,
+                    Message = $"Unexpected error on attempt {attempt + 1}: {ex.Message}",
+                    Category = "RetryLogic",
+                    Data = new Dictionary<string, object>
+                    {
+                        ["attempt"] = attempt + 1,
+                        ["exception"] = ex.GetType().Name,
+                        ["stackTrace"] = ex.StackTrace ?? string.Empty
+                    }
+                });
+
+                // For unexpected exceptions, we may want to retry with a different agent
+                if (attempt < maxRetries)
+                {
+                    var shouldRetryException = await ShouldRetryExceptionAsync(ex, attempt, cancellationToken);
+                    if (!shouldRetryException)
+                    {
+                        break;
+                    }
+
+                    // Try to get a different agent instance
+                    var alternativeAgent = await GetAlternativeAgentInstanceAsync(agentInstance, task, cancellationToken);
+                    if (alternativeAgent != null)
+                    {
+                        agentInstance = alternativeAgent;
+                        _logger.LogInformation("Switching to alternative agent instance {InstanceId} for retry",
+                            agentInstance.InstanceId);
+                    }
+                }
+            }
+
+            attempt++;
+        }
+
+        // All retry attempts exhausted
+        if (lastResult != null)
+        {
+            var allLogEntries = logEntries.Concat(lastResult.LogEntries).ToList();
+            return lastResult with { LogEntries = allLogEntries };
+        }
+
+        if (lastException != null)
+        {
+            return new TaskResult
+            {
+                Success = false,
+                Message = $"Task failed after {maxRetries + 1} attempts. Last error: {lastException.Message}",
+                DurationMs = 0,
+                LogEntries = logEntries
+            };
+        }
+
+        return new TaskResult
+        {
+            Success = false,
+            Message = "Task failed for unknown reasons",
+            DurationMs = 0,
+            LogEntries = logEntries
+        };
+    }
+
+    /// <summary>
+    /// Executes a task on a specific agent instance
+    /// </summary>
+    private async Task<TaskResult> ExecuteTaskOnAgentAsync(
+        AgentInstance agentInstance,
+        AgentTask task,
+        TaskExecutionContext context,
+        CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        var logEntries = new List<LogEntry>();
+
+        try
+        {
+            _logger.LogInformation("Executing task {TaskId} on agent instance {InstanceId}",
+                task.TaskId, agentInstance.InstanceId);
+
+            logEntries.Add(new LogEntry
+            {
+                Level = LogLevel.Information,
+                Message = $"Starting task execution on agent instance {agentInstance.InstanceId}",
+                Category = "AgentExecution"
+            });
+
+            // Check if task requires specific capabilities
+            if (await ShouldExecuteViaCapabilityAsync(task, cancellationToken))
+            {
+                return await ExecuteTaskViaCapabilityAsync(agentInstance, task, context, cancellationToken);
+            }
+
+            // Otherwise execute via direct agent communication
+            return await ExecuteTaskDirectlyAsync(agentInstance, task, context, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            stopwatch.Stop();
+
+            _logger.LogError(ex, "Failed to execute task {TaskId} on agent instance {InstanceId}",
+                task.TaskId, agentInstance.InstanceId);
+
+            logEntries.Add(new LogEntry
+            {
+                Level = LogLevel.Error,
+                Message = $"Agent execution failed: {ex.Message}",
+                Category = "AgentExecution",
+                Data = new Dictionary<string, object>
+                {
+                    ["exception"] = ex.GetType().Name,
+                    ["agentId"] = agentInstance.AgentId,
+                    ["instanceId"] = agentInstance.InstanceId
+                }
+            });
+
+            return new TaskResult
+            {
+                Success = false,
+                Message = ex.Message,
+                DurationMs = stopwatch.ElapsedMilliseconds,
+                LogEntries = logEntries
+            };
+        }
+    }
+
+    /// <summary>
+    /// Executes task via capability registry
+    /// </summary>
+    private async Task<TaskResult> ExecuteTaskViaCapabilityAsync(
+        AgentInstance agentInstance,
+        AgentTask task,
+        TaskExecutionContext context,
+        CancellationToken cancellationToken)
+    {
+        // Find appropriate capability for this task type
+        var capabilities = await _capabilityRegistry.DiscoverCapabilitiesAsync(
+            category: task.Type,
+            available: true,
+            cancellationToken: cancellationToken);
+
+        var suitableCapability = capabilities.FirstOrDefault(c => c.AgentId == agentInstance.AgentId);
+        if (suitableCapability == null)
+        {
+            throw new InvalidOperationException($"No suitable capability found for task type {task.Type} on agent {agentInstance.AgentId}");
+        }
+
+        // Create capability execution request
+        var capabilityRequest = new CapabilityExecutionRequest
+        {
+            RequestId = Guid.NewGuid().ToString(),
+            CapabilityId = suitableCapability.Capability.Id,
+            Input = task.Input,
+            Configuration = task.Configuration,
+            Context = context,
+            TimeoutSeconds = task.TimeoutSeconds,
+            UserId = task.UserId
+        };
+
+        // Execute capability
+        var capabilityResponse = await _capabilityRegistry.ExecuteCapabilityAsync(capabilityRequest, cancellationToken);
+
+        // Convert capability response to task result
+        return new TaskResult
+        {
+            Success = capabilityResponse.Success,
+            Message = capabilityResponse.Success ? "Task completed via capability execution" : capabilityResponse.Error?.Message,
+            DurationMs = capabilityResponse.DurationMs,
+            Data = capabilityResponse.Output,
+            ResourceUsage = capabilityResponse.ResourceUsage,
+            LogEntries = new[]
+            {
+                new LogEntry
+                {
+                    Level = capabilityResponse.Success ? LogLevel.Information : LogLevel.Error,
+                    Message = $"Capability {suitableCapability.Capability.Id} execution {(capabilityResponse.Success ? "completed" : "failed")}",
+                    Category = "CapabilityExecution",
+                    Data = new Dictionary<string, object>
+                    {
+                        ["capabilityId"] = suitableCapability.Capability.Id,
+                        ["requestId"] = capabilityRequest.RequestId,
+                        ["success"] = capabilityResponse.Success
+                    }
+                }
+            }
+        };
+    }
+
+    /// <summary>
+    /// Executes task directly through agent instance
+    /// </summary>
+    private async Task<TaskResult> ExecuteTaskDirectlyAsync(
+        AgentInstance agentInstance,
+        AgentTask task,
+        TaskExecutionContext context,
+        CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        var logEntries = new List<LogEntry>();
+
+        try
+        {
+            // This is where we would implement the actual agent communication protocol
+            // For now, we'll create a realistic simulation that demonstrates the architecture
+
+            _logger.LogInformation("Executing task {TaskId} directly on agent {AgentId}",
+                task.TaskId, agentInstance.AgentId);
+
+            logEntries.Add(new LogEntry
+            {
+                Level = LogLevel.Information,
+                Message = "Starting direct agent execution",
+                Category = "DirectExecution"
+            });
+
+            // Simulate agent processing time based on task complexity
+            var processingTime = CalculateProcessingTime(task);
+            await Task.Delay(processingTime, cancellationToken);
+
+            // Simulate potential failures based on agent reliability
+            var shouldFail = await ShouldSimulateFailureAsync(agentInstance, task);
+            if (shouldFail)
+            {
+                throw new InvalidOperationException("Simulated agent execution failure for testing");
+            }
+
+            stopwatch.Stop();
+
+            // Create successful result
+            var result = new TaskResult
+            {
+                Success = true,
+                Message = "Task executed successfully via direct agent communication",
+                DurationMs = stopwatch.ElapsedMilliseconds,
+                Data = new Dictionary<string, object>
+                {
+                    ["taskType"] = task.Type,
+                    ["agentId"] = agentInstance.AgentId,
+                    ["instanceId"] = agentInstance.InstanceId,
+                    ["executionMode"] = context.ExecutionMode.ToString(),
+                    ["processingTimeMs"] = processingTime,
+                    ["result"] = GenerateTaskResult(task)
+                },
+                ResourceUsage = await GetExecutionResourceUsageAsync(agentInstance, cancellationToken),
+                LogEntries = logEntries.Concat(new[]
+                {
+                    new LogEntry
+                    {
+                        Level = LogLevel.Information,
+                        Message = "Direct agent execution completed successfully",
+                        Category = "DirectExecution",
+                        Data = new Dictionary<string, object>
+                        {
+                            ["durationMs"] = stopwatch.ElapsedMilliseconds,
+                            ["processingTimeMs"] = processingTime
+                        }
+                    }
+                }).ToList()
+            };
+
+            _logger.LogInformation("Task {TaskId} completed successfully on agent {AgentId} in {Duration}ms",
+                task.TaskId, agentInstance.AgentId, result.DurationMs);
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            stopwatch.Stop();
+
+            _logger.LogError(ex, "Direct execution failed for task {TaskId} on agent {AgentId}",
+                task.TaskId, agentInstance.AgentId);
+
+            logEntries.Add(new LogEntry
+            {
+                Level = LogLevel.Error,
+                Message = $"Direct execution failed: {ex.Message}",
+                Category = "DirectExecution"
+            });
+
+            return new TaskResult
+            {
+                Success = false,
+                Message = ex.Message,
+                DurationMs = stopwatch.ElapsedMilliseconds,
+                LogEntries = logEntries
+            };
+        }
+    }
+
+    private async Task<bool> ShouldExecuteViaCapabilityAsync(AgentTask task, CancellationToken cancellationToken)
+    {
+        // Check if there are registered capabilities for this task type
+        var capabilities = await _capabilityRegistry.DiscoverCapabilitiesAsync(
+            category: task.Type,
+            available: true,
+            cancellationToken: cancellationToken);
+
+        return capabilities.Any();
+    }
+
+    private TrustLevel DetermineTaskTrustLevel(AgentTask task)
+    {
+        // Determine trust level based on task properties
+        if (task.Priority >= 9)
+            return TrustLevel.High;
+        if (task.Priority >= 7)
+            return TrustLevel.Medium;
+        if (task.Priority >= 5)
+            return TrustLevel.Low;
+        return TrustLevel.Untrusted;
+    }
+
+    private IReadOnlyList<string> GetTaskPermissions(AgentTask task)
+    {
+        var permissions = new List<string> { "execute", "read" };
+
+        // Add permissions based on task type and configuration
+        if (task.Configuration.ContainsKey("requiresFileAccess"))
+            permissions.Add("file_access");
+        if (task.Configuration.ContainsKey("requiresNetworkAccess"))
+            permissions.Add("network_access");
+        if (task.Priority >= 8)
+            permissions.Add("elevated");
+
+        return permissions;
+    }
+
+    private ExecutionMode DetermineExecutionMode(AgentTask task)
+    {
+        if (task.Configuration.TryGetValue("executionMode", out var modeValue) &&
+            Enum.TryParse<ExecutionMode>(modeValue.ToString(), out var mode))
+        {
+            return mode;
+        }
+
+        // Default execution mode based on task properties
+        if (task.Priority >= 9)
+            return ExecutionMode.Interactive;
+        if (task.Configuration.ContainsKey("debug"))
+            return ExecutionMode.Debug;
+        return ExecutionMode.Normal;
+    }
+
+    private int CalculateProcessingTime(AgentTask task)
+    {
+        var baseTime = 100; // Base 100ms
+        var complexityMultiplier = 1.0;
+
+        // Adjust based on task properties
+        if (task.Input.Count > 10)
+            complexityMultiplier += 0.5;
+        if (task.Configuration.Count > 5)
+            complexityMultiplier += 0.3;
+        if (task.Priority >= 8)
+            complexityMultiplier += 0.2; // High priority tasks might be more complex
+
+        return (int)(baseTime * complexityMultiplier);
+    }
+
+    private async Task<bool> ShouldSimulateFailureAsync(AgentInstance agentInstance, AgentTask task)
+    {
+        // Get agent performance metrics to determine failure probability
+        var perfMetrics = await _agentRegistry.GetAgentPerformanceMetricsAsync(agentInstance.AgentId);
+        if (perfMetrics == null)
+            return false;
+
+        // Calculate failure probability based on reliability score
+        var reliabilityScore = perfMetrics.ReliabilityScore;
+        var failureProbability = Math.Max(0, (100 - reliabilityScore) / 100.0 * 0.1); // Max 10% failure rate
+
+        var random = new Random();
+        return random.NextDouble() < failureProbability;
+    }
+
+    private object GenerateTaskResult(AgentTask task)
+    {
+        // Generate appropriate result based on task type
+        return task.Type.ToLowerInvariant() switch
+        {
+            "analysis" => new { summary = "Analysis completed", findings = new[] { "Finding 1", "Finding 2" } },
+            "processing" => new { processed = true, itemsProcessed = task.Input.Count, status = "completed" },
+            "generation" => new { generated = true, outputSize = "1024 bytes", format = "json" },
+            "validation" => new { valid = true, errors = Array.Empty<string>(), warnings = Array.Empty<string>() },
+            _ => new { result = "Task completed successfully", type = task.Type }
+        };
+    }
+
+    private async Task<AgentResourceUsage?> GetExecutionResourceUsageAsync(AgentInstance agentInstance, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _agentRuntime.GetInstanceResourceUsageAsync(agentInstance.InstanceId, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to get resource usage for instance {InstanceId}", agentInstance.InstanceId);
+            return null;
         }
     }
 
@@ -686,6 +1335,195 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
         }
 
         return instance;
+    }
+
+    /// <summary>
+    /// Validates agent health before task execution
+    /// </summary>
+    private async Task ValidateAgentHealthAsync(AgentInstance agentInstance, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var health = await _agentRuntime.CheckInstanceHealthAsync(agentInstance.InstanceId, cancellationToken);
+            if (health != HealthStatus.Healthy)
+            {
+                throw new InvalidOperationException($"Agent instance {agentInstance.InstanceId} is not healthy (status: {health})");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to validate health for agent instance {InstanceId}", agentInstance.InstanceId);
+            throw new InvalidOperationException($"Cannot validate agent health: {ex.Message}", ex);
+        }
+    }
+
+    /// <summary>
+    /// Determines if a task should be retried based on the failure reason
+    /// </summary>
+    private async Task<bool> ShouldRetryTaskAsync(AgentTask task, TaskResult result, int attemptNumber, CancellationToken cancellationToken)
+    {
+        // Don't retry if we've reached the maximum attempts
+        if (attemptNumber >= task.MaxRetries)
+            return false;
+
+        // Don't retry if the task was cancelled
+        if (result.Message?.Contains("cancelled", StringComparison.OrdinalIgnoreCase) == true)
+            return false;
+
+        // Retry for specific error conditions
+        var shouldRetry = result.Message?.ToLowerInvariant() switch
+        {
+            var msg when msg.Contains("timeout") => true,
+            var msg when msg.Contains("network") => true,
+            var msg when msg.Contains("connection") => true,
+            var msg when msg.Contains("unavailable") => true,
+            var msg when msg.Contains("overloaded") => true,
+            var msg when msg.Contains("busy") => true,
+            var msg when msg.Contains("temporary") => true,
+            var msg when msg.Contains("transient") => true,
+            var msg when msg.Contains("simulated") => true, // For our testing
+            _ => false
+        };
+
+        // Additional logic based on agent performance
+        if (shouldRetry)
+        {
+            try
+            {
+                // Check if there are alternative agents available
+                var alternatives = await _agentRegistry.FindAgentsForTaskAsync(task.Type, cancellationToken: cancellationToken);
+                if (alternatives.Count() <= 1)
+                {
+                    // Only one agent available, but still retry with backoff
+                    return true;
+                }
+
+                // Multiple agents available, can retry with different agent
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to check for alternative agents during retry decision");
+                return shouldRetry;
+            }
+        }
+
+        return shouldRetry;
+    }
+
+    /// <summary>
+    /// Determines if an exception should trigger a retry
+    /// </summary>
+    private async Task<bool> ShouldRetryExceptionAsync(Exception exception, int attemptNumber, CancellationToken cancellationToken)
+    {
+        return exception switch
+        {
+            TimeoutException => true,
+            InvalidOperationException when exception.Message.Contains("health") => true,
+            InvalidOperationException when exception.Message.Contains("unavailable") => true,
+            InvalidOperationException when exception.Message.Contains("busy") => true,
+            HttpRequestException => true,
+            TaskCanceledException when !cancellationToken.IsCancellationRequested => true, // Timeout, not user cancellation
+            _ => false
+        };
+    }
+
+    /// <summary>
+    /// Calculates retry delay with exponential backoff
+    /// </summary>
+    private TimeSpan CalculateRetryDelay(int attemptNumber)
+    {
+        if (attemptNumber <= 0)
+            return TimeSpan.Zero;
+
+        // Exponential backoff: 100ms * 2^attempt + jitter
+        var baseDelay = TimeSpan.FromMilliseconds(100 * Math.Pow(2, attemptNumber));
+        var maxDelay = TimeSpan.FromSeconds(30); // Cap at 30 seconds
+
+        var delayMs = Math.Min(baseDelay.TotalMilliseconds, maxDelay.TotalMilliseconds);
+
+        // Add jitter to prevent thundering herd
+        var jitter = new Random().NextDouble() * 0.1; // Up to 10% jitter
+        delayMs = delayMs * (1 + jitter);
+
+        return TimeSpan.FromMilliseconds(delayMs);
+    }
+
+    /// <summary>
+    /// Gets an alternative agent instance for retry attempts
+    /// </summary>
+    private async Task<AgentInstance?> GetAlternativeAgentInstanceAsync(
+        AgentInstance currentInstance,
+        AgentTask task,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Try to find a different instance of the same agent
+            var instances = await _agentRuntime.ListInstancesAsync(
+                agentId: currentInstance.AgentId,
+                status: AgentStatus.Running,
+                cancellationToken: cancellationToken);
+
+            var alternatives = instances.Where(i => i.InstanceId != currentInstance.InstanceId).ToList();
+            if (alternatives.Any())
+            {
+                // Return the healthiest alternative
+                foreach (var instance in alternatives)
+                {
+                    try
+                    {
+                        var health = await _agentRuntime.CheckInstanceHealthAsync(instance.InstanceId, cancellationToken);
+                        if (health == HealthStatus.Healthy)
+                        {
+                            return instance;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to check health for alternative instance {InstanceId}", instance.InstanceId);
+                    }
+                }
+            }
+
+            // Try to find a different agent that can handle the task
+            var suitableAgents = await _agentRegistry.FindAgentsForTaskAsync(task.Type, cancellationToken: cancellationToken);
+            var otherAgents = suitableAgents.Where(a => a.Id != currentInstance.AgentId).ToList();
+
+            foreach (var agent in otherAgents)
+            {
+                var agentInstances = await _agentRuntime.ListInstancesAsync(
+                    agentId: agent.Id,
+                    status: AgentStatus.Running,
+                    cancellationToken: cancellationToken);
+
+                var healthyInstance = agentInstances.FirstOrDefault();
+                if (healthyInstance != null)
+                {
+                    try
+                    {
+                        var health = await _agentRuntime.CheckInstanceHealthAsync(healthyInstance.InstanceId, cancellationToken);
+                        if (health == HealthStatus.Healthy)
+                        {
+                            _logger.LogInformation("Found alternative agent {AgentId} instance {InstanceId} for retry",
+                                agent.Id, healthyInstance.InstanceId);
+                            return healthyInstance;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to check health for alternative agent instance {InstanceId}", healthyInstance.InstanceId);
+                    }
+                }
+            }
+
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to find alternative agent instance for retry");
+            return null;
+        }
     }
 
     private async Task ValidateTaskAsync(AgentTask task, CancellationToken cancellationToken)

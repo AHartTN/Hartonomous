@@ -10,13 +10,13 @@ namespace Hartonomous.IntegrationTests.DataFabricTests;
 
 /// <summary>
 /// Integration tests for the complete Hartonomous data fabric
-/// Tests Neo4j, Milvus, and CDC pipeline integration
+/// Tests Neo4j, SQL Server Vector, and CDC pipeline integration
 /// </summary>
 public class DataFabricIntegrationTests : IAsyncLifetime
 {
     private readonly ServiceProvider _serviceProvider;
     private readonly Neo4jService _neo4jService;
-    private readonly MilvusService _milvusService;
+    private readonly SqlServerVectorService _vectorService;
     private readonly DataFabricOrchestrator _orchestrator;
     private readonly ILogger<DataFabricIntegrationTests> _logger;
 
@@ -30,10 +30,7 @@ public class DataFabricIntegrationTests : IAsyncLifetime
                 ["Neo4j:Uri"] = "bolt://localhost:7687",
                 ["Neo4j:Username"] = "neo4j",
                 ["Neo4j:Password"] = "password",
-                ["Milvus:Host"] = "localhost",
-                ["Milvus:Port"] = "19530",
-                ["Milvus:Username"] = "milvus",
-                ["Milvus:Password"] = "password",
+                ["ConnectionStrings:DefaultConnection"] = "Server=localhost;Database=HartonomousDB;Trusted_Connection=true;",
                 ["Kafka:BootstrapServers"] = "localhost:9092"
             })
             .Build();
@@ -56,7 +53,7 @@ public class DataFabricIntegrationTests : IAsyncLifetime
         _serviceProvider = services.BuildServiceProvider();
 
         _neo4jService = _serviceProvider.GetRequiredService<Neo4jService>();
-        _milvusService = _serviceProvider.GetRequiredService<MilvusService>();
+        _vectorService = _serviceProvider.GetRequiredService<SqlServerVectorService>();
         _orchestrator = _serviceProvider.GetRequiredService<DataFabricOrchestrator>();
         _logger = _serviceProvider.GetRequiredService<ILogger<DataFabricIntegrationTests>>();
     }
@@ -154,7 +151,7 @@ public class DataFabricIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task MilvusService_EmbeddingOperations_ShouldWorkEndToEnd()
+    public async Task SqlServerVectorService_EmbeddingOperations_ShouldWorkEndToEnd()
     {
         // Arrange
         var userId = "test-user-" + Guid.NewGuid();
@@ -165,23 +162,23 @@ public class DataFabricIntegrationTests : IAsyncLifetime
         try
         {
             // Act & Assert - Insert embedding
-            await _milvusService.InsertEmbeddingAsync(componentId, modelId, userId, "TestComponent", "Dense", embedding);
+            await _vectorService.InsertEmbeddingAsync(componentId, modelId, userId, embedding, "Dense", "TestComponent");
 
             // Search for similar embeddings
             var queryEmbedding = GenerateRandomEmbedding(768);
-            var results = await _milvusService.SearchSimilarAsync(queryEmbedding, userId, 5);
+            var results = await _vectorService.SearchSimilarAsync(queryEmbedding, userId, 5);
 
             results.Should().NotBeNull("Search should return results");
 
             // Get collection stats
-            var stats = await _milvusService.GetCollectionStatsAsync();
+            var stats = await _vectorService.GetCollectionStatsAsync();
             stats.Should().NotBeNull();
             stats.RowCount.Should().BeGreaterThan(0, "Collection should contain inserted data");
 
             // Clean up
-            await _milvusService.DeleteEmbeddingsAsync(componentId, userId);
+            await _vectorService.DeleteEmbeddingsAsync(componentId, userId);
         }
-        catch (Exception ex) when (ex.Message.Contains("connection") || ex.Message.Contains("Milvus"))
+        catch (Exception ex) when (ex.Message.Contains("connection") || ex.Message.Contains("SQL Server"))
         {
             // Skip test if Milvus is not available
             _logger.LogWarning("Skipping Milvus test - service not available: {Message}", ex.Message);
@@ -281,7 +278,7 @@ public class DataFabricIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task MilvusService_UserIsolation_ShouldRespectUserBoundaries()
+    public async Task SqlServerVectorService_UserIsolation_ShouldRespectUserBoundaries()
     {
         // Arrange
         var user1 = "user1-" + Guid.NewGuid();
@@ -295,22 +292,22 @@ public class DataFabricIntegrationTests : IAsyncLifetime
         try
         {
             // Insert embeddings for different users
-            await _milvusService.InsertEmbeddingAsync(componentId1, modelId, user1, "User1Component", "Dense", embedding1);
-            await _milvusService.InsertEmbeddingAsync(componentId2, modelId, user2, "User2Component", "Dense", embedding2);
+            await _vectorService.InsertEmbeddingAsync(componentId1, modelId, user1, embedding1, "Dense", "User1Component");
+            await _vectorService.InsertEmbeddingAsync(componentId2, modelId, user2, embedding2, "Dense", "User2Component");
 
             // Search as user1
-            var user1Results = await _milvusService.SearchSimilarAsync(embedding1, user1, 10);
-            var user2Results = await _milvusService.SearchSimilarAsync(embedding2, user2, 10);
+            var user1Results = await _vectorService.SearchSimilarAsync(embedding1, user1, 10);
+            var user2Results = await _vectorService.SearchSimilarAsync(embedding2, user2, 10);
 
             // Assert - Each user should only see their own data
             user1Results.Should().NotContain(r => r.ComponentId == componentId2, "User1 should not see User2's components");
             user2Results.Should().NotContain(r => r.ComponentId == componentId1, "User2 should not see User1's components");
 
             // Clean up
-            await _milvusService.DeleteEmbeddingsAsync(componentId1, user1);
-            await _milvusService.DeleteEmbeddingsAsync(componentId2, user2);
+            await _vectorService.DeleteEmbeddingsAsync(componentId1, user1);
+            await _vectorService.DeleteEmbeddingsAsync(componentId2, user2);
         }
-        catch (Exception ex) when (ex.Message.Contains("connection") || ex.Message.Contains("Milvus"))
+        catch (Exception ex) when (ex.Message.Contains("connection") || ex.Message.Contains("SQL Server"))
         {
             _logger.LogWarning("Skipping user isolation test - Milvus not available: {Message}", ex.Message);
             return;

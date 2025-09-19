@@ -11,7 +11,9 @@
 using Microsoft.Extensions.Logging;
 using Hartonomous.Core.Interfaces;
 using Hartonomous.Core.Models;
+using Hartonomous.Core.Data;
 using Hartonomous.Infrastructure.Neo4j;
+using Microsoft.EntityFrameworkCore;
 
 namespace Hartonomous.Core.Repositories;
 
@@ -23,11 +25,13 @@ public class KnowledgeGraphRepository : IKnowledgeGraphRepository
 {
     private readonly Neo4jService _neo4jService;
     private readonly ILogger<KnowledgeGraphRepository> _logger;
+    private readonly HartonomousDbContext _context;
 
-    public KnowledgeGraphRepository(Neo4jService neo4jService, ILogger<KnowledgeGraphRepository> logger)
+    public KnowledgeGraphRepository(Neo4jService neo4jService, ILogger<KnowledgeGraphRepository> logger, HartonomousDbContext context)
     {
         _neo4jService = neo4jService ?? throw new ArgumentNullException(nameof(neo4jService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _context = context ?? throw new ArgumentNullException(nameof(context));
     }
 
     /// <summary>
@@ -151,27 +155,24 @@ public class KnowledgeGraphRepository : IKnowledgeGraphRepository
         {
             _logger.LogDebug("Finding domain-relevant components for {Domain}/{Capability} (min importance: {MinImportance})", domain, capability, minImportance);
 
-            // Query SQL Server directly using our established Entity Framework patterns
-            // Use capability mappings to find components relevant to domain and capabilities
-            var relevantComponents = await _context.ModelComponents
-                .Where(mc => mc.UserId == userId && !mc.IsDeleted)
-                .Join(_context.CapabilityMappings,
-                    mc => mc.ComponentId,
-                    cm => cm.ComponentId,
-                    (mc, cm) => new { Component = mc, Mapping = cm })
-                .Where(joined => joined.Mapping.UserId == userId &&
-                    (joined.Mapping.Description.Contains(domain) ||
-                     joined.Mapping.CapabilityName.Contains(domain) ||
-                     joined.Mapping.CapabilityName.Contains(capability)) &&
-                    joined.Mapping.CapabilityStrength >= minImportance)
-                .Select(joined => joined.Component)
-                .Distinct()
-                .ToListAsync(cancellationToken);
+            // Use Neo4j to find domain-relevant components by traversing relationships
+            // and analyzing component metadata for domain and capability matches
+            var relevantComponents = await _neo4jService.FindDomainRelevantComponentsAsync(domain, capability, minImportance, userId);
 
-            _logger.LogDebug("Found {Count} domain-relevant components using SQL Server capability mappings", relevantComponents.Count);
+            // Convert Neo4j results to Core domain models
+            var modelComponents = relevantComponents.Select(info => new ModelComponent
+            {
+                ComponentId = info.Id,
+                ComponentName = info.Name,
+                ComponentType = info.Type,
+                RelevanceScore = info.RelevanceScore,
+                UserId = userId
+            });
 
-            _logger.LogDebug("Found {Count} domain-relevant components for {Domain}/{Capability}", relevantComponents.Count, domain, capability);
-            return relevantComponents;
+            _logger.LogDebug("Found {Count} domain-relevant components using Neo4j graph analysis", modelComponents.Count());
+
+            _logger.LogDebug("Found {Count} domain-relevant components for {Domain}/{Capability}", modelComponents.Count(), domain, capability);
+            return modelComponents;
         }
         catch (Exception ex)
         {
@@ -190,17 +191,22 @@ public class KnowledgeGraphRepository : IKnowledgeGraphRepository
         {
             _logger.LogDebug("Analyzing component importance for task '{TaskDescription}' (top {TopK})", taskDescription, topK);
 
-            // This would use the SQL CLR bridge for advanced centrality analysis
-            // For now, we provide a placeholder that would integrate with the existing Neo4j service
+            // Use Neo4j graph algorithms for centrality-based importance analysis
+            var importanceResults = await _neo4jService.AnalyzeComponentImportanceAsync(taskDescription, topK, userId);
 
-            var importanceResults = new List<ComponentImportance>();
+            // Convert Neo4j results to Core domain models
+            var componentImportances = importanceResults.Select(result => new ComponentImportance
+            {
+                ComponentId = result.ComponentId,
+                ComponentName = result.ComponentName,
+                Description = result.Description,
+                ImportanceScore = result.ImportanceScore,
+                ActivationLevel = result.ActivationLevel
+            });
 
-            // Placeholder implementation - in production, this would call the SQL CLR bridge
-            // which implements PageRank and other centrality algorithms via Neo4j
-            _logger.LogWarning("AnalyzeComponentImportanceAsync using placeholder implementation - requires SQL CLR integration");
+            _logger.LogDebug("Completed Neo4j-based component importance analysis for task: {Count} results", componentImportances.Count());
 
-            _logger.LogDebug("Analyzed component importance for task: {Count} results", importanceResults.Count);
-            return importanceResults;
+            return componentImportances;
         }
         catch (Exception ex)
         {
@@ -219,16 +225,24 @@ public class KnowledgeGraphRepository : IKnowledgeGraphRepository
         {
             _logger.LogDebug("Discovering circuits for domain '{Domain}' (min strength: {MinStrength}, max depth: {MaxDepth})", domain, minStrength, maxDepth);
 
-            // This would use the SQL CLR bridge for circuit discovery
-            // The bridge implements sophisticated graph traversal algorithms
+            // Use Neo4j for sophisticated circuit discovery using graph traversal algorithms
+            var discoveredCircuits = await _neo4jService.DiscoverCircuitsAsync(domain, minStrength, maxDepth, userId);
 
-            var circuits = new List<ComputationalCircuit>();
+            // Convert Neo4j results to Core domain models
+            var circuits = discoveredCircuits.Select(circuit => new ComputationalCircuit
+            {
+                CircuitId = circuit.CircuitId,
+                StartComponentId = circuit.StartComponentId,
+                EndComponentId = circuit.EndComponentId,
+                ComponentIds = circuit.ComponentIds,
+                CircuitStrength = circuit.CircuitStrength,
+                PathLength = circuit.PathLength,
+                Domain = circuit.Domain,
+                DiscoveredAt = circuit.DiscoveredAt
+            });
 
-            // Placeholder implementation - in production, this would call the SQL CLR bridge
-            // which uses Neo4j's advanced path-finding algorithms to discover circuits
-            _logger.LogWarning("DiscoverCircuitsAsync using placeholder implementation - requires SQL CLR integration");
+            _logger.LogDebug("Completed Neo4j-based circuit discovery for domain: {Count} circuits found", circuits.Count());
 
-            _logger.LogDebug("Discovered {Count} circuits for domain '{Domain}'", circuits.Count, domain);
             return circuits;
         }
         catch (Exception ex)
@@ -269,15 +283,52 @@ public class KnowledgeGraphRepository : IKnowledgeGraphRepository
         {
             _logger.LogDebug("Clearing circuit data for project {ProjectId}", projectId);
 
-            // This would use the SQL CLR bridge to coordinate between SQL Server and Neo4j
-            // The SQL CLR bridge has the ClearProjectCircuits method implemented
-            _logger.LogWarning("ClearProjectCircuitsAsync requires SQL CLR bridge deployment - using placeholder");
+            // Use Neo4j to clear all circuit data for the specified project
+            await _neo4jService.ClearProjectCircuitsAsync(projectId, userId);
+
+            _logger.LogDebug("Successfully cleared Neo4j circuit data for project {ProjectId}", projectId);
 
             _logger.LogDebug("Cleared circuit data for project {ProjectId}", projectId);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to clear circuit data for project {ProjectId}", projectId);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Get circuit patterns for analysis and visualization
+    /// Retrieves recurring structural patterns from the knowledge graph
+    /// </summary>
+    public async Task<IEnumerable<CircuitPattern>> GetCircuitPatternsAsync(string userId, int limit = 50, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogDebug("Getting circuit patterns for user {UserId} (limit: {Limit})", userId, limit);
+
+            // Use Neo4j to analyze and identify circuit patterns
+            var neo4jPatterns = await _neo4jService.GetCircuitPatternsAsync(userId, limit);
+
+            // Convert Neo4j results to Core domain models
+            var circuitPatterns = neo4jPatterns.Select(pattern => new CircuitPattern
+            {
+                PatternId = pattern.PatternId,
+                PatternType = pattern.PatternType,
+                ComponentIds = pattern.ComponentIds,
+                ComponentTypes = pattern.ComponentTypes,
+                RelationshipTypes = pattern.RelationshipTypes,
+                PatternStrength = pattern.PatternStrength,
+                Frequency = pattern.Frequency,
+                Domain = pattern.Domain
+            });
+
+            _logger.LogDebug("Retrieved {Count} circuit patterns for user {UserId}", circuitPatterns.Count(), userId);
+            return circuitPatterns;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get circuit patterns for user {UserId}", userId);
             throw;
         }
     }

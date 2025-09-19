@@ -14,18 +14,18 @@ namespace Hartonomous.Infrastructure.EventStreaming;
 public class DataFabricOrchestrator
 {
     private readonly Neo4jService _neo4jService;
-    private readonly MilvusService _milvusService;
+    private readonly SqlServerVectorService _vectorService;
     private readonly ILogger<DataFabricOrchestrator> _logger;
     private readonly string _connectionString;
 
     public DataFabricOrchestrator(
         Neo4jService neo4jService,
-        MilvusService milvusService,
+        SqlServerVectorService vectorService,
         ILogger<DataFabricOrchestrator> logger,
         IConfiguration configuration)
     {
         _neo4jService = neo4jService ?? throw new ArgumentNullException(nameof(neo4jService));
-        _milvusService = milvusService ?? throw new ArgumentNullException(nameof(milvusService));
+        _vectorService = vectorService ?? throw new ArgumentNullException(nameof(vectorService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _connectionString = configuration.GetConnectionString("DefaultConnection") ??
             throw new ArgumentNullException(nameof(configuration), "DefaultConnection is required");
@@ -41,9 +41,9 @@ public class DataFabricOrchestrator
 
         try
         {
-            // Initialize Milvus collections
-            await _milvusService.InitializeCollectionAsync();
-            _logger.LogInformation("Milvus vector database initialized");
+            // Initialize SQL Server vector tables
+            await _vectorService.InitializeCollectionAsync();
+            _logger.LogInformation("SQL Server vector database initialized");
 
             // Neo4j doesn't require explicit initialization, but we could add schema setup here
             _logger.LogInformation("Neo4j knowledge graph ready");
@@ -80,7 +80,7 @@ public class DataFabricOrchestrator
             var similarComponents = await _neo4jService.FindSimilarComponentsAsync(sampleComponent.Id, userId, 10);
 
             // Get collection statistics
-            var vectorStats = await _milvusService.GetCollectionStatsAsync();
+            var vectorStats = await _vectorService.GetCollectionStatsAsync();
 
             return new ModelInsights
             {
@@ -111,7 +111,7 @@ public class DataFabricOrchestrator
         try
         {
             // Get vector similarity matches
-            var vectorMatches = await _milvusService.SearchSimilarAsync(queryEmbedding, userId, topK, componentType);
+            var vectorMatches = await _vectorService.SearchSimilarAsync(queryEmbedding, userId, topK, componentType);
 
             // For each vector match, get its graph context
             var enrichedResults = new List<EnrichedSearchResult>();

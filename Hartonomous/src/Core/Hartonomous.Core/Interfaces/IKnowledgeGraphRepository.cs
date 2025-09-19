@@ -63,6 +63,11 @@ public interface IKnowledgeGraphRepository
     /// Clear all circuit data for a project
     /// </summary>
     Task ClearProjectCircuitsAsync(int projectId, string userId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Get circuit patterns for analysis and visualization
+    /// </summary>
+    Task<IEnumerable<CircuitPattern>> GetCircuitPatternsAsync(string userId, int limit = 50, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -101,4 +106,19 @@ public class ComputationalCircuit
     public int PathLength { get; set; }
     public string Domain { get; set; } = string.Empty;
     public DateTime DiscoveredAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// Circuit pattern for analysis and visualization
+/// </summary>
+public class CircuitPattern
+{
+    public Guid PatternId { get; set; } = Guid.NewGuid();
+    public string PatternType { get; set; } = string.Empty;
+    public List<Guid> ComponentIds { get; set; } = new();
+    public List<string> ComponentTypes { get; set; } = new();
+    public List<string> RelationshipTypes { get; set; } = new();
+    public double PatternStrength { get; set; }
+    public int Frequency { get; set; }
+    public string Domain { get; set; } = string.Empty;
 }

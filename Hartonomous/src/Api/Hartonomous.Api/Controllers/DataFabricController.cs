@@ -20,7 +20,7 @@ namespace Hartonomous.Api.Controllers;
 
 /// <summary>
 /// API controller for data fabric operations
-/// Exposes Neo4j, Milvus, and orchestrated operations
+/// Exposes Neo4j, SQL Server Vector, and orchestrated operations
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
@@ -29,18 +29,18 @@ public class DataFabricController : ControllerBase
 {
     private readonly DataFabricOrchestrator _orchestrator;
     private readonly Neo4jService _neo4jService;
-    private readonly MilvusService _milvusService;
+    private readonly SqlServerVectorService _vectorService;
     private readonly ILogger<DataFabricController> _logger;
 
     public DataFabricController(
         DataFabricOrchestrator orchestrator,
         Neo4jService neo4jService,
-        MilvusService milvusService,
+        SqlServerVectorService vectorService,
         ILogger<DataFabricController> logger)
     {
         _orchestrator = orchestrator;
         _neo4jService = neo4jService;
-        _milvusService = milvusService;
+        _vectorService = vectorService;
         _logger = logger;
     }
 
@@ -133,17 +133,17 @@ public class DataFabricController : ControllerBase
     /// <summary>
     /// Get vector database statistics
     /// </summary>
-    [HttpGet("milvus/stats")]
-    public async Task<ActionResult<MilvusCollectionStats>> GetMilvusStats()
+    [HttpGet("vector/stats")]
+    public async Task<ActionResult<MilvusCollectionStats>> GetVectorStats()
     {
         try
         {
-            var stats = await _milvusService.GetCollectionStatsAsync();
+            var stats = await _vectorService.GetCollectionStatsAsync();
             return Ok(stats);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to get Milvus statistics");
+            _logger.LogError(ex, "Failed to get vector database statistics");
             return StatusCode(500, "Failed to retrieve vector database statistics");
         }
     }
@@ -181,7 +181,7 @@ public class DataFabricController : ControllerBase
                 return BadRequest("Query embedding is required");
             }
 
-            var results = await _milvusService.SearchSimilarAsync(
+            var results = await _vectorService.SearchSimilarAsync(
                 request.QueryEmbedding, userId, request.TopK ?? 10, request.ComponentType);
 
             return Ok(results);

@@ -11,6 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Hartonomous.AgentClient.Interfaces;
 using Hartonomous.AgentClient.Models;
+using Hartonomous.AgentClient.Services;
 using Hartonomous.Core.Interfaces;
 using Hartonomous.Infrastructure.Observability.Interfaces;
 using Microsoft.Extensions.Logging;
@@ -965,4 +966,9 @@ public class AgentClientConfiguration
     /// Whether to enable process sandboxing
     /// </summary>
     public bool EnableSandboxing { get; set; } = true;
+
+    /// <summary>
+    /// Security validation policy configuration
+    /// </summary>
+    public SecurityValidationPolicy Security { get; set; } = new();
 }

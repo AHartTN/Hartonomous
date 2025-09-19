@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.Loader;
+using System.Security;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Threading;
@@ -28,6 +29,7 @@ public class AgentLoaderService : IAgentLoader, IDisposable
     private readonly IMetricsCollector _metricsCollector;
     private readonly ICapabilityRegistry _capabilityRegistry;
     private readonly AgentClientConfiguration _configuration;
+    private readonly SecurityValidator _securityValidator;
     private readonly ConcurrentDictionary<string, LoadedAgent> _loadedAgents = new();
     private readonly ConcurrentDictionary<string, PluginLoader> _pluginLoaders = new();
     private readonly SemaphoreSlim _loadSemaphore = new(1, 1);
@@ -37,12 +39,14 @@ public class AgentLoaderService : IAgentLoader, IDisposable
         ILogger<AgentLoaderService> logger,
         IMetricsCollector metricsCollector,
         ICapabilityRegistry capabilityRegistry,
-        IOptions<AgentClientConfiguration> configuration)
+        IOptions<AgentClientConfiguration> configuration,
+        SecurityValidator securityValidator)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _metricsCollector = metricsCollector ?? throw new ArgumentNullException(nameof(metricsCollector));
         _capabilityRegistry = capabilityRegistry ?? throw new ArgumentNullException(nameof(capabilityRegistry));
         _configuration = configuration?.Value ?? throw new ArgumentNullException(nameof(configuration));
+        _securityValidator = securityValidator ?? throw new ArgumentNullException(nameof(securityValidator));
     }
 
     public event EventHandler<AgentLoadedEventArgs>? AgentLoaded;
@@ -552,11 +556,37 @@ public class AgentLoaderService : IAgentLoader, IDisposable
             securityIssues.Add("Agent requires full file system access - this poses security risks");
         }
 
-        // Check for code signing if required
-        if (definition.Security.RequireCodeSigning)
+        // Comprehensive security validation including code signing
+        if (definition.Security.RequireCodeSigning || _configuration.Security.RequireCodeSigning)
         {
-            // This would check digital signatures on the assembly files
-            warnings.Add("Code signing validation not implemented");
+            try
+            {
+                var assemblyPath = GetAgentAssemblyPath(agentPath, definition);
+                var securityResult = await _securityValidator.ValidateAgentSecurityAsync(assemblyPath, definition, cancellationToken);
+
+                // Add security issues to the main validation result
+                securityIssues.AddRange(securityResult.SecurityIssues);
+                warnings.AddRange(securityResult.Warnings);
+
+                _logger.LogInformation("Security validation completed for agent {AgentId}. Secure: {IsSecure}, Issues: {IssueCount}",
+                    definition.Id, securityResult.IsSecure, securityResult.SecurityIssues.Count);
+
+                // Fail validation if security validation fails in strict mode
+                if (!securityResult.IsSecure && _configuration.Security.ValidationMode == SecurityValidationMode.Strict)
+                {
+                    securityIssues.Add("Agent failed security validation in strict mode");
+                }
+            }
+            catch (SecurityException secEx)
+            {
+                _logger.LogError(secEx, "Security validation failed for agent {AgentId}", definition.Id);
+                securityIssues.Add($"Security validation error: {secEx.Message}");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Unexpected error during security validation for agent {AgentId}", definition.Id);
+                securityIssues.Add($"Security validation system error: {ex.Message}");
+            }
         }
 
         // Check for suspicious capabilities
