@@ -37,55 +37,104 @@ public class WorkflowRepository : IWorkflowRepository
 
     public async Task<Guid> CreateWorkflowAsync(CreateWorkflowRequest request, string userId)
     {
-        const string sql = @"
-            INSERT INTO dbo.WorkflowDefinitions (WorkflowId, UserId, Name, Description, WorkflowDefinitionJson, Category, ParametersJson, TagsJson, CreatedAt, UpdatedAt, CreatedBy, Version, Status)
-            VALUES (@WorkflowId, @UserId, @Name, @Description, @WorkflowDefinitionJson, @Category, @ParametersJson, @TagsJson, @CreatedAt, @UpdatedAt, @CreatedBy, @Version, @Status);";
+        if (request == null)
+            throw new ArgumentNullException(nameof(request));
+        if (string.IsNullOrWhiteSpace(userId))
+            throw new ArgumentException("User ID cannot be null or empty", nameof(userId));
+        if (string.IsNullOrWhiteSpace(request.Name))
+            throw new ArgumentException("Workflow name cannot be null or empty", nameof(request.Name));
+        if (string.IsNullOrWhiteSpace(request.WorkflowDefinition))
+            throw new ArgumentException("Workflow definition cannot be null or empty", nameof(request.WorkflowDefinition));
 
-        var workflowId = Guid.NewGuid();
-        var now = DateTime.UtcNow;
-
-        using var connection = new SqlConnection(_connectionString);
-        await connection.ExecuteAsync(sql, new
+        try
         {
-            WorkflowId = workflowId,
-            UserId = userId,
-            Name = request.Name,
-            Description = request.Description,
-            WorkflowDefinitionJson = request.WorkflowDefinition,
-            Category = request.Category,
-            ParametersJson = request.Parameters != null ? JsonSerializer.Serialize(request.Parameters) : null,
-            TagsJson = request.Tags != null ? JsonSerializer.Serialize(request.Tags) : null,
-            CreatedAt = now,
-            UpdatedAt = now,
-            CreatedBy = userId,
-            Version = 1,
-            Status = (int)DTOs.WorkflowStatus.Draft
-        });
+            const string sql = @"
+                INSERT INTO dbo.WorkflowDefinitions (WorkflowId, UserId, Name, Description, WorkflowDefinitionJson, Category, ParametersJson, TagsJson, CreatedAt, UpdatedAt, CreatedBy, Version, Status)
+                VALUES (@WorkflowId, @UserId, @Name, @Description, @WorkflowDefinitionJson, @Category, @ParametersJson, @TagsJson, @CreatedAt, @UpdatedAt, @CreatedBy, @Version, @Status);";
 
-        _logger.LogInformation("Created workflow {WorkflowId} for user {UserId}", workflowId, userId);
-        return workflowId;
+            var workflowId = Guid.NewGuid();
+            var now = DateTime.UtcNow;
+
+            using var connection = new SqlConnection(_connectionString);
+            await connection.ExecuteAsync(sql, new
+            {
+                WorkflowId = workflowId,
+                UserId = userId,
+                Name = request.Name,
+                Description = request.Description,
+                WorkflowDefinitionJson = request.WorkflowDefinition,
+                Category = request.Category,
+                ParametersJson = request.Parameters != null ? JsonSerializer.Serialize(request.Parameters) : null,
+                TagsJson = request.Tags != null ? JsonSerializer.Serialize(request.Tags) : null,
+                CreatedAt = now,
+                UpdatedAt = now,
+                CreatedBy = userId,
+                Version = 1,
+                Status = (int)DTOs.WorkflowStatus.Draft
+            });
+
+            _logger.LogInformation("Created workflow {WorkflowId} for user {UserId}", workflowId, userId);
+            return workflowId;
+        }
+        catch (SqlException ex)
+        {
+            _logger.LogError(ex, "Failed to create workflow for user {UserId}", userId);
+            throw new InvalidOperationException($"Failed to create workflow: {ex.Message}", ex);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error creating workflow for user {UserId}", userId);
+            throw;
+        }
     }
 
     public async Task<WorkflowDefinitionDto?> GetWorkflowByIdAsync(Guid workflowId, string userId)
     {
-        const string sql = @"
-            SELECT WorkflowId, Name, Description, WorkflowDefinitionJson, Category, ParametersJson, TagsJson, CreatedAt, UpdatedAt, CreatedBy, Version, Status
-            FROM dbo.WorkflowDefinitions
-            WHERE WorkflowId = @WorkflowId AND UserId = @UserId;";
+        if (workflowId == Guid.Empty)
+            throw new ArgumentException("Workflow ID cannot be empty", nameof(workflowId));
+        if (string.IsNullOrWhiteSpace(userId))
+            throw new ArgumentException("User ID cannot be null or empty", nameof(userId));
 
-        using var connection = new SqlConnection(_connectionString);
-        var result = await connection.QueryFirstOrDefaultAsync(sql, new { WorkflowId = workflowId, UserId = userId });
+        try
+        {
+            const string sql = @"
+                SELECT WorkflowId, Name, Description, WorkflowDefinitionJson, Category, ParametersJson, TagsJson, CreatedAt, UpdatedAt, CreatedBy, Version, Status
+                FROM dbo.WorkflowDefinitions
+                WHERE WorkflowId = @WorkflowId AND UserId = @UserId;";
 
-        return result != null ? MapToWorkflowDefinitionDto(result) : null;
+            using var connection = new SqlConnection(_connectionString);
+            var result = await connection.QueryFirstOrDefaultAsync(sql, new { WorkflowId = workflowId, UserId = userId });
+
+            return result != null ? MapToWorkflowDefinitionDto(result) : null;
+        }
+        catch (SqlException ex)
+        {
+            _logger.LogError(ex, "Failed to get workflow {WorkflowId} for user {UserId}", workflowId, userId);
+            throw new InvalidOperationException($"Failed to retrieve workflow: {ex.Message}", ex);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error getting workflow {WorkflowId} for user {UserId}", workflowId, userId);
+            throw;
+        }
     }
 
     public async Task<bool> UpdateWorkflowAsync(Guid workflowId, UpdateWorkflowRequest request, string userId)
     {
-        var setParts = new List<string>();
-        var parameters = new DynamicParameters();
-        parameters.Add("WorkflowId", workflowId);
-        parameters.Add("UserId", userId);
-        parameters.Add("UpdatedAt", DateTime.UtcNow);
+        if (workflowId == Guid.Empty)
+            throw new ArgumentException("Workflow ID cannot be empty", nameof(workflowId));
+        if (request == null)
+            throw new ArgumentNullException(nameof(request));
+        if (string.IsNullOrWhiteSpace(userId))
+            throw new ArgumentException("User ID cannot be null or empty", nameof(userId));
+
+        try
+        {
+            var setParts = new List<string>();
+            var parameters = new DynamicParameters();
+            parameters.Add("WorkflowId", workflowId);
+            parameters.Add("UserId", userId);
+            parameters.Add("UpdatedAt", DateTime.UtcNow);
 
         if (!string.IsNullOrEmpty(request.Name))
         {
@@ -125,7 +174,11 @@ public class WorkflowRepository : IWorkflowRepository
 
         if (!setParts.Any())
         {
-            return true; // Nothing to update
+            // No fields to update, but verify the workflow exists and belongs to the user
+            const string verifySql = "SELECT COUNT(1) FROM dbo.WorkflowDefinitions WHERE WorkflowId = @WorkflowId AND UserId = @UserId;";
+            using var verifyConnection = new SqlConnection(_connectionString);
+            var exists = await verifyConnection.QuerySingleAsync<int>(verifySql, new { WorkflowId = workflowId, UserId = userId });
+            return exists > 0;
         }
 
         var sql = $@"
@@ -133,22 +186,51 @@ public class WorkflowRepository : IWorkflowRepository
             SET {string.Join(", ", setParts)}, UpdatedAt = @UpdatedAt
             WHERE WorkflowId = @WorkflowId AND UserId = @UserId;";
 
-        using var connection = new SqlConnection(_connectionString);
-        var rowsAffected = await connection.ExecuteAsync(sql, parameters);
+            using var connection = new SqlConnection(_connectionString);
+            var rowsAffected = await connection.ExecuteAsync(sql, parameters);
 
-        return rowsAffected > 0;
+            return rowsAffected > 0;
+        }
+        catch (SqlException ex)
+        {
+            _logger.LogError(ex, "Failed to update workflow {WorkflowId} for user {UserId}", workflowId, userId);
+            throw new InvalidOperationException($"Failed to update workflow: {ex.Message}", ex);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error updating workflow {WorkflowId} for user {UserId}", workflowId, userId);
+            throw;
+        }
     }
 
     public async Task<bool> DeleteWorkflowAsync(Guid workflowId, string userId)
     {
-        const string sql = @"
-            DELETE FROM dbo.WorkflowDefinitions
-            WHERE WorkflowId = @WorkflowId AND UserId = @UserId;";
+        if (workflowId == Guid.Empty)
+            throw new ArgumentException("Workflow ID cannot be empty", nameof(workflowId));
+        if (string.IsNullOrWhiteSpace(userId))
+            throw new ArgumentException("User ID cannot be null or empty", nameof(userId));
 
-        using var connection = new SqlConnection(_connectionString);
-        var rowsAffected = await connection.ExecuteAsync(sql, new { WorkflowId = workflowId, UserId = userId });
+        try
+        {
+            const string sql = @"
+                DELETE FROM dbo.WorkflowDefinitions
+                WHERE WorkflowId = @WorkflowId AND UserId = @UserId;";
 
-        return rowsAffected > 0;
+            using var connection = new SqlConnection(_connectionString);
+            var rowsAffected = await connection.ExecuteAsync(sql, new { WorkflowId = workflowId, UserId = userId });
+
+            return rowsAffected > 0;
+        }
+        catch (SqlException ex)
+        {
+            _logger.LogError(ex, "Failed to delete workflow {WorkflowId} for user {UserId}", workflowId, userId);
+            throw new InvalidOperationException($"Failed to delete workflow: {ex.Message}", ex);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error deleting workflow {WorkflowId} for user {UserId}", workflowId, userId);
+            throw;
+        }
     }
 
     public async Task<PaginatedResult<WorkflowDefinitionDto>> SearchWorkflowsAsync(WorkflowSearchRequest request, string userId)
@@ -257,55 +339,121 @@ public class WorkflowRepository : IWorkflowRepository
 
     public async Task<DTOs.WorkflowValidationResult> ValidateWorkflowAsync(string workflowDefinition)
     {
+        if (string.IsNullOrWhiteSpace(workflowDefinition))
+        {
+            return new DTOs.WorkflowValidationResult(
+                false,
+                new List<DTOs.ValidationError>
+                {
+                    new DTOs.ValidationError("EMPTY_DEFINITION", "Workflow definition cannot be null or empty")
+                },
+                new List<DTOs.ValidationWarning>()
+            );
+        }
+
+        var errors = new List<DTOs.ValidationError>();
+        var warnings = new List<DTOs.ValidationWarning>();
+
         try
         {
             // Basic JSON validation
-            JsonDocument.Parse(workflowDefinition);
+            using var jsonDoc = JsonDocument.Parse(workflowDefinition);
+            var root = jsonDoc.RootElement;
+
+            // Check for required properties
+            if (!root.TryGetProperty("nodes", out _))
+            {
+                errors.Add(new DTOs.ValidationError("MISSING_NODES", "Workflow definition must contain 'nodes' property"));
+            }
+
+            if (!root.TryGetProperty("connections", out _))
+            {
+                warnings.Add(new DTOs.ValidationWarning("MISSING_CONNECTIONS", "Workflow definition does not contain 'connections' property"));
+            }
+
+            // Additional validation logic could be added here
+            // For example: validate node types, check for circular dependencies, etc.
 
             return new DTOs.WorkflowValidationResult(
-                true,
-                new List<DTOs.ValidationError>(),
-                new List<DTOs.ValidationWarning>()
+                !errors.Any(),
+                errors,
+                warnings
             );
         }
         catch (JsonException ex)
         {
+            _logger.LogWarning("JSON validation failed for workflow definition: {Error}", ex.Message);
             return new DTOs.WorkflowValidationResult(
                 false,
                 new List<DTOs.ValidationError>
                 {
                     new DTOs.ValidationError("JSON_PARSE_ERROR", ex.Message)
                 },
-                new List<DTOs.ValidationWarning>()
+                warnings
+            );
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error validating workflow definition");
+            return new DTOs.WorkflowValidationResult(
+                false,
+                new List<DTOs.ValidationError>
+                {
+                    new DTOs.ValidationError("VALIDATION_ERROR", "An unexpected error occurred during validation")
+                },
+                warnings
             );
         }
     }
 
     public async Task<Guid> StartWorkflowExecutionAsync(StartWorkflowExecutionRequest request, string userId)
     {
-        const string sql = @"
-            INSERT INTO dbo.WorkflowExecutions (ExecutionId, WorkflowId, UserId, ExecutionName, InputJson, ConfigurationJson, Status, StartedAt, StartedBy, Priority)
-            VALUES (@ExecutionId, @WorkflowId, @UserId, @ExecutionName, @InputJson, @ConfigurationJson, @Status, @StartedAt, @StartedBy, @Priority);";
+        if (request == null)
+            throw new ArgumentNullException(nameof(request));
+        if (request.WorkflowId == Guid.Empty)
+            throw new ArgumentException("Workflow ID cannot be empty", nameof(request.WorkflowId));
+        if (string.IsNullOrWhiteSpace(userId))
+            throw new ArgumentException("User ID cannot be null or empty", nameof(userId));
+        if (string.IsNullOrWhiteSpace(request.ExecutionName))
+            throw new ArgumentException("Execution name cannot be null or empty", nameof(request.ExecutionName));
 
-        var executionId = Guid.NewGuid();
-        var now = DateTime.UtcNow;
-
-        using var connection = new SqlConnection(_connectionString);
-        await connection.ExecuteAsync(sql, new
+        try
         {
-            ExecutionId = executionId,
-            WorkflowId = request.WorkflowId,
-            UserId = userId,
-            ExecutionName = request.ExecutionName,
-            InputJson = request.Input != null ? JsonSerializer.Serialize(request.Input) : null,
-            ConfigurationJson = request.Configuration != null ? JsonSerializer.Serialize(request.Configuration) : null,
-            Status = (int)DTOs.WorkflowExecutionStatus.Pending,
-            StartedAt = now,
-            StartedBy = userId,
-            Priority = request.Priority
-        });
+            const string sql = @"
+                INSERT INTO dbo.WorkflowExecutions (ExecutionId, WorkflowId, UserId, ExecutionName, InputJson, ConfigurationJson, Status, StartedAt, StartedBy, Priority)
+                VALUES (@ExecutionId, @WorkflowId, @UserId, @ExecutionName, @InputJson, @ConfigurationJson, @Status, @StartedAt, @StartedBy, @Priority);";
 
-        return executionId;
+            var executionId = Guid.NewGuid();
+            var now = DateTime.UtcNow;
+
+            using var connection = new SqlConnection(_connectionString);
+            await connection.ExecuteAsync(sql, new
+            {
+                ExecutionId = executionId,
+                WorkflowId = request.WorkflowId,
+                UserId = userId,
+                ExecutionName = request.ExecutionName,
+                InputJson = request.Input != null ? JsonSerializer.Serialize(request.Input) : null,
+                ConfigurationJson = request.Configuration != null ? JsonSerializer.Serialize(request.Configuration) : null,
+                Status = (int)DTOs.WorkflowExecutionStatus.Pending,
+                StartedAt = now,
+                StartedBy = userId,
+                Priority = request.Priority
+            });
+
+            _logger.LogInformation("Started workflow execution {ExecutionId} for workflow {WorkflowId} by user {UserId}", executionId, request.WorkflowId, userId);
+            return executionId;
+        }
+        catch (SqlException ex)
+        {
+            _logger.LogError(ex, "Failed to start workflow execution for workflow {WorkflowId} by user {UserId}", request.WorkflowId, userId);
+            throw new InvalidOperationException($"Failed to start workflow execution: {ex.Message}", ex);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error starting workflow execution for workflow {WorkflowId} by user {UserId}", request.WorkflowId, userId);
+            throw;
+        }
     }
 
     public async Task<WorkflowExecutionDto?> GetExecutionByIdAsync(Guid executionId, string userId)
@@ -555,7 +703,7 @@ public class WorkflowRepository : IWorkflowRepository
             VALUES (@EventId, @ExecutionId, @EventType, @NodeId, @Timestamp, @DataJson, @Message, @Level);";
 
         using var connection = new SqlConnection(_connectionString);
-        await connection.ExecuteAsync(sql, new
+        var rowsAffected = await connection.ExecuteAsync(sql, new
         {
             EventId = debugEvent.EventId,
             ExecutionId = executionId,
@@ -567,7 +715,7 @@ public class WorkflowRepository : IWorkflowRepository
             Level = "Info"
         });
 
-        return true;
+        return rowsAffected > 0;
     }
 
     public async Task<List<DebugEvent>> GetWorkflowEventsAsync(Guid executionId, DateTime? since = null)
@@ -608,7 +756,7 @@ public class WorkflowRepository : IWorkflowRepository
             VALUES (@BreakpointId, @ExecutionId, @NodeId, @Condition, @IsEnabled, @CreatedAt, @CreatedBy);";
 
         using var connection = new SqlConnection(_connectionString);
-        await connection.ExecuteAsync(sql, new
+        var rowsAffected = await connection.ExecuteAsync(sql, new
         {
             BreakpointId = breakpoint.BreakpointId,
             ExecutionId = executionId,
@@ -619,7 +767,7 @@ public class WorkflowRepository : IWorkflowRepository
             CreatedBy = userId
         });
 
-        return true;
+        return rowsAffected > 0;
     }
 
     public async Task<bool> RemoveBreakpointAsync(Guid breakpointId, string userId)
@@ -717,7 +865,7 @@ public class WorkflowRepository : IWorkflowRepository
             VALUES (@MetricsId, @ExecutionId, @MetricName, @MetricType, @MetricValue, @Unit, @Timestamp, @TagsJson);";
 
         using var connection = new SqlConnection(_connectionString);
-        await connection.ExecuteAsync(sql, new
+        var rowsAffected = await connection.ExecuteAsync(sql, new
         {
             MetricsId = Guid.NewGuid(),
             ExecutionId = executionId,
@@ -729,7 +877,7 @@ public class WorkflowRepository : IWorkflowRepository
             TagsJson = tags != null ? JsonSerializer.Serialize(tags) : null
         });
 
-        return true;
+        return rowsAffected > 0;
     }
 
     private static WorkflowDefinitionDto MapToWorkflowDefinitionDto(dynamic row)
