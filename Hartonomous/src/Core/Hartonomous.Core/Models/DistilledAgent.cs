@@ -10,6 +10,7 @@
 
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
+using Hartonomous.Core.Enums;
 
 namespace Hartonomous.Core.Models;
 
@@ -181,13 +182,3 @@ public class DistilledAgent
     }
 }
 
-public enum AgentStatus
-{
-    Draft,
-    Training,
-    Testing,
-    Ready,
-    Deployed,
-    Deprecated,
-    Error
-}

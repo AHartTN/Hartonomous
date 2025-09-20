@@ -1,5 +1,5 @@
 using Hartonomous.Core.Abstractions;
-using Hartonomous.Core.DTOs;
+using Hartonomous.Core.Enums;
 
 namespace Hartonomous.Core.Entities;
 

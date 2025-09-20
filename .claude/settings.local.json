@@ -5,7 +5,12 @@
       "Bash(dotnet build:*)",
       "Bash(csc:*)",
       "Bash(git add:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(tree:*)",
+      "Bash(awk:*)",
+      "WebSearch",
+      "Bash(find:*)",
+      "Bash(dotnet restore:*)"
     ],
     "deny": [],
     "ask": []

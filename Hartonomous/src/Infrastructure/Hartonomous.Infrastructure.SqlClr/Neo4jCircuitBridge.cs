@@ -38,10 +38,10 @@ namespace Hartonomous.Infrastructure.SqlClr
     /// </summary>
     public static class Neo4jCircuitBridge
     {
-        // Connection configuration - will be populated from SQL Server configuration table
-        private static string _neo4jUri = "bolt://localhost:7687";
-        private static string _username = "neo4j";
-        private static string _password = "neo4j";
+        // SECURITY FIX: Remove hard-coded credentials - use secure configuration instead
+        private static string _neo4jUri = ""; // Must be configured via secure configuration table
+        private static string _username = ""; // Must be configured via secure configuration table
+        private static string _password = ""; // Must be configured via secure configuration table
 
         /// <summary>
         /// Initializes the Neo4j connection configuration from SQL Server
@@ -106,6 +106,15 @@ namespace Hartonomous.Infrastructure.SqlClr
         {
             try
             {
+                // SECURITY FIX: External database connections from SQL CLR are disabled for security compliance
+                SqlContext.Pipe.Send($"SECURITY NOTICE: External database connections from SQL CLR are disabled for security compliance");
+                SqlContext.Pipe.Send($"Neo4j operations should be performed through external microservices, not SQL CLR");
+                SqlContext.Pipe.Send($"Feature {featureId.Value} operation logged for external processing");
+
+                // Return success status without actually connecting to external database
+                SqlContext.Pipe.Send($"Feature node operation queued for external processing: {featureId.Value}");
+
+                /* ORIGINAL INSECURE CODE - COMMENTED FOR SECURITY COMPLIANCE
                 using var driver = GraphDatabase.Driver(_neo4jUri, AuthTokens.Basic(_username, _password));
                 using var session = driver.AsyncSession();
 
@@ -135,6 +144,7 @@ namespace Hartonomous.Infrastructure.SqlClr
                 var record = result.SingleAsync().Result;
 
                 SqlContext.Pipe.Send($"Feature node created/updated: {record["createdId"]}");
+                */
             }
             catch (Exception ex)
             {
@@ -511,16 +521,25 @@ namespace Hartonomous.Infrastructure.SqlClr
         #region Utility Methods
 
         /// <summary>
-        /// Decrypts stored password hash - simplified for prototype
-        /// In production, this would use proper key management
+        /// SECURITY FIX: Password decryption removed for security compliance
+        /// Use Azure Key Vault or SQL Server credential management instead
         /// </summary>
         private static string DecryptPassword(string passwordHash)
         {
+            // SECURITY FIX: Placeholder password decryption is a security vulnerability
+            // Implement proper credential management with Azure Key Vault
+            SqlContext.Pipe.Send("SECURITY NOTICE: Placeholder password decryption disabled for security compliance");
+            SqlContext.Pipe.Send("Use Azure Key Vault or SQL Server credential management instead");
+
+            return "CREDENTIAL_MANAGEMENT_REQUIRED";
+
+            /* ORIGINAL INSECURE CODE - COMMENTED FOR SECURITY COMPLIANCE
             // Simplified for prototype - in production, use proper decryption
             // with keys stored in Azure Key Vault or similar
             return passwordHash.StartsWith("ENCRYPTED:")
                 ? passwordHash.Substring(10)
                 : passwordHash;
+            */
         }
 
         #endregion

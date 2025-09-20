@@ -24,7 +24,7 @@ namespace Hartonomous.Core.Abstractions;
 /// <typeparam name="TEntity">Entity type</typeparam>
 /// <typeparam name="TKey">Primary key type</typeparam>
 public abstract class BaseRepository<TEntity, TKey> : IRepository<TEntity, TKey>
-    where TEntity : class, IEntity<TKey>
+    where TEntity : class, IEntityBase<TKey>
     where TKey : IEquatable<TKey>
 {
     protected readonly SqlServerOptions _sqlOptions;

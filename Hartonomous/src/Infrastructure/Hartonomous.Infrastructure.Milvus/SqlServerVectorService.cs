@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Data;
 using System.Text.Json;
+using Hartonomous.Infrastructure.Milvus.Interfaces;
 
 namespace Hartonomous.Infrastructure.Milvus;
 
@@ -11,7 +12,7 @@ namespace Hartonomous.Infrastructure.Milvus;
 /// Implements NinaDB vector capabilities using SQL Server's native VECTOR data type
 /// Replaces external Milvus dependency with integrated SQL Server solution
 /// </summary>
-public class SqlServerVectorService : IDisposable
+public class SqlServerVectorService : IVectorService, IDisposable
 {
     private readonly string _connectionString;
     private readonly ILogger<SqlServerVectorService> _logger;

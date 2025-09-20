@@ -1,6 +1,7 @@
 using Neo4j.Driver;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Hartonomous.Infrastructure.Neo4j.Interfaces;
 
 namespace Hartonomous.Infrastructure.Neo4j;
 
@@ -8,7 +9,7 @@ namespace Hartonomous.Infrastructure.Neo4j;
 /// Service for managing Neo4j knowledge graph operations
 /// Implements the read-replica pattern from the Hartonomous data fabric
 /// </summary>
-public class Neo4jService : IDisposable
+public class Neo4jService : IGraphService, IDisposable
 {
     private readonly IDriver _driver;
     private readonly ILogger<Neo4jService> _logger;

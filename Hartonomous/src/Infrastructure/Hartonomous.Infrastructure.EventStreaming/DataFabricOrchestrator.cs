@@ -3,7 +3,10 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Hartonomous.Infrastructure.Neo4j;
+using Hartonomous.Infrastructure.Neo4j.Interfaces;
 using Hartonomous.Infrastructure.Milvus;
+using Hartonomous.Infrastructure.Milvus.Interfaces;
+using Hartonomous.Infrastructure.EventStreaming.Interfaces;
 
 namespace Hartonomous.Infrastructure.EventStreaming;
 
@@ -11,16 +14,16 @@ namespace Hartonomous.Infrastructure.EventStreaming;
 /// Orchestrates operations across the data fabric components
 /// Provides high-level interface for data fabric operations
 /// </summary>
-public class DataFabricOrchestrator
+public class DataFabricOrchestrator : IEventStreamingService
 {
-    private readonly Neo4jService _neo4jService;
-    private readonly SqlServerVectorService _vectorService;
+    private readonly IGraphService _neo4jService;
+    private readonly IVectorService _vectorService;
     private readonly ILogger<DataFabricOrchestrator> _logger;
     private readonly string _connectionString;
 
     public DataFabricOrchestrator(
-        Neo4jService neo4jService,
-        SqlServerVectorService vectorService,
+        IGraphService neo4jService,
+        IVectorService vectorService,
         ILogger<DataFabricOrchestrator> logger,
         IConfiguration configuration)
     {
@@ -156,17 +159,17 @@ public class DataFabricOrchestrator
 
         try
         {
-            // Check Milvus
-            var milvusStats = await _milvusService.GetCollectionStatsAsync();
+            // Check Vector Service
+            var vectorStats = await _vectorService.GetCollectionStatsAsync();
             health.MilvusStatus = "Healthy";
-            health.MilvusDetails = $"Collections: 1, Rows: {milvusStats.RowCount:N0}";
-            _logger.LogDebug("Milvus health check passed");
+            health.MilvusDetails = $"Collections: 1, Rows: {vectorStats.RowCount:N0}";
+            _logger.LogDebug("Vector service health check passed");
         }
         catch (Exception ex)
         {
             health.MilvusStatus = "Unhealthy";
             health.MilvusDetails = ex.Message;
-            _logger.LogWarning(ex, "Milvus health check failed");
+            _logger.LogWarning(ex, "Vector service health check failed");
         }
 
         try

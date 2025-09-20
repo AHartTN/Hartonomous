@@ -22,6 +22,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Http;
 using Hartonomous.Core.Models;
 using Hartonomous.Core.Models.Configuration;
+using Hartonomous.Core.Entities;
+using Hartonomous.Core.Entities.Configuration;
 
 namespace Hartonomous.Core.Data;
 
@@ -41,7 +43,12 @@ public class HartonomousDbContext : DbContext
         _httpContextAccessor = httpContextAccessor;
     }
 
-    // Core Model Storage
+    // Core Entity Storage (Database Layer)
+    public DbSet<Agent> Agents { get; set; }
+    public DbSet<Message> Messages { get; set; }
+    public DbSet<Workflow> Workflows { get; set; }
+
+    // Core Model Storage (Distillation Layer)
     public DbSet<Model> Models { get; set; }
     public DbSet<ModelLayer> ModelLayers { get; set; }
     public DbSet<ModelComponent> ModelComponents { get; set; }
@@ -77,7 +84,12 @@ public class HartonomousDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
 
-        // Apply configurations
+        // Apply entity configurations
+        modelBuilder.ApplyConfiguration(new AgentConfiguration());
+        modelBuilder.ApplyConfiguration(new MessageConfiguration());
+        modelBuilder.ApplyConfiguration(new WorkflowConfiguration());
+
+        // Apply model configurations
         modelBuilder.ApplyConfiguration(new ModelConfiguration());
         modelBuilder.ApplyConfiguration(new ModelLayerConfiguration());
         modelBuilder.ApplyConfiguration(new ModelComponentConfiguration());
@@ -97,7 +109,12 @@ public class HartonomousDbContext : DbContext
         modelBuilder.ApplyConfiguration(new ProjectConfiguration());
         modelBuilder.ApplyConfiguration(new ProjectModelConfiguration());
 
-        // Global query filters for multi-tenancy
+        // Global query filters for multi-tenancy - Entities
+        modelBuilder.Entity<Agent>().HasQueryFilter(e => EF.Property<string>(e, "UserId") == GetCurrentUserId());
+        modelBuilder.Entity<Message>().HasQueryFilter(e => EF.Property<string>(e, "UserId") == GetCurrentUserId());
+        modelBuilder.Entity<Workflow>().HasQueryFilter(e => EF.Property<string>(e, "UserId") == GetCurrentUserId());
+
+        // Global query filters for multi-tenancy - Models
         modelBuilder.Entity<Model>().HasQueryFilter(e => EF.Property<string>(e, "UserId") == GetCurrentUserId());
         modelBuilder.Entity<ModelLayer>().HasQueryFilter(e => EF.Property<string>(e, "UserId") == GetCurrentUserId());
         modelBuilder.Entity<ModelComponent>().HasQueryFilter(e => EF.Property<string>(e, "UserId") == GetCurrentUserId());

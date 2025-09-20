@@ -306,7 +306,7 @@ public class Repository<T> : IRepository<T> where T : class
         }
     }
 
-    public virtual async Task<bool> DeleteAsync(Guid id, string userId)
+    public virtual async Task<bool> DeleteByIdAsync(Guid id, string userId)
     {
         try
         {

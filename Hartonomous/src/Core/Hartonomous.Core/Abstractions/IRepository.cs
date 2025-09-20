@@ -18,7 +18,7 @@ namespace Hartonomous.Core.Abstractions;
 /// <typeparam name="TEntity">The entity type</typeparam>
 /// <typeparam name="TKey">The primary key type</typeparam>
 public interface IRepository<TEntity, TKey>
-    where TEntity : class, IEntity<TKey>
+    where TEntity : class, IEntityBase<TKey>
     where TKey : IEquatable<TKey>
 {
     /// <summary>
@@ -66,17 +66,6 @@ public interface IRepository<TEntity, TKey>
     Task<int> CountAsync(Expression<Func<TEntity, bool>>? filter = null, CancellationToken cancellationToken = default);
 }
 
-/// <summary>
-/// Entity interface for repository pattern
-/// </summary>
-/// <typeparam name="TKey">Primary key type</typeparam>
-public interface IEntity<TKey> where TKey : IEquatable<TKey>
-{
-    TKey Id { get; set; }
-    string UserId { get; set; }
-    DateTime CreatedDate { get; set; }
-    DateTime? ModifiedDate { get; set; }
-}
 
 /// <summary>
 /// Repository factory interface for creating repositories
