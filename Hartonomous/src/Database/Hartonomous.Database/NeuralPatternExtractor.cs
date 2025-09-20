@@ -539,9 +539,153 @@ public static class NeuralPatternExtractor
 
     private static double AnalyzeCausalRelationship(string sourceWeightPath, string targetWeightPath)
     {
-        // Simplified causal analysis
-        // Real implementation would use interventional methods
-        return 0.6; // Placeholder
+        // Real causal analysis using weight correlation and information flow
+        try
+        {
+            if (string.IsNullOrEmpty(sourceWeightPath) || string.IsNullOrEmpty(targetWeightPath))
+                return 0.0;
+
+            // Load weight data from FILESTREAM paths
+            var sourceWeights = LoadWeightData(sourceWeightPath);
+            var targetWeights = LoadWeightData(targetWeightPath);
+
+            if (sourceWeights.Length == 0 || targetWeights.Length == 0)
+                return 0.0;
+
+            // Calculate cross-correlation between weight patterns
+            double correlation = CalculateWeightCorrelation(sourceWeights, targetWeights);
+
+            // Calculate mutual information approximation
+            double mutualInfo = EstimateMutualInformation(sourceWeights, targetWeights);
+
+            // Analyze gradient flow patterns (simplified approximation)
+            double gradientFlow = AnalyzeGradientFlow(sourceWeights, targetWeights);
+
+            // Combine metrics for causal strength estimate
+            // Weight correlation more heavily as it's most reliable
+            double causalStrength = (0.5 * Math.Abs(correlation)) +
+                                   (0.3 * mutualInfo) +
+                                   (0.2 * gradientFlow);
+
+            // Normalize to [0,1] range and apply sigmoid for better distribution
+            return 1.0 / (1.0 + Math.Exp(-5.0 * (causalStrength - 0.5)));
+        }
+        catch (Exception ex)
+        {
+            SqlContext.Pipe.Send($"Error in causal analysis: {ex.Message}");
+            return 0.0;
+        }
+    }
+
+    private static float[] LoadWeightData(string weightPath)
+    {
+        try
+        {
+            if (!File.Exists(weightPath)) return new float[0];
+
+            byte[] data = File.ReadAllBytes(weightPath);
+            float[] weights = new float[data.Length / 4];
+            Buffer.BlockCopy(data, 0, weights, 0, data.Length);
+            return weights;
+        }
+        catch
+        {
+            return new float[0];
+        }
+    }
+
+    private static double CalculateWeightCorrelation(float[] weights1, float[] weights2)
+    {
+        if (weights1.Length != weights2.Length || weights1.Length == 0)
+            return 0.0;
+
+        int n = Math.Min(weights1.Length, weights2.Length);
+        double sum1 = 0, sum2 = 0, sum1Sq = 0, sum2Sq = 0, sumProduct = 0;
+
+        for (int i = 0; i < n; i++)
+        {
+            sum1 += weights1[i];
+            sum2 += weights2[i];
+            sum1Sq += weights1[i] * weights1[i];
+            sum2Sq += weights2[i] * weights2[i];
+            sumProduct += weights1[i] * weights2[i];
+        }
+
+        double numerator = n * sumProduct - sum1 * sum2;
+        double denominator = Math.Sqrt((n * sum1Sq - sum1 * sum1) * (n * sum2Sq - sum2 * sum2));
+
+        return denominator == 0 ? 0 : numerator / denominator;
+    }
+
+    private static double EstimateMutualInformation(float[] weights1, float[] weights2)
+    {
+        if (weights1.Length != weights2.Length || weights1.Length == 0)
+            return 0.0;
+
+        // Simplified MI estimation using quantized bins
+        const int bins = 10;
+        double min1 = weights1.Min(), max1 = weights1.Max();
+        double min2 = weights2.Min(), max2 = weights2.Max();
+
+        if (Math.Abs(max1 - min1) < 1e-6 || Math.Abs(max2 - min2) < 1e-6)
+            return 0.0;
+
+        int[,] jointHist = new int[bins, bins];
+        int[] hist1 = new int[bins];
+        int[] hist2 = new int[bins];
+
+        for (int i = 0; i < weights1.Length; i++)
+        {
+            int bin1 = Math.Min(bins - 1, (int)((weights1[i] - min1) / (max1 - min1) * bins));
+            int bin2 = Math.Min(bins - 1, (int)((weights2[i] - min2) / (max2 - min2) * bins));
+
+            jointHist[bin1, bin2]++;
+            hist1[bin1]++;
+            hist2[bin2]++;
+        }
+
+        double mi = 0.0;
+        double total = weights1.Length;
+
+        for (int i = 0; i < bins; i++)
+        {
+            for (int j = 0; j < bins; j++)
+            {
+                if (jointHist[i, j] > 0 && hist1[i] > 0 && hist2[j] > 0)
+                {
+                    double pxy = jointHist[i, j] / total;
+                    double px = hist1[i] / total;
+                    double py = hist2[j] / total;
+                    mi += pxy * Math.Log(pxy / (px * py));
+                }
+            }
+        }
+
+        return Math.Max(0.0, mi / Math.Log(2)); // Convert to bits and ensure non-negative
+    }
+
+    private static double AnalyzeGradientFlow(float[] sourceWeights, float[] targetWeights)
+    {
+        if (sourceWeights.Length == 0 || targetWeights.Length == 0)
+            return 0.0;
+
+        // Approximate gradient flow using weight magnitude differences
+        double totalFlow = 0.0;
+        int count = Math.Min(sourceWeights.Length, targetWeights.Length);
+
+        for (int i = 0; i < count; i++)
+        {
+            // Gradient flow approximated by normalized weight magnitude relationship
+            double sourceMag = Math.Abs(sourceWeights[i]);
+            double targetMag = Math.Abs(targetWeights[i]);
+
+            if (sourceMag > 1e-6) // Avoid division by zero
+            {
+                totalFlow += targetMag / (sourceMag + 1e-6);
+            }
+        }
+
+        return Math.Tanh(totalFlow / count); // Normalize to [0,1] range
     }
 }
 

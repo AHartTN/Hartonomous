@@ -1,5 +1,6 @@
 using Hartonomous.Orchestration.DTOs;
 using Hartonomous.Orchestration.Interfaces;
+using Hartonomous.Orchestration.Models;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
 
@@ -11,15 +12,18 @@ namespace Hartonomous.Orchestration.Services;
 public class WorkflowTemplateService : IWorkflowTemplateService
 {
     private readonly IWorkflowRepository _workflowRepository;
+    private readonly IWorkflowTemplateRepository _templateRepository;
     private readonly IWorkflowDSLParser _dslParser;
     private readonly ILogger<WorkflowTemplateService> _logger;
 
     public WorkflowTemplateService(
         IWorkflowRepository workflowRepository,
+        IWorkflowTemplateRepository templateRepository,
         IWorkflowDSLParser dslParser,
         ILogger<WorkflowTemplateService> logger)
     {
         _workflowRepository = workflowRepository;
+        _templateRepository = templateRepository;
         _dslParser = dslParser;
         _logger = logger;
     }
@@ -45,8 +49,29 @@ public class WorkflowTemplateService : IWorkflowTemplateService
             // Create template definition
             var templateDefinition = CreateTemplateDefinition(workflowGraph, parameters);
 
-            // Create template record (simulated - in real implementation this would go to database)
+            // Create template record with real database persistence
             var templateId = Guid.NewGuid();
+            var now = DateTime.UtcNow;
+
+            var template = new WorkflowTemplate
+            {
+                TemplateId = templateId,
+                UserId = userId,
+                Name = request.Name,
+                Description = request.Description,
+                Category = request.Category ?? "General",
+                TemplateDefinitionJson = templateDefinition,
+                ParametersJson = JsonSerializer.Serialize(parameters),
+                TagsJson = request.Tags != null ? JsonSerializer.Serialize(request.Tags) : null,
+                CreatedAt = now,
+                UpdatedAt = now,
+                CreatedBy = userId,
+                UsageCount = 0,
+                IsPublic = request.IsPublic,
+                IsActive = true
+            };
+
+            await _templateRepository.CreateTemplateAsync(template);
 
             _logger.LogInformation("Created template {TemplateId} from workflow {WorkflowId}",
                 templateId, request.WorkflowId);
@@ -64,31 +89,52 @@ public class WorkflowTemplateService : IWorkflowTemplateService
     {
         try
         {
-            // In a real implementation, this would query the database
-            // For now, return a sample template
-            return new WorkflowTemplateDto(
-                templateId,
-                "Sample Template",
-                "A sample workflow template",
-                "General",
-                JsonSerializer.Serialize(new { name = "sample", nodes = new { } }),
-                new Dictionary<string, ParameterDefinition>
+            var template = await _templateRepository.GetTemplateByIdAsync(templateId, userId);
+            if (template == null)
+            {
+                return null;
+            }
+
+            // Parse parameters from JSON
+            var parameters = new Dictionary<string, ParameterDefinition>();
+            if (!string.IsNullOrEmpty(template.ParametersJson))
+            {
+                try
                 {
-                    ["input"] = new ParameterDefinition(
-                        "input",
-                        "string",
-                        "Input data for the workflow",
-                        true,
-                        null,
-                        null,
-                        null
-                    )
-                },
-                new List<string> { "sample", "demo" },
-                DateTime.UtcNow.AddDays(-30),
-                userId,
-                5,
-                false
+                    parameters = JsonSerializer.Deserialize<Dictionary<string, ParameterDefinition>>(template.ParametersJson) ?? new Dictionary<string, ParameterDefinition>();
+                }
+                catch (JsonException ex)
+                {
+                    _logger.LogWarning(ex, "Failed to parse parameters JSON for template {TemplateId}", templateId);
+                }
+            }
+
+            // Parse tags from JSON
+            var tags = new List<string>();
+            if (!string.IsNullOrEmpty(template.TagsJson))
+            {
+                try
+                {
+                    tags = JsonSerializer.Deserialize<List<string>>(template.TagsJson) ?? new List<string>();
+                }
+                catch (JsonException ex)
+                {
+                    _logger.LogWarning(ex, "Failed to parse tags JSON for template {TemplateId}", templateId);
+                }
+            }
+
+            return new WorkflowTemplateDto(
+                template.TemplateId,
+                template.Name,
+                template.Description,
+                template.Category,
+                template.TemplateDefinitionJson,
+                parameters,
+                tags,
+                template.CreatedAt,
+                template.CreatedBy,
+                template.UsageCount,
+                template.IsPublic
             );
         }
         catch (Exception ex)
@@ -111,8 +157,34 @@ public class WorkflowTemplateService : IWorkflowTemplateService
                 throw new ArgumentException($"Invalid template definition: {string.Join(", ", validation.Errors.Select(e => e.Message))}");
             }
 
-            // In a real implementation, this would update the database
-            return true;
+            // Get existing template to ensure user has permission to update
+            var existingTemplate = await _templateRepository.GetTemplateByIdAsync(templateId, userId);
+            if (existingTemplate == null)
+            {
+                _logger.LogWarning("Template {TemplateId} not found or user {UserId} does not have permission to update", templateId, userId);
+                return false;
+            }
+
+            // Create updated template model
+            var updatedTemplate = new WorkflowTemplate
+            {
+                TemplateId = templateId,
+                UserId = existingTemplate.UserId,
+                Name = template.Name,
+                Description = template.Description,
+                Category = template.Category,
+                TemplateDefinitionJson = template.TemplateDefinition,
+                ParametersJson = JsonSerializer.Serialize(template.Parameters),
+                TagsJson = JsonSerializer.Serialize(template.Tags),
+                CreatedAt = existingTemplate.CreatedAt,
+                UpdatedAt = DateTime.UtcNow,
+                CreatedBy = existingTemplate.CreatedBy,
+                UsageCount = existingTemplate.UsageCount,
+                IsPublic = template.IsPublic,
+                IsActive = existingTemplate.IsActive
+            };
+
+            return await _templateRepository.UpdateTemplateAsync(updatedTemplate);
         }
         catch (Exception ex)
         {
@@ -127,8 +199,22 @@ public class WorkflowTemplateService : IWorkflowTemplateService
         {
             _logger.LogInformation("Deleting template {TemplateId} for user {UserId}", templateId, userId);
 
-            // In a real implementation, this would delete from database
-            return true;
+            // Verify template exists and user has permission to delete
+            var template = await _templateRepository.GetTemplateByIdAsync(templateId, userId);
+            if (template == null)
+            {
+                _logger.LogWarning("Template {TemplateId} not found or user {UserId} does not have permission to delete", templateId, userId);
+                return false;
+            }
+
+            // Only allow deletion if user is the owner
+            if (template.UserId != userId)
+            {
+                _logger.LogWarning("User {UserId} does not have permission to delete template {TemplateId} owned by {OwnerId}", userId, templateId, template.UserId);
+                return false;
+            }
+
+            return await _templateRepository.DeleteTemplateAsync(templateId, userId);
         }
         catch (Exception ex)
         {
@@ -145,74 +231,62 @@ public class WorkflowTemplateService : IWorkflowTemplateService
         {
             _logger.LogDebug("Searching templates for user {UserId} with query '{Query}'", userId, query);
 
-            // In a real implementation, this would query the database
-            var sampleTemplates = new List<WorkflowTemplateDto>
-            {
-                new WorkflowTemplateDto(
-                    Guid.NewGuid(),
-                    "Data Processing Template",
-                    "Template for data processing workflows",
-                    "Data",
-                    JsonSerializer.Serialize(new { name = "data-processing" }),
-                    new Dictionary<string, ParameterDefinition>(),
-                    new List<string> { "data", "processing" },
-                    DateTime.UtcNow.AddDays(-15),
-                    userId,
-                    10,
-                    false
-                ),
-                new WorkflowTemplateDto(
-                    Guid.NewGuid(),
-                    "Notification Template",
-                    "Template for notification workflows",
-                    "Communication",
-                    JsonSerializer.Serialize(new { name = "notification" }),
-                    new Dictionary<string, ParameterDefinition>(),
-                    new List<string> { "notification", "email" },
-                    DateTime.UtcNow.AddDays(-7),
-                    userId,
-                    3,
-                    true
-                )
-            };
+            // Get templates from database with real persistence
+            var searchResult = await _templateRepository.SearchTemplatesAsync(query, category, tags, includePublic, userId, page, pageSize);
 
-            // Apply filters
-            if (!string.IsNullOrEmpty(query))
+            // Convert WorkflowTemplate models to DTOs
+            var templateDtos = new List<WorkflowTemplateDto>();
+            foreach (var template in searchResult.Items)
             {
-                sampleTemplates = sampleTemplates
-                    .Where(t => t.Name.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-                               t.Description.Contains(query, StringComparison.OrdinalIgnoreCase))
-                    .ToList();
+                // Parse parameters from JSON
+                var parameters = new Dictionary<string, ParameterDefinition>();
+                if (!string.IsNullOrEmpty(template.ParametersJson))
+                {
+                    try
+                    {
+                        parameters = JsonSerializer.Deserialize<Dictionary<string, ParameterDefinition>>(template.ParametersJson) ?? new Dictionary<string, ParameterDefinition>();
+                    }
+                    catch (JsonException ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to parse parameters JSON for template {TemplateId}", template.TemplateId);
+                    }
+                }
+
+                // Parse tags from JSON
+                var templateTags = new List<string>();
+                if (!string.IsNullOrEmpty(template.TagsJson))
+                {
+                    try
+                    {
+                        templateTags = JsonSerializer.Deserialize<List<string>>(template.TagsJson) ?? new List<string>();
+                    }
+                    catch (JsonException ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to parse tags JSON for template {TemplateId}", template.TemplateId);
+                    }
+                }
+
+                templateDtos.Add(new WorkflowTemplateDto(
+                    template.TemplateId,
+                    template.Name,
+                    template.Description,
+                    template.Category,
+                    template.TemplateDefinitionJson,
+                    parameters,
+                    templateTags,
+                    template.CreatedAt,
+                    template.CreatedBy,
+                    template.UsageCount,
+                    template.IsPublic
+                ));
             }
-
-            if (!string.IsNullOrEmpty(category))
-            {
-                sampleTemplates = sampleTemplates
-                    .Where(t => t.Category.Equals(category, StringComparison.OrdinalIgnoreCase))
-                    .ToList();
-            }
-
-            if (tags?.Any() == true)
-            {
-                sampleTemplates = sampleTemplates
-                    .Where(t => tags.Any(tag => t.Tags.Contains(tag, StringComparer.OrdinalIgnoreCase)))
-                    .ToList();
-            }
-
-            // Pagination
-            var totalCount = sampleTemplates.Count;
-            var totalPages = (int)Math.Ceiling((double)totalCount / pageSize);
-            var pagedTemplates = sampleTemplates
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
-                .ToList();
 
             return new PaginatedResult<WorkflowTemplateDto>(
-                pagedTemplates,
-                totalCount,
-                page,
-                pageSize,
-                totalPages
+                templateDtos,
+                searchResult.TotalCount,
+                searchResult.Page,
+                searchResult.PageSize,
+                searchResult.TotalPages
             );
         }
         catch (Exception ex)
@@ -248,38 +322,57 @@ public class WorkflowTemplateService : IWorkflowTemplateService
         {
             _logger.LogDebug("Getting popular templates (limit: {Limit})", limit);
 
-            // In a real implementation, this would query the database ordered by usage count
-            var popularTemplates = new List<WorkflowTemplateDto>
-            {
-                new WorkflowTemplateDto(
-                    Guid.NewGuid(),
-                    "CI/CD Pipeline",
-                    "Continuous integration and deployment pipeline",
-                    "DevOps",
-                    JsonSerializer.Serialize(new { name = "cicd-pipeline" }),
-                    new Dictionary<string, ParameterDefinition>(),
-                    new List<string> { "cicd", "devops", "pipeline" },
-                    DateTime.UtcNow.AddDays(-30),
-                    "system",
-                    50,
-                    true
-                ),
-                new WorkflowTemplateDto(
-                    Guid.NewGuid(),
-                    "ETL Process",
-                    "Extract, Transform, Load data processing workflow",
-                    "Data",
-                    JsonSerializer.Serialize(new { name = "etl-process" }),
-                    new Dictionary<string, ParameterDefinition>(),
-                    new List<string> { "etl", "data", "processing" },
-                    DateTime.UtcNow.AddDays(-20),
-                    "system",
-                    35,
-                    true
-                )
-            };
+            // Get popular templates from database ordered by usage count
+            var popularTemplates = await _templateRepository.GetPopularTemplatesAsync(limit, includePublic);
 
-            return popularTemplates.OrderByDescending(t => t.UsageCount).Take(limit).ToList();
+            // Convert WorkflowTemplate models to DTOs
+            var templateDtos = new List<WorkflowTemplateDto>();
+            foreach (var template in popularTemplates)
+            {
+                // Parse parameters from JSON
+                var parameters = new Dictionary<string, ParameterDefinition>();
+                if (!string.IsNullOrEmpty(template.ParametersJson))
+                {
+                    try
+                    {
+                        parameters = JsonSerializer.Deserialize<Dictionary<string, ParameterDefinition>>(template.ParametersJson) ?? new Dictionary<string, ParameterDefinition>();
+                    }
+                    catch (JsonException ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to parse parameters JSON for template {TemplateId}", template.TemplateId);
+                    }
+                }
+
+                // Parse tags from JSON
+                var templateTags = new List<string>();
+                if (!string.IsNullOrEmpty(template.TagsJson))
+                {
+                    try
+                    {
+                        templateTags = JsonSerializer.Deserialize<List<string>>(template.TagsJson) ?? new List<string>();
+                    }
+                    catch (JsonException ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to parse tags JSON for template {TemplateId}", template.TemplateId);
+                    }
+                }
+
+                templateDtos.Add(new WorkflowTemplateDto(
+                    template.TemplateId,
+                    template.Name,
+                    template.Description,
+                    template.Category,
+                    template.TemplateDefinitionJson,
+                    parameters,
+                    templateTags,
+                    template.CreatedAt,
+                    template.CreatedBy,
+                    template.UsageCount,
+                    template.IsPublic
+                ));
+            }
+
+            return templateDtos;
         }
         catch (Exception ex)
         {
@@ -328,7 +421,9 @@ public class WorkflowTemplateService : IWorkflowTemplateService
 
             var workflowId = await _workflowRepository.CreateWorkflowAsync(createRequest, userId);
 
-            // Update template usage count (in a real implementation)
+            // Increment template usage count with real database update
+            await _templateRepository.IncrementTemplateUsageAsync(templateId);
+
             _logger.LogInformation("Created workflow {WorkflowId} from template {TemplateId}",
                 workflowId, templateId);
 
@@ -422,16 +517,8 @@ public class WorkflowTemplateService : IWorkflowTemplateService
     {
         try
         {
-            // In a real implementation, this would query usage statistics from the database
-            return new Dictionary<string, object>
-            {
-                ["templateId"] = templateId,
-                ["totalUsage"] = 25,
-                ["lastUsed"] = DateTime.UtcNow.AddDays(-2),
-                ["averageExecutionTime"] = 45.6,
-                ["successRate"] = 0.92,
-                ["popularParameters"] = new List<string> { "input", "output", "environment" }
-            };
+            // Get real usage statistics from the database
+            return await _templateRepository.GetTemplateUsageStatsAsync(templateId, userId);
         }
         catch (Exception ex)
         {
@@ -489,8 +576,15 @@ public class WorkflowTemplateService : IWorkflowTemplateService
                 throw new ArgumentException("Invalid template data");
             }
 
+            // Extract template data from import
+            var name = importData["Name"]?.ToString() ?? "Imported Template";
+            var description = importData["Description"]?.ToString() ?? "Imported workflow template";
+            var category = importData["Category"]?.ToString() ?? "General";
+            var templateDefinition = importData["TemplateDefinition"]?.ToString() ?? string.Empty;
+            var parametersJson = importData.ContainsKey("Parameters") ? JsonSerializer.Serialize(importData["Parameters"]) : "{}";
+            var tagsJson = importData.ContainsKey("Tags") ? JsonSerializer.Serialize(importData["Tags"]) : null;
+
             // Validate template definition
-            var templateDefinition = importData["TemplateDefinition"].ToString() ?? string.Empty;
             var validation = await _dslParser.ValidateDSLAsync(templateDefinition);
 
             if (!validation.IsValid)
@@ -498,8 +592,29 @@ public class WorkflowTemplateService : IWorkflowTemplateService
                 throw new ArgumentException($"Invalid template definition: {string.Join(", ", validation.Errors.Select(e => e.Message))}");
             }
 
-            // Create new template (in a real implementation, this would save to database)
+            // Create new template with real database persistence
             var templateId = Guid.NewGuid();
+            var now = DateTime.UtcNow;
+
+            var template = new WorkflowTemplate
+            {
+                TemplateId = templateId,
+                UserId = userId,
+                Name = name,
+                Description = description,
+                Category = category,
+                TemplateDefinitionJson = templateDefinition,
+                ParametersJson = parametersJson,
+                TagsJson = tagsJson,
+                CreatedAt = now,
+                UpdatedAt = now,
+                CreatedBy = userId,
+                UsageCount = 0,
+                IsPublic = false,
+                IsActive = true
+            };
+
+            await _templateRepository.CreateTemplateAsync(template);
 
             _logger.LogInformation("Imported template {TemplateId} for user {UserId}", templateId, userId);
             return templateId;

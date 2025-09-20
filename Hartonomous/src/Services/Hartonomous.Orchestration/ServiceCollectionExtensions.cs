@@ -18,6 +18,7 @@ public static class ServiceCollectionExtensions
     {
         // Register repositories
         services.AddScoped<IWorkflowRepository, WorkflowRepository>();
+        services.AddScoped<IWorkflowTemplateRepository, WorkflowTemplateRepository>();
 
         // Register services
         services.AddScoped<IWorkflowStateManager, WorkflowStateManager>();

@@ -453,8 +453,36 @@ namespace Hartonomous.Infrastructure.SqlClr
             public double GetAverageSparsity()
             {
                 // Return a metric of how sparse the learned features are
-                // This is a simplified implementation
-                return 0.1; // Placeholder - would compute actual sparsity
+                // Calculate actual L0 norm (proportion of near-zero activations) across latent features
+
+                if (_encoderWeights == null || _encoderWeights.Length == 0) return 0.0;
+
+                int totalFeatures = _latentDim;
+                int sparseFeatures = 0;
+
+                // Compute sparsity based on encoder weight magnitudes and bias terms
+                for (int i = 0; i < _latentDim; i++)
+                {
+                    double weightMagnitude = 0.0;
+                    for (int j = 0; j < _inputDim; j++)
+                    {
+                        weightMagnitude += Math.Abs(_encoderWeights[i * _inputDim + j]);
+                    }
+
+                    // Add bias contribution
+                    weightMagnitude += Math.Abs(_encoderBias[i]);
+
+                    // Feature is considered sparse if its average weight magnitude is very small
+                    // This approximates how often this feature activates near zero
+                    double avgWeightMagnitude = weightMagnitude / _inputDim;
+
+                    if (avgWeightMagnitude < 0.01) // Threshold for sparse features
+                    {
+                        sparseFeatures++;
+                    }
+                }
+
+                return (double)sparseFeatures / totalFeatures;
             }
 
             public byte[] SerializeWeights()

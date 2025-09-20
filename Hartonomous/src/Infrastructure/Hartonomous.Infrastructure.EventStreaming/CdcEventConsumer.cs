@@ -19,11 +19,13 @@ public class CdcEventConsumer : BackgroundService
     private readonly Neo4jService _neo4jService;
     private readonly SqlServerVectorService _vectorService;
     private readonly ILogger<CdcEventConsumer> _logger;
+    private readonly IConfiguration _configuration;
     private readonly List<string> _topics;
 
     public CdcEventConsumer(IConfiguration configuration, Neo4jService neo4jService,
         SqlServerVectorService vectorService, ILogger<CdcEventConsumer> logger)
     {
+        _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         _neo4jService = neo4jService ?? throw new ArgumentNullException(nameof(neo4jService));
         _vectorService = vectorService ?? throw new ArgumentNullException(nameof(vectorService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -247,11 +249,12 @@ public class CdcEventConsumer : BackgroundService
                         // Parse the embedding vector (assuming comma-separated floats)
                         var embedding = embeddingVector.Split(',').Select(float.Parse).ToArray();
 
-                        // Get component details (would need component lookup in real implementation)
-                        var modelId = Guid.NewGuid(); // Placeholder - resolve from component
-                        var userId = "system";
-                        var componentName = "component"; // Resolve from component
-                        var componentType = "layer"; // Resolve from component
+                        // Get component details by resolving from ComponentId
+                        var componentDetails = await ResolveComponentDetailsAsync(componentId);
+                        var modelId = componentDetails.ModelId;
+                        var userId = componentDetails.UserId;
+                        var componentName = componentDetails.ComponentName;
+                        var componentType = componentDetails.ComponentType;
 
                         await _vectorService.InsertEmbeddingAsync(componentId, modelId, userId, embedding, componentType, componentName);
                         _logger.LogDebug("Successfully processed ComponentEmbedding {Operation} for {ComponentId}", operation, componentId);
@@ -308,6 +311,76 @@ public class CdcEventConsumer : BackgroundService
         return parts.Length >= 3 ? parts[2] : string.Empty;
     }
 
+    /// <summary>
+    /// Resolve component details from ComponentId using SQL Server lookup
+    /// </summary>
+    private async Task<ComponentDetails> ResolveComponentDetailsAsync(Guid componentId)
+    {
+        try
+        {
+            using var connection = new Microsoft.Data.SqlClient.SqlConnection(_configuration.GetConnectionString("DefaultConnection"));
+            await connection.OpenAsync();
+
+            const string query = @"
+                SELECT
+                    mc.ComponentId,
+                    mc.ComponentName,
+                    mc.ComponentType,
+                    ml.ModelId,
+                    p.UserId
+                FROM ModelComponents mc
+                INNER JOIN ModelLayers ml ON mc.LayerId = ml.LayerId
+                INNER JOIN Models m ON ml.ModelId = m.ModelId
+                INNER JOIN ProjectModels pm ON m.ModelId = pm.ModelId
+                INNER JOIN Projects p ON pm.ProjectId = p.ProjectId
+                WHERE mc.ComponentId = @ComponentId";
+
+            using var command = new Microsoft.Data.SqlClient.SqlCommand(query, connection);
+            command.Parameters.AddWithValue("@ComponentId", componentId);
+
+            using var reader = await command.ExecuteReaderAsync();
+            if (await reader.ReadAsync())
+            {
+                return new ComponentDetails
+                {
+                    ComponentId = reader.GetGuid("ComponentId"),
+                    ComponentName = reader.GetString("ComponentName"),
+                    ComponentType = reader.GetString("ComponentType"),
+                    ModelId = reader.GetGuid("ModelId"),
+                    UserId = reader.GetString("UserId")
+                };
+            }
+
+            // Fallback: try to get minimal info directly from ModelComponents
+            await reader.CloseAsync();
+            const string fallbackQuery = "SELECT ComponentName, ComponentType FROM ModelComponents WHERE ComponentId = @ComponentId";
+            using var fallbackCommand = new Microsoft.Data.SqlClient.SqlCommand(fallbackQuery, connection);
+            fallbackCommand.Parameters.AddWithValue("@ComponentId", componentId);
+
+            using var fallbackReader = await fallbackCommand.ExecuteReaderAsync();
+            if (await fallbackReader.ReadAsync())
+            {
+                _logger.LogWarning("Could not resolve full component details for {ComponentId}, using fallback", componentId);
+                return new ComponentDetails
+                {
+                    ComponentId = componentId,
+                    ComponentName = fallbackReader.GetString("ComponentName"),
+                    ComponentType = fallbackReader.GetString("ComponentType"),
+                    ModelId = Guid.Empty, // Will be logged as warning
+                    UserId = "unknown" // Will be logged as warning
+                };
+            }
+
+            _logger.LogError("Component {ComponentId} not found in database", componentId);
+            throw new InvalidOperationException($"Component {componentId} not found");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to resolve component details for {ComponentId}", componentId);
+            throw;
+        }
+    }
+
     public override void Dispose()
     {
         _consumer?.Dispose();
@@ -329,4 +402,16 @@ public class CdcEventPayload
     public Dictionary<string, object>? After { get; set; }
     public string Op { get; set; } = string.Empty; // Operation: c, u, d, r
     public long TsMs { get; set; } // Timestamp
+}
+
+/// <summary>
+/// Component details resolved from database lookup
+/// </summary>
+public class ComponentDetails
+{
+    public Guid ComponentId { get; set; }
+    public string ComponentName { get; set; } = string.Empty;
+    public string ComponentType { get; set; } = string.Empty;
+    public Guid ModelId { get; set; }
+    public string UserId { get; set; } = string.Empty;
 }
