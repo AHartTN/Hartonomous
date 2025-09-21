@@ -401,7 +401,7 @@ public class CapabilityRegistryService : ICapabilityRegistry, IDisposable
 
             // Check general agent health
             var instances = await _agentRuntime.ListInstancesAsync(agentId: agentId, cancellationToken: cancellationToken);
-            var runningInstances = instances.Where(i => i.Status == AgentStatus.Running).ToList();
+            var runningInstances = instances.Where(i => i.Status == AgentInstanceStatus.Running).ToList();
 
             if (runningInstances.Count == 0)
                 return HealthStatus.Unhealthy;

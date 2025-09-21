@@ -81,7 +81,7 @@ public interface IAgentRegistry
     /// <returns>List of available agent instances</returns>
     Task<IEnumerable<AgentInstance>> GetAvailableInstancesAsync(
         string agentId,
-        AgentStatus? status = null,
+        AgentInstanceStatus? status = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>

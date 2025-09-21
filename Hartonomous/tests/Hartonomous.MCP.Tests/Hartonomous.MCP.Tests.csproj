@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Services\Hartonomous.MCP\Hartonomous.MCP.csproj" />
+    <ProjectReference Include="..\..\src\Core\Hartonomous.Core\Hartonomous.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>

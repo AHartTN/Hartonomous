@@ -81,7 +81,7 @@ public class AgentRuntimeService : IAgentRuntime, IDisposable
                 AgentId = definition.Id,
                 Name = definition.Name,
                 Version = definition.Version,
-                Status = AgentStatus.Stopped,
+                Status = AgentInstanceStatus.Stopped,
                 WorkingDirectory = workingDirectory,
                 Configuration = configuration ?? new Dictionary<string, object>(),
                 Environment = CreateEnvironmentVariables(definition, instanceId),
@@ -117,17 +117,17 @@ public class AgentRuntimeService : IAgentRuntime, IDisposable
         if (!_instances.TryGetValue(instanceId, out var instance))
             throw new InvalidOperationException($"Instance {instanceId} not found");
 
-        if (instance.Status == AgentStatus.Running)
+        if (instance.Status == AgentInstanceStatus.Running)
             return instance;
 
         await _instanceSemaphore.WaitAsync(cancellationToken);
         try
         {
             // Update status to starting
-            instance = instance with { Status = AgentStatus.Starting, UpdatedAt = DateTimeOffset.UtcNow };
+            instance = instance with { Status = AgentInstanceStatus.Starting, UpdatedAt = DateTimeOffset.UtcNow };
             _instances.TryUpdate(instanceId, instance, _instances[instanceId]);
 
-            OnInstanceStatusChanged(instance, AgentStatus.Stopped);
+            OnInstanceStatusChanged(instance, AgentInstanceStatus.Stopped);
 
             try
             {
@@ -137,7 +137,7 @@ public class AgentRuntimeService : IAgentRuntime, IDisposable
                 // Update status to running
                 instance = instance with
                 {
-                    Status = AgentStatus.Running,
+                    Status = AgentInstanceStatus.Running,
                     StartedAt = DateTimeOffset.UtcNow,
                     UpdatedAt = DateTimeOffset.UtcNow
                 };
@@ -154,7 +154,7 @@ public class AgentRuntimeService : IAgentRuntime, IDisposable
                     ["agent_id"] = instance.AgentId
                 });
 
-                OnInstanceStatusChanged(instance, AgentStatus.Starting);
+                OnInstanceStatusChanged(instance, AgentInstanceStatus.Starting);
             }
             catch (Exception ex)
             {
@@ -170,7 +170,7 @@ public class AgentRuntimeService : IAgentRuntime, IDisposable
 
                 instance = instance with
                 {
-                    Status = AgentStatus.Failed,
+                    Status = AgentInstanceStatus.Failed,
                     Error = error,
                     UpdatedAt = DateTimeOffset.UtcNow
                 };
@@ -195,7 +195,7 @@ public class AgentRuntimeService : IAgentRuntime, IDisposable
         if (!_instances.TryGetValue(instanceId, out var instance))
             throw new InvalidOperationException($"Instance {instanceId} not found");
 
-        if (instance.Status == AgentStatus.Stopped)
+        if (instance.Status == AgentInstanceStatus.Stopped)
             return instance;
 
         await _instanceSemaphore.WaitAsync(cancellationToken);
@@ -204,7 +204,7 @@ public class AgentRuntimeService : IAgentRuntime, IDisposable
             var previousStatus = instance.Status;
 
             // Update status to stopping
-            instance = instance with { Status = AgentStatus.Stopping, UpdatedAt = DateTimeOffset.UtcNow };
+            instance = instance with { Status = AgentInstanceStatus.Stopping, UpdatedAt = DateTimeOffset.UtcNow };
             _instances.TryUpdate(instanceId, instance, _instances[instanceId]);
 
             OnInstanceStatusChanged(instance, previousStatus);
@@ -220,7 +220,7 @@ public class AgentRuntimeService : IAgentRuntime, IDisposable
                 // Update status to stopped
                 instance = instance with
                 {
-                    Status = AgentStatus.Stopped,
+                    Status = AgentInstanceStatus.Stopped,
                     StoppedAt = DateTimeOffset.UtcNow,
                     UpdatedAt = DateTimeOffset.UtcNow
                 };
@@ -235,7 +235,7 @@ public class AgentRuntimeService : IAgentRuntime, IDisposable
                     ["graceful"] = graceful.ToString()
                 });
 
-                OnInstanceStatusChanged(instance, AgentStatus.Stopping);
+                OnInstanceStatusChanged(instance, AgentInstanceStatus.Stopping);
             }
             catch (Exception ex)
             {
@@ -250,7 +250,7 @@ public class AgentRuntimeService : IAgentRuntime, IDisposable
 
                 instance = instance with
                 {
-                    Status = AgentStatus.Failed,
+                    Status = AgentInstanceStatus.Failed,
                     Error = error,
                     UpdatedAt = DateTimeOffset.UtcNow
                 };
@@ -275,7 +275,7 @@ public class AgentRuntimeService : IAgentRuntime, IDisposable
         if (!_instances.TryGetValue(instanceId, out var instance))
             throw new InvalidOperationException($"Instance {instanceId} not found");
 
-        if (instance.Status != AgentStatus.Running)
+        if (instance.Status != AgentInstanceStatus.Running)
             throw new InvalidOperationException($"Cannot pause instance {instanceId} in state {instance.Status}");
 
         if (_processes.TryGetValue(instanceId, out var process) && !process.HasExited)
@@ -283,10 +283,10 @@ public class AgentRuntimeService : IAgentRuntime, IDisposable
             // Suspend the process (Windows-specific)
             SuspendProcess(process.Id);
 
-            instance = instance with { Status = AgentStatus.Paused, UpdatedAt = DateTimeOffset.UtcNow };
+            instance = instance with { Status = AgentInstanceStatus.Paused, UpdatedAt = DateTimeOffset.UtcNow };
             _instances.TryUpdate(instanceId, instance, _instances[instanceId]);
 
-            OnInstanceStatusChanged(instance, AgentStatus.Running);
+            OnInstanceStatusChanged(instance, AgentInstanceStatus.Running);
 
             _logger.LogInformation("Paused agent instance {InstanceId}", instanceId);
 
@@ -307,7 +307,7 @@ public class AgentRuntimeService : IAgentRuntime, IDisposable
         if (!_instances.TryGetValue(instanceId, out var instance))
             throw new InvalidOperationException($"Instance {instanceId} not found");
 
-        if (instance.Status != AgentStatus.Paused)
+        if (instance.Status != AgentInstanceStatus.Paused)
             throw new InvalidOperationException($"Cannot resume instance {instanceId} in state {instance.Status}");
 
         if (_processes.TryGetValue(instanceId, out var process) && !process.HasExited)
@@ -315,10 +315,10 @@ public class AgentRuntimeService : IAgentRuntime, IDisposable
             // Resume the process (Windows-specific)
             ResumeProcess(process.Id);
 
-            instance = instance with { Status = AgentStatus.Running, UpdatedAt = DateTimeOffset.UtcNow };
+            instance = instance with { Status = AgentInstanceStatus.Running, UpdatedAt = DateTimeOffset.UtcNow };
             _instances.TryUpdate(instanceId, instance, _instances[instanceId]);
 
-            OnInstanceStatusChanged(instance, AgentStatus.Paused);
+            OnInstanceStatusChanged(instance, AgentInstanceStatus.Paused);
 
             _logger.LogInformation("Resumed agent instance {InstanceId}", instanceId);
 
@@ -354,7 +354,7 @@ public class AgentRuntimeService : IAgentRuntime, IDisposable
         try
         {
             // Stop the instance if running
-            if (instance.Status != AgentStatus.Stopped)
+            if (instance.Status != AgentInstanceStatus.Stopped)
             {
                 await StopInstanceAsync(instanceId, !force, cancellationToken);
             }
@@ -403,7 +403,7 @@ public class AgentRuntimeService : IAgentRuntime, IDisposable
 
     public async Task<IEnumerable<AgentInstance>> ListInstancesAsync(
         string? userId = null,
-        AgentStatus? status = null,
+        AgentInstanceStatus? status = null,
         string? agentId = null,
         CancellationToken cancellationToken = default)
     {
@@ -446,7 +446,7 @@ public class AgentRuntimeService : IAgentRuntime, IDisposable
         };
         _instances.TryUpdate(instanceId, instance, _instances[instanceId]);
 
-        if (restart && instance.Status == AgentStatus.Running)
+        if (restart && instance.Status == AgentInstanceStatus.Running)
         {
             instance = await RestartInstanceAsync(instanceId, cancellationToken);
         }
@@ -758,7 +758,7 @@ public class AgentRuntimeService : IAgentRuntime, IDisposable
             var instanceId = kvp.Key;
             var instance = kvp.Value;
 
-            if (instance.Status == AgentStatus.Running && _processes.TryGetValue(instanceId, out var process))
+            if (instance.Status == AgentInstanceStatus.Running && _processes.TryGetValue(instanceId, out var process))
             {
                 try
                 {
@@ -775,7 +775,7 @@ public class AgentRuntimeService : IAgentRuntime, IDisposable
 
                         var updatedInstance = instance with
                         {
-                            Status = AgentStatus.Failed,
+                            Status = AgentInstanceStatus.Failed,
                             Error = error,
                             UpdatedAt = DateTimeOffset.UtcNow
                         };
@@ -829,22 +829,22 @@ public class AgentRuntimeService : IAgentRuntime, IDisposable
         if (_instances.TryGetValue(instanceId, out var instance))
         {
             // Update instance status if it wasn't already updated
-            if (instance.Status == AgentStatus.Running)
+            if (instance.Status == AgentInstanceStatus.Running)
             {
                 var updatedInstance = instance with
                 {
-                    Status = AgentStatus.Stopped,
+                    Status = AgentInstanceStatus.Stopped,
                     StoppedAt = DateTimeOffset.UtcNow,
                     UpdatedAt = DateTimeOffset.UtcNow
                 };
 
                 _instances.TryUpdate(instanceId, updatedInstance, instance);
-                OnInstanceStatusChanged(updatedInstance, AgentStatus.Running);
+                OnInstanceStatusChanged(updatedInstance, AgentInstanceStatus.Running);
             }
         }
     }
 
-    private void OnInstanceStatusChanged(AgentInstance instance, AgentStatus previousStatus)
+    private void OnInstanceStatusChanged(AgentInstance instance, AgentInstanceStatus previousStatus)
     {
         InstanceStatusChanged?.Invoke(this, new AgentInstanceEventArgs
         {
@@ -878,7 +878,7 @@ public class AgentRuntimeService : IAgentRuntime, IDisposable
         _instanceSemaphore?.Dispose();
 
         // Stop all running instances
-        var runningInstances = _instances.Values.Where(i => i.Status == AgentStatus.Running).ToList();
+        var runningInstances = _instances.Values.Where(i => i.Status == AgentInstanceStatus.Running).ToList();
         foreach (var instance in runningInstances)
         {
             try

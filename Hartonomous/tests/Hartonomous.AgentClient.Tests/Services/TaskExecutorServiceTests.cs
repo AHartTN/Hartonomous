@@ -64,7 +64,7 @@ public class TaskExecutorServiceTests : IDisposable
 
         // Setup agent runtime to return a test instance
         _agentRuntimeMock
-            .Setup(x => x.ListInstancesAsync(It.IsAny<string>(), It.IsAny<AgentStatus?>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.ListInstancesAsync(It.IsAny<string>(), It.IsAny<AgentInstanceStatus?>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new[] { CreateTestAgentInstance() });
     }
 
@@ -504,7 +504,7 @@ public class TaskExecutorServiceTests : IDisposable
             AgentId = "test-agent",
             Name = "Test Agent Instance",
             Version = "1.0.0",
-            Status = AgentStatus.Running,
+            Status = AgentInstanceStatus.Running,
             WorkingDirectory = Path.GetTempPath(),
             Configuration = new Dictionary<string, object>(),
             Environment = new Dictionary<string, string>(),

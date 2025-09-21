@@ -1,4 +1,5 @@
-using Hartonomous.MCP.DTOs;
+using Hartonomous.Core.DTOs;
+using Hartonomous.Core.Enums;
 
 namespace Hartonomous.MCP.Tests.DTOs;
 

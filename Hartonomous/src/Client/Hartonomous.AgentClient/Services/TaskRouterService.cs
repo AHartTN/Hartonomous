@@ -63,7 +63,7 @@ public class TaskRouterService : ITaskRouter, IDisposable
             try
             {
                 var score = await EvaluateAgentSuitabilityAsync(agent, task, cancellationToken);
-                var instances = await _agentRegistry.GetAvailableInstancesAsync(agent.Id, AgentStatus.Running, cancellationToken);
+                var instances = await _agentRegistry.GetAvailableInstancesAsync(agent.Id, AgentInstanceStatus.Running, cancellationToken);
                 var bestInstance = await SelectBestInstanceAsync(instances, task, cancellationToken);
 
                 if (bestInstance != null)
@@ -543,7 +543,7 @@ public class TaskRouterService : ITaskRouter, IDisposable
             // Balanced score considers both suitability and load (prefer lower load)
             var combinedScore = (suitabilityScore * 0.6) + ((100 - loadScore) * 0.4);
 
-            var instances = await _agentRegistry.GetAvailableInstancesAsync(agent.Id, AgentStatus.Running, cancellationToken);
+            var instances = await _agentRegistry.GetAvailableInstancesAsync(agent.Id, AgentInstanceStatus.Running, cancellationToken);
             var bestInstance = await SelectBestInstanceAsync(instances, task, cancellationToken);
 
             if (bestInstance != null)
@@ -568,7 +568,7 @@ public class TaskRouterService : ITaskRouter, IDisposable
             var perfMetrics = await _agentRegistry.GetAgentPerformanceMetricsAsync(agent.Id, cancellationToken);
             if (perfMetrics != null)
             {
-                var instances = await _agentRegistry.GetAvailableInstancesAsync(agent.Id, AgentStatus.Running, cancellationToken);
+                var instances = await _agentRegistry.GetAvailableInstancesAsync(agent.Id, AgentInstanceStatus.Running, cancellationToken);
                 var instance = await SelectBestInstanceAsync(instances, task, cancellationToken);
 
                 if (instance != null && perfMetrics.PerformanceScore > bestPerformanceScore)
@@ -595,7 +595,7 @@ public class TaskRouterService : ITaskRouter, IDisposable
             var perfMetrics = await _agentRegistry.GetAgentPerformanceMetricsAsync(agent.Id, cancellationToken);
             if (perfMetrics != null)
             {
-                var instances = await _agentRegistry.GetAvailableInstancesAsync(agent.Id, AgentStatus.Running, cancellationToken);
+                var instances = await _agentRegistry.GetAvailableInstancesAsync(agent.Id, AgentInstanceStatus.Running, cancellationToken);
                 var instance = await SelectBestInstanceAsync(instances, task, cancellationToken);
 
                 if (instance != null && perfMetrics.ReliabilityScore > bestReliabilityScore)
@@ -625,7 +625,7 @@ public class TaskRouterService : ITaskRouter, IDisposable
                 var connections = loadMetrics.ActiveTasks + loadMetrics.QueuedTasks;
                 if (connections < lowestConnections)
                 {
-                    var instances = await _agentRegistry.GetAvailableInstancesAsync(agent.Id, AgentStatus.Running, cancellationToken);
+                    var instances = await _agentRegistry.GetAvailableInstancesAsync(agent.Id, AgentInstanceStatus.Running, cancellationToken);
                     var instance = await SelectBestInstanceAsync(instances, task, cancellationToken);
 
                     if (instance != null)
@@ -651,7 +651,7 @@ public class TaskRouterService : ITaskRouter, IDisposable
         var counter = _roundRobinCounters.AddOrUpdate(taskTypeKey, 0, (_, current) => (current + 1) % agents.Count);
         var selectedAgent = agents[counter];
 
-        var instances = await _agentRegistry.GetAvailableInstancesAsync(selectedAgent.Id, AgentStatus.Running, cancellationToken);
+        var instances = await _agentRegistry.GetAvailableInstancesAsync(selectedAgent.Id, AgentInstanceStatus.Running, cancellationToken);
         return await SelectBestInstanceAsync(instances, task, cancellationToken);
     }
 

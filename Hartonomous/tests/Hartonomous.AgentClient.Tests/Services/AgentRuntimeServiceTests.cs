@@ -66,7 +66,7 @@ public class AgentRuntimeServiceTests : IDisposable
         instance.AgentId.Should().Be(definition.Id);
         instance.Name.Should().Be(definition.Name);
         instance.Version.Should().Be(definition.Version);
-        instance.Status.Should().Be(AgentStatus.Stopped);
+        instance.Status.Should().Be(AgentInstanceStatus.Stopped);
         instance.UserId.Should().Be("test-user-id");
         instance.WorkingDirectory.Should().NotBeNullOrEmpty();
 
@@ -136,8 +136,8 @@ public class AgentRuntimeServiceTests : IDisposable
         await _service.CreateInstanceAsync(definition);
 
         // Act
-        var stoppedInstances = await _service.ListInstancesAsync(status: AgentStatus.Stopped);
-        var runningInstances = await _service.ListInstancesAsync(status: AgentStatus.Running);
+        var stoppedInstances = await _service.ListInstancesAsync(status: AgentInstanceStatus.Stopped);
+        var runningInstances = await _service.ListInstancesAsync(status: AgentInstanceStatus.Running);
 
         // Assert
         stoppedInstances.Should().HaveCount(1);

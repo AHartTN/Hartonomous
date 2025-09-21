@@ -47,7 +47,7 @@ public sealed record AgentInstance
     /// Current instance status
     /// </summary>
     [JsonPropertyName("status")]
-    public AgentStatus Status { get; set; } = AgentStatus.Stopped;
+    public AgentInstanceStatus Status { get; set; } = AgentInstanceStatus.Stopped;
 
     /// <summary>
     /// Process ID if running in separate process
@@ -138,7 +138,7 @@ public sealed record AgentInstance
 /// Agent instance status enumeration
 /// </summary>
 [JsonConverter(typeof(JsonStringEnumConverter))]
-public enum AgentStatus
+public enum AgentInstanceStatus
 {
     /// <summary>
     /// Agent is stopped

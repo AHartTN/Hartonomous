@@ -1,9 +1,12 @@
 using Hartonomous.Core.DTOs;
+using Hartonomous.Core.Enums;
+using Hartonomous.Core.Configuration;
 using Hartonomous.MCP.Repositories;
 using Microsoft.Data.Sqlite;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using System.Data;
 
 namespace Hartonomous.MCP.Tests.Repositories;
@@ -22,14 +25,13 @@ public class AgentRepositoryTests : IDisposable
         _connection = new SqliteConnection("DataSource=:memory:");
         _connection.Open();
 
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["ConnectionStrings:DefaultConnection"] = connectionString
-            })
-            .Build();
+        var sqlServerOptions = new SqlServerOptions
+        {
+            ConnectionString = connectionString
+        };
+        var options = Options.Create(sqlServerOptions);
 
-        _repository = new AgentRepository(configuration);
+        _repository = new AgentRepository(options);
 
         InitializeDatabase();
     }

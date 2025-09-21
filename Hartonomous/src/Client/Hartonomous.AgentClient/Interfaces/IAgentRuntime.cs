@@ -92,7 +92,7 @@ public interface IAgentRuntime
     /// <returns>List of agent instances</returns>
     Task<IEnumerable<AgentInstance>> ListInstancesAsync(
         string? userId = null,
-        AgentStatus? status = null,
+        AgentInstanceStatus? status = null,
         string? agentId = null,
         CancellationToken cancellationToken = default);
 
@@ -179,7 +179,7 @@ public class AgentInstanceEventArgs : EventArgs
     /// <summary>
     /// Previous status (for status change events)
     /// </summary>
-    public AgentStatus? PreviousStatus { get; init; }
+    public AgentInstanceStatus? PreviousStatus { get; init; }
 
     /// <summary>
     /// Event timestamp
