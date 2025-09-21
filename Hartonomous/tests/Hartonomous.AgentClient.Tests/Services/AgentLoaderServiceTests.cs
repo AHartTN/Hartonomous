@@ -21,6 +21,7 @@ public class AgentLoaderServiceTests : IDisposable
     private readonly Mock<ILogger<AgentLoaderService>> _loggerMock;
     private readonly Mock<IMetricsCollector> _metricsCollectorMock;
     private readonly Mock<ICapabilityRegistry> _capabilityRegistryMock;
+    private readonly Mock<SecurityValidator> _securityValidatorMock;
     private readonly AgentClientConfiguration _configuration;
     private readonly AgentLoaderService _service;
     private readonly string _tempDirectory;
@@ -30,6 +31,7 @@ public class AgentLoaderServiceTests : IDisposable
         _loggerMock = new Mock<ILogger<AgentLoaderService>>();
         _metricsCollectorMock = new Mock<IMetricsCollector>();
         _capabilityRegistryMock = new Mock<ICapabilityRegistry>();
+        _securityValidatorMock = new Mock<SecurityValidator>();
 
         _tempDirectory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
         Directory.CreateDirectory(_tempDirectory);
@@ -46,7 +48,8 @@ public class AgentLoaderServiceTests : IDisposable
             _loggerMock.Object,
             _metricsCollectorMock.Object,
             _capabilityRegistryMock.Object,
-            configurationOptions);
+            configurationOptions,
+            _securityValidatorMock.Object);
     }
 
     [Fact]

@@ -44,6 +44,18 @@ public class ModelLayer
     public string ConfigMetadata { get; set; } = "{}";
 
     /// <summary>
+    /// Detailed layer configuration for mechanistic interpretability
+    /// Stores layer-specific parameters, activation functions, and architectural details
+    /// </summary>
+    public string LayerConfig { get; set; } = "{}";
+
+    /// <summary>
+    /// Interpretability score indicating how well this layer's function is understood
+    /// Range: 0.0 (completely opaque) to 1.0 (fully interpretable)
+    /// </summary>
+    public double InterpretabilityScore { get; set; } = 0.0;
+
+    /// <summary>
     /// Multi-tenant isolation
     /// </summary>
     [Required]

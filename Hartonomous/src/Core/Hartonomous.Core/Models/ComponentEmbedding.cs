@@ -49,6 +49,17 @@ public class ComponentEmbedding
     public double ConfidenceScore { get; set; } = 1.0;
 
     /// <summary>
+    /// Alternative access property for the embedding vector data
+    /// Provides consistent naming convention across the system
+    /// References the same data as EmbeddingVector
+    /// </summary>
+    public byte[] Embedding
+    {
+        get => EmbeddingVector;
+        set => EmbeddingVector = value;
+    }
+
+    /// <summary>
     /// Multi-tenant isolation
     /// </summary>
     [Required]

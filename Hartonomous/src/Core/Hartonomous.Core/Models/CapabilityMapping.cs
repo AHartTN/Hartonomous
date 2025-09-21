@@ -21,6 +21,12 @@ public class CapabilityMapping
 {
     public Guid MappingId { get; set; } = Guid.NewGuid();
 
+    /// <summary>
+    /// Alternative ID property for capability mapping identification
+    /// Used for backward compatibility and specific query scenarios
+    /// </summary>
+    public Guid CapabilityMappingId { get; set; } = Guid.NewGuid();
+
     [Required]
     public Guid ModelId { get; set; }
 

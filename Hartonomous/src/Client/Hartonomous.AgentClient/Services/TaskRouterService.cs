@@ -402,7 +402,7 @@ public class TaskRouterService : ITaskRouter, IDisposable
         try
         {
             // Check if agent type can handle task type (basic mapping)
-            if (agent.Type.Equals(taskType, StringComparison.OrdinalIgnoreCase) ||
+            if (agent.Type.ToString().Equals(taskType, StringComparison.OrdinalIgnoreCase) ||
                 agent.Tags.Any(t => t.Equals(taskType, StringComparison.OrdinalIgnoreCase)))
             {
                 return true;

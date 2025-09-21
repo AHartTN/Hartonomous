@@ -23,6 +23,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
 using Hartonomous.Core.Data;
 using Hartonomous.Core.Models;
@@ -210,13 +211,13 @@ public class ModelQueryEngineService : IModelQueryEngineService
         {
             results.Add(new ModelComponentQueryResult
             {
-                ComponentId = reader.GetGuid("ComponentId"),
-                ComponentName = reader.GetString("ComponentName"),
-                ComponentType = reader.GetString("ComponentType"),
-                SemanticPurpose = reader.IsDBNull("SemanticPurpose") ? null : reader.GetString("SemanticPurpose"),
-                LayerIndex = reader.GetInt32("LayerIndex"),
-                Similarity = reader.GetDouble("Similarity"),
-                InterpretabilityData = reader.IsDBNull("InterpretabilityData") ? null : reader.GetString("InterpretabilityData")
+                ComponentId = reader.GetGuid(reader.GetOrdinal("ComponentId")),
+                ComponentName = reader.GetString(reader.GetOrdinal("ComponentName")),
+                ComponentType = reader.GetString(reader.GetOrdinal("ComponentType")),
+                SemanticPurpose = reader.IsDBNull(reader.GetOrdinal("SemanticPurpose")) ? null : reader.GetString(reader.GetOrdinal("SemanticPurpose")),
+                LayerIndex = reader.GetInt32(reader.GetOrdinal("LayerIndex")),
+                Similarity = reader.GetDouble(reader.GetOrdinal("Similarity")),
+                InterpretabilityData = reader.IsDBNull(reader.GetOrdinal("InterpretabilityData")) ? null : reader.GetString(reader.GetOrdinal("InterpretabilityData"))
             });
         }
 
@@ -311,7 +312,7 @@ public class ModelQueryEngineService : IModelQueryEngineService
                             LayerIndex = layer.Index,
                             LearnedConcept = neuron.LearnedConcept ?? "Unknown",
                             ConceptCategory = neuron.ConceptCategory ?? "Unclassified",
-                            ConceptEmbedding = neuron.ConceptEmbedding,
+                            ConceptEmbedding = neuron.ConceptEmbedding != null ? FloatArrayToBytes(neuron.ConceptEmbedding) : Array.Empty<byte>(),
                             ActivationThreshold = neuron.ActivationThreshold,
                             ConceptStrength = neuron.ConceptStrength,
                             ConceptExamples = JsonSerializer.Serialize(neuron.ConceptExamples ?? new List<string>()),
@@ -336,7 +337,7 @@ public class ModelQueryEngineService : IModelQueryEngineService
                             AttentionPattern = head.PatternType ?? "Unknown",
                             PatternStrength = head.PatternStrength,
                             SemanticDescription = head.Description ?? "",
-                            ExampleInputs = JsonSerializer.Serialize(head.ExampleInputs ?? new List<string>()),
+                            ExampleInputs = JsonSerializer.Serialize(head.ExampleInputs ?? new List<object>()),
                             UserId = userId
                         };
 
@@ -417,7 +418,7 @@ public class ModelQueryEngineService : IModelQueryEngineService
                     var weight = new ComponentWeight
                     {
                         ComponentId = component.ComponentId,
-                        WeightData = componentData.WeightData,
+                        WeightData = JsonSerializer.Serialize(new { RawWeights = componentData.WeightData }),
                         UserId = userId
                     };
 
@@ -446,7 +447,7 @@ public class ModelQueryEngineService : IModelQueryEngineService
                 var componentEmbedding = new ComponentEmbedding
                 {
                     ComponentId = component.ComponentId,
-                    Embedding = embedding,
+                    Embedding = FloatArrayToBytes(embedding),
                     EmbeddingType = "semantic",
                     UserId = userId
                 };
@@ -482,6 +483,16 @@ public class ModelQueryEngineService : IModelQueryEngineService
             // TODO: Store mechanistic analysis results in appropriate tables
         }
     }
+
+    /// <summary>
+    /// Converts float array to byte array for SQL Server 2025 VECTOR storage
+    /// </summary>
+    private static byte[] FloatArrayToBytes(float[] floats)
+    {
+        var bytes = new byte[floats.Length * 4];
+        Buffer.BlockCopy(floats, 0, bytes, 0, bytes.Length);
+        return bytes;
+    }
 }
 
 // Supporting types
@@ -516,14 +527,7 @@ public class NeuralPatternExtractionResult
     public int ExtractionTimeMs { get; set; }
 }
 
-public class NeuralPattern
-{
-    public string PatternId { get; set; } = string.Empty;
-    public string PatternType { get; set; } = string.Empty;
-    public float[] WeightPattern { get; set; } = Array.Empty<float>();
-    public string Description { get; set; } = string.Empty;
-    public double Confidence { get; set; }
-}
+// NeuralPattern class moved to MechanisticInterpretabilityService.cs to avoid duplication
 
 // llama.cpp service response types
 public class LlamaCppAnalysisResponse
@@ -572,14 +576,7 @@ public class NeuronActivation
     public object? DetailedAnalysis { get; set; }
 }
 
-public class AttentionHeadAnalysis
-{
-    public int Index { get; set; }
-    public string? PatternType { get; set; }
-    public double PatternStrength { get; set; }
-    public string? Description { get; set; }
-    public List<string>? ExampleInputs { get; set; }
-}
+// AttentionHeadAnalysis class moved to MechanisticInterpretabilityService.cs to avoid duplication
 
 public class EmbeddingResponse
 {

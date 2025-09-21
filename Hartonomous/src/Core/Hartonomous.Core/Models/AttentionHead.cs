@@ -27,8 +27,29 @@ public class AttentionHead
     [Required]
     public Guid LayerId { get; set; }
 
+    /// <summary>
+    /// Component ID for component-based analysis
+    /// </summary>
+    public Guid ComponentId { get; set; }
+
+    /// <summary>
+    /// Layer index in the model architecture
+    /// </summary>
+    public int LayerIndex { get; set; }
+
     public int HeadIndex { get; set; }
     public int HeadDimension { get; set; }
+
+    /// <summary>
+    /// Detected attention pattern for this head
+    /// </summary>
+    [MaxLength(200)]
+    public string AttentionPattern { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Strength of the attention pattern (0.0 to 1.0)
+    /// </summary>
+    public double PatternStrength { get; set; } = 0.0;
 
     /// <summary>
     /// Detected attention pattern type
@@ -61,6 +82,19 @@ public class AttentionHead
     /// Importance score for model behavior
     /// </summary>
     public double ImportanceScore { get; set; } = 0.0;
+
+    /// <summary>
+    /// Semantic description of the attention head's role and function
+    /// Human-readable explanation of what patterns this head learns
+    /// </summary>
+    [MaxLength(2000)]
+    public string SemanticDescription { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Example inputs that strongly activate this attention head
+    /// JSON array of representative input samples for interpretability
+    /// </summary>
+    public string ExampleInputs { get; set; } = "[]";
 
     /// <summary>
     /// Multi-tenant isolation
@@ -113,5 +147,24 @@ public class AttentionHead
     public void SetExamplePatterns<T>(List<T> patterns) where T : class
     {
         ExamplePatterns = JsonSerializer.Serialize(patterns);
+    }
+
+    /// <summary>
+    /// Get example inputs as typed list
+    /// </summary>
+    public List<T> GetExampleInputs<T>() where T : class
+    {
+        if (string.IsNullOrEmpty(ExampleInputs) || ExampleInputs == "[]")
+            return new List<T>();
+
+        return JsonSerializer.Deserialize<List<T>>(ExampleInputs) ?? new List<T>();
+    }
+
+    /// <summary>
+    /// Set example inputs from typed list
+    /// </summary>
+    public void SetExampleInputs<T>(List<T> inputs) where T : class
+    {
+        ExampleInputs = JsonSerializer.Serialize(inputs);
     }
 }

@@ -14,6 +14,7 @@ using Hartonomous.Core.Interfaces;
 using Hartonomous.Core.Abstractions;
 using Hartonomous.Core.Configuration;
 using Hartonomous.Core.Entities;
+using Hartonomous.Core.Enums;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Options;
 using System.Data;
@@ -94,13 +95,14 @@ public class MessageRepository : BaseRepository<Message, Guid>, IMessageReposito
         if (entity?.UserId != userId) return null;
 
         return new McpMessage(
-            entity.Id,
-            entity.ConversationId,
-            entity.AgentId ?? Guid.Empty,
-            entity.MessageType.ToString(),
-            DeserializeFromJson<object>(entity.Content) ?? new object(),
-            entity.Metadata,
-            entity.CreatedDate
+            entity.Id,                                                          // MessageId
+            entity.ConversationId,                                             // FromAgentId
+            entity.AgentId,                                                     // ToAgentId (can be null)
+            entity.MessageType.ToString(),                                     // MessageType
+            DeserializeFromJson<object>(entity.Content) ?? new object(),       // Payload
+            entity.Metadata,                                                    // Metadata
+            entity.CreatedDate,                                                 // Timestamp
+            entity.ModifiedDate                                                 // ProcessedAt
         );
     }
 
@@ -137,7 +139,7 @@ public class MessageRepository : BaseRepository<Message, Guid>, IMessageReposito
                       .Select(ConvertToMcpMessage);
     }
 
-    public async Task<IEnumerable<McpMessage>> GetMessagesByProjectAsync(Guid projectId, string userId, int limit = 100)
+    public async Task<IEnumerable<McpMessage>> GetMessagesByProjectAsync(Guid projectId, string userId, int limit = 1000)
     {
         var entities = await GetByUserAsync(userId);
         return entities.Take(limit).Select(ConvertToMcpMessage);
@@ -241,17 +243,18 @@ public class MessageRepository : BaseRepository<Message, Guid>, IMessageReposito
     private McpMessage ConvertToMcpMessage(Message entity)
     {
         return new McpMessage(
-            entity.Id,
-            entity.ConversationId,
-            entity.AgentId ?? Guid.Empty,
-            entity.MessageType.ToString(),
-            DeserializeFromJson<object>(entity.Content) ?? new object(),
-            entity.Metadata,
-            entity.CreatedDate
+            entity.Id,                                                          // MessageId
+            entity.ConversationId,                                             // FromAgentId
+            entity.AgentId,                                                     // ToAgentId (can be null)
+            entity.MessageType.ToString(),                                     // MessageType
+            DeserializeFromJson<object>(entity.Content) ?? new object(),       // Payload
+            entity.Metadata,                                                    // Metadata
+            entity.CreatedDate,                                                 // Timestamp
+            entity.ModifiedDate                                                 // ProcessedAt
         );
     }
 
-    // IRepository<McpMessage> bridge implementations
+    // IRepository<McpMessage> bridge implementations for interface compatibility
     async Task<McpMessage?> IRepository<McpMessage>.GetByIdAsync(Guid id, string userId)
     {
         var entity = await GetByIdAsync(id);
@@ -286,8 +289,112 @@ public class MessageRepository : BaseRepository<Message, Guid>, IMessageReposito
         return await UpdateAsync(message);
     }
 
-    async Task<bool> IRepository<McpMessage>.DeleteAsync(Guid id, string userId)
+    // Additional required interface implementations for IRepository<McpMessage>
+
+    Task<IEnumerable<McpMessage>> IRepository<McpMessage>.FindAsync(System.Linq.Expressions.Expression<Func<McpMessage, bool>> predicate, string userId)
+    {
+        throw new NotImplementedException("Use specific message query methods instead");
+    }
+
+    Task<McpMessage?> IRepository<McpMessage>.FirstOrDefaultAsync(System.Linq.Expressions.Expression<Func<McpMessage, bool>> predicate, string userId)
+    {
+        throw new NotImplementedException("Use GetMessageAsync instead");
+    }
+
+    Task<(IEnumerable<McpMessage> Items, int TotalCount)> IRepository<McpMessage>.GetPagedAsync(
+        int page, int pageSize, string userId,
+        System.Linq.Expressions.Expression<Func<McpMessage, bool>>? filter = null,
+        System.Linq.Expressions.Expression<Func<McpMessage, object>>? orderBy = null,
+        bool descending = false)
+    {
+        throw new NotImplementedException("Use GetMessagesForAgentAsync with limit parameter");
+    }
+
+    async Task<McpMessage> IRepository<McpMessage>.AddAsync(McpMessage entity)
+    {
+        var messageEntity = ConvertFromMcpMessage(entity);
+        await CreateAsync(messageEntity);
+        return ConvertToMcpMessage(messageEntity);
+    }
+
+    Task<IEnumerable<McpMessage>> IRepository<McpMessage>.AddRangeAsync(IEnumerable<McpMessage> entities)
+    {
+        throw new NotImplementedException("Use StoreMessageAsync for each message");
+    }
+
+    async Task<McpMessage> IRepository<McpMessage>.UpdateAsync(McpMessage entity)
+    {
+        var messageEntity = ConvertFromMcpMessage(entity);
+        await UpdateAsync(messageEntity);
+        return ConvertToMcpMessage(messageEntity);
+    }
+
+    Task IRepository<McpMessage>.DeleteAsync(McpMessage entity)
+    {
+        return DeleteAsync(entity.MessageId);
+    }
+
+    Task IRepository<McpMessage>.DeleteAsync(Guid id, string userId)
+    {
+        return DeleteAsync(id);
+    }
+
+    Task IRepository<McpMessage>.DeleteRangeAsync(IEnumerable<McpMessage> entities)
+    {
+        throw new NotImplementedException("Use DeleteAsync for each message");
+    }
+
+    async Task<int> IRepository<McpMessage>.CountAsync(string userId)
+    {
+        var entities = await GetByUserAsync(userId);
+        return entities.Count();
+    }
+
+    Task<int> IRepository<McpMessage>.CountAsync(System.Linq.Expressions.Expression<Func<McpMessage, bool>> predicate, string userId)
+    {
+        throw new NotImplementedException("Use CountAsync with userId only");
+    }
+
+    async Task<bool> IRepository<McpMessage>.ExistsAsync(Guid id, string userId)
+    {
+        var entity = await GetByIdAsync(id);
+        return entity?.UserId == userId;
+    }
+
+    Task<bool> IRepository<McpMessage>.ExistsAsync(System.Linq.Expressions.Expression<Func<McpMessage, bool>> predicate, string userId)
+    {
+        throw new NotImplementedException("Use ExistsAsync with id and userId");
+    }
+
+    Task<IEnumerable<McpMessage>> IRepository<McpMessage>.FromSqlAsync(string sql, params object[] parameters)
+    {
+        throw new NotImplementedException("Raw SQL not supported for McpMessage");
+    }
+
+    Task<int> IRepository<McpMessage>.ExecuteSqlAsync(string sql, params object[] parameters)
+    {
+        throw new NotImplementedException("Raw SQL not supported for McpMessage");
+    }
+
+    async Task<bool> IRepository<McpMessage>.DeleteByIdAsync(Guid id, string userId)
     {
         return await DeleteAsync(id);
+    }
+
+    // Helper method for McpMessage to Message conversion (inverse of ConvertToMcpMessage)
+    private Message ConvertFromMcpMessage(McpMessage dto)
+    {
+        return new Message
+        {
+            Id = dto.MessageId,
+            ConversationId = dto.FromAgentId,
+            AgentId = dto.ToAgentId,
+            MessageType = Enum.TryParse<MessageType>(dto.MessageType, out var msgType) ? msgType : MessageType.Command,
+            Content = dto.Payload?.ToString() ?? "",
+            Metadata = dto.Metadata ?? new Dictionary<string, object>(),
+            CreatedDate = dto.Timestamp,
+            ModifiedDate = dto.ProcessedAt,
+            UserId = "" // Will be set by calling code
+        };
     }
 }

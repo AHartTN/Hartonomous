@@ -20,6 +20,7 @@ using Microsoft.Extensions.Logging;
 using Hartonomous.Core.Data;
 using Hartonomous.Core.Models;
 using Hartonomous.Core.Interfaces;
+using Hartonomous.Core.Enums;
 using System.Text.Json;
 
 namespace Hartonomous.Core.Services;

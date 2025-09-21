@@ -7,12 +7,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Dapper" Version="2.1.66" />
-    <PackageReference Include="Microsoft.AspNetCore.SignalR" Version="1.1.0" />
-    <PackageReference Include="Microsoft.Data.SqlClient" Version="6.1.1" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.9" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.9" />
-    <PackageReference Include="System.Text.Json" Version="9.0.0" />
+    <PackageReference Include="Dapper" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR" />
+    <PackageReference Include="Microsoft.Data.SqlClient" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="System.Text.Json" />
     <!-- Swagger removed for library project -->
     <!-- <PackageReference Include="Swashbuckle.AspNetCore" Version="7.2.0" /> -->
   </ItemGroup>
@@ -22,6 +22,7 @@
     <ProjectReference Include="..\..\Infrastructure\Hartonomous.Infrastructure.Configuration\Hartonomous.Infrastructure.Configuration.csproj" />
     <ProjectReference Include="..\..\Infrastructure\Hartonomous.Infrastructure.Observability\Hartonomous.Infrastructure.Observability.csproj" />
     <ProjectReference Include="..\..\Infrastructure\Hartonomous.Infrastructure.Security\Hartonomous.Infrastructure.Security.csproj" />
+    <ProjectReference Include="..\Hartonomous.Orchestration\Hartonomous.Orchestration.csproj" />
   </ItemGroup>
 
 </Project>

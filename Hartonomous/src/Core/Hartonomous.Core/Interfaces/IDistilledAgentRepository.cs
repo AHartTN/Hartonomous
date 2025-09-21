@@ -9,6 +9,7 @@
  */
 
 using Hartonomous.Core.Models;
+using Hartonomous.Core.Enums;
 
 namespace Hartonomous.Core.Interfaces;
 

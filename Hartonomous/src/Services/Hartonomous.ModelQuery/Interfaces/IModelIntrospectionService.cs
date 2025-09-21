@@ -1,5 +1,6 @@
 using Hartonomous.ModelQuery.DTOs;
-using Hartonomous.Core.DTOs;
+using SemanticSearchRequestDto = Hartonomous.ModelQuery.DTOs.SemanticSearchRequestDto;
+using SemanticSearchResultDto = Hartonomous.ModelQuery.DTOs.SemanticSearchResultDto;
 
 namespace Hartonomous.ModelQuery.Interfaces;
 

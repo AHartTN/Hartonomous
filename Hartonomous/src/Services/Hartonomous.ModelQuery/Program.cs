@@ -11,6 +11,7 @@ using Hartonomous.ModelQuery.Repositories;
 using Hartonomous.ModelQuery.Services;
 using Hartonomous.Core.Interfaces;
 using Hartonomous.Core.Repositories;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Hartonomous.ModelQuery;
 

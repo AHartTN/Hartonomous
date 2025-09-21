@@ -6,7 +6,7 @@ namespace Hartonomous.Core.Entities;
 /// <summary>
 /// Agent entity implementing IEntity<Guid> for repository pattern
 /// </summary>
-public class Agent : IEntity<Guid>
+public class Agent : IEntityBase<Guid>
 {
     public Guid Id { get; set; }
     public string UserId { get; set; } = string.Empty;

@@ -2,10 +2,11 @@ using Dapper;
 using Hartonomous.ModelQuery.DTOs;
 using Hartonomous.ModelQuery.Interfaces;
 using Hartonomous.Core.Interfaces;
-using Hartonomous.Core.DTOs;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using SemanticSearchRequestDto = Hartonomous.ModelQuery.DTOs.SemanticSearchRequestDto;
+using SemanticSearchResultDto = Hartonomous.ModelQuery.DTOs.SemanticSearchResultDto;
 
 namespace Hartonomous.ModelQuery.Services;
 

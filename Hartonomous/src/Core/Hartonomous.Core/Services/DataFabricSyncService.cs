@@ -154,13 +154,13 @@ public class DataFabricSyncService : BackgroundService
                 try
                 {
                     // Parse analysis results to find target component
-                    var analysisData = mapping.GetAnalysisResults();
+                    var analysisData = mapping.GetAnalysisResults<Dictionary<string, object>>();
                     if (analysisData != null && analysisData.ContainsKey("TargetComponentId"))
                     {
                         var targetComponentId = Guid.Parse(analysisData["TargetComponentId"].ToString()!);
 
                         await _knowledgeGraphRepository.CreateComponentRelationshipAsync(
-                            mapping.ComponentId,
+                            mapping.ComponentId ?? Guid.Empty,
                             targetComponentId,
                             "CAUSALLY_INFLUENCES",
                             mapping.UserId,

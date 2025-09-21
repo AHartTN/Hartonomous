@@ -28,7 +28,7 @@ public class UnitOfWork : IUnitOfWork
     /// Get repository for specific entity type
     /// </summary>
     public IRepository<TEntity, TKey> GetRepository<TEntity, TKey>()
-        where TEntity : class, IEntity<TKey>
+        where TEntity : class, IEntityBase<TKey>
         where TKey : IEquatable<TKey>
     {
         var entityType = typeof(TEntity);
@@ -120,7 +120,7 @@ public class UnitOfWork : IUnitOfWork
     /// Create repository with shared connection for transaction support
     /// </summary>
     private IRepository<TEntity, TKey> CreateRepositoryWithConnection<TEntity, TKey>()
-        where TEntity : class, IEntity<TKey>
+        where TEntity : class, IEntityBase<TKey>
         where TKey : IEquatable<TKey>
     {
         // For now, return the standard repository

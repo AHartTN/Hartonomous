@@ -39,10 +39,9 @@ public class ModelEmbeddingConfiguration : IEntityTypeConfiguration<ModelEmbeddi
         builder.HasIndex(e => e.EmbeddingType);
         builder.HasIndex(e => e.QualityScore);
 
-        // HNSW vector index for similarity search
+        // Vector index for similarity search
         builder.HasIndex(e => e.EmbeddingVector)
-            .HasDatabaseName("IX_ModelEmbedding_Vector")
-            .HasMethod("hnsw");
+            .HasDatabaseName("IX_ModelEmbedding_Vector");
 
         builder.Property<string>("UserId").HasMaxLength(128);
 

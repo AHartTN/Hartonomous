@@ -283,8 +283,10 @@ public static class ServiceCollectionExtensions
         if (string.IsNullOrEmpty(neo4jUri) || string.IsNullOrEmpty(neo4jUsername) || string.IsNullOrEmpty(neo4jPassword))
         {
             // Log warning but don't fail - Neo4j is optional for development
-            services.BuildServiceProvider().GetService<Microsoft.Extensions.Logging.ILogger<ServiceCollectionExtensions>>()
-                ?.LogWarning("Neo4j configuration incomplete. Knowledge graph features will be limited.");
+            var serviceProvider = services.BuildServiceProvider();
+            var loggerFactory = serviceProvider.GetService<Microsoft.Extensions.Logging.ILoggerFactory>();
+            var logger = loggerFactory?.CreateLogger("Hartonomous.Configuration");
+            Microsoft.Extensions.Logging.LoggerExtensions.LogWarning(logger, "Neo4j configuration incomplete. Knowledge graph features will be limited.");
         }
 
         return services;
@@ -335,7 +337,7 @@ public class Neo4jHealthCheck : Microsoft.Extensions.Diagnostics.HealthChecks.IH
         try
         {
             using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-            var healthEndpoint = $"{_options.Uri.Replace("bolt://", "http://").Replace("7687", "7474")}/db/manage/server/health";
+            var healthEndpoint = $"{_options.ConnectionString?.Replace("bolt://", "http://").Replace("7687", "7474")}/db/manage/server/health";
 
             var response = await client.GetAsync(healthEndpoint, cancellationToken);
 

@@ -156,7 +156,7 @@ public static class UnifiedServiceExtensions
 
         if (infrastructureConfig.GetValue<bool>("EventStreaming:Enabled"))
         {
-            services.AddSingleton<Infrastructure.EventStreaming.Interfaces.IEventStreamingService, Infrastructure.EventStreaming.CdcEventConsumer>();
+            services.AddHostedService<Infrastructure.EventStreaming.CdcEventConsumer>();
         }
 
         return services;

@@ -30,8 +30,7 @@ public class ComponentEmbeddingConfiguration : IEntityTypeConfiguration<Componen
         builder.HasIndex(e => e.ConfidenceScore);
 
         builder.HasIndex(e => e.EmbeddingVector)
-            .HasDatabaseName("IX_ComponentEmbedding_Vector")
-            .HasMethod("hnsw");
+            .HasDatabaseName("IX_ComponentEmbedding_Vector");
 
         builder.Property<string>("UserId").HasMaxLength(128);
 

@@ -23,6 +23,9 @@ public class TaskExecutorServiceTests : IDisposable
     private readonly Mock<IMetricsCollector> _metricsCollectorMock;
     private readonly Mock<IAgentRuntime> _agentRuntimeMock;
     private readonly Mock<ICurrentUserService> _currentUserServiceMock;
+    private readonly Mock<IAgentRegistry> _agentRegistryMock;
+    private readonly Mock<ITaskRouter> _taskRouterMock;
+    private readonly Mock<ICapabilityRegistry> _capabilityRegistryMock;
     private readonly AgentClientConfiguration _configuration;
     private readonly TaskExecutorService _service;
 
@@ -32,6 +35,9 @@ public class TaskExecutorServiceTests : IDisposable
         _metricsCollectorMock = new Mock<IMetricsCollector>();
         _agentRuntimeMock = new Mock<IAgentRuntime>();
         _currentUserServiceMock = new Mock<ICurrentUserService>();
+        _agentRegistryMock = new Mock<IAgentRegistry>();
+        _taskRouterMock = new Mock<ITaskRouter>();
+        _capabilityRegistryMock = new Mock<ICapabilityRegistry>();
 
         _configuration = new AgentClientConfiguration
         {
@@ -46,6 +52,9 @@ public class TaskExecutorServiceTests : IDisposable
             _metricsCollectorMock.Object,
             _agentRuntimeMock.Object,
             _currentUserServiceMock.Object,
+            _agentRegistryMock.Object,
+            _taskRouterMock.Object,
+            _capabilityRegistryMock.Object,
             configurationOptions);
 
         // Setup current user service

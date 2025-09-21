@@ -20,10 +20,11 @@
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.9" />
     <PackageVersion Include="Microsoft.Extensions.Logging" Version="9.0.9" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="9.0.9" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.9" />
     <PackageVersion Include="Microsoft.Extensions.Http" Version="9.0.9" />
     <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.9" />
     <PackageVersion Include="Microsoft.Extensions.Configuration.Json" Version="9.0.9" />
-    <PackageVersion Include="Microsoft.Extensions.FileProviders.Physical" Version="9.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.FileProviders.Physical" Version="9.0.9" />
 
     <!-- Caching - Standardized to 9.0.9 -->
     <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="9.0.9" />
@@ -33,6 +34,7 @@
     <!-- Health Checks - Standardized to 9.0.9 -->
     <PackageVersion Include="Microsoft.Extensions.Diagnostics.Abstractions" Version="9.0.9" />
     <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="9.0.9" />
+    <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions" Version="9.0.9" />
     <PackageVersion Include="AspNetCore.HealthChecks.SqlServer" Version="8.0.2" />
 
     <!-- JSON Serialization - Standardized to 9.0.9 -->
@@ -66,7 +68,7 @@
     <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.12.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.12.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.12.0" />
-    <PackageVersion Include="OpenTelemetry.Instrumentation.SqlClient" Version="1.12.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.SqlClient" Version="1.12.0-beta.2" />
 
     <!-- Testing Packages - Standardized to Latest -->
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
@@ -79,5 +81,53 @@
     <!-- Performance & Monitoring -->
     <PackageVersion Include="BenchmarkDotNet" Version="0.14.0" />
     <PackageVersion Include="coverlet.collector" Version="6.0.2" />
+
+    <!-- Additional ASP.NET Core Packages -->
+    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="8.0.19" />
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.10" />
+    <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="8.0.11" />
+
+    <!-- Event Streaming & Infrastructure -->
+    <PackageVersion Include="Confluent.Kafka" Version="2.11.1" />
+    <PackageVersion Include="Docker.DotNet" Version="3.125.15" />
+    <PackageVersion Include="McMaster.NETCore.Plugins" Version="1.4.0" />
+    <PackageVersion Include="System.Reactive" Version="6.0.0" />
+
+    <!-- System Components -->
+    <PackageVersion Include="System.Diagnostics.PerformanceCounter" Version="8.0.0" />
+    <PackageVersion Include="System.Management" Version="8.0.0" />
+    <PackageVersion Include="System.Security.Principal.Windows" Version="5.0.0" />
+
+    <!-- Testing Additional Packages -->
+    <PackageVersion Include="FluentAssertions" Version="6.12.0" />
+    <PackageVersion Include="Microsoft.Data.Sqlite" Version="8.0.11" />
+
+    <!-- Configuration -->
+    <PackageVersion Include="Azure.Extensions.AspNetCore.Configuration.Secrets" Version="1.4.0" />
+
+    <!-- OpenTelemetry Console Exporter -->
+    <PackageVersion Include="OpenTelemetry.Exporter.Console" Version="1.12.0" />
+
+    <!-- Additional Packages from Integration Tests -->
+    <PackageVersion Include="Testcontainers.MsSql" Version="3.5.0" />
+    <PackageVersion Include="Testcontainers" Version="3.5.0" />
+    <PackageVersion Include="Serilog.Extensions.Logging" Version="8.0.0" />
+    <PackageVersion Include="Serilog.Sinks.Console" Version="5.0.1" />
+    <PackageVersion Include="System.IdentityModel.Tokens.Jwt" Version="7.0.3" />
+    <PackageVersion Include="NBomber" Version="5.5.3" />
+    <PackageVersion Include="Bogus" Version="35.0.1" />
+
+    <!-- Configuration Extensions -->
+    <PackageVersion Include="Microsoft.Extensions.Configuration" Version="9.0.9" />
+
+    <!-- SQL CLR Infrastructure -->
+    <PackageVersion Include="System.Memory" Version="4.5.5" />
+    <PackageVersion Include="System.IO.MemoryMappedFiles" Version="4.3.0" />
+    <PackageVersion Include="pythonnet" Version="3.0.3" />
+    <PackageVersion Include="System.Runtime.InteropServices" Version="4.3.0" />
+    <PackageVersion Include="System.Numerics.Vectors" Version="4.5.0" />
+    <PackageVersion Include="System.Threading.Tasks.Extensions" Version="4.5.4" />
+    <PackageVersion Include="Microsoft.ML" Version="3.0.1" />
+    <PackageVersion Include="Microsoft.SqlServer.Types" Version="160.1000.6" />
   </ItemGroup>
 </Project>

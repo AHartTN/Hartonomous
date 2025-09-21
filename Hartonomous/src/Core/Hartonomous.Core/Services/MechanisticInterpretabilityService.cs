@@ -551,6 +551,7 @@ public class AttentionHeadAnalysis
 {
     public Guid AttentionHeadId { get; set; }
     public int HeadIndex { get; set; }
+    public int Index { get; set; }
     public Guid LayerId { get; set; }
     public string PatternType { get; set; } = string.Empty;
     public string FunctionalDescription { get; set; } = string.Empty;
@@ -558,6 +559,24 @@ public class AttentionHeadAnalysis
     public List<object> ExamplePatterns { get; set; } = new();
     public double SpecificityScore { get; set; }
     public double ImportanceScore { get; set; }
+
+    /// <summary>
+    /// Human-readable description of the attention head's analysis results
+    /// Provides interpretable insights into the head's computational behavior
+    /// </summary>
+    public string Description { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Example inputs that strongly activate this attention head
+    /// List of representative input samples for interpretability analysis
+    /// </summary>
+    public List<object> ExampleInputs { get; set; } = new();
+
+    /// <summary>
+    /// Strength of the identified attention pattern
+    /// Indicates how consistent and pronounced the pattern is across inputs
+    /// </summary>
+    public double PatternStrength { get; set; } = 0.0;
 }
 
 public class AttentionAnalysisResult

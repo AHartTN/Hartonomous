@@ -8,24 +8,31 @@
  * enabling complex agent workflow definitions, execution tracking, and distributed coordination.
  */
 
+using Hartonomous.Core.Abstractions;
+
 namespace Hartonomous.Orchestration.Models;
 
 /// <summary>
 /// Workflow definition domain model
 /// </summary>
-public class WorkflowDefinition
+public class WorkflowDefinition : IEntityBase<Guid>
 {
-    public Guid WorkflowId { get; set; }
+    // IEntityBase<Guid> properties
+    public Guid Id { get; set; }
     public required string UserId { get; set; }
+    public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
+    public DateTime? ModifiedDate { get; set; }
+
+    // Business identifier (separate from primary key Id)
+    public Guid WorkflowId { get; set; }
+
+    // Workflow-specific properties
     public required string Name { get; set; }
     public required string Description { get; set; }
     public required string WorkflowDefinitionJson { get; set; }
     public string? Category { get; set; }
     public string? ParametersJson { get; set; }
     public string? TagsJson { get; set; }
-    public DateTime CreatedAt { get; set; }
-    public DateTime UpdatedAt { get; set; }
-    public required string CreatedBy { get; set; }
     public int Version { get; set; }
     public WorkflowStatus Status { get; set; }
 

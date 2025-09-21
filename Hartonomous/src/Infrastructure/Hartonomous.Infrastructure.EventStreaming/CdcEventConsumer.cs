@@ -343,11 +343,11 @@ public class CdcEventConsumer : BackgroundService
             {
                 return new ComponentDetails
                 {
-                    ComponentId = reader.GetGuid("ComponentId"),
-                    ComponentName = reader.GetString("ComponentName"),
-                    ComponentType = reader.GetString("ComponentType"),
-                    ModelId = reader.GetGuid("ModelId"),
-                    UserId = reader.GetString("UserId")
+                    ComponentId = reader.GetGuid(reader.GetOrdinal("ComponentId")),
+                    ComponentName = reader.GetString(reader.GetOrdinal("ComponentName")),
+                    ComponentType = reader.GetString(reader.GetOrdinal("ComponentType")),
+                    ModelId = reader.GetGuid(reader.GetOrdinal("ModelId")),
+                    UserId = reader.GetString(reader.GetOrdinal("UserId"))
                 };
             }
 
@@ -364,8 +364,8 @@ public class CdcEventConsumer : BackgroundService
                 return new ComponentDetails
                 {
                     ComponentId = componentId,
-                    ComponentName = fallbackReader.GetString("ComponentName"),
-                    ComponentType = fallbackReader.GetString("ComponentType"),
+                    ComponentName = fallbackReader.GetString(fallbackReader.GetOrdinal("ComponentName")),
+                    ComponentType = fallbackReader.GetString(fallbackReader.GetOrdinal("ComponentType")),
                     ModelId = Guid.Empty, // Will be logged as warning
                     UserId = "unknown" // Will be logged as warning
                 };

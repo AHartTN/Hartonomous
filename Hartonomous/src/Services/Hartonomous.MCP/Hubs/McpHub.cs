@@ -1,7 +1,9 @@
 using Hartonomous.Core.DTOs;
 using Hartonomous.Core.Interfaces;
+using Hartonomous.Core.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Logging;
 using System.Security.Claims;
 using System.Text.Json;
 

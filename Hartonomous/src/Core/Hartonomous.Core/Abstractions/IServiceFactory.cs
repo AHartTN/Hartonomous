@@ -128,14 +128,14 @@ public class RepositoryFactory : IRepositoryFactory
     }
 
     public IRepository<TEntity, TKey> CreateRepository<TEntity, TKey>()
-        where TEntity : class, IEntity<TKey>
+        where TEntity : class, IEntityBase<TKey>
         where TKey : IEquatable<TKey>
     {
         return _serviceProvider.GetRequiredService<IRepository<TEntity, TKey>>();
     }
 
     public IRepository<TEntity, TKey> CreateRepository<TEntity, TKey>(string connectionString)
-        where TEntity : class, IEntity<TKey>
+        where TEntity : class, IEntityBase<TKey>
         where TKey : IEquatable<TKey>
     {
         // Create repository with custom connection string
@@ -148,7 +148,7 @@ public class RepositoryFactory : IRepositoryFactory
 /// Generic repository implementation for runtime entity types
 /// </summary>
 internal class GenericRepository<TEntity, TKey> : BaseRepository<TEntity, TKey>
-    where TEntity : class, IEntity<TKey>
+    where TEntity : class, IEntityBase<TKey>
     where TKey : IEquatable<TKey>
 {
     private readonly string _customConnectionString;

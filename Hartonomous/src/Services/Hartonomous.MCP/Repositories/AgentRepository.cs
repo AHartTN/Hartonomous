@@ -14,6 +14,7 @@ using Hartonomous.Core.Interfaces;
 using Hartonomous.Core.Abstractions;
 using Hartonomous.Core.Configuration;
 using Hartonomous.Core.Entities;
+using Hartonomous.Core.Enums;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Options;
 using System.Data;
@@ -128,7 +129,8 @@ public class AgentRepository : BaseRepository<Agent, Guid>, IAgentRepository
         return rowsAffected > 0;
     }
 
-    public async Task<AgentDto?> GetByIdAsync(Guid agentId, string userId)
+    // DTO convenience methods for the MCP hub layer
+    public async Task<AgentDto?> GetAgentDtoByIdAsync(Guid agentId, string userId)
     {
         const string sql = @"
             SELECT AgentId, AgentName, AgentType, ConnectionId, Capabilities, Description, Configuration, RegisteredAt, LastHeartbeat, Status
@@ -141,7 +143,7 @@ public class AgentRepository : BaseRepository<Agent, Guid>, IAgentRepository
         return result != null ? MapToAgentDto(result) : null;
     }
 
-    public async Task<IEnumerable<AgentDto>> GetAllAsync(string userId)
+    public async Task<IEnumerable<AgentDto>> GetAllAgentDtosAsync(string userId)
     {
         const string sql = @"
             SELECT AgentId, AgentName, AgentType, ConnectionId, Capabilities, Description, Configuration, RegisteredAt, LastHeartbeat, Status
@@ -157,12 +159,12 @@ public class AgentRepository : BaseRepository<Agent, Guid>, IAgentRepository
 
     public async Task<IEnumerable<AgentDto>> GetAgentsByUserAsync(string userId)
     {
-        return await GetAllAsync(userId);
+        return await GetAllAgentDtosAsync(userId);
     }
 
     public async Task<AgentDto?> GetAgentByIdAsync(Guid agentId, string userId)
     {
-        return await GetByIdAsync(agentId, userId);
+        return await GetAgentDtoByIdAsync(agentId, userId);
     }
 
     public async Task<bool> UnregisterAgentAsync(Guid agentId, string userId)
@@ -301,63 +303,4 @@ public class AgentRepository : BaseRepository<Agent, Guid>, IAgentRepository
         );
     }
 
-    public async Task<Guid> CreateAsync(AgentDto entity, string userId)
-    {
-        const string sql = @"
-            INSERT INTO dbo.Agents (AgentId, UserId, AgentName, AgentType, ConnectionId, Capabilities, Description, Configuration, Status, RegisteredAt, LastHeartbeat)
-            VALUES (@AgentId, @UserId, @AgentName, @AgentType, @ConnectionId, @Capabilities, @Description, @Configuration, @Status, @RegisteredAt, @LastHeartbeat);";
-
-        var agentId = entity.AgentId != Guid.Empty ? entity.AgentId : Guid.NewGuid();
-        var now = DateTime.UtcNow;
-
-        using var connection = new SqlConnection(_connectionString);
-        await connection.ExecuteAsync(sql, new
-        {
-            AgentId = agentId,
-            UserId = userId,
-            AgentName = entity.AgentName,
-            AgentType = entity.AgentType,
-            ConnectionId = entity.ConnectionId,
-            Capabilities = JsonSerializer.Serialize(entity.Capabilities),
-            Description = entity.Description,
-            Configuration = entity.Configuration != null ? JsonSerializer.Serialize(entity.Configuration) : null,
-            Status = (int)entity.Status,
-            RegisteredAt = now,
-            LastHeartbeat = now
-        });
-
-        return agentId;
-    }
-
-    public async Task<bool> UpdateAsync(AgentDto entity, string userId)
-    {
-        const string sql = @"
-            UPDATE dbo.Agents
-            SET AgentName = @AgentName,
-                AgentType = @AgentType,
-                ConnectionId = @ConnectionId,
-                Capabilities = @Capabilities,
-                Description = @Description,
-                Configuration = @Configuration,
-                Status = @Status,
-                LastHeartbeat = @LastHeartbeat
-            WHERE AgentId = @AgentId AND UserId = @UserId;";
-
-        using var connection = new SqlConnection(_connectionString);
-        var rowsAffected = await connection.ExecuteAsync(sql, new
-        {
-            entity.AgentId,
-            UserId = userId,
-            entity.AgentName,
-            entity.AgentType,
-            entity.ConnectionId,
-            Capabilities = JsonSerializer.Serialize(entity.Capabilities),
-            entity.Description,
-            Configuration = entity.Configuration != null ? JsonSerializer.Serialize(entity.Configuration) : null,
-            Status = (int)entity.Status,
-            LastHeartbeat = DateTime.UtcNow
-        });
-
-        return rowsAffected > 0;
-    }
 }

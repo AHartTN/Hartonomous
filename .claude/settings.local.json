@@ -11,7 +11,12 @@
       "WebSearch",
       "Bash(find:*)",
       "Bash(dotnet restore:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(git commit:*)",
+      "Bash(rm:*)",
+      "Bash(findstr:*)",
+      "Bash(dir)",
+      "Bash(sn:*)"
     ],
     "deny": [],
     "ask": []

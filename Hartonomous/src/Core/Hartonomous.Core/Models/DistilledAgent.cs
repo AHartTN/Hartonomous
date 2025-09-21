@@ -79,6 +79,7 @@ public class DistilledAgent
     public string UserId { get; set; } = string.Empty;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? LastUpdated { get; set; }
     public DateTime? LastDeployedAt { get; set; }
     public DateTime? LastAccessedAt { get; set; }
 

@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Hartonomous.Core.Enums;
 
 namespace Hartonomous.Core.DTOs;
 
@@ -104,55 +105,3 @@ public record TaskResult(
     Dictionary<string, object>? Metrics = null
 );
 
-/// <summary>
-/// Agent status enumeration
-/// </summary>
-public enum AgentStatus
-{
-    Connecting,
-    Online,
-    Busy,
-    Idle,
-    Offline,
-    Error
-}
-
-
-/// <summary>
-/// Task result status
-/// </summary>
-public enum TaskResultStatus
-{
-    Pending,
-    Success,
-    Completed,
-    Failed,
-    Cancelled,
-    Timeout
-}
-
-/// <summary>
-/// Message type enumeration
-/// </summary>
-public enum MessageType
-{
-    Text,
-    Command,
-    Response,
-    Error,
-    Task,
-    Heartbeat
-}
-
-/// <summary>
-/// Workflow status enumeration
-/// </summary>
-public enum WorkflowStatus
-{
-    Draft,
-    Active,
-    Paused,
-    Completed,
-    Failed,
-    Cancelled
-}

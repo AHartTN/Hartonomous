@@ -49,15 +49,17 @@ public class WorkflowRepository : IWorkflowRepository
         try
         {
             const string sql = @"
-                INSERT INTO dbo.WorkflowDefinitions (WorkflowId, UserId, Name, Description, WorkflowDefinitionJson, Category, ParametersJson, TagsJson, CreatedAt, UpdatedAt, CreatedBy, Version, Status)
-                VALUES (@WorkflowId, @UserId, @Name, @Description, @WorkflowDefinitionJson, @Category, @ParametersJson, @TagsJson, @CreatedAt, @UpdatedAt, @CreatedBy, @Version, @Status);";
+                INSERT INTO dbo.WorkflowDefinitions (Id, WorkflowId, UserId, Name, Description, WorkflowDefinitionJson, Category, ParametersJson, TagsJson, CreatedDate, ModifiedDate, Version, Status)
+                VALUES (@Id, @WorkflowId, @UserId, @Name, @Description, @WorkflowDefinitionJson, @Category, @ParametersJson, @TagsJson, @CreatedDate, @ModifiedDate, @Version, @Status);";
 
             var workflowId = Guid.NewGuid();
             var now = DateTime.UtcNow;
 
             using var connection = new SqlConnection(_connectionString);
+            var id = Guid.NewGuid();
             await connection.ExecuteAsync(sql, new
             {
+                Id = id,
                 WorkflowId = workflowId,
                 UserId = userId,
                 Name = request.Name,
@@ -66,9 +68,8 @@ public class WorkflowRepository : IWorkflowRepository
                 Category = request.Category,
                 ParametersJson = request.Parameters != null ? JsonSerializer.Serialize(request.Parameters) : null,
                 TagsJson = request.Tags != null ? JsonSerializer.Serialize(request.Tags) : null,
-                CreatedAt = now,
-                UpdatedAt = now,
-                CreatedBy = userId,
+                CreatedDate = now,
+                ModifiedDate = (DateTime?)null,
                 Version = 1,
                 Status = (int)DTOs.WorkflowStatus.Draft
             });
@@ -98,7 +99,7 @@ public class WorkflowRepository : IWorkflowRepository
         try
         {
             const string sql = @"
-                SELECT WorkflowId, Name, Description, WorkflowDefinitionJson, Category, ParametersJson, TagsJson, CreatedAt, UpdatedAt, CreatedBy, Version, Status
+                SELECT Id, WorkflowId, UserId, Name, Description, WorkflowDefinitionJson, Category, ParametersJson, TagsJson, CreatedDate, ModifiedDate, Version, Status
                 FROM dbo.WorkflowDefinitions
                 WHERE WorkflowId = @WorkflowId AND UserId = @UserId;";
 
@@ -134,7 +135,7 @@ public class WorkflowRepository : IWorkflowRepository
             var parameters = new DynamicParameters();
             parameters.Add("WorkflowId", workflowId);
             parameters.Add("UserId", userId);
-            parameters.Add("UpdatedAt", DateTime.UtcNow);
+            parameters.Add("ModifiedDate", DateTime.UtcNow);
 
         if (!string.IsNullOrEmpty(request.Name))
         {
@@ -183,7 +184,7 @@ public class WorkflowRepository : IWorkflowRepository
 
         var sql = $@"
             UPDATE dbo.WorkflowDefinitions
-            SET {string.Join(", ", setParts)}, UpdatedAt = @UpdatedAt
+            SET {string.Join(", ", setParts)}, ModifiedDate = @ModifiedDate
             WHERE WorkflowId = @WorkflowId AND UserId = @UserId;";
 
             using var connection = new SqlConnection(_connectionString);
@@ -259,13 +260,13 @@ public class WorkflowRepository : IWorkflowRepository
 
         if (request.CreatedAfter.HasValue)
         {
-            whereClause += " AND CreatedAt >= @CreatedAfter";
+            whereClause += " AND CreatedDate >= @CreatedAfter";
             parameters.Add("CreatedAfter", request.CreatedAfter.Value);
         }
 
         if (request.CreatedBefore.HasValue)
         {
-            whereClause += " AND CreatedAt <= @CreatedBefore";
+            whereClause += " AND CreatedDate <= @CreatedBefore";
             parameters.Add("CreatedBefore", request.CreatedBefore.Value);
         }
 
@@ -282,7 +283,7 @@ public class WorkflowRepository : IWorkflowRepository
         // Get paginated results
         var orderBy = $"ORDER BY {request.SortBy} {request.SortDirection}";
         var sql = $@"
-            SELECT WorkflowId, Name, Description, WorkflowDefinitionJson, Category, ParametersJson, TagsJson, CreatedAt, UpdatedAt, CreatedBy, Version, Status
+            SELECT Id, WorkflowId, UserId, Name, Description, WorkflowDefinitionJson, Category, ParametersJson, TagsJson, CreatedDate, ModifiedDate, Version, Status
             FROM dbo.WorkflowDefinitions
             {whereClause}
             {orderBy}
@@ -307,10 +308,10 @@ public class WorkflowRepository : IWorkflowRepository
     public async Task<List<WorkflowDefinitionDto>> GetWorkflowsByUserAsync(string userId, int limit = 100)
     {
         const string sql = @"
-            SELECT TOP(@Limit) WorkflowId, Name, Description, WorkflowDefinitionJson, Category, ParametersJson, TagsJson, CreatedAt, UpdatedAt, CreatedBy, Version, Status
+            SELECT TOP(@Limit) Id, WorkflowId, UserId, Name, Description, WorkflowDefinitionJson, Category, ParametersJson, TagsJson, CreatedDate, ModifiedDate, Version, Status
             FROM dbo.WorkflowDefinitions
             WHERE UserId = @UserId
-            ORDER BY UpdatedAt DESC;";
+            ORDER BY ModifiedDate DESC;";
 
         using var connection = new SqlConnection(_connectionString);
         var results = await connection.QueryAsync(sql, new { UserId = userId, Limit = limit });
@@ -322,14 +323,14 @@ public class WorkflowRepository : IWorkflowRepository
     {
         const string sql = @"
             UPDATE dbo.WorkflowDefinitions
-            SET Status = @Status, UpdatedAt = @UpdatedAt
+            SET Status = @Status, ModifiedDate = @ModifiedDate
             WHERE WorkflowId = @WorkflowId AND UserId = @UserId;";
 
         using var connection = new SqlConnection(_connectionString);
         var rowsAffected = await connection.ExecuteAsync(sql, new
         {
             Status = (int)status,
-            UpdatedAt = DateTime.UtcNow,
+            ModifiedDate = DateTime.UtcNow,
             WorkflowId = workflowId,
             UserId = userId
         });
@@ -898,9 +899,9 @@ public class WorkflowRepository : IWorkflowRepository
             row.Category,
             parameters,
             tags,
-            row.CreatedAt,
-            row.UpdatedAt,
-            row.CreatedBy,
+            row.CreatedDate,
+            row.ModifiedDate,
+            row.UserId,
             row.Version,
             (DTOs.WorkflowStatus)row.Status
         );

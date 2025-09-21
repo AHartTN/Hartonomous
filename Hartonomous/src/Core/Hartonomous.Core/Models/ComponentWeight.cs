@@ -45,6 +45,13 @@ public class ComponentWeight
     public bool IsCritical { get; set; } = false;
 
     /// <summary>
+    /// Comprehensive weight analysis data including gradient history,
+    /// sensitivity analysis, and optimization trajectory metadata
+    /// Stored as JSON for flexible schema evolution
+    /// </summary>
+    public string WeightData { get; set; } = "{}";
+
+    /// <summary>
     /// Multi-tenant isolation
     /// </summary>
     [Required]
@@ -57,4 +64,23 @@ public class ComponentWeight
     // Navigation properties
     public virtual ModelComponent Component { get; set; } = null!;
     public virtual Model Model { get; set; } = null!;
+
+    /// <summary>
+    /// Get typed weight data
+    /// </summary>
+    public T? GetWeightData<T>() where T : class
+    {
+        if (string.IsNullOrEmpty(WeightData) || WeightData == "{}")
+            return null;
+
+        return System.Text.Json.JsonSerializer.Deserialize<T>(WeightData);
+    }
+
+    /// <summary>
+    /// Set typed weight data
+    /// </summary>
+    public void SetWeightData<T>(T data) where T : class
+    {
+        WeightData = System.Text.Json.JsonSerializer.Serialize(data);
+    }
 }

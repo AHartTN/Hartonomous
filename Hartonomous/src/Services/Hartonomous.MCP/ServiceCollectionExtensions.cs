@@ -1,5 +1,6 @@
 using Hartonomous.Core.Interfaces;
 using Hartonomous.MCP.Repositories;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Hartonomous.MCP;
 
@@ -16,7 +17,7 @@ public static class ServiceCollectionExtensions
         // Register repositories
         services.AddScoped<IAgentRepository, AgentRepository>();
         services.AddScoped<IMessageRepository, MessageRepository>();
-        services.AddScoped<IWorkflowRepository, WorkflowRepository>();
+        services.AddScoped<WorkflowRepository>();
 
         // Add SignalR
         services.AddSignalR(options =>

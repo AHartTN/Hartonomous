@@ -9,13 +9,16 @@
  */
 
 using Hartonomous.Core.DTOs;
+using Hartonomous.Core.Entities;
+using Hartonomous.Core.Enums;
+using Hartonomous.Core.Abstractions;
 
 namespace Hartonomous.Core.Interfaces;
 
 /// <summary>
 /// Repository for managing agents in the MCP system
 /// </summary>
-public interface IAgentRepository : IRepository<AgentDto>
+public interface IAgentRepository : IRepository<Agent, Guid>
 {
     /// <summary>
     /// Register a new agent

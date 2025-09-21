@@ -1,5 +1,5 @@
 using System.ComponentModel.DataAnnotations;
-using Hartonomous.Core.DTOs.Orchestration;
+using Hartonomous.Core.DTOs;
 
 namespace Hartonomous.Orchestration.DTOs;
 

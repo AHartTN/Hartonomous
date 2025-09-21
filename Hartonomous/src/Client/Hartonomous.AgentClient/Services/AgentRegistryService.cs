@@ -99,7 +99,7 @@ public class AgentRegistryService : IAgentRegistry, IDisposable
         _metricsCollector.IncrementCounter("agent.registered", tags: new Dictionary<string, string>
         {
             ["agent_id"] = agent.Id,
-            ["agent_type"] = agent.Type
+            ["agent_type"] = agent.Type.ToString()
         });
 
         OnAgentRegistered(agent);
@@ -139,7 +139,7 @@ public class AgentRegistryService : IAgentRegistry, IDisposable
             _metricsCollector.IncrementCounter("agent.unregistered", tags: new Dictionary<string, string>
             {
                 ["agent_id"] = agentId,
-                ["agent_type"] = agent.Type
+                ["agent_type"] = agent.Type.ToString()
             });
 
             OnAgentUnregistered(agentId);
@@ -244,7 +244,15 @@ public class AgentRegistryService : IAgentRegistry, IDisposable
 
         if (!string.IsNullOrEmpty(agentType))
         {
-            agents = agents.Where(a => a.Type.Equals(agentType, StringComparison.OrdinalIgnoreCase));
+            if (Enum.TryParse<AgentType>(agentType, true, out var parsedAgentType))
+            {
+                agents = agents.Where(a => a.Type == parsedAgentType);
+            }
+            else
+            {
+                // If parsing fails, return empty result as the agentType is invalid
+                agents = Enumerable.Empty<AgentDefinition>();
+            }
         }
 
         if (tags?.Any() == true)
@@ -366,7 +374,7 @@ public class AgentRegistryService : IAgentRegistry, IDisposable
             }
 
             // Search in type
-            if (agent.Type.Contains(searchTermLower, StringComparison.OrdinalIgnoreCase))
+            if (agent.Type.ToString().Contains(searchTermLower, StringComparison.OrdinalIgnoreCase))
             {
                 score += 25;
                 highlights.Add($"Type: {agent.Type}");
@@ -433,8 +441,9 @@ public class AgentRegistryService : IAgentRegistry, IDisposable
         return agents;
     }
 
-    private void UpdateTypeIndex(string type, string agentId)
+    private void UpdateTypeIndex(AgentType agentType, string agentId)
     {
+        var type = agentType.ToString();
         _typeIndex.AddOrUpdate(type,
             new List<string> { agentId },
             (_, existing) =>
@@ -457,8 +466,9 @@ public class AgentRegistryService : IAgentRegistry, IDisposable
             });
     }
 
-    private void RemoveFromTypeIndex(string type, string agentId)
+    private void RemoveFromTypeIndex(AgentType agentType, string agentId)
     {
+        var type = agentType.ToString();
         if (_typeIndex.TryGetValue(type, out var list))
         {
             list.Remove(agentId);

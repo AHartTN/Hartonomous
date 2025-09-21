@@ -10,6 +10,7 @@
 
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
+using Hartonomous.Core.Abstractions;
 
 namespace Hartonomous.Core.Models;
 
@@ -17,8 +18,9 @@ namespace Hartonomous.Core.Models;
 /// Represents a large language model stored in NinaDB
 /// Core entity for the Model Query Engine
 /// </summary>
-public class Model
+public class Model : IEntityBase<Guid>
 {
+    public Guid Id { get; set; } = Guid.NewGuid();
     public Guid ModelId { get; set; } = Guid.NewGuid();
 
     [Required]
@@ -67,6 +69,10 @@ public class Model
     public DateTime IngestedAt { get; set; } = DateTime.UtcNow;
     public DateTime? ProcessedAt { get; set; }
     public DateTime? LastAccessedAt { get; set; }
+
+    // IEntityBase<Guid> implementation
+    public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
+    public DateTime? ModifiedDate { get; set; }
 
     // Navigation properties
     public virtual ICollection<ModelLayer> Layers { get; set; } = new List<ModelLayer>();

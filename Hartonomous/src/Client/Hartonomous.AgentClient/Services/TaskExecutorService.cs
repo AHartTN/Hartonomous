@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using Hartonomous.AgentClient.Interfaces;
@@ -631,7 +632,7 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
             _logger.LogInformation("Routing task {TaskId} of type {TaskType}", task.TaskId, task.Type);
             logEntries.Add(new LogEntry
             {
-                Level = LogLevel.Information,
+                Level = Models.LogLevel.Information,
                 Message = $"Starting task routing for task type: {task.Type}",
                 Category = "TaskExecution"
             });
@@ -645,7 +646,7 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
 
                 logEntries.Add(new LogEntry
                 {
-                    Level = LogLevel.Warning,
+                    Level = Models.LogLevel.Warning,
                     Message = $"Task routing failed: {errorMessage}",
                     Category = "TaskExecution"
                 });
@@ -666,7 +667,7 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
 
             logEntries.Add(new LogEntry
             {
-                Level = LogLevel.Information,
+                Level = Models.LogLevel.Information,
                 Message = $"Task routed to agent {selectedAgent.AgentId} (instance: {selectedAgent.InstanceId})",
                 Category = "TaskExecution",
                 Data = new Dictionary<string, object>
@@ -734,7 +735,7 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
 
             logEntries.Add(new LogEntry
             {
-                Level = LogLevel.Error,
+                Level = Models.LogLevel.Error,
                 Message = $"Task execution error: {ex.Message}",
                 Category = "TaskExecution",
                 Data = new Dictionary<string, object>
@@ -798,7 +799,7 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
 
                 logEntries.Add(new LogEntry
                 {
-                    Level = LogLevel.Information,
+                    Level = Models.LogLevel.Information,
                     Message = $"Starting execution attempt {attempt + 1} of {maxRetries + 1}",
                     Category = "RetryLogic",
                     Data = new Dictionary<string, object>
@@ -826,7 +827,7 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
 
                         logEntries.Add(new LogEntry
                         {
-                            Level = LogLevel.Information,
+                            Level = Models.LogLevel.Information,
                             Message = $"Task succeeded on retry attempt {attempt + 1}",
                             Category = "RetryLogic"
                         });
@@ -848,7 +849,7 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
 
                     logEntries.Add(new LogEntry
                     {
-                        Level = LogLevel.Warning,
+                        Level = Models.LogLevel.Warning,
                         Message = $"Task failed after {attempt + 1} attempts",
                         Category = "RetryLogic",
                         Data = new Dictionary<string, object>
@@ -869,7 +870,7 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
 
                 logEntries.Add(new LogEntry
                 {
-                    Level = LogLevel.Warning,
+                    Level = Models.LogLevel.Warning,
                     Message = $"Attempt {attempt + 1} failed, preparing retry",
                     Category = "RetryLogic",
                     Data = new Dictionary<string, object>
@@ -899,7 +900,7 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
 
                 logEntries.Add(new LogEntry
                 {
-                    Level = LogLevel.Information,
+                    Level = Models.LogLevel.Information,
                     Message = "Task execution was cancelled",
                     Category = "RetryLogic"
                 });
@@ -914,7 +915,7 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
 
                 logEntries.Add(new LogEntry
                 {
-                    Level = LogLevel.Error,
+                    Level = Models.LogLevel.Error,
                     Message = $"Unexpected error on attempt {attempt + 1}: {ex.Message}",
                     Category = "RetryLogic",
                     Data = new Dictionary<string, object>
@@ -994,7 +995,7 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
 
             logEntries.Add(new LogEntry
             {
-                Level = LogLevel.Information,
+                Level = Models.LogLevel.Information,
                 Message = $"Starting task execution on agent instance {agentInstance.InstanceId}",
                 Category = "AgentExecution"
             });
@@ -1017,7 +1018,7 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
 
             logEntries.Add(new LogEntry
             {
-                Level = LogLevel.Error,
+                Level = Models.LogLevel.Error,
                 Message = $"Agent execution failed: {ex.Message}",
                 Category = "AgentExecution",
                 Data = new Dictionary<string, object>
@@ -1086,7 +1087,7 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
             {
                 new LogEntry
                 {
-                    Level = capabilityResponse.Success ? LogLevel.Information : LogLevel.Error,
+                    Level = capabilityResponse.Success ? Models.LogLevel.Information : Models.LogLevel.Error,
                     Message = $"Capability {suitableCapability.Capability.Id} execution {(capabilityResponse.Success ? "completed" : "failed")}",
                     Category = "CapabilityExecution",
                     Data = new Dictionary<string, object>
@@ -1122,7 +1123,7 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
 
             logEntries.Add(new LogEntry
             {
-                Level = LogLevel.Information,
+                Level = Models.LogLevel.Information,
                 Message = "Starting direct agent execution",
                 Category = "DirectExecution"
             });
@@ -1160,7 +1161,7 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
                 {
                     new LogEntry
                     {
-                        Level = LogLevel.Information,
+                        Level = Models.LogLevel.Information,
                         Message = "Direct agent execution completed successfully",
                         Category = "DirectExecution",
                         Data = new Dictionary<string, object>
@@ -1186,7 +1187,7 @@ public class TaskExecutorService : ITaskExecutor, IDisposable
 
             logEntries.Add(new LogEntry
             {
-                Level = LogLevel.Error,
+                Level = Models.LogLevel.Error,
                 Message = $"Direct execution failed: {ex.Message}",
                 Category = "DirectExecution"
             });

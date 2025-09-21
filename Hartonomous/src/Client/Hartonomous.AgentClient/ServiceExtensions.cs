@@ -8,6 +8,7 @@
  */
 
 using Hartonomous.AgentClient.Interfaces;
+using Hartonomous.AgentClient.Models;
 using Hartonomous.AgentClient.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;

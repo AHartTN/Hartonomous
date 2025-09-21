@@ -76,14 +76,14 @@ public interface IRepositoryFactory
     /// Create repository for specific entity type
     /// </summary>
     IRepository<TEntity, TKey> CreateRepository<TEntity, TKey>()
-        where TEntity : class, IEntity<TKey>
+        where TEntity : class, IEntityBase<TKey>
         where TKey : IEquatable<TKey>;
 
     /// <summary>
     /// Create repository with custom connection
     /// </summary>
     IRepository<TEntity, TKey> CreateRepository<TEntity, TKey>(string connectionString)
-        where TEntity : class, IEntity<TKey>
+        where TEntity : class, IEntityBase<TKey>
         where TKey : IEquatable<TKey>;
 }
 
@@ -96,7 +96,7 @@ public interface IUnitOfWork : IDisposable
     /// Get repository for entity type
     /// </summary>
     IRepository<TEntity, TKey> GetRepository<TEntity, TKey>()
-        where TEntity : class, IEntity<TKey>
+        where TEntity : class, IEntityBase<TKey>
         where TKey : IEquatable<TKey>;
 
     /// <summary>

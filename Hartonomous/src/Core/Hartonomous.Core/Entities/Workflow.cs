@@ -3,7 +3,7 @@ using Hartonomous.Core.Enums;
 
 namespace Hartonomous.Core.Entities;
 
-public class Workflow : IEntity<Guid>
+public class Workflow : IEntityBase<Guid>
 {
     public Guid Id { get; set; }
     public string UserId { get; set; } = string.Empty;

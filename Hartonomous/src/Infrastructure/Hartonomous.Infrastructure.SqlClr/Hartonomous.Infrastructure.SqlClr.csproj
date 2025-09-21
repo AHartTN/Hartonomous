@@ -1,16 +1,21 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net48</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
     <AssemblyName>Hartonomous.Infrastructure.SqlClr</AssemblyName>
     <RootNamespace>Hartonomous.Infrastructure.SqlClr</RootNamespace>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <Deterministic>true</Deterministic>
     <Optimize>true</Optimize>
     <DebugType>pdbonly</DebugType>
-    <SignAssembly>true</SignAssembly>
-    <AssemblyOriginatorKeyFile>HartonomousClr.snk</AssemblyOriginatorKeyFile>
-    <DelaySign>false</DelaySign>
+    <SignAssembly>false</SignAssembly>
+    <!-- <AssemblyOriginatorKeyFile>HartonomousClr.snk</AssemblyOriginatorKeyFile> -->
+    <!-- <DelaySign>false</DelaySign> -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <PublishSingleFile>false</PublishSingleFile>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)'=='Release'">
@@ -20,25 +25,19 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Reference Include="System" />
-    <Reference Include="System.Core" />
-    <Reference Include="System.Data" />
-    <Reference Include="System.Data.DataSetExtensions" />
-    <Reference Include="System.Xml" />
-    <Reference Include="System.Xml.Linq" />
+    <PackageReference Include="Neo4j.Driver" />
+    <PackageReference Include="System.Text.Json" />
+    <PackageReference Include="System.Memory" />
+    <PackageReference Include="System.IO.MemoryMappedFiles" />
+    <PackageReference Include="pythonnet" />
+    <PackageReference Include="System.Runtime.InteropServices" />
+    <PackageReference Include="System.Numerics.Vectors" />
+    <PackageReference Include="System.Threading.Tasks.Extensions" />
+    <PackageReference Include="Microsoft.ML" />
+    <PackageReference Include="Microsoft.SqlServer.Types" />
+    <PackageReference Include="Microsoft.Data.SqlClient" />
   </ItemGroup>
 
-  <ItemGroup>
-    <PackageReference Include="Neo4j.Driver" Version="5.24.0" />
-    <PackageReference Include="System.Text.Json" Version="8.0.4" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="Neo4jCircuitBridge.cs" />
-    <Compile Include="SkipTranscoderProcessor.cs" />
-    <Compile Include="ActivationProcessor.cs" />
-  </ItemGroup>
 
   <ItemGroup>
     <None Include="HartonomousClr.snk" />
