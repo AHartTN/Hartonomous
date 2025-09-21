@@ -72,9 +72,16 @@ public static class ServiceExtensions
         services.AddScoped<SecurityValidator>();
 
         // Register agent services
+        services.AddSingleton<ITaskQueueManager, TaskQueueManager>();
+        services.AddSingleton<ITaskProgressTracker, TaskProgressTracker>();
+        services.AddSingleton<ITaskRetryHandler, TaskRetryHandler>();
+        services.AddSingleton<ITaskResourceManager, TaskResourceManager>();
+        services.AddSingleton<ITaskRoutingService, TaskRoutingService>();
+        services.AddSingleton<TaskExecutorCore>();
+        services.AddHostedService<TaskExecutorService>();
+
         services.AddScoped<IAgentLoader, AgentLoaderService>();
         services.AddScoped<IAgentRuntime, AgentRuntimeService>();
-        services.AddScoped<ITaskExecutor, TaskExecutorService>();
 
         return services;
     }
@@ -101,9 +108,16 @@ public static class ServiceExtensions
         services.AddScoped<SecurityValidator>();
 
         // Register agent services
+        services.AddSingleton<ITaskQueueManager, TaskQueueManager>();
+        services.AddSingleton<ITaskProgressTracker, TaskProgressTracker>();
+        services.AddSingleton<ITaskRetryHandler, TaskRetryHandler>();
+        services.AddSingleton<ITaskResourceManager, TaskResourceManager>();
+        services.AddSingleton<ITaskRoutingService, TaskRoutingService>();
+        services.AddSingleton<TaskExecutorCore>();
+        services.AddHostedService<TaskExecutorService>();
+
         services.AddScoped<IAgentLoader, AgentLoaderService>();
         services.AddScoped<IAgentRuntime, AgentRuntimeService>();
-        services.AddScoped<ITaskExecutor, TaskExecutorService>();
 
         return services;
     }
