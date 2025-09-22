@@ -1,6 +1,8 @@
-# Hartonomous Model Query Engine API
+# Hartonomous Model Query Engine
 
-The Model Query Engine treats LLM weights as a queryable database, implementing the "Neural Map" concept for semantic search and retrieval over model components.
+## Technical Overview
+
+The Model Query Engine provides T-SQL queryable access to neural network components through the "Neural Map" concept. It implements semantic search and retrieval operations over model architectures, weights, and component relationships using SQL Server 2025's native vector capabilities.
 
 ## Overview
 

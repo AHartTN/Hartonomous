@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Hartonomous.Core.Configuration;
+using Hartonomous.Core.Repositories;
 
 namespace Hartonomous.Core.Abstractions;
 
@@ -131,7 +132,9 @@ public class RepositoryFactory : IRepositoryFactory
         where TEntity : class, IEntityBase<TKey>
         where TKey : IEquatable<TKey>
     {
-        return _serviceProvider.GetRequiredService<IRepository<TEntity, TKey>>();
+        // Use the adapter factory to bridge between repository interfaces
+        var adapterFactory = _serviceProvider.GetRequiredService<RepositoryAdapterFactory>();
+        return adapterFactory.CreateAdapter<TEntity, TKey>();
     }
 
     public IRepository<TEntity, TKey> CreateRepository<TEntity, TKey>(string connectionString)

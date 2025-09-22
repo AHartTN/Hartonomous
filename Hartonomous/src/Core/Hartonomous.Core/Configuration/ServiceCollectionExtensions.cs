@@ -76,24 +76,14 @@ public static class ServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddHartonomousAbstractions(this IServiceCollection services)
     {
-        // Repository patterns
-        services.AddScoped<IRepositoryFactory, RepositoryFactory>();
-        services.AddScoped<IUnitOfWork, UnitOfWork>();
+        // Register Entity Framework repository pattern
+        services.AddScoped(typeof(Interfaces.IRepository<>), typeof(Repository<>));
 
-        // Generic service factories
-        services.AddScoped(typeof(IServiceFactory<>), typeof(ServiceFactory<,>));
-
-        // Agent factory
-        services.AddScoped<IAgentFactory, AgentFactory>();
-
-        // Register generic repository
-        services.AddScoped(typeof(IRepository<,>), typeof(GenericRepository<,>));
-
-        // Knowledge graph repository
+        // Specialized repositories
         services.AddScoped<IKnowledgeGraphRepository, KnowledgeGraphRepository>();
-
-        // Data fabric synchronization service
-        services.AddHostedService<DataFabricSyncService>();
+        services.AddScoped<IModelComponentRepository, ModelComponentRepository>();
+        services.AddScoped<IDistilledAgentRepository, DistilledAgentRepository>();
+        services.AddScoped<IModelRepository, ModelRepository>();
 
         return services;
     }

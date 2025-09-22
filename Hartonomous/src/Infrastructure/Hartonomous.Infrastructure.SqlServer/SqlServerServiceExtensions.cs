@@ -2,7 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
-namespace Hartonomous.Infrastructure.Milvus;
+namespace Hartonomous.Infrastructure.SqlServer;
 
 /// <summary>
 /// Extension methods for registering SQL Server vector services

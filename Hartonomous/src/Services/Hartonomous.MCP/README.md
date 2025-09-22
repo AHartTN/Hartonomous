@@ -1,8 +1,8 @@
-# Hartonomous MCP (Multi-Agent Context Protocol) Server
+# Hartonomous MCP Server
 
-## Overview
+## Technical Overview
 
-The Hartonomous MCP Server is a core component of the autonomous software development platform that enables agent-to-agent communication, coordination, and workflow orchestration. It provides real-time communication through SignalR and REST API endpoints for managing agents, workflows, and messages.
+The Multi-Agent Context Protocol (MCP) server provides real-time agent coordination and workflow orchestration capabilities through SignalR WebSocket connections and REST API endpoints. The service manages agent registration, message routing, task assignment, and workflow execution across distributed AI agents.
 
 ## Features
 

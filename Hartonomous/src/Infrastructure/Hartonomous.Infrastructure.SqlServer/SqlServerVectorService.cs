@@ -3,9 +3,9 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Data;
 using System.Text.Json;
-using Hartonomous.Infrastructure.Milvus.Interfaces;
+using Hartonomous.DataFabric.Abstractions;
 
-namespace Hartonomous.Infrastructure.Milvus;
+namespace Hartonomous.Infrastructure.SqlServer;
 
 /// <summary>
 /// SQL Server 2025 native vector service
@@ -253,7 +253,6 @@ public class SqlServerVectorService : IVectorService, IDisposable
                     COUNT(DISTINCT UserId) as UniqueUsers,
                     COUNT(DISTINCT ModelId) as UniqueModels,
                     COUNT(DISTINCT ComponentId) as UniqueComponents,
-                    AVG(ConfidenceScore) as AvgConfidenceScore,
                     MIN(CreatedAt) as OldestEntry,
                     MAX(CreatedAt) as NewestEntry
                 FROM dbo.ComponentEmbeddings";
@@ -305,10 +304,34 @@ public class SqlServerVectorService : IVectorService, IDisposable
 
             try
             {
+                var insertSql = @"
+                    MERGE dbo.ComponentEmbeddings AS target
+                    USING (SELECT @ComponentId AS ComponentId) AS source
+                    ON target.ComponentId = source.ComponentId AND target.UserId = @UserId
+                    WHEN MATCHED THEN
+                        UPDATE SET
+                            EmbeddingVector = CAST(@VectorJson AS VECTOR(1536)),
+                            ComponentType = @ComponentType,
+                            Description = @Description,
+                            CreatedAt = GETUTCDATE()
+                    WHEN NOT MATCHED THEN
+                        INSERT (ComponentId, ModelId, UserId, ComponentType, Description, EmbeddingVector)
+                        VALUES (@ComponentId, @ModelId, @UserId, @ComponentType, @Description,
+                                CAST(@VectorJson AS VECTOR(1536)));";
+
                 foreach (var embeddingItem in embeddingsList)
                 {
-                    await InsertEmbeddingAsync(embeddingItem.ComponentId, embeddingItem.ModelId, userId,
-                        embeddingItem.Vector, embeddingItem.ComponentType, embeddingItem.Description ?? string.Empty);
+                    var vectorJson = JsonSerializer.Serialize(embeddingItem.Vector);
+
+                    using var command = new SqlCommand(insertSql, connection, transaction);
+                    command.Parameters.AddWithValue("@ComponentId", embeddingItem.ComponentId);
+                    command.Parameters.AddWithValue("@ModelId", embeddingItem.ModelId);
+                    command.Parameters.AddWithValue("@UserId", userId);
+                    command.Parameters.AddWithValue("@ComponentType", embeddingItem.ComponentType);
+                    command.Parameters.AddWithValue("@Description", embeddingItem.Description ?? (object)DBNull.Value);
+                    command.Parameters.AddWithValue("@VectorJson", vectorJson);
+
+                    await command.ExecuteNonQueryAsync();
                 }
 
                 transaction.Commit();

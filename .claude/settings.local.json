@@ -16,7 +16,11 @@
       "Bash(rm:*)",
       "Bash(findstr:*)",
       "Bash(dir)",
-      "Bash(sn:*)"
+      "Bash(sn:*)",
+      "Bash(dir:*)",
+      "Bash(dotnet new:*)",
+      "Bash(dotnet sln add:*)",
+      "Bash(mkdir:*)"
     ],
     "deny": [],
     "ask": []
