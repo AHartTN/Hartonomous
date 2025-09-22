@@ -109,5 +109,11 @@
     <PackageVersion Include="System.Threading.Tasks.Extensions" Version="4.5.4" />
     <PackageVersion Include="Microsoft.ML" Version="3.0.1" />
     <PackageVersion Include="Microsoft.SqlServer.Types" Version="160.1000.6" />
+    <!-- Polly Resilience Packages -->
+    <PackageVersion Include="Polly" Version="8.4.2" />
+    <PackageVersion Include="Polly.Extensions.Http" Version="3.0.0" />
+    <!-- Additional Configuration Packages -->
+    <PackageVersion Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="9.0.9" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="9.0.9" />
   </ItemGroup>
 </Project>

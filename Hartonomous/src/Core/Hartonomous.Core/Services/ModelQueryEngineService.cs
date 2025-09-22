@@ -23,7 +23,9 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Data.SqlClient;
+using Microsoft.Data.SqlTypes;
 using Microsoft.EntityFrameworkCore;
+using System.Data;
 using System.Text.Json;
 using Hartonomous.Core.Data;
 using Hartonomous.Core.Models;
@@ -186,28 +188,37 @@ public class ModelQueryEngineService : IModelQueryEngineService
         // Step 1: Get query embedding
         var queryEmbedding = await GetTextEmbeddingAsync(query);
 
-        // Step 2: Perform vector similarity search using EF Core SqlQuery with SQL Server 2025 native capabilities
-        var queryVectorValue = $"[{string.Join(",", queryEmbedding)}]";
-
-        var sql = $@"
-            SELECT TOP ({limit})
+        // Step 2: Perform vector similarity search using EF Core SqlQuery with SqlVector<float> parameter binding
+        var sql = @"
+            SELECT TOP (@limit)
                 mc.ComponentId,
                 mc.ComponentName,
                 mc.ComponentType,
                 mc.SemanticPurpose,
                 ml.LayerIndex,
-                VECTOR_DISTANCE('cosine', ce.Embedding, {{0}}) AS Similarity,
+                VECTOR_DISTANCE('cosine', ce.Embedding, @queryVector) AS Similarity,
                 mc.InterpretabilityData
             FROM ModelComponents mc
             INNER JOIN ComponentEmbeddings ce ON mc.ComponentId = ce.ComponentId
             INNER JOIN ModelLayers ml ON mc.LayerId = ml.LayerId
-            WHERE ml.ModelId = {{1}}
-              AND mc.UserId = {{2}}
-              AND VECTOR_DISTANCE('cosine', ce.Embedding, {{0}}) > {{3}}
+            WHERE ml.ModelId = @modelId
+              AND mc.UserId = @userId
+              AND VECTOR_DISTANCE('cosine', ce.Embedding, @queryVector) > @threshold
             ORDER BY Similarity DESC";
 
+        // Create SqlVector<float> parameter with proper binding
+        var embeddingParam = new SqlParameter("@queryVector", SqlDbType.VarBinary)
+        {
+            Value = new SqlVector<float>(queryEmbedding).ToSqlBytes()
+        };
+
+        var modelIdParam = new SqlParameter("@modelId", SqlDbType.UniqueIdentifier) { Value = modelId };
+        var userIdParam = new SqlParameter("@userId", SqlDbType.NVarChar) { Value = userId };
+        var thresholdParam = new SqlParameter("@threshold", SqlDbType.Float) { Value = similarityThreshold };
+        var limitParam = new SqlParameter("@limit", SqlDbType.Int) { Value = limit };
+
         var results = await _context.Database.SqlQueryRaw<ModelComponentQueryResult>(sql,
-            queryVectorValue, modelId, userId, similarityThreshold).ToListAsync();
+            embeddingParam, modelIdParam, userIdParam, thresholdParam, limitParam).ToListAsync();
 
         return results;
     }
@@ -223,44 +234,59 @@ public class ModelQueryEngineService : IModelQueryEngineService
     {
         _logger.LogDebug("Extracting neural patterns of type {PatternType} from model {ModelId}", patternType, modelId);
 
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         try
         {
-            // Call SQL CLR function for memory-mapped pattern extraction using EF Core
+            // Call SQL CLR function for memory-mapped pattern extraction using EF Core with proper parameter binding
             var parametersJson = JsonSerializer.Serialize(parameters ?? new Dictionary<string, object>());
-            var sql = $"SELECT dbo.ExtractNeuralPatterns({{0}}, {{1}}, {{2}}, {{3}}) AS PatternData";
+            var sql = "SELECT dbo.ExtractNeuralPatterns(@modelId, @patternType, @parameters, @userId) AS PatternData";
+
+            var modelIdParam = new SqlParameter("@modelId", SqlDbType.UniqueIdentifier) { Value = modelId };
+            var patternTypeParam = new SqlParameter("@patternType", SqlDbType.NVarChar) { Value = patternType };
+            var parametersParam = new SqlParameter("@parameters", SqlDbType.NVarChar) { Value = parametersJson };
+            var userIdParam = new SqlParameter("@userId", SqlDbType.NVarChar) { Value = userId };
 
             var patternDataResults = await _context.Database.SqlQueryRaw<PatternDataResult>(sql,
-                modelId, patternType, parametersJson, userId).ToListAsync();
+                modelIdParam, patternTypeParam, parametersParam, userIdParam).ToListAsync();
 
             var patternData = patternDataResults.FirstOrDefault()?.PatternData;
 
             if (string.IsNullOrEmpty(patternData))
             {
+                stopwatch.Stop();
                 return new NeuralPatternExtractionResult
                 {
                     Success = false,
-                    ErrorMessage = "No pattern data extracted"
+                    ErrorMessage = "No pattern data extracted",
+                    ExtractionTimeMs = (int)stopwatch.ElapsedMilliseconds
                 };
             }
 
             var patterns = JsonSerializer.Deserialize<List<NeuralPattern>>(patternData);
+            stopwatch.Stop();
+
+            _logger.LogDebug("Neural pattern extraction completed in {ElapsedMs}ms for model {ModelId}",
+                stopwatch.ElapsedMilliseconds, modelId);
 
             return new NeuralPatternExtractionResult
             {
                 Success = true,
                 PatternType = patternType,
                 Patterns = patterns ?? new List<NeuralPattern>(),
-                ExtractionTimeMs = 0 // TODO: Track timing
+                ExtractionTimeMs = (int)stopwatch.ElapsedMilliseconds
             };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error extracting neural patterns of type {PatternType} from model {ModelId}", patternType, modelId);
+            stopwatch.Stop();
+            _logger.LogError(ex, "Error extracting neural patterns of type {PatternType} from model {ModelId} after {ElapsedMs}ms",
+                patternType, modelId, stopwatch.ElapsedMilliseconds);
 
             return new NeuralPatternExtractionResult
             {
                 Success = false,
-                ErrorMessage = ex.Message
+                ErrorMessage = ex.Message,
+                ExtractionTimeMs = (int)stopwatch.ElapsedMilliseconds
             };
         }
     }
@@ -294,7 +320,7 @@ public class ModelQueryEngineService : IModelQueryEngineService
                             LayerIndex = layer.Index,
                             LearnedConcept = neuron.LearnedConcept ?? "Unknown",
                             ConceptCategory = neuron.ConceptCategory ?? "Unclassified",
-                            ConceptEmbedding = neuron.ConceptEmbedding != null ? FloatArrayToBytes(neuron.ConceptEmbedding) : Array.Empty<byte>(),
+                            ConceptEmbedding = neuron.ConceptEmbedding != null ? new SqlVector<float>(neuron.ConceptEmbedding).ToSqlBytes().Value : Array.Empty<byte>(),
                             ActivationThreshold = neuron.ActivationThreshold,
                             ConceptStrength = neuron.ConceptStrength,
                             ConceptExamples = JsonSerializer.Serialize(neuron.ConceptExamples ?? new List<string>()),
@@ -436,7 +462,7 @@ public class ModelQueryEngineService : IModelQueryEngineService
                 var componentEmbedding = new ComponentEmbedding
                 {
                     ComponentId = component.ComponentId,
-                    Embedding = FloatArrayToBytes(embedding),
+                    Embedding = new SqlVector<float>(embedding).ToSqlBytes().Value,
                     EmbeddingType = "semantic",
                     UserId = userId
                 };
@@ -469,19 +495,98 @@ public class ModelQueryEngineService : IModelQueryEngineService
         if (!string.IsNullOrEmpty(mechanisticResponse))
         {
             var mechanisticData = JsonSerializer.Deserialize<MechanisticAnalysisResponse>(mechanisticResponse);
-            // TODO: Store mechanistic analysis results in appropriate tables
+
+            if (mechanisticData != null)
+            {
+                await StoreMechanisticAnalysisResultsAsync(modelId, mechanisticData, userId);
+            }
         }
     }
 
     /// <summary>
-    /// Converts float array to byte array for SQL Server 2025 VECTOR storage
+    /// Store mechanistic analysis results in appropriate database tables
     /// </summary>
-    private static byte[] FloatArrayToBytes(float[] floats)
+    private async Task StoreMechanisticAnalysisResultsAsync(Guid modelId, MechanisticAnalysisResponse mechanisticData, string userId)
     {
-        var bytes = new byte[floats.Length * 4];
-        Buffer.BlockCopy(floats, 0, bytes, 0, bytes.Length);
-        return bytes;
+        _logger.LogDebug("Storing mechanistic analysis results for model {ModelId}", modelId);
+
+        try
+        {
+            // Store causal patterns as ActivationPatterns
+            if (mechanisticData.CausalPatterns != null)
+            {
+                var causalPatternsJson = JsonSerializer.Serialize(mechanisticData.CausalPatterns);
+                var causalPatterns = JsonSerializer.Deserialize<List<CausalPatternData>>(causalPatternsJson);
+
+                if (causalPatterns != null)
+                {
+                    foreach (var pattern in causalPatterns)
+                    {
+                        var activationPattern = new ActivationPattern
+                        {
+                            ModelId = modelId,
+                            ComponentId = pattern.ComponentId ?? Guid.NewGuid(), // Use provided or generate new
+                            PatternType = "causal_mechanism",
+                            TriggerContext = pattern.Context ?? "mechanistic_analysis",
+                            PatternStrength = pattern.Strength,
+                            PatternDuration = pattern.Duration ?? 0.0,
+                            Frequency = pattern.Frequency ?? 0.0,
+                            UserId = userId
+                        };
+
+                        activationPattern.SetActivationData(pattern.ActivationData ?? new object());
+                        activationPattern.SetPatternStatistics(pattern.Statistics ?? new Dictionary<string, object>());
+
+                        _context.ActivationPatterns.Add(activationPattern);
+                    }
+                }
+            }
+
+            // Store feature interactions as CapabilityMappings
+            if (mechanisticData.FeatureInteractions != null)
+            {
+                var featureInteractionsJson = JsonSerializer.Serialize(mechanisticData.FeatureInteractions);
+                var featureInteractions = JsonSerializer.Deserialize<List<FeatureInteractionData>>(featureInteractionsJson);
+
+                if (featureInteractions != null)
+                {
+                    foreach (var interaction in featureInteractions)
+                    {
+                        var capabilityMapping = new CapabilityMapping
+                        {
+                            ModelId = modelId,
+                            ComponentId = interaction.ComponentId,
+                            CapabilityName = interaction.CapabilityName ?? "feature_interaction",
+                            Description = interaction.Description ?? "Discovered through mechanistic analysis",
+                            Category = "mechanistic_interpretability",
+                            CapabilityStrength = interaction.Strength,
+                            MappingConfidence = interaction.Confidence,
+                            MappingMethod = "mechanistic_analysis",
+                            UserId = userId
+                        };
+
+                        capabilityMapping.SetEvidence(interaction.Evidence ?? new List<object>());
+                        capabilityMapping.SetAnalysisResults(interaction.AnalysisData ?? new object());
+
+                        _context.CapabilityMappings.Add(capabilityMapping);
+                    }
+                }
+            }
+
+            await _context.SaveChangesAsync();
+            _logger.LogInformation("Successfully stored mechanistic analysis results for model {ModelId}", modelId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error storing mechanistic analysis results for model {ModelId}", modelId);
+            throw;
+        }
     }
+
+    /// <summary>
+    /// Note: Vector storage now uses SqlVector<float>.ToSqlBytes() for SQL Server 2025 VECTOR data type
+    /// Legacy FloatArrayToBytes method removed in favor of SqlVector<float> pattern
+    /// </summary>
 }
 
 // Supporting types
@@ -516,7 +621,7 @@ public class NeuralPatternExtractionResult
     public int ExtractionTimeMs { get; set; }
 }
 
-// NeuralPattern class moved to MechanisticInterpretabilityService.cs to avoid duplication
+// Note: NeuralPattern and AttentionHeadAnalysis classes are defined in MechanisticInterpretabilityService.cs
 
 // llama.cpp service response types
 public class LlamaCppAnalysisResponse
@@ -565,7 +670,7 @@ public class NeuronActivation
     public object? DetailedAnalysis { get; set; }
 }
 
-// AttentionHeadAnalysis class moved to MechanisticInterpretabilityService.cs to avoid duplication
+// Note: AttentionHeadAnalysis class is defined in MechanisticInterpretabilityService.cs
 
 public class EmbeddingResponse
 {
@@ -576,6 +681,28 @@ public class MechanisticAnalysisResponse
 {
     public object? CausalPatterns { get; set; }
     public object? FeatureInteractions { get; set; }
+}
+
+public class CausalPatternData
+{
+    public Guid? ComponentId { get; set; }
+    public string? Context { get; set; }
+    public double Strength { get; set; }
+    public double? Duration { get; set; }
+    public double? Frequency { get; set; }
+    public object? ActivationData { get; set; }
+    public Dictionary<string, object>? Statistics { get; set; }
+}
+
+public class FeatureInteractionData
+{
+    public Guid? ComponentId { get; set; }
+    public string? CapabilityName { get; set; }
+    public string? Description { get; set; }
+    public double Strength { get; set; }
+    public double Confidence { get; set; }
+    public List<object>? Evidence { get; set; }
+    public object? AnalysisData { get; set; }
 }
 
 public class PatternDataResult

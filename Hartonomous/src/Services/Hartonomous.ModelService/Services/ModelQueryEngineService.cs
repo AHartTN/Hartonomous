@@ -29,7 +29,7 @@ using Hartonomous.Core.Data;
 using Hartonomous.Core.Models;
 using Hartonomous.Core.Interfaces;
 
-namespace Hartonomous.Core.Services;
+namespace Hartonomous.ModelService.Services;
 
 /// <summary>
 /// Core Model Query Engine implementation
@@ -245,6 +245,7 @@ public class ModelQueryEngineService : IModelQueryEngineService
     {
         _logger.LogDebug("Extracting neural patterns of type {PatternType} from model {ModelId}", patternType, modelId);
 
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         try
         {
             // Call SQL CLR function for memory-mapped pattern extraction
@@ -264,31 +265,40 @@ public class ModelQueryEngineService : IModelQueryEngineService
 
             if (string.IsNullOrEmpty(patternData))
             {
+                stopwatch.Stop();
                 return new NeuralPatternExtractionResult
                 {
                     Success = false,
-                    ErrorMessage = "No pattern data extracted"
+                    ErrorMessage = "No pattern data extracted",
+                    ExtractionTimeMs = (int)stopwatch.ElapsedMilliseconds
                 };
             }
 
             var patterns = JsonSerializer.Deserialize<List<NeuralPattern>>(patternData);
+            stopwatch.Stop();
+
+            _logger.LogDebug("Neural pattern extraction completed in {ElapsedMs}ms for model {ModelId}",
+                stopwatch.ElapsedMilliseconds, modelId);
 
             return new NeuralPatternExtractionResult
             {
                 Success = true,
                 PatternType = patternType,
                 Patterns = patterns ?? new List<NeuralPattern>(),
-                ExtractionTimeMs = 0 // TODO: Track timing
+                ExtractionTimeMs = (int)stopwatch.ElapsedMilliseconds
             };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error extracting neural patterns of type {PatternType} from model {ModelId}", patternType, modelId);
+            stopwatch.Stop();
+            _logger.LogError(ex, "Error extracting neural patterns of type {PatternType} from model {ModelId} after {ElapsedMs}ms",
+                patternType, modelId, stopwatch.ElapsedMilliseconds);
 
             return new NeuralPatternExtractionResult
             {
                 Success = false,
-                ErrorMessage = ex.Message
+                ErrorMessage = ex.Message,
+                ExtractionTimeMs = (int)stopwatch.ElapsedMilliseconds
             };
         }
     }
@@ -497,7 +507,108 @@ public class ModelQueryEngineService : IModelQueryEngineService
         if (!string.IsNullOrEmpty(mechanisticResponse))
         {
             var mechanisticData = JsonSerializer.Deserialize<MechanisticAnalysisResponse>(mechanisticResponse);
-            // TODO: Store mechanistic analysis results in appropriate tables
+
+            if (mechanisticData != null)
+            {
+                await StoreMechanisticAnalysisResultsAsync(modelId, mechanisticData, userId);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Store mechanistic analysis results in appropriate database tables
+    /// </summary>
+    private async Task StoreMechanisticAnalysisResultsAsync(Guid modelId, MechanisticAnalysisResponse mechanisticData, string userId)
+    {
+        _logger.LogDebug("Storing mechanistic analysis results for model {ModelId}", modelId);
+
+        try
+        {
+            using var connection = new SqlConnection(_configuration.GetConnectionString("DefaultConnection"));
+            await connection.OpenAsync();
+
+            // Store causal patterns as ActivationPatterns
+            if (mechanisticData.CausalPatterns != null)
+            {
+                var causalPatternsJson = JsonSerializer.Serialize(mechanisticData.CausalPatterns);
+                var causalPatterns = JsonSerializer.Deserialize<List<CausalPatternData>>(causalPatternsJson);
+
+                if (causalPatterns != null)
+                {
+                    var insertPatternSql = @"
+                        INSERT INTO ActivationPatterns (PatternId, ModelId, ComponentId, PatternType, TriggerContext,
+                                                       ActivationData, PatternStatistics, PatternStrength, PatternDuration,
+                                                       Frequency, UserId, RecordedAt)
+                        VALUES (@patternId, @modelId, @componentId, @patternType, @triggerContext,
+                               @activationData, @patternStatistics, @patternStrength, @patternDuration,
+                               @frequency, @userId, @recordedAt)";
+
+                    foreach (var pattern in causalPatterns)
+                    {
+                        using var command = new SqlCommand(insertPatternSql, connection);
+                        command.Parameters.AddWithValue("@patternId", Guid.NewGuid());
+                        command.Parameters.AddWithValue("@modelId", modelId);
+                        command.Parameters.AddWithValue("@componentId", pattern.ComponentId ?? Guid.NewGuid());
+                        command.Parameters.AddWithValue("@patternType", "causal_mechanism");
+                        command.Parameters.AddWithValue("@triggerContext", pattern.Context ?? "mechanistic_analysis");
+                        command.Parameters.AddWithValue("@activationData", JsonSerializer.Serialize(pattern.ActivationData ?? new object()));
+                        command.Parameters.AddWithValue("@patternStatistics", JsonSerializer.Serialize(pattern.Statistics ?? new Dictionary<string, object>()));
+                        command.Parameters.AddWithValue("@patternStrength", pattern.Strength);
+                        command.Parameters.AddWithValue("@patternDuration", pattern.Duration ?? 0.0);
+                        command.Parameters.AddWithValue("@frequency", pattern.Frequency ?? 0.0);
+                        command.Parameters.AddWithValue("@userId", userId);
+                        command.Parameters.AddWithValue("@recordedAt", DateTime.UtcNow);
+
+                        await command.ExecuteNonQueryAsync();
+                    }
+                }
+            }
+
+            // Store feature interactions as CapabilityMappings
+            if (mechanisticData.FeatureInteractions != null)
+            {
+                var featureInteractionsJson = JsonSerializer.Serialize(mechanisticData.FeatureInteractions);
+                var featureInteractions = JsonSerializer.Deserialize<List<FeatureInteractionData>>(featureInteractionsJson);
+
+                if (featureInteractions != null)
+                {
+                    var insertMappingSql = @"
+                        INSERT INTO CapabilityMappings (MappingId, CapabilityMappingId, ModelId, ComponentId, CapabilityName,
+                                                       Description, Category, Evidence, CapabilityStrength, MappingConfidence,
+                                                       MappingMethod, AnalysisResults, UserId, MappedAt)
+                        VALUES (@mappingId, @capabilityMappingId, @modelId, @componentId, @capabilityName,
+                               @description, @category, @evidence, @capabilityStrength, @mappingConfidence,
+                               @mappingMethod, @analysisResults, @userId, @mappedAt)";
+
+                    foreach (var interaction in featureInteractions)
+                    {
+                        using var command = new SqlCommand(insertMappingSql, connection);
+                        command.Parameters.AddWithValue("@mappingId", Guid.NewGuid());
+                        command.Parameters.AddWithValue("@capabilityMappingId", Guid.NewGuid());
+                        command.Parameters.AddWithValue("@modelId", modelId);
+                        command.Parameters.AddWithValue("@componentId", interaction.ComponentId ?? (object)DBNull.Value);
+                        command.Parameters.AddWithValue("@capabilityName", interaction.CapabilityName ?? "feature_interaction");
+                        command.Parameters.AddWithValue("@description", interaction.Description ?? "Discovered through mechanistic analysis");
+                        command.Parameters.AddWithValue("@category", "mechanistic_interpretability");
+                        command.Parameters.AddWithValue("@evidence", JsonSerializer.Serialize(interaction.Evidence ?? new List<object>()));
+                        command.Parameters.AddWithValue("@capabilityStrength", interaction.Strength);
+                        command.Parameters.AddWithValue("@mappingConfidence", interaction.Confidence);
+                        command.Parameters.AddWithValue("@mappingMethod", "mechanistic_analysis");
+                        command.Parameters.AddWithValue("@analysisResults", JsonSerializer.Serialize(interaction.AnalysisData ?? new object()));
+                        command.Parameters.AddWithValue("@userId", userId);
+                        command.Parameters.AddWithValue("@mappedAt", DateTime.UtcNow);
+
+                        await command.ExecuteNonQueryAsync();
+                    }
+                }
+            }
+
+            _logger.LogInformation("Successfully stored mechanistic analysis results for model {ModelId}", modelId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error storing mechanistic analysis results for model {ModelId}", modelId);
+            throw;
         }
     }
 
@@ -544,7 +655,7 @@ public class NeuralPatternExtractionResult
     public int ExtractionTimeMs { get; set; }
 }
 
-// NeuralPattern class moved to MechanisticInterpretabilityService.cs to avoid duplication
+// Note: NeuralPattern and AttentionHeadAnalysis classes are defined in MechanisticInterpretabilityService.cs
 
 // llama.cpp service response types
 public class LlamaCppAnalysisResponse
@@ -593,7 +704,7 @@ public class NeuronActivation
     public object? DetailedAnalysis { get; set; }
 }
 
-// AttentionHeadAnalysis class moved to MechanisticInterpretabilityService.cs to avoid duplication
+// Note: AttentionHeadAnalysis class is defined in MechanisticInterpretabilityService.cs
 
 public class EmbeddingResponse
 {
@@ -604,6 +715,28 @@ public class MechanisticAnalysisResponse
 {
     public object? CausalPatterns { get; set; }
     public object? FeatureInteractions { get; set; }
+}
+
+public class CausalPatternData
+{
+    public Guid? ComponentId { get; set; }
+    public string? Context { get; set; }
+    public double Strength { get; set; }
+    public double? Duration { get; set; }
+    public double? Frequency { get; set; }
+    public object? ActivationData { get; set; }
+    public Dictionary<string, object>? Statistics { get; set; }
+}
+
+public class FeatureInteractionData
+{
+    public Guid? ComponentId { get; set; }
+    public string? CapabilityName { get; set; }
+    public string? Description { get; set; }
+    public double Strength { get; set; }
+    public double Confidence { get; set; }
+    public List<object>? Evidence { get; set; }
+    public object? AnalysisData { get; set; }
 }
 
 public interface IModelQueryEngineService

@@ -8,16 +8,15 @@
  * Features agent registration, discovery, heartbeat monitoring, and connection management with user-scoped security.
  */
 
-using Dapper;
 using Hartonomous.Core.DTOs;
 using Hartonomous.Core.Interfaces;
 using Hartonomous.Core.Abstractions;
 using Hartonomous.Core.Configuration;
 using Hartonomous.Core.Entities;
 using Hartonomous.Core.Enums;
-using Microsoft.Data.SqlClient;
+using Hartonomous.Core.Data;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using System.Data;
 using System.Text.Json;
 
 namespace Hartonomous.MCP.Repositories;
@@ -27,7 +26,7 @@ namespace Hartonomous.MCP.Repositories;
 /// </summary>
 public class AgentRepository : BaseRepository<Agent, Guid>, IAgentRepository
 {
-    public AgentRepository(IOptions<SqlServerOptions> sqlOptions) : base(sqlOptions)
+    public AgentRepository(IOptions<SqlServerOptions> sqlOptions, HartonomousDbContext context) : base(sqlOptions, context)
     {
     }
 
@@ -81,80 +80,75 @@ public class AgentRepository : BaseRepository<Agent, Guid>, IAgentRepository
         };
     }
 
+    protected override object[] GetParametersArray(Agent entity)
+    {
+        return new object[]
+        {
+            entity.Id,
+            entity.UserId,
+            entity.AgentName,
+            entity.AgentType,
+            entity.ConnectionId ?? (object)DBNull.Value,
+            SerializeToJson(entity.Capabilities),
+            entity.Description ?? (object)DBNull.Value,
+            SerializeToJson(entity.Configuration),
+            (int)entity.Status,
+            entity.CreatedDate,
+            entity.LastHeartbeat ?? (object)DBNull.Value,
+            SerializeToJson(entity.Metrics)
+        };
+    }
+
     public async Task<Guid> RegisterAgentAsync(AgentRegistrationRequest request, string connectionId, string userId)
     {
-        const string sql = @"
-            INSERT INTO dbo.Agents (AgentId, UserId, AgentName, AgentType, ConnectionId, Capabilities, Description, Configuration, Status, RegisteredAt, LastHeartbeat)
-            VALUES (@AgentId, @UserId, @AgentName, @AgentType, @ConnectionId, @Capabilities, @Description, @Configuration, @Status, @RegisteredAt, @LastHeartbeat);";
-
         var agentId = Guid.NewGuid();
         var now = DateTime.UtcNow;
 
-        using var connection = new SqlConnection(_connectionString);
-        await connection.ExecuteAsync(sql, new
+        var agent = new Agent
         {
-            AgentId = agentId,
+            Id = agentId,
             UserId = userId,
             AgentName = request.AgentName,
             AgentType = request.AgentType,
             ConnectionId = connectionId,
-            Capabilities = JsonSerializer.Serialize(request.Capabilities),
+            Capabilities = request.Capabilities ?? Array.Empty<string>(),
             Description = request.Description,
-            Configuration = request.Configuration != null ? JsonSerializer.Serialize(request.Configuration) : null,
-            Status = (int)AgentStatus.Online,
-            RegisteredAt = now,
-            LastHeartbeat = now
-        });
+            Configuration = request.Configuration ?? new Dictionary<string, object>(),
+            Status = AgentStatus.Online,
+            CreatedDate = now,
+            LastHeartbeat = now,
+            Metrics = new Dictionary<string, object>()
+        };
 
+        await CreateAsync(agent);
         return agentId;
     }
 
     public async Task<bool> UpdateAgentConnectionAsync(Guid agentId, string connectionId, string userId)
     {
-        const string sql = @"
-            UPDATE dbo.Agents
-            SET ConnectionId = @ConnectionId, Status = @Status, LastHeartbeat = @LastHeartbeat
-            WHERE AgentId = @AgentId AND UserId = @UserId;";
+        var agent = await GetByIdAsync(agentId);
+        if (agent?.UserId != userId) return false;
 
-        using var connection = new SqlConnection(_connectionString);
-        var rowsAffected = await connection.ExecuteAsync(sql, new
-        {
-            ConnectionId = connectionId,
-            Status = (int)AgentStatus.Online,
-            LastHeartbeat = DateTime.UtcNow,
-            AgentId = agentId,
-            UserId = userId
-        });
+        agent.ConnectionId = connectionId;
+        agent.Status = AgentStatus.Online;
+        agent.LastHeartbeat = DateTime.UtcNow;
 
-        return rowsAffected > 0;
+        return await UpdateAsync(agent);
     }
 
     // DTO convenience methods for the MCP hub layer
     public async Task<AgentDto?> GetAgentDtoByIdAsync(Guid agentId, string userId)
     {
-        const string sql = @"
-            SELECT AgentId, AgentName, AgentType, ConnectionId, Capabilities, Description, Configuration, RegisteredAt, LastHeartbeat, Status
-            FROM dbo.Agents
-            WHERE AgentId = @AgentId AND UserId = @UserId;";
+        var agent = await GetByIdAsync(agentId);
+        if (agent?.UserId != userId) return null;
 
-        using var connection = new SqlConnection(_connectionString);
-        var result = await connection.QueryFirstOrDefaultAsync(sql, new { AgentId = agentId, UserId = userId });
-
-        return result != null ? MapToAgentDto(result) : null;
+        return MapToAgentDto(agent);
     }
 
     public async Task<IEnumerable<AgentDto>> GetAllAgentDtosAsync(string userId)
     {
-        const string sql = @"
-            SELECT AgentId, AgentName, AgentType, ConnectionId, Capabilities, Description, Configuration, RegisteredAt, LastHeartbeat, Status
-            FROM dbo.Agents
-            WHERE UserId = @UserId
-            ORDER BY RegisteredAt DESC;";
-
-        using var connection = new SqlConnection(_connectionString);
-        var results = await connection.QueryAsync(sql, new { UserId = userId });
-
-        return results.Select(MapToAgentDto);
+        var agents = await GetByUserAsync(userId);
+        return agents.Select(MapToAgentDto);
     }
 
     public async Task<IEnumerable<AgentDto>> GetAgentsByUserAsync(string userId)
@@ -169,137 +163,92 @@ public class AgentRepository : BaseRepository<Agent, Guid>, IAgentRepository
 
     public async Task<bool> UnregisterAgentAsync(Guid agentId, string userId)
     {
-        const string sql = @"
-            DELETE FROM dbo.Agents
-            WHERE AgentId = @AgentId AND UserId = @UserId;";
+        var agent = await GetByIdAsync(agentId);
+        if (agent?.UserId != userId) return false;
 
-        using var connection = new SqlConnection(_connectionString);
-        var rowsAffected = await connection.ExecuteAsync(sql, new { AgentId = agentId, UserId = userId });
-        return rowsAffected > 0;
+        return await DeleteAsync(agentId);
     }
 
     public async Task<bool> UpdateAgentHeartbeatAsync(Guid agentId, AgentStatus status, string userId, Dictionary<string, object>? metrics = null)
     {
-        const string sql = @"
-            UPDATE dbo.Agents
-            SET Status = @Status, LastHeartbeat = @LastHeartbeat, Metrics = @Metrics
-            WHERE AgentId = @AgentId AND UserId = @UserId;";
+        var agent = await GetByIdAsync(agentId);
+        if (agent?.UserId != userId) return false;
 
-        using var connection = new SqlConnection(_connectionString);
-        var rowsAffected = await connection.ExecuteAsync(sql, new
-        {
-            Status = (int)status,
-            LastHeartbeat = DateTime.UtcNow,
-            Metrics = metrics != null ? JsonSerializer.Serialize(metrics) : null,
-            AgentId = agentId,
-            UserId = userId
-        });
+        agent.Status = status;
+        agent.LastHeartbeat = DateTime.UtcNow;
+        if (metrics != null)
+            agent.Metrics = metrics;
 
-        return rowsAffected > 0;
+        return await UpdateAsync(agent);
     }
 
     public async Task<IEnumerable<AgentDto>> DiscoverAgentsAsync(AgentDiscoveryRequest request, string userId)
     {
-        var whereClause = "WHERE UserId = @UserId AND Status = @OnlineStatus";
-        var parameters = new DynamicParameters();
-        parameters.Add("UserId", userId);
-        parameters.Add("OnlineStatus", (int)AgentStatus.Online);
+        var agents = await GetByUserAsync(userId);
 
+        // Filter by status
+        var filteredAgents = agents.Where(a => a.Status == AgentStatus.Online);
+
+        // Filter by agent type if specified
         if (!string.IsNullOrEmpty(request.AgentType))
         {
-            whereClause += " AND AgentType = @AgentType";
-            parameters.Add("AgentType", request.AgentType);
+            filteredAgents = filteredAgents.Where(a => a.AgentType == request.AgentType);
         }
 
-        // For capability filtering, we'll need to deserialize and check in application
-        // In a production system, you might want to use a more sophisticated approach
-        var sql = $@"
-            SELECT AgentId, AgentName, AgentType, ConnectionId, Capabilities, Description, Configuration, RegisteredAt, LastHeartbeat, Status
-            FROM dbo.Agents
-            {whereClause}
-            ORDER BY LastHeartbeat DESC;";
-
-        using var connection = new SqlConnection(_connectionString);
-        var results = await connection.QueryAsync(sql, parameters);
-
-        var agents = results.Select(MapToAgentDto);
+        var agentDtos = filteredAgents.Select(MapToAgentDto);
 
         // Filter by capabilities if requested
         if (request.RequiredCapabilities?.Any() == true)
         {
-            agents = agents.Where(agent =>
+            agentDtos = agentDtos.Where(agent =>
                 request.RequiredCapabilities.All(required =>
                     agent.Capabilities.Contains(required)));
         }
 
-        return agents;
+        return agentDtos.OrderByDescending(a => a.LastHeartbeat);
     }
 
     public async Task<bool> DeleteAsync(Guid agentId, string userId)
     {
-        const string sql = @"
-            DELETE FROM dbo.Agents
-            WHERE AgentId = @AgentId AND UserId = @UserId;";
+        var agent = await GetByIdAsync(agentId);
+        if (agent?.UserId != userId) return false;
 
-        using var connection = new SqlConnection(_connectionString);
-        var rowsAffected = await connection.ExecuteAsync(sql, new { AgentId = agentId, UserId = userId });
-
-        return rowsAffected > 0;
+        return await DeleteAsync(agentId);
     }
 
     public async Task<bool> UpdateAgentStatusAsync(Guid agentId, AgentStatus status, string userId)
     {
-        const string sql = @"
-            UPDATE dbo.Agents
-            SET Status = @Status, LastHeartbeat = @LastHeartbeat
-            WHERE AgentId = @AgentId AND UserId = @UserId;";
+        var agent = await GetByIdAsync(agentId);
+        if (agent?.UserId != userId) return false;
 
-        using var connection = new SqlConnection(_connectionString);
-        var rowsAffected = await connection.ExecuteAsync(sql, new
-        {
-            Status = (int)status,
-            LastHeartbeat = DateTime.UtcNow,
-            AgentId = agentId,
-            UserId = userId
-        });
+        agent.Status = status;
+        agent.LastHeartbeat = DateTime.UtcNow;
 
-        return rowsAffected > 0;
+        return await UpdateAsync(agent);
     }
 
     public async Task<AgentDto?> GetAgentByConnectionIdAsync(string connectionId)
     {
-        const string sql = @"
-            SELECT AgentId, AgentName, AgentType, ConnectionId, Capabilities, Description, Configuration, RegisteredAt, LastHeartbeat, Status
-            FROM dbo.Agents
-            WHERE ConnectionId = @ConnectionId;";
+        var agents = await _context.Agents
+            .Where(a => a.ConnectionId == connectionId)
+            .FirstOrDefaultAsync();
 
-        using var connection = new SqlConnection(_connectionString);
-        var result = await connection.QueryFirstOrDefaultAsync(sql, new { ConnectionId = connectionId });
-
-        return result != null ? MapToAgentDto(result) : null;
+        return agents != null ? MapToAgentDto(agents) : null;
     }
 
-    private static AgentDto MapToAgentDto(dynamic row)
+    private static AgentDto MapToAgentDto(Agent agent)
     {
-        var capabilities = string.IsNullOrEmpty(row.Capabilities)
-            ? Array.Empty<string>()
-            : JsonSerializer.Deserialize<string[]>(row.Capabilities) ?? Array.Empty<string>();
-
-        var configuration = string.IsNullOrEmpty(row.Configuration)
-            ? null
-            : JsonSerializer.Deserialize<Dictionary<string, object>>(row.Configuration);
-
         return new AgentDto(
-            row.AgentId,
-            row.AgentName,
-            row.AgentType,
-            row.ConnectionId,
-            capabilities,
-            row.Description,
-            configuration,
-            row.RegisteredAt,
-            row.LastHeartbeat,
-            (AgentStatus)row.Status
+            agent.Id,
+            agent.AgentName,
+            agent.AgentType,
+            agent.ConnectionId,
+            agent.Capabilities ?? Array.Empty<string>(),
+            agent.Description,
+            agent.Configuration,
+            agent.CreatedDate,
+            agent.LastHeartbeat,
+            agent.Status
         );
     }
 

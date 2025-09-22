@@ -196,15 +196,71 @@ public class WorkflowStateManager : IWorkflowStateManager
                     return JsonSerializer.Deserialize<T>(jsonElement.GetRawText());
                 }
 
-                // Try to convert
+                // Try to convert using comprehensive type conversion
                 try
                 {
                     return (T)Convert.ChangeType(value, typeof(T));
                 }
                 catch
                 {
-                    return default(T);
+                    // If conversion fails, attempt JSON serialization/deserialization for complex types
+                    try
+                    {
+                        var jsonString = JsonSerializer.Serialize(value);
+                        return JsonSerializer.Deserialize<T>(jsonString);
+                    }
+                    catch
+                    {
+                        // Log the failure and return appropriate default based on type
+                        _logger.LogWarning("Failed to convert variable {Key} value {Value} to type {Type} for execution {ExecutionId}",
+                            key, value, typeof(T).Name, executionId);
+
+                        // Return appropriate default based on type
+                        if (typeof(T) == typeof(string))
+                            return (T)(object)string.Empty;
+                        if (typeof(T) == typeof(int) || typeof(T) == typeof(long))
+                            return (T)(object)0;
+                        if (typeof(T) == typeof(double) || typeof(T) == typeof(float))
+                            return (T)(object)0.0;
+                        if (typeof(T) == typeof(bool))
+                            return (T)(object)false;
+                        if (typeof(T) == typeof(DateTime))
+                            return (T)(object)DateTime.MinValue;
+                        if (typeof(T).IsGenericType && typeof(T).GetGenericTypeDefinition() == typeof(List<>))
+                        {
+                            return (T)Activator.CreateInstance(typeof(T));
+                        }
+                        if (typeof(T).IsGenericType && typeof(T).GetGenericTypeDefinition() == typeof(Dictionary<,>))
+                        {
+                            return (T)Activator.CreateInstance(typeof(T));
+                        }
+
+                        return default(T);
+                    }
                 }
+            }
+
+            // Return appropriate default when variable not found
+            _logger.LogDebug("Variable {Key} not found for execution {ExecutionId}, returning type-appropriate default", key, executionId);
+
+            // Return appropriate default based on type
+            if (typeof(T) == typeof(string))
+                return (T)(object)string.Empty;
+            if (typeof(T) == typeof(int) || typeof(T) == typeof(long))
+                return (T)(object)0;
+            if (typeof(T) == typeof(double) || typeof(T) == typeof(float))
+                return (T)(object)0.0;
+            if (typeof(T) == typeof(bool))
+                return (T)(object)false;
+            if (typeof(T) == typeof(DateTime))
+                return (T)(object)DateTime.MinValue;
+            if (typeof(T).IsGenericType && typeof(T).GetGenericTypeDefinition() == typeof(List<>))
+            {
+                return (T)Activator.CreateInstance(typeof(T));
+            }
+            if (typeof(T).IsGenericType && typeof(T).GetGenericTypeDefinition() == typeof(Dictionary<,>))
+            {
+                return (T)Activator.CreateInstance(typeof(T));
             }
 
             return default(T);
@@ -212,6 +268,27 @@ public class WorkflowStateManager : IWorkflowStateManager
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to get variable {Key} for execution {ExecutionId}", key, executionId);
+
+            // Return appropriate default on error based on type
+            if (typeof(T) == typeof(string))
+                return (T)(object)string.Empty;
+            if (typeof(T) == typeof(int) || typeof(T) == typeof(long))
+                return (T)(object)0;
+            if (typeof(T) == typeof(double) || typeof(T) == typeof(float))
+                return (T)(object)0.0;
+            if (typeof(T) == typeof(bool))
+                return (T)(object)false;
+            if (typeof(T) == typeof(DateTime))
+                return (T)(object)DateTime.MinValue;
+            if (typeof(T).IsGenericType && typeof(T).GetGenericTypeDefinition() == typeof(List<>))
+            {
+                return (T)Activator.CreateInstance(typeof(T));
+            }
+            if (typeof(T).IsGenericType && typeof(T).GetGenericTypeDefinition() == typeof(Dictionary<,>))
+            {
+                return (T)Activator.CreateInstance(typeof(T));
+            }
+
             return default(T);
         }
     }

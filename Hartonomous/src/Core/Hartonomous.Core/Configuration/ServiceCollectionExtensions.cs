@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Caching.Distributed;
@@ -9,11 +10,15 @@ using Microsoft.Extensions.Caching.SqlServer;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using HealthChecks.SqlServer;
 using Hartonomous.Core.Abstractions;
+using Hartonomous.Core.DTOs;
 using Hartonomous.Core.Interfaces;
 using Hartonomous.Core.Repositories;
 using Hartonomous.Core.Services;
 using Hartonomous.Infrastructure.Neo4j;
+using Hartonomous.Orchestration.DTOs;
+using System.Net.Http.Json;
 using System.Reflection;
+using System.Text.Json;
 
 namespace Hartonomous.Core.Configuration;
 
@@ -284,28 +289,406 @@ public static class ServiceCollectionExtensions
 }
 
 /// <summary>
-/// Placeholder interfaces for thin clients (to be implemented)
+/// HTTP client interfaces for microservice communication
 /// </summary>
-public interface IModelQueryClient { }
-public interface IMcpClient { }
-public interface IOrchestrationClient { }
+public interface IModelQueryClient
+{
+    Task<ModelIngestionResult> IngestModelAsync(string modelPath, string modelName, string userId);
+    Task<IEnumerable<ModelComponentQueryResult>> QueryModelComponentsAsync(Guid modelId, string query, string userId, double similarityThreshold = 0.8, int limit = 10);
+    Task<NeuralPatternExtractionResult> ExtractNeuralPatternsAsync(Guid modelId, string patternType, string userId, Dictionary<string, object>? parameters = null);
+}
+
+public interface IMcpClient
+{
+    Task<Guid> StoreMessageAsync(McpMessage message, string userId);
+    Task<McpMessage?> GetMessageAsync(Guid messageId, string userId);
+    Task<IEnumerable<McpMessage>> GetMessagesForAgentAsync(Guid agentId, string userId, int limit = 100);
+    Task<IEnumerable<McpMessage>> GetUnreadMessagesAsync(Guid agentId, string userId);
+    Task<bool> MarkMessagesAsReadAsync(Guid agentId, IEnumerable<Guid> messageIds, string userId);
+    Task<bool> StoreTaskAssignmentAsync(TaskAssignment assignment, string userId);
+    Task<TaskAssignment?> GetTaskAssignmentAsync(Guid taskId, string userId);
+}
+
+public interface IOrchestrationClient
+{
+    Task<Guid> StartWorkflowAsync(Guid workflowId, Dictionary<string, object>? input, Dictionary<string, object>? configuration, string userId, string? executionName = null);
+    Task<bool> ResumeWorkflowAsync(Guid executionId, string userId);
+    Task<bool> PauseWorkflowAsync(Guid executionId, string userId);
+    Task<bool> CancelWorkflowAsync(Guid executionId, string userId);
+    Task<WorkflowExecutionDto?> GetExecutionStatusAsync(Guid executionId, string userId);
+    Task<WorkflowValidationResult> ValidateWorkflowAsync(string workflowDefinition);
+}
 
 /// <summary>
-/// Placeholder implementations for thin clients
+/// HTTP client implementations for microservice communication
 /// </summary>
 public class ModelQueryClient : IModelQueryClient
 {
-    public ModelQueryClient(HttpClient httpClient) { }
+    private readonly HttpClient _httpClient;
+    private readonly ILogger<ModelQueryClient> _logger;
+
+    public ModelQueryClient(HttpClient httpClient, ILogger<ModelQueryClient> logger)
+    {
+        _httpClient = httpClient;
+        _logger = logger;
+    }
+
+    public async Task<ModelIngestionResult> IngestModelAsync(string modelPath, string modelName, string userId)
+    {
+        try
+        {
+            var request = new { modelPath, modelName, userId };
+            var response = await _httpClient.PostAsJsonAsync("/api/model/ingest", request);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<ModelIngestionResult>();
+                return result ?? new ModelIngestionResult { Success = false, ErrorMessage = "Invalid response format" };
+            }
+
+            return new ModelIngestionResult
+            {
+                Success = false,
+                ErrorMessage = $"HTTP {response.StatusCode}: {await response.Content.ReadAsStringAsync()}"
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error ingesting model {ModelPath} for user {UserId}", modelPath, userId);
+            return new ModelIngestionResult { Success = false, ErrorMessage = ex.Message };
+        }
+    }
+
+    public async Task<IEnumerable<ModelComponentQueryResult>> QueryModelComponentsAsync(
+        Guid modelId, string query, string userId, double similarityThreshold = 0.8, int limit = 10)
+    {
+        try
+        {
+            var requestUri = $"/api/model/{modelId}/query?userId={userId}&query={Uri.EscapeDataString(query)}&threshold={similarityThreshold}&limit={limit}";
+            var response = await _httpClient.GetAsync(requestUri);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var results = await response.Content.ReadFromJsonAsync<IEnumerable<ModelComponentQueryResult>>();
+                return results ?? Enumerable.Empty<ModelComponentQueryResult>();
+            }
+
+            _logger.LogWarning("Query components failed with status {StatusCode} for model {ModelId}", response.StatusCode, modelId);
+            return Enumerable.Empty<ModelComponentQueryResult>();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error querying model components for model {ModelId}", modelId);
+            return Enumerable.Empty<ModelComponentQueryResult>();
+        }
+    }
+
+    public async Task<NeuralPatternExtractionResult> ExtractNeuralPatternsAsync(
+        Guid modelId, string patternType, string userId, Dictionary<string, object>? parameters = null)
+    {
+        try
+        {
+            var request = new { modelId, patternType, userId, parameters = parameters ?? new Dictionary<string, object>() };
+            var response = await _httpClient.PostAsJsonAsync("/api/model/extract-patterns", request);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<NeuralPatternExtractionResult>();
+                return result ?? new NeuralPatternExtractionResult { Success = false, ErrorMessage = "Invalid response format" };
+            }
+
+            return new NeuralPatternExtractionResult
+            {
+                Success = false,
+                ErrorMessage = $"HTTP {response.StatusCode}: {await response.Content.ReadAsStringAsync()}"
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error extracting neural patterns for model {ModelId}", modelId);
+            return new NeuralPatternExtractionResult { Success = false, ErrorMessage = ex.Message };
+        }
+    }
 }
 
 public class McpClient : IMcpClient
 {
-    public McpClient(HttpClient httpClient) { }
+    private readonly HttpClient _httpClient;
+    private readonly ILogger<McpClient> _logger;
+
+    public McpClient(HttpClient httpClient, ILogger<McpClient> logger)
+    {
+        _httpClient = httpClient;
+        _logger = logger;
+    }
+
+    public async Task<Guid> StoreMessageAsync(McpMessage message, string userId)
+    {
+        try
+        {
+            var request = new { message, userId };
+            var response = await _httpClient.PostAsJsonAsync("/api/mcp/messages", request);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<Guid>();
+                return result;
+            }
+
+            _logger.LogWarning("Store message failed with status {StatusCode}", response.StatusCode);
+            return Guid.Empty;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error storing MCP message");
+            return Guid.Empty;
+        }
+    }
+
+    public async Task<McpMessage?> GetMessageAsync(Guid messageId, string userId)
+    {
+        try
+        {
+            var response = await _httpClient.GetAsync($"/api/mcp/messages/{messageId}?userId={userId}");
+
+            if (response.IsSuccessStatusCode)
+            {
+                return await response.Content.ReadFromJsonAsync<McpMessage>();
+            }
+
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting MCP message {MessageId}", messageId);
+            return null;
+        }
+    }
+
+    public async Task<IEnumerable<McpMessage>> GetMessagesForAgentAsync(Guid agentId, string userId, int limit = 100)
+    {
+        try
+        {
+            var response = await _httpClient.GetAsync($"/api/mcp/agents/{agentId}/messages?userId={userId}&limit={limit}");
+
+            if (response.IsSuccessStatusCode)
+            {
+                var messages = await response.Content.ReadFromJsonAsync<IEnumerable<McpMessage>>();
+                return messages ?? Enumerable.Empty<McpMessage>();
+            }
+
+            return Enumerable.Empty<McpMessage>();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting messages for agent {AgentId}", agentId);
+            return Enumerable.Empty<McpMessage>();
+        }
+    }
+
+    public async Task<IEnumerable<McpMessage>> GetUnreadMessagesAsync(Guid agentId, string userId)
+    {
+        try
+        {
+            var response = await _httpClient.GetAsync($"/api/mcp/agents/{agentId}/unread?userId={userId}");
+
+            if (response.IsSuccessStatusCode)
+            {
+                var messages = await response.Content.ReadFromJsonAsync<IEnumerable<McpMessage>>();
+                return messages ?? Enumerable.Empty<McpMessage>();
+            }
+
+            return Enumerable.Empty<McpMessage>();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting unread messages for agent {AgentId}", agentId);
+            return Enumerable.Empty<McpMessage>();
+        }
+    }
+
+    public async Task<bool> MarkMessagesAsReadAsync(Guid agentId, IEnumerable<Guid> messageIds, string userId)
+    {
+        try
+        {
+            var request = new { agentId, messageIds, userId };
+            var response = await _httpClient.PutAsJsonAsync("/api/mcp/messages/mark-read", request);
+
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error marking messages as read for agent {AgentId}", agentId);
+            return false;
+        }
+    }
+
+    public async Task<bool> StoreTaskAssignmentAsync(TaskAssignment assignment, string userId)
+    {
+        try
+        {
+            var request = new { assignment, userId };
+            var response = await _httpClient.PostAsJsonAsync("/api/mcp/tasks", request);
+
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error storing task assignment");
+            return false;
+        }
+    }
+
+    public async Task<TaskAssignment?> GetTaskAssignmentAsync(Guid taskId, string userId)
+    {
+        try
+        {
+            var response = await _httpClient.GetAsync($"/api/mcp/tasks/{taskId}?userId={userId}");
+
+            if (response.IsSuccessStatusCode)
+            {
+                return await response.Content.ReadFromJsonAsync<TaskAssignment>();
+            }
+
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting task assignment {TaskId}", taskId);
+            return null;
+        }
+    }
 }
 
 public class OrchestrationClient : IOrchestrationClient
 {
-    public OrchestrationClient(HttpClient httpClient) { }
+    private readonly HttpClient _httpClient;
+    private readonly ILogger<OrchestrationClient> _logger;
+
+    public OrchestrationClient(HttpClient httpClient, ILogger<OrchestrationClient> logger)
+    {
+        _httpClient = httpClient;
+        _logger = logger;
+    }
+
+    public async Task<Guid> StartWorkflowAsync(Guid workflowId, Dictionary<string, object>? input,
+        Dictionary<string, object>? configuration, string userId, string? executionName = null)
+    {
+        try
+        {
+            var request = new { workflowId, input, configuration, userId, executionName };
+            var response = await _httpClient.PostAsJsonAsync("/api/orchestration/workflows/start", request);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<Guid>();
+                return result;
+            }
+
+            _logger.LogWarning("Start workflow failed with status {StatusCode} for workflow {WorkflowId}",
+                response.StatusCode, workflowId);
+            return Guid.Empty;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error starting workflow {WorkflowId}", workflowId);
+            return Guid.Empty;
+        }
+    }
+
+    public async Task<bool> ResumeWorkflowAsync(Guid executionId, string userId)
+    {
+        try
+        {
+            var request = new { executionId, userId };
+            var response = await _httpClient.PostAsJsonAsync("/api/orchestration/executions/resume", request);
+
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error resuming workflow execution {ExecutionId}", executionId);
+            return false;
+        }
+    }
+
+    public async Task<bool> PauseWorkflowAsync(Guid executionId, string userId)
+    {
+        try
+        {
+            var request = new { executionId, userId };
+            var response = await _httpClient.PostAsJsonAsync("/api/orchestration/executions/pause", request);
+
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error pausing workflow execution {ExecutionId}", executionId);
+            return false;
+        }
+    }
+
+    public async Task<bool> CancelWorkflowAsync(Guid executionId, string userId)
+    {
+        try
+        {
+            var request = new { executionId, userId };
+            var response = await _httpClient.PostAsJsonAsync("/api/orchestration/executions/cancel", request);
+
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error canceling workflow execution {ExecutionId}", executionId);
+            return false;
+        }
+    }
+
+    public async Task<WorkflowExecutionDto?> GetExecutionStatusAsync(Guid executionId, string userId)
+    {
+        try
+        {
+            var response = await _httpClient.GetAsync($"/api/orchestration/executions/{executionId}/status?userId={userId}");
+
+            if (response.IsSuccessStatusCode)
+            {
+                return await response.Content.ReadFromJsonAsync<WorkflowExecutionDto>();
+            }
+
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting execution status for {ExecutionId}", executionId);
+            return null;
+        }
+    }
+
+    public async Task<WorkflowValidationResult> ValidateWorkflowAsync(string workflowDefinition)
+    {
+        try
+        {
+            var request = new { workflowDefinition };
+            var response = await _httpClient.PostAsJsonAsync("/api/orchestration/workflows/validate", request);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<WorkflowValidationResult>();
+                return result ?? new WorkflowValidationResult { IsValid = false, Errors = new[] { "Invalid response format" } };
+            }
+
+            return new WorkflowValidationResult
+            {
+                IsValid = false,
+                Errors = new[] { $"HTTP {response.StatusCode}: {await response.Content.ReadAsStringAsync()}" }
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error validating workflow definition");
+            return new WorkflowValidationResult { IsValid = false, Errors = new[] { ex.Message } };
+        }
+    }
 }
 
 /// <summary>

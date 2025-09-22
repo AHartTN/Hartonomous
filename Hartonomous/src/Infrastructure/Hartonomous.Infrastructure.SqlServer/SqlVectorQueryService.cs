@@ -14,7 +14,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using System.Data;
 using System.Text.Json;
-using Hartonomous.Core.Data;
+using Microsoft.Extensions.Configuration;
 using Hartonomous.DataFabric.Abstractions;
 
 namespace Hartonomous.Infrastructure.SqlServer;

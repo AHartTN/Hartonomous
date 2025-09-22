@@ -209,16 +209,293 @@ public class WorkflowRepository : BaseRepository<Workflow, Guid>, IWorkflowRepos
     public async Task<List<WorkflowExecutionDto>> GetActiveExecutionsAsync(string userId) =>
         await _executionRepository.GetActiveExecutionsAsync(userId);
 
-    // Simplified implementations for remaining methods
-    public async Task<bool> UpdateExecutionOutputAsync(Guid executionId, Dictionary<string, object> output, string userId) => true;
-    public async Task<List<WorkflowExecutionDto>> GetExecutionsByWorkflowAsync(Guid workflowId, string userId, int limit = 100) => new();
-    public async Task<bool> CancelExecutionAsync(Guid executionId, string userId) => true;
-    public async Task<Guid> CreateNodeExecutionAsync(Guid executionId, NodeExecutionDto nodeExecution) => Guid.NewGuid();
-    public async Task<bool> UpdateNodeExecutionAsync(Guid nodeExecutionId, DTOs.NodeExecutionStatus status, Dictionary<string, object>? output, string? errorMessage) => true;
-    public async Task<List<NodeExecutionDto>> GetNodeExecutionsByExecutionAsync(Guid executionId) => new();
-    public async Task<bool> SaveWorkflowStateAsync(Guid executionId, WorkflowStateDto state) => true;
-    public async Task<WorkflowStateDto?> GetWorkflowStateAsync(Guid executionId) => null;
-    public async Task<List<WorkflowStateDto>> GetWorkflowStateHistoryAsync(Guid executionId, int limit = 10) => new();
+    // Real implementations for execution and state management
+    public async Task<bool> UpdateExecutionOutputAsync(Guid executionId, Dictionary<string, object> output, string userId)
+    {
+        try
+        {
+            const string sql = @"
+                UPDATE dbo.WorkflowExecutions
+                SET OutputJson = @OutputJson
+                WHERE ExecutionId = @ExecutionId AND UserId = @UserId;";
+
+            using var connection = new SqlConnection(ConnectionString);
+            var rowsAffected = await connection.ExecuteAsync(sql, new
+            {
+                OutputJson = JsonSerializer.Serialize(output),
+                ExecutionId = executionId,
+                UserId = userId
+            });
+
+            return rowsAffected > 0;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to update execution output for {ExecutionId}", executionId);
+            return false;
+        }
+    }
+
+    public async Task<List<WorkflowExecutionDto>> GetExecutionsByWorkflowAsync(Guid workflowId, string userId, int limit = 100)
+    {
+        try
+        {
+            const string sql = @"
+                SELECT TOP(@Limit) e.ExecutionId, e.WorkflowId, w.Name as WorkflowName, e.ExecutionName,
+                       e.InputJson, e.OutputJson, e.Status, e.StartedAt, e.CompletedAt, e.ErrorMessage,
+                       e.StartedBy, e.Priority
+                FROM dbo.WorkflowExecutions e
+                LEFT JOIN dbo.WorkflowDefinitions w ON e.WorkflowId = w.WorkflowId
+                WHERE e.WorkflowId = @WorkflowId AND e.UserId = @UserId
+                ORDER BY e.StartedAt DESC;";
+
+            using var connection = new SqlConnection(ConnectionString);
+            var results = await connection.QueryAsync(sql, new { WorkflowId = workflowId, UserId = userId, Limit = limit });
+
+            return results.Select(r => MapToWorkflowExecutionDto(r)).ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get executions for workflow {WorkflowId}", workflowId);
+            return new List<WorkflowExecutionDto>();
+        }
+    }
+
+    public async Task<bool> CancelExecutionAsync(Guid executionId, string userId)
+    {
+        try
+        {
+            const string sql = @"
+                UPDATE dbo.WorkflowExecutions
+                SET Status = @Status, CompletedAt = @CompletedAt, ErrorMessage = @ErrorMessage
+                WHERE ExecutionId = @ExecutionId AND UserId = @UserId AND Status NOT IN (@Completed, @Failed, @Cancelled);";
+
+            using var connection = new SqlConnection(ConnectionString);
+            var rowsAffected = await connection.ExecuteAsync(sql, new
+            {
+                Status = (int)DTOs.WorkflowExecutionStatus.Cancelled,
+                CompletedAt = DateTime.UtcNow,
+                ErrorMessage = "Cancelled by user",
+                ExecutionId = executionId,
+                UserId = userId,
+                Completed = (int)DTOs.WorkflowExecutionStatus.Completed,
+                Failed = (int)DTOs.WorkflowExecutionStatus.Failed,
+                Cancelled = (int)DTOs.WorkflowExecutionStatus.Cancelled
+            });
+
+            return rowsAffected > 0;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to cancel execution {ExecutionId}", executionId);
+            return false;
+        }
+    }
+
+    public async Task<Guid> CreateNodeExecutionAsync(Guid executionId, NodeExecutionDto nodeExecution)
+    {
+        try
+        {
+            const string sql = @"
+                INSERT INTO dbo.NodeExecutions (NodeExecutionId, ExecutionId, NodeId, NodeType, NodeName,
+                                                InputJson, OutputJson, Status, StartedAt, CompletedAt,
+                                                ErrorMessage, RetryCount, MetadataJson)
+                VALUES (@NodeExecutionId, @ExecutionId, @NodeId, @NodeType, @NodeName,
+                        @InputJson, @OutputJson, @Status, @StartedAt, @CompletedAt,
+                        @ErrorMessage, @RetryCount, @MetadataJson);";
+
+            var nodeExecutionId = nodeExecution.NodeExecutionId;
+            using var connection = new SqlConnection(ConnectionString);
+            await connection.ExecuteAsync(sql, new
+            {
+                NodeExecutionId = nodeExecutionId,
+                ExecutionId = executionId,
+                NodeId = nodeExecution.NodeId,
+                NodeType = nodeExecution.NodeType,
+                NodeName = nodeExecution.NodeName,
+                InputJson = nodeExecution.Input != null ? JsonSerializer.Serialize(nodeExecution.Input) : null,
+                OutputJson = nodeExecution.Output != null ? JsonSerializer.Serialize(nodeExecution.Output) : null,
+                Status = (int)nodeExecution.Status,
+                StartedAt = nodeExecution.StartedAt,
+                CompletedAt = nodeExecution.CompletedAt,
+                ErrorMessage = nodeExecution.ErrorMessage,
+                RetryCount = nodeExecution.RetryCount,
+                MetadataJson = JsonSerializer.Serialize(nodeExecution.Metadata)
+            });
+
+            return nodeExecutionId;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to create node execution for {ExecutionId}", executionId);
+            throw;
+        }
+    }
+
+    public async Task<bool> UpdateNodeExecutionAsync(Guid nodeExecutionId, DTOs.NodeExecutionStatus status,
+        Dictionary<string, object>? output, string? errorMessage)
+    {
+        try
+        {
+            const string sql = @"
+                UPDATE dbo.NodeExecutions
+                SET Status = @Status, OutputJson = @OutputJson, ErrorMessage = @ErrorMessage,
+                    CompletedAt = @CompletedAt
+                WHERE NodeExecutionId = @NodeExecutionId;";
+
+            var completedAt = IsTerminalNodeStatus(status) ? DateTime.UtcNow : (DateTime?)null;
+
+            using var connection = new SqlConnection(ConnectionString);
+            var rowsAffected = await connection.ExecuteAsync(sql, new
+            {
+                Status = (int)status,
+                OutputJson = output != null ? JsonSerializer.Serialize(output) : null,
+                ErrorMessage = errorMessage,
+                CompletedAt = completedAt,
+                NodeExecutionId = nodeExecutionId
+            });
+
+            return rowsAffected > 0;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to update node execution {NodeExecutionId}", nodeExecutionId);
+            return false;
+        }
+    }
+
+    public async Task<List<NodeExecutionDto>> GetNodeExecutionsByExecutionAsync(Guid executionId)
+    {
+        try
+        {
+            const string sql = @"
+                SELECT NodeExecutionId, NodeId, NodeType, NodeName, InputJson, OutputJson,
+                       Status, StartedAt, CompletedAt, ErrorMessage, RetryCount, MetadataJson
+                FROM dbo.NodeExecutions
+                WHERE ExecutionId = @ExecutionId
+                ORDER BY StartedAt ASC;";
+
+            using var connection = new SqlConnection(ConnectionString);
+            var results = await connection.QueryAsync(sql, new { ExecutionId = executionId });
+
+            return results.Select(r => MapToNodeExecutionDto(r)).ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get node executions for {ExecutionId}", executionId);
+            return new List<NodeExecutionDto>();
+        }
+    }
+
+    public async Task<bool> SaveWorkflowStateAsync(Guid executionId, WorkflowStateDto state)
+    {
+        try
+        {
+            const string sql = @"
+                MERGE dbo.WorkflowStates AS target
+                USING (SELECT @ExecutionId AS ExecutionId) AS source
+                ON target.ExecutionId = source.ExecutionId
+                WHEN MATCHED THEN
+                    UPDATE SET StateJson = @StateJson, CurrentNode = @CurrentNode,
+                               CompletedNodesJson = @CompletedNodesJson, PendingNodesJson = @PendingNodesJson,
+                               LastUpdated = @LastUpdated
+                WHEN NOT MATCHED THEN
+                    INSERT (StateId, ExecutionId, StateJson, CurrentNode, CompletedNodesJson,
+                            PendingNodesJson, LastUpdated)
+                    VALUES (@StateId, @ExecutionId, @StateJson, @CurrentNode, @CompletedNodesJson,
+                            @PendingNodesJson, @LastUpdated);";
+
+            using var connection = new SqlConnection(ConnectionString);
+            var rowsAffected = await connection.ExecuteAsync(sql, new
+            {
+                StateId = Guid.NewGuid(),
+                ExecutionId = executionId,
+                StateJson = JsonSerializer.Serialize(state.State),
+                CurrentNode = state.CurrentNode,
+                CompletedNodesJson = JsonSerializer.Serialize(state.CompletedNodes),
+                PendingNodesJson = JsonSerializer.Serialize(state.PendingNodes),
+                LastUpdated = state.LastUpdated
+            });
+
+            return rowsAffected > 0;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to save workflow state for {ExecutionId}", executionId);
+            return false;
+        }
+    }
+
+    public async Task<WorkflowStateDto?> GetWorkflowStateAsync(Guid executionId)
+    {
+        try
+        {
+            const string sql = @"
+                SELECT ExecutionId, StateJson, CurrentNode, CompletedNodesJson, PendingNodesJson, LastUpdated
+                FROM dbo.WorkflowStates
+                WHERE ExecutionId = @ExecutionId;";
+
+            using var connection = new SqlConnection(ConnectionString);
+            var result = await connection.QueryFirstOrDefaultAsync(sql, new { ExecutionId = executionId });
+
+            if (result == null) return null;
+
+            var state = DeserializeFromJson<Dictionary<string, object>>(result.StateJson) ?? new Dictionary<string, object>();
+            var completedNodes = DeserializeFromJson<List<string>>(result.CompletedNodesJson) ?? new List<string>();
+            var pendingNodes = DeserializeFromJson<List<string>>(result.PendingNodesJson) ?? new List<string>();
+
+            return new WorkflowStateDto(
+                result.ExecutionId,
+                state,
+                result.CurrentNode ?? string.Empty,
+                completedNodes,
+                pendingNodes,
+                result.LastUpdated
+            );
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get workflow state for {ExecutionId}", executionId);
+            return null;
+        }
+    }
+
+    public async Task<List<WorkflowStateDto>> GetWorkflowStateHistoryAsync(Guid executionId, int limit = 10)
+    {
+        try
+        {
+            const string sql = @"
+                SELECT TOP(@Limit) ExecutionId, StateJson, CurrentNode, CompletedNodesJson,
+                       PendingNodesJson, LastUpdated
+                FROM dbo.WorkflowStateHistory
+                WHERE ExecutionId = @ExecutionId
+                ORDER BY LastUpdated DESC;";
+
+            using var connection = new SqlConnection(ConnectionString);
+            var results = await connection.QueryAsync(sql, new { ExecutionId = executionId, Limit = limit });
+
+            return results.Select(r =>
+            {
+                var state = DeserializeFromJson<Dictionary<string, object>>(r.StateJson) ?? new Dictionary<string, object>();
+                var completedNodes = DeserializeFromJson<List<string>>(r.CompletedNodesJson) ?? new List<string>();
+                var pendingNodes = DeserializeFromJson<List<string>>(r.PendingNodesJson) ?? new List<string>();
+
+                return new WorkflowStateDto(
+                    r.ExecutionId,
+                    state,
+                    r.CurrentNode ?? string.Empty,
+                    completedNodes,
+                    pendingNodes,
+                    r.LastUpdated
+                );
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get workflow state history for {ExecutionId}", executionId);
+            return new List<WorkflowStateDto>();
+        }
+    }
 
     // Event Operations - delegated to specialized repository
     public async Task<bool> CreateWorkflowEventAsync(Guid executionId, DebugEvent debugEvent) =>
@@ -257,4 +534,76 @@ public class WorkflowRepository : BaseRepository<Workflow, Guid>, IWorkflowRepos
         1, // Default version
         (DTOs.WorkflowStatus)workflow.Status
     );
+
+    private static WorkflowExecutionDto MapToWorkflowExecutionDto(dynamic row)
+    {
+        var input = string.IsNullOrEmpty(row.InputJson)
+            ? null
+            : JsonSerializer.Deserialize<Dictionary<string, object>>(row.InputJson);
+
+        var output = string.IsNullOrEmpty(row.OutputJson)
+            ? null
+            : JsonSerializer.Deserialize<Dictionary<string, object>>(row.OutputJson);
+
+        var duration = row.CompletedAt != null
+            ? (TimeSpan?)(row.CompletedAt - row.StartedAt)
+            : null;
+
+        return new WorkflowExecutionDto(
+            row.ExecutionId,
+            row.WorkflowId,
+            row.WorkflowName ?? string.Empty,
+            row.ExecutionName,
+            input,
+            output,
+            (DTOs.WorkflowExecutionStatus)row.Status,
+            row.StartedAt,
+            row.CompletedAt,
+            row.ErrorMessage,
+            row.StartedBy,
+            row.Priority,
+            duration,
+            new List<NodeExecutionDto>() // Node executions loaded separately if needed
+        );
+    }
+
+    private static NodeExecutionDto MapToNodeExecutionDto(dynamic row)
+    {
+        var input = string.IsNullOrEmpty(row.InputJson)
+            ? null
+            : JsonSerializer.Deserialize<Dictionary<string, object>>(row.InputJson);
+
+        var output = string.IsNullOrEmpty(row.OutputJson)
+            ? null
+            : JsonSerializer.Deserialize<Dictionary<string, object>>(row.OutputJson);
+
+        var metadata = string.IsNullOrEmpty(row.MetadataJson)
+            ? new Dictionary<string, object>()
+            : JsonSerializer.Deserialize<Dictionary<string, object>>(row.MetadataJson) ?? new Dictionary<string, object>();
+
+        var duration = row.CompletedAt != null
+            ? (TimeSpan?)(row.CompletedAt - row.StartedAt)
+            : null;
+
+        return new NodeExecutionDto(
+            row.NodeExecutionId,
+            row.NodeId,
+            row.NodeType,
+            row.NodeName,
+            input,
+            output,
+            (DTOs.NodeExecutionStatus)row.Status,
+            row.StartedAt,
+            row.CompletedAt,
+            row.ErrorMessage,
+            duration,
+            row.RetryCount,
+            metadata
+        );
+    }
+
+    private static bool IsTerminalNodeStatus(DTOs.NodeExecutionStatus status) =>
+        status == DTOs.NodeExecutionStatus.Completed ||
+        status == DTOs.NodeExecutionStatus.Failed ||
+        status == DTOs.NodeExecutionStatus.Cancelled;
 }

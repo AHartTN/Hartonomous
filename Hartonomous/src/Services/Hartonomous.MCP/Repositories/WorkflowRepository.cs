@@ -8,23 +8,22 @@
  * Features workflow definition storage, execution tracking, and step orchestration with multi-tenant support.
  */
 
-using Dapper;
 using Hartonomous.Core.Interfaces;
 using Hartonomous.Core.Abstractions;
 using Hartonomous.Core.Configuration;
 using Hartonomous.Core.Entities;
+using Hartonomous.Core.Data;
 using Hartonomous.Orchestration.Models;
 using CoreDtos = Hartonomous.Core.DTOs;
-using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using System.Data;
 using System.Text.Json;
 
 namespace Hartonomous.MCP.Repositories;
 
 public class WorkflowRepository : BaseRepository<WorkflowDefinition, Guid>
 {
-    public WorkflowRepository(IOptions<SqlServerOptions> sqlOptions) : base(sqlOptions)
+    public WorkflowRepository(IOptions<SqlServerOptions> sqlOptions, HartonomousDbContext context) : base(sqlOptions, context)
     {
     }
 
@@ -77,6 +76,26 @@ public class WorkflowRepository : BaseRepository<WorkflowDefinition, Guid>
             Status = (int)entity.Status,
             CreatedDate = entity.CreatedDate,
             ModifiedDate = entity.ModifiedDate
+        };
+    }
+
+    protected override object[] GetParametersArray(WorkflowDefinition entity)
+    {
+        return new object[]
+        {
+            entity.Id,
+            entity.WorkflowId,
+            entity.UserId,
+            entity.Name,
+            entity.Description ?? (object)DBNull.Value,
+            entity.WorkflowDefinitionJson ?? (object)DBNull.Value,
+            entity.Category ?? (object)DBNull.Value,
+            entity.ParametersJson ?? (object)DBNull.Value,
+            entity.TagsJson ?? (object)DBNull.Value,
+            entity.Version,
+            (int)entity.Status,
+            entity.CreatedDate,
+            entity.ModifiedDate ?? (object)DBNull.Value
         };
     }
 
