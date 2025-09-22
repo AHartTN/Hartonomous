@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Hartonomous.Infrastructure.Neo4j;
-using Hartonomous.Infrastructure.Milvus;
+using Hartonomous.Infrastructure.SqlServer;
 
 namespace Hartonomous.Infrastructure.EventStreaming.HealthChecks;
 
@@ -31,8 +31,8 @@ public class DataFabricHealthCheck : IHealthCheck
             {
                 ["neo4j_status"] = health.Neo4jStatus,
                 ["neo4j_details"] = health.Neo4jDetails,
-                ["milvus_status"] = health.MilvusStatus,
-                ["milvus_details"] = health.MilvusDetails,
+                ["vector_status"] = health.VectorStatus,
+                ["vector_details"] = health.VectorDetails,
                 ["overall_status"] = health.OverallStatus,
                 ["check_time"] = health.CheckTime
             };

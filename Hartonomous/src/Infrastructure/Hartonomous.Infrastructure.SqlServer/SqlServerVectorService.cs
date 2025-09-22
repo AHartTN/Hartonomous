@@ -10,7 +10,7 @@ namespace Hartonomous.Infrastructure.SqlServer;
 /// <summary>
 /// SQL Server 2025 native vector service
 /// Implements NinaDB vector capabilities using SQL Server's native VECTOR data type
-/// Replaces external Milvus dependency with integrated SQL Server solution
+/// Replaces external vector databases with integrated SQL Server solution
 /// </summary>
 public class SqlServerVectorService : IVectorService, IDisposable
 {
@@ -31,6 +31,15 @@ public class SqlServerVectorService : IVectorService, IDisposable
     /// <summary>
     /// Initialize the component embeddings collection
     /// Called during system startup
+    /// </summary>
+    public async Task InitializeAsync()
+    {
+        await EnsureVectorTablesExistAsync();
+    }
+
+    /// <summary>
+    /// Initialize the component embeddings collection
+    /// Called during system startup  
     /// </summary>
     public async Task InitializeCollectionAsync()
     {
@@ -98,16 +107,15 @@ public class SqlServerVectorService : IVectorService, IDisposable
     /// <summary>
     /// Insert component embedding vector using SQL Server 2025 native VECTOR type
     /// </summary>
-    public async Task InsertEmbeddingAsync(Guid componentId, Guid modelId, string userId,
-        float[] embedding, string componentType, string description)
+    public async Task InsertEmbeddingAsync(Guid componentId, Guid modelId, float[] embeddingVector,
+        string componentType, string description, string userId)
     {
         try
         {
-            _logger.LogDebug("Inserting embedding for component {ComponentId} with {Dimensions} dimensions",
-                componentId, embedding.Length);
-
-            // Convert float array to VECTOR format - SQL Server expects JSON array format
-            var vectorJson = JsonSerializer.Serialize(embedding);
+            await EnsureVectorTablesExistAsync();
+            
+            _logger.LogDebug("Inserting native VECTOR embedding for component {ComponentId} with {Dimensions} dimensions",
+                componentId, embeddingVector.Length);
 
             var insertSql = @"
                 MERGE dbo.ComponentEmbeddings AS target
@@ -115,14 +123,13 @@ public class SqlServerVectorService : IVectorService, IDisposable
                 ON target.ComponentId = source.ComponentId AND target.UserId = @UserId
                 WHEN MATCHED THEN
                     UPDATE SET
-                        EmbeddingVector = CAST(@VectorJson AS VECTOR(1536)),
+                        EmbeddingVector = @EmbeddingVector,
                         ComponentType = @ComponentType,
                         Description = @Description,
                         CreatedAt = GETUTCDATE()
                 WHEN NOT MATCHED THEN
                     INSERT (ComponentId, ModelId, UserId, ComponentType, Description, EmbeddingVector)
-                    VALUES (@ComponentId, @ModelId, @UserId, @ComponentType, @Description,
-                            CAST(@VectorJson AS VECTOR(1536)));";
+                    VALUES (@ComponentId, @ModelId, @UserId, @ComponentType, @Description, @EmbeddingVector);";
 
             using var connection = new SqlConnection(_connectionString);
             await connection.OpenAsync();
@@ -132,14 +139,18 @@ public class SqlServerVectorService : IVectorService, IDisposable
             command.Parameters.AddWithValue("@UserId", userId);
             command.Parameters.AddWithValue("@ComponentType", componentType);
             command.Parameters.AddWithValue("@Description", description ?? (object)DBNull.Value);
-            command.Parameters.AddWithValue("@VectorJson", vectorJson);
+            
+            // Use native VECTOR parameter - SQL Server 2025 handles float[] directly
+            var vectorParam = command.Parameters.Add("@EmbeddingVector", SqlDbType.Variant);
+            vectorParam.Value = embeddingVector;
 
             var rowsAffected = await command.ExecuteNonQueryAsync();
-            _logger.LogDebug("Embedded component {ComponentId}: {RowsAffected} rows affected", componentId, rowsAffected);
+            _logger.LogDebug("Inserted native VECTOR embedding for component {ComponentId}: {RowsAffected} rows affected", 
+                componentId, rowsAffected);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to insert embedding for component {ComponentId}", componentId);
+            _logger.LogError(ex, "Failed to insert native VECTOR embedding for component {ComponentId}", componentId);
             throw;
         }
     }
@@ -243,7 +254,7 @@ public class SqlServerVectorService : IVectorService, IDisposable
     /// Get collection statistics
     /// For monitoring and administration
     /// </summary>
-    public async Task<MilvusCollectionStats> GetCollectionStatsAsync()
+    public async Task<VectorCollectionStats> GetCollectionStatsAsync()
     {
         try
         {
@@ -266,7 +277,7 @@ public class SqlServerVectorService : IVectorService, IDisposable
             if (await reader.ReadAsync())
             {
                 var rowCount = reader.GetInt32("RowCount");
-                return new MilvusCollectionStats
+                return new VectorCollectionStats
                 {
                     CollectionName = "ComponentEmbeddings",
                     RowCount = rowCount,
@@ -274,7 +285,7 @@ public class SqlServerVectorService : IVectorService, IDisposable
                 };
             }
 
-            return new MilvusCollectionStats
+            return new VectorCollectionStats
             {
                 CollectionName = "ComponentEmbeddings",
                 RowCount = 0,
@@ -350,6 +361,189 @@ public class SqlServerVectorService : IVectorService, IDisposable
         }
     }
 
+    /// <summary>
+    /// Find similar components using SQL Server native COSINE_DISTANCE
+    /// </summary>
+    public async Task<IEnumerable<ComponentSimilarityDto>> FindSimilarComponentsAsync(float[] queryVector,
+        double threshold, int maxResults, string userId)
+    {
+        try
+        {
+            _logger.LogDebug("Finding similar components with native VECTOR search for user {UserId}", userId);
+
+            var searchSql = @"
+                SELECT TOP (@MaxResults)
+                    ce.ComponentId,
+                    ce.ModelId,
+                    ce.ComponentType,
+                    ce.Description,
+                    VECTOR_DISTANCE('cosine', ce.EmbeddingVector, @QueryVector) AS Distance
+                FROM dbo.ComponentEmbeddings ce
+                WHERE ce.UserId = @UserId
+                    AND (1 - VECTOR_DISTANCE('cosine', ce.EmbeddingVector, @QueryVector)) >= @Threshold
+                ORDER BY VECTOR_DISTANCE('cosine', ce.EmbeddingVector, @QueryVector) ASC";
+
+            using var connection = new SqlConnection(_connectionString);
+            await connection.OpenAsync();
+            using var command = new SqlCommand(searchSql, connection);
+            command.Parameters.AddWithValue("@MaxResults", maxResults);
+            command.Parameters.AddWithValue("@UserId", userId);
+            command.Parameters.AddWithValue("@Threshold", threshold);
+            
+            // Use native VECTOR parameter
+            var vectorParam = command.Parameters.Add("@QueryVector", SqlDbType.Variant);
+            vectorParam.Value = queryVector;
+
+            var results = new List<ComponentSimilarityDto>();
+            using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var distance = reader.GetDouble("Distance");
+                results.Add(new ComponentSimilarityDto(
+                    reader.GetGuid("ComponentId"),
+                    reader.GetGuid("ModelId"),
+                    reader.GetString("ComponentType"),
+                    reader.GetString("ComponentType"), // ComponentName - using type as name for now
+                    reader.IsDBNull("Description") ? string.Empty : reader.GetString("Description"),
+                    distance));
+            }
+
+            return results;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to find similar components");
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Batch insert multiple component embeddings
+    /// </summary>
+    public async Task BatchInsertEmbeddingsAsync(IEnumerable<ComponentEmbeddingDto> embeddings, string userId)
+    {
+        try
+        {
+            await EnsureVectorTablesExistAsync();
+            
+            using var connection = new SqlConnection(_connectionString);
+            await connection.OpenAsync();
+            using var transaction = connection.BeginTransaction();
+
+            try
+            {
+                foreach (var embedding in embeddings)
+                {
+                    var insertSql = @"
+                        INSERT INTO dbo.ComponentEmbeddings 
+                        (ComponentId, ModelId, UserId, ComponentType, Description, EmbeddingVector)
+                        VALUES (@ComponentId, @ModelId, @UserId, @ComponentType, @Description, @EmbeddingVector)";
+
+                    using var command = new SqlCommand(insertSql, connection, transaction);
+                    command.Parameters.AddWithValue("@ComponentId", embedding.ComponentId);
+                    command.Parameters.AddWithValue("@ModelId", embedding.ModelId);
+                    command.Parameters.AddWithValue("@UserId", userId);
+                    command.Parameters.AddWithValue("@ComponentType", embedding.ComponentType);
+                    command.Parameters.AddWithValue("@Description", embedding.Description ?? (object)DBNull.Value);
+                    
+                    var vectorParam = command.Parameters.Add("@EmbeddingVector", SqlDbType.Variant);
+                    vectorParam.Value = embedding.EmbeddingVector;
+
+                    await command.ExecuteNonQueryAsync();
+                }
+
+                transaction.Commit();
+                _logger.LogDebug("Batch inserted {Count} embeddings for user {UserId}", 
+                    embeddings.Count(), userId);
+            }
+            catch
+            {
+                transaction.Rollback();
+                throw;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to batch insert embeddings");
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Delete all embeddings for a specific model
+    /// </summary>
+    public async Task DeleteModelEmbeddingsAsync(Guid modelId, string userId)
+    {
+        try
+        {
+            var deleteSql = @"
+                DELETE FROM dbo.ComponentEmbeddings 
+                WHERE ModelId = @ModelId AND UserId = @UserId";
+
+            using var connection = new SqlConnection(_connectionString);
+            await connection.OpenAsync();
+            using var command = new SqlCommand(deleteSql, connection);
+            command.Parameters.AddWithValue("@ModelId", modelId);
+            command.Parameters.AddWithValue("@UserId", userId);
+
+            var deletedRows = await command.ExecuteNonQueryAsync();
+            _logger.LogDebug("Deleted {DeletedRows} embeddings for model {ModelId}", deletedRows, modelId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to delete embeddings for model {ModelId}", modelId);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Get embedding statistics for a model
+    /// </summary>
+    public async Task<ModelEmbeddingStatsDto> GetModelEmbeddingStatsAsync(Guid modelId, string userId)
+    {
+        try
+        {
+            var statsSql = @"
+                SELECT 
+                    COUNT(*) as TotalComponents,
+                    ComponentType,
+                    COUNT(*) as TypeCount
+                FROM dbo.ComponentEmbeddings 
+                WHERE ModelId = @ModelId AND UserId = @UserId
+                GROUP BY ComponentType";
+
+            using var connection = new SqlConnection(_connectionString);
+            await connection.OpenAsync();
+            using var command = new SqlCommand(statsSql, connection);
+            command.Parameters.AddWithValue("@ModelId", modelId);
+            command.Parameters.AddWithValue("@UserId", userId);
+
+            var typeCounts = new Dictionary<string, int>();
+            var totalComponents = 0;
+
+            using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var componentType = reader.GetString("ComponentType");
+                var count = reader.GetInt32("TypeCount");
+                typeCounts[componentType] = count;
+                totalComponents += count;
+            }
+
+            return new ModelEmbeddingStatsDto(
+                modelId,
+                totalComponents,
+                typeCounts,
+                1536, // OpenAI embedding dimensions
+                DateTime.UtcNow);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get embedding stats for model {ModelId}", modelId);
+            throw;
+        }
+    }
+
     public void Dispose()
     {
         try
@@ -377,9 +571,9 @@ public class ComponentEmbedding
 
 /// <summary>
 /// Collection statistics from SQL Server vector database
-/// Compatible with MilvusCollectionStats interface
+/// Provides backward compatibility for legacy vector operations
 /// </summary>
-public class MilvusCollectionStats
+public class VectorCollectionStats
 {
     public string CollectionName { get; set; } = string.Empty;
     public long RowCount { get; set; }
@@ -388,7 +582,7 @@ public class MilvusCollectionStats
 
 /// <summary>
 /// Similar component result from vector search
-/// Compatible with MilvusService interface
+/// Provides SQL Server VECTOR similarity search results
 /// </summary>
 public class SimilarComponent
 {

@@ -2,6 +2,7 @@ using Azure.Extensions.AspNetCore.Configuration.Secrets;
 using Azure.Identity;
 using Azure.Security.KeyVault.Secrets;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Configuration.AzureAppConfiguration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -9,6 +10,55 @@ namespace Hartonomous.Infrastructure.Configuration;
 
 public static class KeyVaultConfigurationExtensions
 {
+    /// <summary>
+    /// Add Azure App Configuration with Key Vault integration for Hartonomous services
+    /// </summary>
+    public static IConfigurationBuilder AddHartonomousAzureConfiguration(
+        this IConfigurationBuilder builder,
+        IHostEnvironment environment)
+    {
+        try
+        {
+            // Always add Azure App Configuration in production and staging
+            if (!environment.IsDevelopment())
+            {
+                builder.AddAzureAppConfiguration(options =>
+                {
+                    // Use read-only connection string for security
+                    options.Connect("Endpoint=https://appconfig-hartonomous.azconfig.io;Id=l4P/;Secret=DOlsqWfUXC3XlKXAMfJ1RANELSl1nM88NbCSN77L0PvqqrqbJkt8JQQJ99BHACYeBjFvJCJLAABAZAC2PBB")
+                           .ConfigureKeyVault(kv => kv.SetCredential(new DefaultAzureCredential()))
+                           .ConfigureRefresh(refreshOptions =>
+                           {
+                               // Refresh configuration every 30 seconds for dynamic updates
+                               refreshOptions.SetRefreshInterval(TimeSpan.FromSeconds(30));
+                           });
+                });
+            }
+            else
+            {
+                // In development, optionally use Azure App Configuration if available
+                var useAppConfig = builder.Build()["UseAzureAppConfiguration"];
+                if (bool.TryParse(useAppConfig, out var shouldUse) && shouldUse)
+                {
+                    builder.AddAzureAppConfiguration(options =>
+                    {
+                        options.Connect("Endpoint=https://appconfig-hartonomous.azconfig.io;Id=l4P/;Secret=DOlsqWfUXC3XlKXAMfJ1RANELSl1nM88NbCSN77L0PvqqrqbJkt8JQQJ99BHACYeBjFvJCJLAABAZAC2PBB")
+                               .ConfigureKeyVault(kv => kv.SetCredential(new DefaultAzureCredential()));
+                    });
+                }
+            }
+
+            // Fallback to Key Vault for development or if App Config fails
+            return AddHartonomousKeyVault(builder, environment);
+        }
+        catch (Exception ex)
+        {
+            // Log error but continue - fallback to local configuration
+            Console.WriteLine($"Warning: Failed to configure Azure App Configuration: {ex.Message}");
+            return AddHartonomousKeyVault(builder, environment);
+        }
+    }
+
     public static IConfigurationBuilder AddHartonomousKeyVault(
         this IConfigurationBuilder builder,
         IHostEnvironment environment)
@@ -60,9 +110,7 @@ public class KeyVaultSecretManager : Azure.Extensions.AspNetCore.Configuration.S
         { "Azure-AD-ClientSecret", "Azure:AzureAD:ClientSecret" },
         { "Entra-ExternalId-ClientSecret", "Azure:EntraExternalId:ClientSecret" },
         { "SqlServer-ConnectionString", "ConnectionStrings:DefaultConnection" },
-        { "Neo4j-Password", "Neo4j:Password" },
-        { "Milvus-Token", "Milvus:Token" },
-        { "Milvus-Password", "Milvus:Password" }
+        { "Neo4j-Password", "Neo4j:Password" }
     };
 
     public override string GetKey(KeyVaultSecret secret)

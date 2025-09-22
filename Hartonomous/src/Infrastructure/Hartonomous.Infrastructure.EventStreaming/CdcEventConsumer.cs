@@ -4,7 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
 using Hartonomous.Infrastructure.Neo4j;
-using Hartonomous.Infrastructure.Milvus;
+using Hartonomous.Infrastructure.SqlServer;
 
 namespace Hartonomous.Infrastructure.EventStreaming;
 
@@ -226,7 +226,7 @@ public class CdcEventConsumer : BackgroundService
     }
 
     /// <summary>
-    /// Process ComponentEmbeddings table changes for Milvus vector search
+    /// Process ComponentEmbeddings table changes for SQL Server VECTOR search
     /// </summary>
     private async Task ProcessComponentEmbeddingEventAsync(DebeziumCdcEvent cdcEvent, string operation, CancellationToken cancellationToken)
     {
@@ -256,7 +256,7 @@ public class CdcEventConsumer : BackgroundService
                         var componentName = componentDetails.ComponentName;
                         var componentType = componentDetails.ComponentType;
 
-                        await _vectorService.InsertEmbeddingAsync(componentId, modelId, userId, embedding, componentType, componentName);
+                        await _vectorService.InsertEmbeddingAsync(componentId, modelId, embedding, componentType, componentName, userId);
                         _logger.LogDebug("Successfully processed ComponentEmbedding {Operation} for {ComponentId}", operation, componentId);
                     }
                     break;

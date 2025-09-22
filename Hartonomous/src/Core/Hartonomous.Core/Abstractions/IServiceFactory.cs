@@ -1,6 +1,9 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Hartonomous.Core.Configuration;
 using Hartonomous.Core.Repositories;
+using Hartonomous.Core.Interfaces;
+using Hartonomous.Core.Abstractions;
 
 namespace Hartonomous.Core.Abstractions;
 
@@ -132,9 +135,10 @@ public class RepositoryFactory : IRepositoryFactory
         where TEntity : class, IEntityBase<TKey>
         where TKey : IEquatable<TKey>
     {
-        // Use the adapter factory to bridge between repository interfaces
-        var adapterFactory = _serviceProvider.GetRequiredService<RepositoryAdapterFactory>();
-        return adapterFactory.CreateAdapter<TEntity, TKey>();
+        // Return the generic repository implementation
+        var repository = _serviceProvider.GetService<IRepository<TEntity, TKey>>() 
+            ?? new GenericRepository<TEntity, TKey>(_serviceProvider.GetRequiredService<IOptions<SqlServerOptions>>());
+        return repository;
     }
 
     public IRepository<TEntity, TKey> CreateRepository<TEntity, TKey>(string connectionString)

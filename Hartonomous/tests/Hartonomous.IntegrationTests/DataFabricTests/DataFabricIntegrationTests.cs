@@ -3,7 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Hartonomous.Infrastructure.Neo4j;
-using Hartonomous.Infrastructure.Milvus;
+using Hartonomous.Infrastructure.SqlServer;
 using Hartonomous.Infrastructure.EventStreaming;
 
 namespace Hartonomous.IntegrationTests.DataFabricTests;
@@ -46,7 +46,7 @@ public class DataFabricIntegrationTests : IAsyncLifetime
 
         services.AddSingleton<IConfiguration>(configuration);
         services.AddHartonomousNeo4j(configuration);
-        services.AddHartonomousMilvus(configuration);
+        services.AddHartonomousSqlServerVector(configuration);
         services.AddHartonomousEventStreaming(configuration);
         services.AddHartonomousDataFabric(configuration);
 
@@ -108,7 +108,7 @@ public class DataFabricIntegrationTests : IAsyncLifetime
         if (health.OverallStatus == "Healthy")
         {
             health.Neo4jStatus.Should().Be("Healthy");
-            health.MilvusStatus.Should().Be("Healthy");
+            health.VectorStatus.Should().Be("Healthy");
         }
     }
 
@@ -180,8 +180,8 @@ public class DataFabricIntegrationTests : IAsyncLifetime
         }
         catch (Exception ex) when (ex.Message.Contains("connection") || ex.Message.Contains("SQL Server"))
         {
-            // Skip test if Milvus is not available
-            _logger.LogWarning("Skipping Milvus test - service not available: {Message}", ex.Message);
+            // Skip test if SQL Server VECTOR is not available
+            _logger.LogWarning("Skipping SQL Server VECTOR test - service not available: {Message}", ex.Message);
             return;
         }
     }
@@ -309,7 +309,7 @@ public class DataFabricIntegrationTests : IAsyncLifetime
         }
         catch (Exception ex) when (ex.Message.Contains("connection") || ex.Message.Contains("SQL Server"))
         {
-            _logger.LogWarning("Skipping user isolation test - Milvus not available: {Message}", ex.Message);
+            _logger.LogWarning("Skipping user isolation test - SQL Server VECTOR not available: {Message}", ex.Message);
             return;
         }
     }

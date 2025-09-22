@@ -14,7 +14,7 @@ using Microsoft.AspNetCore.Mvc;
 using Hartonomous.Infrastructure.Security;
 using Hartonomous.Infrastructure.EventStreaming;
 using Hartonomous.Infrastructure.Neo4j;
-using Hartonomous.Infrastructure.Milvus;
+using Hartonomous.Infrastructure.SqlServer;
 
 namespace Hartonomous.Api.Controllers;
 
@@ -134,7 +134,7 @@ public class DataFabricController : ControllerBase
     /// Get vector database statistics
     /// </summary>
     [HttpGet("vector/stats")]
-    public async Task<ActionResult<MilvusCollectionStats>> GetVectorStats()
+    public async Task<ActionResult<VectorCollectionStats>> GetVectorStats()
     {
         try
         {
@@ -170,7 +170,7 @@ public class DataFabricController : ControllerBase
     /// Search components by vector similarity
     /// </summary>
     [HttpPost("search/vector")]
-    public async Task<ActionResult<IEnumerable<SimilarComponent>>> VectorSearch([FromBody] VectorSearchRequest request)
+    public async Task<ActionResult<IEnumerable<Infrastructure.SqlServer.SimilarComponent>>> VectorSearch([FromBody] VectorSearchRequest request)
     {
         try
         {

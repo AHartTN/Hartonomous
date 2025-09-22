@@ -95,11 +95,11 @@ public class Neo4jOptions
 }
 
 /// <summary>
-/// Milvus vector database options
+/// SQL Server Vector database options for SQL Server 2025 VECTOR operations
 /// </summary>
-public class MilvusOptions
+public class VectorDatabaseOptions
 {
-    public const string SectionName = "Milvus";
+    public const string SectionName = "VectorDatabase";
 
     [Required]
     public string Host { get; set; } = "localhost";

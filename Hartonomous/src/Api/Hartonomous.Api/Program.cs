@@ -2,12 +2,11 @@ using Hartonomous.Core;
 using Hartonomous.Infrastructure.Configuration;
 using Hartonomous.Infrastructure.Observability;
 using Hartonomous.Infrastructure.Security;
-using Hartonomous.Infrastructure.EventStreaming;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add Azure Key Vault configuration
-builder.Configuration.AddHartonomousKeyVault(builder.Environment);
+// Add Azure App Configuration and Key Vault (centralized configuration)
+builder.Configuration.AddHartonomousAzureConfiguration(builder.Environment);
 
 // Add services to the container
 builder.Services.AddControllers();
@@ -16,7 +15,7 @@ builder.Services.AddControllers();
 builder.Services.AddHartonomousCore(builder.Configuration);
 builder.Services.AddHartonomousAuthentication(builder.Configuration);
 
-// Add Hartonomous data fabric (Neo4j, Milvus, Kafka CDC) - disabled in development
+// Add Hartonomous data fabric (Neo4j + SQL Server VECTOR + Kafka CDC) - disabled in development
 // builder.Services.AddHartonomousDataFabric(builder.Configuration);
 
 // Add API documentation

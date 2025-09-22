@@ -61,7 +61,7 @@ public static class ServiceCollectionExtensions
 
         // Infrastructure services options
         services.Configure<Neo4jOptions>(configuration.GetSection(Neo4jOptions.SectionName));
-        services.Configure<MilvusOptions>(configuration.GetSection(MilvusOptions.SectionName));
+        services.Configure<VectorDatabaseOptions>(configuration.GetSection(VectorDatabaseOptions.SectionName));
         services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));
 
         // Application services options
@@ -238,7 +238,7 @@ public static class ServiceCollectionExtensions
                 name: "sqlserver",
                 tags: new[] { "db", "sql", "ready" })
             .AddCheck<Neo4jHealthCheck>("neo4j", tags: new[] { "db", "graph", "ready" })
-            .AddCheck<MilvusHealthCheck>("milvus", tags: new[] { "db", "vector", "ready" });
+            .AddCheck<VectorDatabaseHealthCheck>("vector-db", tags: new[] { "db", "vector", "ready" });
 
         // Add metrics collection
         services.AddSingleton<IMetricsCollector, MetricsCollector>();
@@ -347,23 +347,22 @@ public class Neo4jHealthCheck : Microsoft.Extensions.Diagnostics.HealthChecks.IH
     }
 }
 
-public class MilvusHealthCheck : Microsoft.Extensions.Diagnostics.HealthChecks.IHealthCheck
+public class VectorDatabaseHealthCheck : Microsoft.Extensions.Diagnostics.HealthChecks.IHealthCheck
 {
-    public async Task<Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult> CheckHealthAsync(
+    public Task<Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult> CheckHealthAsync(
         Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckContext context,
         CancellationToken cancellationToken = default)
     {
-        // Since we're using SQL Server 2025 vector capabilities instead of Milvus,
-        // this health check validates that vector functionality is available
+        // This health check validates that SQL Server 2025 vector functionality is available
         try
         {
             // We would check SQL Server vector functionality here
             // For now, return healthy as we're using SQL Server native vectors
-            return Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy("SQL Server vector capabilities available");
+            return Task.FromResult(Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy("SQL Server vector capabilities available"));
         }
         catch (Exception ex)
         {
-            return Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Unhealthy("Vector database functionality unavailable", ex);
+            return Task.FromResult(Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Unhealthy("Vector database functionality unavailable", ex));
         }
     }
 }

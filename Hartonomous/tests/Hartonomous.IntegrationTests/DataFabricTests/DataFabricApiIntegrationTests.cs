@@ -30,8 +30,8 @@ public class DataFabricApiIntegrationTests : IClassFixture<WebApplicationFactory
                     config["Neo4j:Uri"] = "bolt://localhost:7687";
                     config["Neo4j:Username"] = "neo4j";
                     config["Neo4j:Password"] = "password";
-                    config["Milvus:Host"] = "localhost";
-                    config["Milvus:Port"] = "19530";
+                    // SQL Server VECTOR configuration uses DefaultConnection
+                    config["ConnectionStrings:DefaultConnection"] = "Server=localhost;Database=Hartonomous;Integrated Security=true;";
                 });
             });
         });
@@ -55,7 +55,7 @@ public class DataFabricApiIntegrationTests : IClassFixture<WebApplicationFactory
             health.GetProperty("checkTime").GetString().Should().NotBeNullOrEmpty();
             health.GetProperty("overallStatus").GetString().Should().NotBeNullOrEmpty();
             health.GetProperty("neo4jStatus").GetString().Should().NotBeNullOrEmpty();
-            health.GetProperty("milvusStatus").GetString().Should().NotBeNullOrEmpty();
+            health.GetProperty("vectorStatus").GetString().Should().NotBeNullOrEmpty();
         }
         else
         {

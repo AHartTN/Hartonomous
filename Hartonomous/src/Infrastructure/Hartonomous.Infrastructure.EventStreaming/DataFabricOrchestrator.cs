@@ -1,29 +1,33 @@
-using Dapper;
 using Microsoft.Data.SqlClient;
+using Microsoft.Data.SqlTypes;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Hartonomous.Infrastructure.Neo4j;
 using Hartonomous.Infrastructure.Neo4j.Interfaces;
-using Hartonomous.Infrastructure.Milvus;
-using Hartonomous.Infrastructure.Milvus.Interfaces;
+using Hartonomous.Infrastructure.SqlServer;
+using Hartonomous.DataFabric.Abstractions;
 using Hartonomous.Infrastructure.EventStreaming.Interfaces;
+using Hartonomous.Core.Data;
 
 namespace Hartonomous.Infrastructure.EventStreaming;
 
 /// <summary>
 /// Orchestrates operations across the data fabric components
-/// Provides high-level interface for data fabric operations
+/// Provides high-level interface for data fabric operations using SQL Server 2025 VECTOR + EF Core 8.0
 /// </summary>
 public class DataFabricOrchestrator : IEventStreamingService
 {
-    private readonly IGraphService _neo4jService;
+    private readonly Hartonomous.Infrastructure.Neo4j.Interfaces.IGraphService _neo4jService;
     private readonly IVectorService _vectorService;
+    private readonly HartonomousDbContext _dbContext;
     private readonly ILogger<DataFabricOrchestrator> _logger;
     private readonly string _connectionString;
 
     public DataFabricOrchestrator(
-        IGraphService neo4jService,
+        Hartonomous.Infrastructure.Neo4j.Interfaces.IGraphService neo4jService,
         IVectorService vectorService,
+        HartonomousDbContext dbContext,
         ILogger<DataFabricOrchestrator> logger,
         IConfiguration configuration)
     {
@@ -40,18 +44,18 @@ public class DataFabricOrchestrator : IEventStreamingService
     /// </summary>
     public async Task InitializeAsync()
     {
-        _logger.LogInformation("Initializing Hartonomous data fabric...");
+        _logger.LogInformation("Initializing Hartonomous data fabric (SQL Server VECTOR + Neo4j Graph)...");
 
         try
         {
-            // Initialize SQL Server vector tables
-            await _vectorService.InitializeCollectionAsync();
+            // Initialize vector storage (SQL Server 2025 VECTOR)
+            await _vectorService.InitializeAsync();
             _logger.LogInformation("SQL Server vector database initialized");
 
             // Neo4j doesn't require explicit initialization, but we could add schema setup here
             _logger.LogInformation("Neo4j knowledge graph ready");
 
-            _logger.LogInformation("Hartonomous data fabric initialization complete");
+            _logger.LogInformation("Hartonomous Vector+Graph data fabric initialization complete");
         }
         catch (Exception ex)
         {
@@ -83,7 +87,7 @@ public class DataFabricOrchestrator : IEventStreamingService
             var similarComponents = await _neo4jService.FindSimilarComponentsAsync(sampleComponent.Id, userId, 10);
 
             // Get collection statistics
-            var vectorStats = await _vectorService.GetCollectionStatsAsync();
+            var vectorStats = await _vectorService.GetModelEmbeddingStatsAsync(modelId, userId);
 
             return new ModelInsights
             {
@@ -91,8 +95,8 @@ public class DataFabricOrchestrator : IEventStreamingService
                 ComponentCount = relationshipPaths.Count(),
                 RelationshipPaths = relationshipPaths.ToList(),
                 SimilarComponents = similarComponents.ToList(),
-                VectorIndexSize = vectorStats.RowCount,
-                VectorDataSize = vectorStats.DataSize,
+                VectorIndexSize = vectorStats.TotalComponents,
+                VectorDataSize = vectorStats.VectorDimensions,
                 Message = "Analysis complete"
             };
         }
@@ -114,7 +118,7 @@ public class DataFabricOrchestrator : IEventStreamingService
         try
         {
             // Get vector similarity matches
-            var vectorMatches = await _vectorService.SearchSimilarAsync(queryEmbedding, userId, topK, componentType);
+            var vectorMatches = await _vectorService.FindSimilarComponentsAsync(queryEmbedding, 0.7, topK, userId);
 
             // For each vector match, get its graph context
             var enrichedResults = new List<EnrichedSearchResult>();
@@ -125,7 +129,13 @@ public class DataFabricOrchestrator : IEventStreamingService
 
                 enrichedResults.Add(new EnrichedSearchResult
                 {
-                    Component = match,
+                    Component = new SimilarComponent
+                    {
+                        Id = match.ComponentId,
+                        Name = match.ComponentName,
+                        Type = match.ComponentType,
+                        Similarity = (float)(1.0 - match.Distance) // Convert distance to similarity
+                    },
                     GraphContext = graphContext.ToList()
                 });
             }
@@ -159,16 +169,16 @@ public class DataFabricOrchestrator : IEventStreamingService
 
         try
         {
-            // Check Vector Service
-            var vectorStats = await _vectorService.GetCollectionStatsAsync();
-            health.MilvusStatus = "Healthy";
-            health.MilvusDetails = $"Collections: 1, Rows: {vectorStats.RowCount:N0}";
+            // Check Vector Service with a simple initialization check
+            await _vectorService.InitializeAsync();
+            health.VectorStatus = "Healthy";
+            health.VectorDetails = "Vector service initialized successfully";
             _logger.LogDebug("Vector service health check passed");
         }
         catch (Exception ex)
         {
-            health.MilvusStatus = "Unhealthy";
-            health.MilvusDetails = ex.Message;
+            health.VectorStatus = "Unhealthy";
+            health.VectorDetails = ex.Message;
             _logger.LogWarning(ex, "Vector service health check failed");
         }
 
@@ -187,7 +197,7 @@ public class DataFabricOrchestrator : IEventStreamingService
             _logger.LogWarning(ex, "Neo4j health check failed");
         }
 
-        health.OverallStatus = (health.MilvusStatus == "Healthy" && health.Neo4jStatus == "Healthy")
+        health.OverallStatus = (health.VectorStatus == "Healthy" && health.Neo4jStatus == "Healthy")
             ? "Healthy" : "Degraded";
 
         _logger.LogDebug("Data fabric health check completed: {Status}", health.OverallStatus);
@@ -257,6 +267,18 @@ public class EnrichedSearchResult
 }
 
 /// <summary>
+/// Similar component information from vector search
+/// </summary>
+public class SimilarComponent
+{
+    public Guid Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Type { get; set; } = string.Empty;
+    public float Similarity { get; set; }
+    public Dictionary<string, object> Properties { get; set; } = new();
+}
+
+/// <summary>
 /// Health status of the data fabric
 /// </summary>
 public class DataFabricHealth
@@ -265,6 +287,6 @@ public class DataFabricHealth
     public string OverallStatus { get; set; } = string.Empty;
     public string Neo4jStatus { get; set; } = string.Empty;
     public string Neo4jDetails { get; set; } = string.Empty;
-    public string MilvusStatus { get; set; } = string.Empty;
-    public string MilvusDetails { get; set; } = string.Empty;
+    public string VectorStatus { get; set; } = string.Empty;
+    public string VectorDetails { get; set; } = string.Empty;
 }

@@ -1,5 +1,6 @@
 using Hartonomous.Core.Interfaces;
 using Hartonomous.MCP.Repositories;
+using Hartonomous.MCP.Handlers;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Hartonomous.MCP;
@@ -18,6 +19,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IAgentRepository, AgentRepository>();
         services.AddScoped<IMessageRepository, MessageRepository>();
         services.AddScoped<WorkflowRepository>();
+
+        // Register modern vector search handlers with SQL Server 2025 VECTOR support
+        services.AddScoped<VectorSearchHandler>();
 
         // Add SignalR
         services.AddSignalR(options =>

@@ -11,7 +11,7 @@
 using Hartonomous.Core.Abstractions;
 using Hartonomous.Core.DTOs;
 using Hartonomous.Core.Interfaces;
-using Microsoft.Extensions.Configuration;
+using Hartonomous.Core.Data;
 
 namespace Hartonomous.Core.Repositories;
 
@@ -21,8 +21,8 @@ namespace Hartonomous.Core.Repositories;
 /// </summary>
 public class ProjectRepository : EnhancedBaseRepository<ProjectDto, Guid>, IProjectRepository
 {
-    public ProjectRepository(IConfiguration configuration)
-        : base(configuration, "dbo.Projects", "ProjectId")
+    public ProjectRepository(HartonomousDbContext context)
+        : base(context, "dbo.Projects", "ProjectId")
     {
     }
 

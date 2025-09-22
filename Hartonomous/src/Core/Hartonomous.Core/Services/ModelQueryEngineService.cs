@@ -186,50 +186,28 @@ public class ModelQueryEngineService : IModelQueryEngineService
         // Step 1: Get query embedding
         var queryEmbedding = await GetTextEmbeddingAsync(query);
 
-        // Step 2: Perform vector similarity search using SQL Server 2025 native capabilities
-        var sql = @"
-            SELECT TOP (@limit)
+        // Step 2: Perform vector similarity search using EF Core SqlQuery with SQL Server 2025 native capabilities
+        var queryVectorValue = $"[{string.Join(",", queryEmbedding)}]";
+
+        var sql = $@"
+            SELECT TOP ({limit})
                 mc.ComponentId,
                 mc.ComponentName,
                 mc.ComponentType,
                 mc.SemanticPurpose,
                 ml.LayerIndex,
-                VECTOR_DISTANCE('cosine', ce.Embedding, @queryVector) AS Similarity,
+                VECTOR_DISTANCE('cosine', ce.Embedding, {{0}}) AS Similarity,
                 mc.InterpretabilityData
             FROM ModelComponents mc
             INNER JOIN ComponentEmbeddings ce ON mc.ComponentId = ce.ComponentId
             INNER JOIN ModelLayers ml ON mc.LayerId = ml.LayerId
-            WHERE ml.ModelId = @modelId
-              AND mc.UserId = @userId
-              AND VECTOR_DISTANCE('cosine', ce.Embedding, @queryVector) > @threshold
+            WHERE ml.ModelId = {{1}}
+              AND mc.UserId = {{2}}
+              AND VECTOR_DISTANCE('cosine', ce.Embedding, {{0}}) > {{3}}
             ORDER BY Similarity DESC";
 
-        using var connection = new SqlConnection(_configuration.GetConnectionString("DefaultConnection"));
-        await connection.OpenAsync();
-
-        using var command = new SqlCommand(sql, connection);
-        command.Parameters.AddWithValue("@limit", limit);
-        command.Parameters.AddWithValue("@modelId", modelId);
-        command.Parameters.AddWithValue("@userId", userId);
-        command.Parameters.AddWithValue("@queryVector", $"[{string.Join(",", queryEmbedding)}]");
-        command.Parameters.AddWithValue("@threshold", similarityThreshold);
-
-        var results = new List<ModelComponentQueryResult>();
-        using var reader = await command.ExecuteReaderAsync();
-
-        while (await reader.ReadAsync())
-        {
-            results.Add(new ModelComponentQueryResult
-            {
-                ComponentId = reader.GetGuid(reader.GetOrdinal("ComponentId")),
-                ComponentName = reader.GetString(reader.GetOrdinal("ComponentName")),
-                ComponentType = reader.GetString(reader.GetOrdinal("ComponentType")),
-                SemanticPurpose = reader.IsDBNull(reader.GetOrdinal("SemanticPurpose")) ? null : reader.GetString(reader.GetOrdinal("SemanticPurpose")),
-                LayerIndex = reader.GetInt32(reader.GetOrdinal("LayerIndex")),
-                Similarity = reader.GetDouble(reader.GetOrdinal("Similarity")),
-                InterpretabilityData = reader.IsDBNull(reader.GetOrdinal("InterpretabilityData")) ? null : reader.GetString(reader.GetOrdinal("InterpretabilityData"))
-            });
-        }
+        var results = await _context.Database.SqlQueryRaw<ModelComponentQueryResult>(sql,
+            queryVectorValue, modelId, userId, similarityThreshold).ToListAsync();
 
         return results;
     }
@@ -247,20 +225,14 @@ public class ModelQueryEngineService : IModelQueryEngineService
 
         try
         {
-            // Call SQL CLR function for memory-mapped pattern extraction
-            var sql = @"
-                SELECT dbo.ExtractNeuralPatterns(@modelId, @patternType, @parameters, @userId) AS PatternData";
+            // Call SQL CLR function for memory-mapped pattern extraction using EF Core
+            var parametersJson = JsonSerializer.Serialize(parameters ?? new Dictionary<string, object>());
+            var sql = $"SELECT dbo.ExtractNeuralPatterns({{0}}, {{1}}, {{2}}, {{3}}) AS PatternData";
 
-            using var connection = new SqlConnection(_configuration.GetConnectionString("DefaultConnection"));
-            await connection.OpenAsync();
+            var patternDataResults = await _context.Database.SqlQueryRaw<PatternDataResult>(sql,
+                modelId, patternType, parametersJson, userId).ToListAsync();
 
-            using var command = new SqlCommand(sql, connection);
-            command.Parameters.AddWithValue("@modelId", modelId);
-            command.Parameters.AddWithValue("@patternType", patternType);
-            command.Parameters.AddWithValue("@parameters", JsonSerializer.Serialize(parameters ?? new Dictionary<string, object>()));
-            command.Parameters.AddWithValue("@userId", userId);
-
-            var patternData = await command.ExecuteScalarAsync() as string;
+            var patternData = patternDataResults.FirstOrDefault()?.PatternData;
 
             if (string.IsNullOrEmpty(patternData))
             {
@@ -604,6 +576,11 @@ public class MechanisticAnalysisResponse
 {
     public object? CausalPatterns { get; set; }
     public object? FeatureInteractions { get; set; }
+}
+
+public class PatternDataResult
+{
+    public string? PatternData { get; set; }
 }
 
 public interface IModelQueryEngineService

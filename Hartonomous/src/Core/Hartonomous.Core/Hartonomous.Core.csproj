@@ -7,11 +7,14 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Dapper" />
+    <!-- NOTE: Dapper removed - using EF Core 8.0 Database.SqlQuery<T> for stored procedures -->
     <PackageReference Include="Microsoft.Data.SqlClient" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Options" />
@@ -29,8 +32,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Infrastructure\Hartonomous.Infrastructure.Neo4j\Hartonomous.Infrastructure.Neo4j.csproj" />
-    <ProjectReference Include="..\..\Infrastructure\Hartonomous.Infrastructure.Milvus\Hartonomous.Infrastructure.Milvus.csproj" />
+    <ProjectReference Include="..\..\Infrastructure\Hartonomous.Infrastructure.SqlServer\Hartonomous.Infrastructure.SqlServer.csproj" />
     <ProjectReference Include="..\..\Infrastructure\Hartonomous.Infrastructure.EventStreaming\Hartonomous.Infrastructure.EventStreaming.csproj" />
+    <ProjectReference Include="..\..\Infrastructure\Hartonomous.Infrastructure.Security\Hartonomous.Infrastructure.Security.csproj" />
   </ItemGroup>
 
 </Project>

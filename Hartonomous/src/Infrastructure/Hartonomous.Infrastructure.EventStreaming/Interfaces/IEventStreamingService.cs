@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Hartonomous.Infrastructure.Neo4j;
-using Hartonomous.Infrastructure.Milvus;
+using Hartonomous.Infrastructure.SqlServer;
 
 namespace Hartonomous.Infrastructure.EventStreaming.Interfaces;
 

@@ -151,7 +151,7 @@ public static class UnifiedServiceExtensions
 
         if (infrastructureConfig.GetValue<bool>("Vector:Enabled"))
         {
-            services.AddSingleton<Infrastructure.Milvus.Interfaces.IVectorService, Infrastructure.Milvus.SqlServerVectorService>();
+            services.AddSingleton<DataFabric.Abstractions.IVectorService, Infrastructure.SqlServer.SqlServerVectorService>();
         }
 
         if (infrastructureConfig.GetValue<bool>("EventStreaming:Enabled"))

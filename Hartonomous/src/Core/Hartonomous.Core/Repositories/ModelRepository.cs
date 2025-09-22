@@ -13,8 +13,10 @@ using Hartonomous.Core.DTOs;
 using Hartonomous.Core.Interfaces;
 using Hartonomous.Core.Models;
 using Hartonomous.Core.Enums;
+using Hartonomous.Core.Data;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
+using Microsoft.EntityFrameworkCore;
 using System.Linq.Expressions;
 
 namespace Hartonomous.Core.Repositories;
@@ -22,11 +24,13 @@ namespace Hartonomous.Core.Repositories;
 public class ModelRepository : IModelRepository
 {
     private readonly string _connectionString;
+    private readonly HartonomousDbContext _context;
 
-    public ModelRepository(IConfiguration configuration)
+    public ModelRepository(IConfiguration configuration, HartonomousDbContext context)
     {
         _connectionString = configuration.GetConnectionString("DefaultConnection")
             ?? throw new InvalidOperationException("DefaultConnection string not found");
+        _context = context;
     }
 
     // IModelRepository specific methods
@@ -34,13 +38,12 @@ public class ModelRepository : IModelRepository
     {
         const string sql = @"
             SELECT * FROM dbo.Models
-            WHERE Architecture = @Architecture AND UserId = @UserId
+            WHERE Architecture = {0} AND UserId = {1}
             ORDER BY CreatedDate DESC";
 
         return await ExecuteWithRetryAsync(async () =>
         {
-            using var connection = new SqlConnection(_connectionString);
-            return await connection.QueryAsync<Model>(sql, new { Architecture = architecture, UserId = userId });
+            return await _context.Database.SqlQueryRaw<Model>(sql, architecture, userId).ToListAsync();
         });
     }
 
@@ -48,13 +51,12 @@ public class ModelRepository : IModelRepository
     {
         const string sql = @"
             SELECT * FROM dbo.Models
-            WHERE Status = @Status AND UserId = @UserId
+            WHERE Status = {0} AND UserId = {1}
             ORDER BY CreatedDate DESC";
 
         return await ExecuteWithRetryAsync(async () =>
         {
-            using var connection = new SqlConnection(_connectionString);
-            return await connection.QueryAsync<Model>(sql, new { Status = status, UserId = userId });
+            return await _context.Database.SqlQueryRaw<Model>(sql, (int)status, userId).ToListAsync();
         });
     }
 
@@ -62,12 +64,12 @@ public class ModelRepository : IModelRepository
     {
         const string sql = @"
             SELECT * FROM dbo.Models
-            WHERE ModelName = @ModelName AND UserId = @UserId";
+            WHERE ModelName = {0} AND UserId = {1}";
 
         return await ExecuteWithRetryAsync(async () =>
         {
-            using var connection = new SqlConnection(_connectionString);
-            return await connection.QuerySingleOrDefaultAsync<Model>(sql, new { ModelName = modelName, UserId = userId });
+            var results = await _context.Database.SqlQueryRaw<Model>(sql, modelName, userId).ToListAsync();
+            return results.FirstOrDefault();
         });
     }
 
@@ -76,27 +78,25 @@ public class ModelRepository : IModelRepository
         const string sql = @"
             SELECT DISTINCT m.* FROM dbo.Models m
             INNER JOIN dbo.ModelEmbeddings me ON m.Id = me.ModelId
-            WHERE m.UserId = @UserId
+            WHERE m.UserId = {0}
             ORDER BY m.CreatedDate DESC";
 
         return await ExecuteWithRetryAsync(async () =>
         {
-            using var connection = new SqlConnection(_connectionString);
-            return await connection.QueryAsync<Model>(sql, new { UserId = userId });
+            return await _context.Database.SqlQueryRaw<Model>(sql, userId).ToListAsync();
         });
     }
 
     public async Task<IEnumerable<Model>> GetRecentModelsAsync(int count, string userId)
     {
         const string sql = @"
-            SELECT TOP(@Count) * FROM dbo.Models
-            WHERE UserId = @UserId
+            SELECT TOP({0}) * FROM dbo.Models
+            WHERE UserId = {1}
             ORDER BY CreatedDate DESC";
 
         return await ExecuteWithRetryAsync(async () =>
         {
-            using var connection = new SqlConnection(_connectionString);
-            return await connection.QueryAsync<Model>(sql, new { Count = count, UserId = userId });
+            return await _context.Database.SqlQueryRaw<Model>(sql, count, userId).ToListAsync();
         });
     }
 
@@ -105,13 +105,12 @@ public class ModelRepository : IModelRepository
         // Implementation would use vector similarity search
         const string sql = @"
             SELECT * FROM dbo.Models
-            WHERE UserId = @UserId AND Id != @ModelId
+            WHERE UserId = {0} AND Id != {1}
             ORDER BY CreatedDate DESC";
 
         return await ExecuteWithRetryAsync(async () =>
         {
-            using var connection = new SqlConnection(_connectionString);
-            return await connection.QueryAsync<Model>(sql, new { ModelId = modelId, UserId = userId });
+            return await _context.Database.SqlQueryRaw<Model>(sql, userId, modelId).ToListAsync();
         });
     }
 
@@ -125,9 +124,8 @@ public class ModelRepository : IModelRepository
 
         return await ExecuteWithRetryAsync(async () =>
         {
-            using var connection = new SqlConnection(_connectionString);
-            var results = await connection.QueryAsync<dynamic>(sql, new { UserId = userId });
-            return results.ToDictionary(r => (string)r.Architecture, r => (int)r.Count);
+            var results = await _context.Database.SqlQueryRaw<ArchitectureStatResult>(sql, userId).ToListAsync();
+            return results.ToDictionary(r => r.Architecture, r => r.Count);
         });
     }
 
@@ -141,9 +139,8 @@ public class ModelRepository : IModelRepository
 
         return await ExecuteWithRetryAsync(async () =>
         {
-            using var connection = new SqlConnection(_connectionString);
-            var results = await connection.QueryAsync<dynamic>(sql, new { UserId = userId });
-            return results.ToDictionary(r => (ModelStatus)r.Status, r => (int)r.Count);
+            var results = await _context.Database.SqlQueryRaw<StatusStatResult>(sql, userId).ToListAsync();
+            return results.ToDictionary(r => (ModelStatus)r.Status, r => r.Count);
         });
     }
 
@@ -155,8 +152,8 @@ public class ModelRepository : IModelRepository
 
         return await ExecuteWithRetryAsync(async () =>
         {
-            using var connection = new SqlConnection(_connectionString);
-            return await connection.QuerySingleOrDefaultAsync<byte[]>(sql, new { ModelId = modelId, UserId = userId });
+            var results = await _context.Database.SqlQueryRaw<ModelWeightResult>(sql, modelId, userId).ToListAsync();
+            return results.FirstOrDefault()?.ModelWeights;
         });
     }
 
@@ -170,9 +167,9 @@ public class ModelRepository : IModelRepository
             WHERE pm.ProjectId = @ProjectId AND m.UserId = @UserId
             ORDER BY m.CreatedDate DESC";
 
-        return await ExecuteWithRetryAsync(async connection =>
+        return await ExecuteWithRetryAsync(async () =>
         {
-            return await connection.QueryAsync<ModelMetadataDto>(sql, new { ProjectId = projectId, UserId = userId });
+            return await _context.Database.SqlQueryRaw<ModelMetadataDto>(sql, projectId, userId).ToListAsync();
         });
     }
 
@@ -183,9 +180,10 @@ public class ModelRepository : IModelRepository
             FROM dbo.Models m
             WHERE m.Id = @ModelId AND m.UserId = @UserId";
 
-        return await ExecuteWithRetryAsync(async connection =>
+        return await ExecuteWithRetryAsync(async () =>
         {
-            return await connection.QuerySingleOrDefaultAsync<ModelMetadataDto>(sql, new { ModelId = modelId, UserId = userId });
+            var results = await _context.Database.SqlQueryRaw<ModelMetadataDto>(sql, modelId, userId).ToListAsync();
+            return results.FirstOrDefault();
         });
     }
 
@@ -196,16 +194,9 @@ public class ModelRepository : IModelRepository
             INSERT INTO dbo.Models (Id, ModelName, UserId, CreatedDate, ConfigMetadata)
             VALUES (@Id, @ModelName, @UserId, @CreatedDate, @ConfigMetadata)";
 
-        await ExecuteWithRetryAsync(async connection =>
+        await ExecuteWithRetryAsync(async () =>
         {
-            await connection.ExecuteAsync(insertSql, new
-            {
-                Id = modelId,
-                ModelName = modelName,
-                UserId = userId,
-                CreatedDate = DateTime.UtcNow,
-                ConfigMetadata = metadataJson ?? "{}"
-            });
+            await _context.Database.ExecuteSqlRawAsync(insertSql, modelId, modelName, userId, DateTime.UtcNow, metadataJson ?? "{}");
             return 1;
         });
 
@@ -218,9 +209,9 @@ public class ModelRepository : IModelRepository
             DELETE FROM dbo.Models
             WHERE Id = @ModelId AND UserId = @UserId";
 
-        var rowsAffected = await ExecuteWithRetryAsync(async connection =>
+        var rowsAffected = await ExecuteWithRetryAsync(async () =>
         {
-            return await connection.ExecuteAsync(sql, new { ModelId = modelId, UserId = userId });
+            return await _context.Database.ExecuteSqlRawAsync(sql, modelId, userId);
         });
 
         return rowsAffected > 0;
@@ -233,15 +224,9 @@ public class ModelRepository : IModelRepository
             SET ModelWeights = @Weights, ModifiedDate = @ModifiedDate
             WHERE Id = @ModelId AND UserId = @UserId";
 
-        await ExecuteWithRetryAsync(async connection =>
+        await ExecuteWithRetryAsync(async () =>
         {
-            return await connection.ExecuteAsync(sql, new
-            {
-                Weights = weights,
-                ModifiedDate = DateTime.UtcNow,
-                ModelId = modelId,
-                UserId = userId
-            });
+            return await _context.Database.ExecuteSqlRawAsync(sql, weights, DateTime.UtcNow, modelId, userId);
         });
     }
 
@@ -252,9 +237,9 @@ public class ModelRepository : IModelRepository
             WHERE ModelId = @ModelId AND UserId = @UserId
             ORDER BY CreatedDate DESC";
 
-        return await ExecuteWithRetryAsync(async connection =>
+        return await ExecuteWithRetryAsync(async () =>
         {
-            return await connection.QueryAsync<ModelPerformanceMetric>(sql, new { ModelId = modelId, UserId = userId });
+            return await _context.Database.SqlQueryRaw<ModelPerformanceMetric>(sql, modelId, userId).ToListAsync();
         });
     }
 
@@ -265,9 +250,10 @@ public class ModelRepository : IModelRepository
             FROM dbo.ModelPerformanceMetrics
             WHERE ModelId = @ModelId AND MetricName = @MetricName AND UserId = @UserId";
 
-        return await ExecuteWithRetryAsync(async connection =>
+        return await ExecuteWithRetryAsync(async () =>
         {
-            return await connection.QuerySingleOrDefaultAsync<double>(sql, new { ModelId = modelId, MetricName = metricName, UserId = userId });
+            var results = await _context.Database.SqlQueryRaw<double>(sql, modelId, metricName, userId).ToListAsync();
+            return results.FirstOrDefault();
         });
     }
 
@@ -278,12 +264,12 @@ public class ModelRepository : IModelRepository
     {
         const string sql = @"
             SELECT * FROM dbo.Models
-            WHERE Id = @Id AND UserId = @UserId";
+            WHERE Id = {0} AND UserId = {1}";
 
         return await ExecuteWithRetryAsync(async () =>
         {
-            using var connection = new SqlConnection(_connectionString);
-            return await connection.QuerySingleOrDefaultAsync<Model>(sql, new { Id = id, UserId = userId });
+            var results = await _context.Database.SqlQueryRaw<Model>(sql, id, userId).ToListAsync();
+            return results.FirstOrDefault();
         });
     }
 
@@ -291,13 +277,12 @@ public class ModelRepository : IModelRepository
     {
         const string sql = @"
             SELECT * FROM dbo.Models
-            WHERE UserId = @UserId
+            WHERE UserId = {0}
             ORDER BY CreatedDate DESC";
 
         return await ExecuteWithRetryAsync(async () =>
         {
-            using var connection = new SqlConnection(_connectionString);
-            return await connection.QueryAsync<Model>(sql, new { UserId = userId });
+            return await _context.Database.SqlQueryRaw<Model>(sql, userId).ToListAsync();
         });
     }
 
@@ -312,8 +297,7 @@ public class ModelRepository : IModelRepository
 
         return await ExecuteWithRetryAsync(async () =>
         {
-            using var connection = new SqlConnection(_connectionString);
-            var allModels = await connection.QueryAsync<Model>(sql, new { UserId = userId });
+            var allModels = await _context.Database.SqlQueryRaw<Model>(sql, userId).ToListAsync();
             return allModels.AsQueryable().Where(predicate);
         });
     }
@@ -328,8 +312,7 @@ public class ModelRepository : IModelRepository
 
         return await ExecuteWithRetryAsync(async () =>
         {
-            using var connection = new SqlConnection(_connectionString);
-            var allModels = await connection.QueryAsync<Model>(sql, new { UserId = userId });
+            var allModels = await _context.Database.SqlQueryRaw<Model>(sql, userId).ToListAsync();
             return allModels.AsQueryable().FirstOrDefault(predicate);
         });
     }
@@ -359,12 +342,11 @@ public class ModelRepository : IModelRepository
 
         return await ExecuteWithRetryAsync(async () =>
         {
-            using var connection = new SqlConnection(_connectionString);
+            var totalCountResults = await _context.Database.SqlQueryRaw<int>(countSql, userId).ToListAsync();
+            var totalCount = totalCountResults.FirstOrDefault();
 
-            var totalCount = await connection.QuerySingleAsync<int>(countSql, new { UserId = userId });
-            var items = await connection.QueryAsync<Model>(
-                string.Format(dataSql, orderClause),
-                new { UserId = userId, Offset = offset, PageSize = pageSize });
+            var items = await _context.Database.SqlQueryRaw<Model>(
+                string.Format(dataSql, orderClause), userId, offset, pageSize).ToListAsync();
 
             // Apply filter in memory if provided (for simplicity)
             if (filter != null)
@@ -388,15 +370,18 @@ public class ModelRepository : IModelRepository
                                    NumLayers, NumAttentionHeads, VocabSize, ModelWeights, ConfigMetadata,
                                    ModelPath, Status, UserId, IngestedAt, ProcessedAt, LastAccessedAt,
                                    CreatedDate, ModifiedDate)
-            VALUES (@Id, @ModelId, @ModelName, @Architecture, @ParameterCount, @HiddenSize,
-                    @NumLayers, @NumAttentionHeads, @VocabSize, @ModelWeights, @ConfigMetadata,
-                    @ModelPath, @Status, @UserId, @IngestedAt, @ProcessedAt, @LastAccessedAt,
-                    @CreatedDate, @ModifiedDate)";
+            VALUES ({0}, {1}, {2}, {3}, {4}, {5},
+                    {6}, {7}, {8}, {9}, {10},
+                    {11}, {12}, {13}, {14}, {15}, {16},
+                    {17}, {18})";
 
         await ExecuteWithRetryAsync(async () =>
         {
-            using var connection = new SqlConnection(_connectionString);
-            await connection.ExecuteAsync(sql, entity);
+            await _context.Database.ExecuteSqlRawAsync(sql,
+                entity.Id, entity.ModelId, entity.ModelName, entity.Architecture, entity.ParameterCount, entity.HiddenSize,
+                entity.NumLayers, entity.NumAttentionHeads, entity.VocabSize, entity.ModelWeights, entity.ConfigMetadata,
+                entity.ModelPath, (int)entity.Status, entity.UserId, entity.IngestedAt, entity.ProcessedAt, entity.LastAccessedAt,
+                entity.CreatedDate, entity.ModifiedDate);
             return entity;
         });
 
@@ -425,8 +410,14 @@ public class ModelRepository : IModelRepository
 
         await ExecuteWithRetryAsync(async () =>
         {
-            using var connection = new SqlConnection(_connectionString);
-            await connection.ExecuteAsync(sql, modelList);
+            foreach (var entity in modelList)
+            {
+                await _context.Database.ExecuteSqlRawAsync(sql,
+                    entity.Id, entity.ModelId, entity.ModelName, entity.Architecture, entity.ParameterCount, entity.HiddenSize,
+                    entity.NumLayers, entity.NumAttentionHeads, entity.VocabSize, entity.ModelWeights, entity.ConfigMetadata,
+                    entity.ModelPath, (int)entity.Status, entity.UserId, entity.IngestedAt, entity.ProcessedAt, entity.LastAccessedAt,
+                    entity.CreatedDate, entity.ModifiedDate);
+            }
             return modelList;
         });
 
@@ -450,8 +441,10 @@ public class ModelRepository : IModelRepository
 
         await ExecuteWithRetryAsync(async () =>
         {
-            using var connection = new SqlConnection(_connectionString);
-            await connection.ExecuteAsync(sql, entity);
+            await _context.Database.ExecuteSqlRawAsync(sql,
+                entity.ModelId, entity.ModelName, entity.Architecture, entity.ParameterCount, entity.HiddenSize, entity.NumLayers,
+                entity.NumAttentionHeads, entity.VocabSize, entity.ModelWeights, entity.ConfigMetadata, entity.ModelPath, (int)entity.Status,
+                entity.IngestedAt, entity.ProcessedAt, entity.LastAccessedAt, entity.ModifiedDate, entity.Id, entity.UserId);
             return entity;
         });
 
@@ -467,8 +460,7 @@ public class ModelRepository : IModelRepository
 
         await ExecuteWithRetryAsync(async () =>
         {
-            using var connection = new SqlConnection(_connectionString);
-            await connection.ExecuteAsync(sql, new { Id = entity.Id, UserId = entity.UserId });
+            await _context.Database.ExecuteSqlRawAsync(sql, entity.Id, entity.UserId);
             return 1;
         });
     }
@@ -481,8 +473,7 @@ public class ModelRepository : IModelRepository
 
         await ExecuteWithRetryAsync(async () =>
         {
-            using var connection = new SqlConnection(_connectionString);
-            await connection.ExecuteAsync(sql, new { Id = id, UserId = userId });
+            await _context.Database.ExecuteSqlRawAsync(sql, id, userId);
             return 1;
         });
     }
@@ -497,8 +488,10 @@ public class ModelRepository : IModelRepository
 
         await ExecuteWithRetryAsync(async () =>
         {
-            using var connection = new SqlConnection(_connectionString);
-            await connection.ExecuteAsync(sql, deleteParams);
+            foreach (var param in deleteParams)
+            {
+                await _context.Database.ExecuteSqlRawAsync(sql, param.Id, param.UserId);
+            }
             return deleteParams.Count;
         });
     }
@@ -512,8 +505,8 @@ public class ModelRepository : IModelRepository
 
         return await ExecuteWithRetryAsync(async () =>
         {
-            using var connection = new SqlConnection(_connectionString);
-            return await connection.QuerySingleAsync<int>(sql, new { UserId = userId });
+            var results = await _context.Database.SqlQueryRaw<int>(sql, userId).ToListAsync();
+            return results.FirstOrDefault();
         });
     }
 
@@ -532,9 +525,8 @@ public class ModelRepository : IModelRepository
 
         return await ExecuteWithRetryAsync(async () =>
         {
-            using var connection = new SqlConnection(_connectionString);
-            var count = await connection.QuerySingleAsync<int>(sql, new { Id = id, UserId = userId });
-            return count > 0;
+            var results = await _context.Database.SqlQueryRaw<int>(sql, id, userId).ToListAsync();
+            return results.FirstOrDefault() > 0;
         });
     }
 
@@ -550,8 +542,7 @@ public class ModelRepository : IModelRepository
     {
         return await ExecuteWithRetryAsync(async () =>
         {
-            using var connection = new SqlConnection(_connectionString);
-            return await connection.QueryAsync<Model>(sql, parameters);
+            return await _context.Database.SqlQueryRaw<Model>(sql, parameters).ToListAsync();
         });
     }
 
@@ -559,8 +550,7 @@ public class ModelRepository : IModelRepository
     {
         return await ExecuteWithRetryAsync(async () =>
         {
-            using var connection = new SqlConnection(_connectionString);
-            return await connection.ExecuteAsync(sql, parameters);
+            return await _context.Database.ExecuteSqlRawAsync(sql, parameters);
         });
     }
 
@@ -669,4 +659,22 @@ public class ModelRepository : IModelRepository
 
     #endregion
 
+}
+
+// Helper classes for EF Core SqlQuery results
+public class ArchitectureStatResult
+{
+    public string Architecture { get; set; } = string.Empty;
+    public int Count { get; set; }
+}
+
+public class StatusStatResult
+{
+    public int Status { get; set; }
+    public int Count { get; set; }
+}
+
+public class ModelWeightResult
+{
+    public byte[]? ModelWeights { get; set; }
 }

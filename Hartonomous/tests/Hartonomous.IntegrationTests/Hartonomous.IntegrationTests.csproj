@@ -64,7 +64,7 @@
     <ProjectReference Include="..\..\src\Services\Hartonomous.Orchestration\Hartonomous.Orchestration.csproj" />
     <ProjectReference Include="..\..\src\Client\Hartonomous.AgentClient\Hartonomous.AgentClient.csproj" />
     <ProjectReference Include="..\..\src\Infrastructure\Hartonomous.Infrastructure.Neo4j\Hartonomous.Infrastructure.Neo4j.csproj" />
-    <ProjectReference Include="..\..\src\Infrastructure\Hartonomous.Infrastructure.Milvus\Hartonomous.Infrastructure.Milvus.csproj" />
+    <ProjectReference Include="..\..\src\Infrastructure\Hartonomous.Infrastructure.SqlServer\Hartonomous.Infrastructure.SqlServer.csproj" />
     <ProjectReference Include="..\..\src\Infrastructure\Hartonomous.Infrastructure.EventStreaming\Hartonomous.Infrastructure.EventStreaming.csproj" />
   </ItemGroup>
 

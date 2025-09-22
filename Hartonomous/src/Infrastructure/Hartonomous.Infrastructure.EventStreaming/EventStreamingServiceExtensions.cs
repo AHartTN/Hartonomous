@@ -2,7 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Hartonomous.Infrastructure.Neo4j;
-using Hartonomous.Infrastructure.Milvus;
+using Hartonomous.Infrastructure.SqlServer;
 
 namespace Hartonomous.Infrastructure.EventStreaming;
 
@@ -30,13 +30,13 @@ public static class EventStreamingServiceExtensions
     }
 
     /// <summary>
-    /// Add complete Hartonomous data fabric (Neo4j + Milvus + Kafka CDC)
+    /// Add complete Hartonomous data fabric (Neo4j + SQL Server VECTOR + Kafka CDC)
     /// </summary>
     public static IServiceCollection AddHartonomousDataFabric(this IServiceCollection services, IConfiguration configuration)
     {
         // Add all data fabric components
         services.AddHartonomousNeo4j(configuration);
-        services.AddHartonomousMilvus(configuration);
+        services.AddHartonomousSqlServerVector(configuration);
         services.AddHartonomousEventStreaming(configuration);
 
         // Add data fabric orchestrator

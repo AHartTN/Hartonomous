@@ -11,10 +11,12 @@
 using Dapper;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Options;
+using Microsoft.EntityFrameworkCore;
 using System.Data;
 using System.Linq.Expressions;
 using System.Text.Json;
 using Hartonomous.Core.Configuration;
+using Hartonomous.Core.Data;
 
 namespace Hartonomous.Core.Abstractions;
 
@@ -31,13 +33,15 @@ public abstract class BaseRepository<TEntity, TKey> : IRepository<TEntity, TKey>
     protected readonly string _connectionString;
     protected readonly string _tableName;
     protected readonly string _primaryKeyColumn;
+    protected readonly HartonomousDbContext _context;
 
-    protected BaseRepository(IOptions<SqlServerOptions> sqlOptions)
+    protected BaseRepository(IOptions<SqlServerOptions> sqlOptions, HartonomousDbContext context)
     {
         _sqlOptions = sqlOptions.Value;
         _connectionString = _sqlOptions.ConnectionString;
         _tableName = GetTableName();
         _primaryKeyColumn = GetPrimaryKeyColumn();
+        _context = context;
     }
 
     /// <summary>
@@ -74,6 +78,11 @@ public abstract class BaseRepository<TEntity, TKey> : IRepository<TEntity, TKey>
     /// Get parameters for entity operations
     /// </summary>
     protected abstract object GetParameters(TEntity entity);
+
+    /// <summary>
+    /// Get parameters as array for EF Core SqlQueryRaw operations
+    /// </summary>
+    protected abstract object[] GetParametersArray(TEntity entity);
 
     /// <summary>
     /// Create database connection
@@ -134,8 +143,8 @@ public abstract class BaseRepository<TEntity, TKey> : IRepository<TEntity, TKey>
 
         return await ExecuteWithRetryAsync(async connection =>
         {
-            var result = await connection.QueryFirstOrDefaultAsync(sql, new { Id = id });
-            return result != null ? MapToEntity(result) : null;
+            var results = await _context.Database.SqlQueryRaw<TEntity>(sql, id).ToListAsync();
+            return results.FirstOrDefault();
         });
     }
 
@@ -149,8 +158,7 @@ public abstract class BaseRepository<TEntity, TKey> : IRepository<TEntity, TKey>
 
         return await ExecuteWithRetryAsync(async connection =>
         {
-            var results = await connection.QueryAsync(sql, new { UserId = userId });
-            return results.Select(MapToEntity);
+            return await _context.Database.SqlQueryRaw<TEntity>(sql, userId).ToListAsync();
         });
     }
 
@@ -175,8 +183,7 @@ public abstract class BaseRepository<TEntity, TKey> : IRepository<TEntity, TKey>
 
         return await ExecuteWithRetryAsync(async connection =>
         {
-            var results = await connection.QueryAsync(sql, new { Skip = skip, Take = take });
-            return results.Select(MapToEntity);
+            return await _context.Database.SqlQueryRaw<TEntity>(sql, skip, take).ToListAsync();
         });
     }
 
@@ -193,7 +200,8 @@ public abstract class BaseRepository<TEntity, TKey> : IRepository<TEntity, TKey>
 
         return await ExecuteWithRetryAsync(async connection =>
         {
-            var id = await connection.QuerySingleAsync<TKey>(sql, GetParameters(entity));
+            var results = await _context.Database.SqlQueryRaw<TKey>(sql, GetParametersArray(entity)).ToListAsync();
+            var id = results.FirstOrDefault();
             entity.Id = id;
             return id;
         });
@@ -210,7 +218,7 @@ public abstract class BaseRepository<TEntity, TKey> : IRepository<TEntity, TKey>
 
         return await ExecuteWithRetryAsync(async connection =>
         {
-            var rowsAffected = await connection.ExecuteAsync(sql, GetParameters(entity));
+            var rowsAffected = await _context.Database.ExecuteSqlRawAsync(sql, GetParametersArray(entity));
             return rowsAffected > 0;
         });
     }
@@ -221,7 +229,7 @@ public abstract class BaseRepository<TEntity, TKey> : IRepository<TEntity, TKey>
 
         return await ExecuteWithRetryAsync(async connection =>
         {
-            var rowsAffected = await connection.ExecuteAsync(sql, new { Id = id });
+            var rowsAffected = await _context.Database.ExecuteSqlRawAsync(sql, id);
             return rowsAffected > 0;
         });
     }
@@ -232,8 +240,8 @@ public abstract class BaseRepository<TEntity, TKey> : IRepository<TEntity, TKey>
 
         return await ExecuteWithRetryAsync(async connection =>
         {
-            var count = await connection.QuerySingleAsync<int>(sql, new { Id = id });
-            return count > 0;
+            var results = await _context.Database.SqlQueryRaw<int>(sql, id).ToListAsync();
+            return results.FirstOrDefault() > 0;
         });
     }
 
@@ -247,7 +255,8 @@ public abstract class BaseRepository<TEntity, TKey> : IRepository<TEntity, TKey>
 
         return await ExecuteWithRetryAsync(async connection =>
         {
-            return await connection.QuerySingleAsync<int>(sql);
+            var results = await _context.Database.SqlQueryRaw<int>(sql).ToListAsync();
+            return results.FirstOrDefault();
         });
     }
 

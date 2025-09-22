@@ -20,7 +20,19 @@
       "Bash(dir:*)",
       "Bash(dotnet new:*)",
       "Bash(dotnet sln add:*)",
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "mcp__memory__read_graph",
+      "mcp__sequential-thinking__sequentialthinking",
+      "mcp__memory__create_entities",
+      "mcp__memory__create_relations",
+      "mcp__memory__search_nodes",
+      "mcp__memory__open_nodes",
+      "mcp__memory__add_observations",
+      "mcp__memory__delete_observations",
+      "mcp__memory__delete_relations",
+      "mcp__memory__delete_entities",
+      "Bash(git reset:*)",
+      "Bash(git restore:*)"
     ],
     "deny": [],
     "ask": []
