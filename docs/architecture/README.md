@@ -9,6 +9,7 @@
 Comprehensive technical documentation covering:
 
 - ? **CQRS Pattern** - Command Query Responsibility Segregation
+- ? **Neo4j Provenance** - Production-grade lineage tracking
 - ? **Vectorization** - SIMD/AVX performance optimizations
 - ? **Cognitive Physics** - Laws governing the knowledge substrate
 - ? **System Diagrams** - Visual architecture representations
@@ -24,13 +25,13 @@ Comprehensive technical documentation covering:
 ```mermaid
 graph LR
     A[Write Operations] --> B[PostgreSQL]
-    C[Read Operations] --> D[Apache AGE]
+    C[Read Operations] --> D[Neo4j]
     B -->|LISTEN/NOTIFY| D
 ```
 
 **Topics covered:**
 - PostgreSQL as Command side (fast writes)
-- Apache AGE as Query side (deep graph queries)
+- Neo4j as Query side (provenance graph queries)
 - Async sync via LISTEN/NOTIFY
 - Brain analogy (Cortex vs Hippocampus)
 - 50x performance improvement for lineage queries
@@ -38,6 +39,24 @@ graph LR
 **Key insight:** Separate write-optimized from read-optimized storage.
 
 [**Read full CQRS documentation ?**](cqrs-pattern.md)
+
+---
+
+### [Neo4j Provenance Tracking](neo4j-provenance.md) ? **ESSENTIAL**
+
+**Production-Ready Lineage & Audit Trail**
+
+**Topics covered:**
+- Why Neo4j over Apache AGE (2025 decision)
+- Graph schema (:Atom nodes, :DERIVED_FROM relationships)
+- LISTEN/NOTIFY async sync architecture
+- 10 provenance query patterns (lineage, impact analysis, compliance)
+- GDPR/CCPA compliance queries
+- Performance optimization and scaling
+
+**Key insight:** Neo4j provides battle-tested provenance tracking with 15+ years of production use.
+
+[**Read Neo4j provenance documentation ?**](neo4j-provenance.md)
 
 ---
 
@@ -109,7 +128,7 @@ graph TB
     end
     
     subgraph Provenance["Provenance Layer"]
-        J[Apache AGE]
+        J[Neo4j]
         K[Lineage]
         L[Error Analysis]
     end
@@ -176,17 +195,18 @@ graph TB
 
 ---
 
-### 4. CQRS with AGE
+### 4. CQRS with Neo4j
 
 **Why separate command/query?**
 - ? Write-optimized (PostgreSQL)
-- ? Read-optimized (AGE graph)
+- ? Read-optimized (Neo4j graph)
 - ? No operational overhead for provenance
 - ? Independent scaling
+- ? Battle-tested (15+ years, Fortune 100)
 
-**Alternatives considered:** Single database, CTEs for graphs
+**Alternatives considered:** Apache AGE, Single database, CTEs for graphs
 
-**Decision:** AGE provides 50x faster graph queries than CTEs.
+**Decision:** Neo4j provides production-ready graph queries with mature ecosystem. Apache AGE development slowed after October 2024.
 
 ---
 
@@ -373,13 +393,15 @@ CREATE TABLE atom_history (
 
 ### Internal Documentation
 - [Getting Started](../getting-started/) - Installation & first queries
+- [Neo4j Provenance](neo4j-provenance.md) - Lineage tracking guide
 - [AI Operations](../ai-operations/) - In-database ML
 - [API Reference](../api-reference/) - Complete function list
 
 ### External Resources
 - [PostgreSQL Documentation](https://www.postgresql.org/docs/)
 - [PostGIS Manual](https://postgis.net/documentation/)
-- [Apache AGE Documentation](https://age.apache.org/)
+- [Neo4j Documentation](https://neo4j.com/docs/)
+- [Neo4j Data Lineage](https://neo4j.com/blog/graph-database/what-is-data-lineage/)
 - [CQRS Pattern (Microsoft)](https://learn.microsoft.com/en-us/azure/architecture/patterns/cqrs)
 
 ---

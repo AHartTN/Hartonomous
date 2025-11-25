@@ -1,7 +1,7 @@
 """
 Query service for retrieving atoms and provenance.
 
-Copyright © 2025 Anthony Hart. All Rights Reserved.
+Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 """
 
 import logging

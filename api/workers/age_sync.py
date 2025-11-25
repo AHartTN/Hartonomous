@@ -1,12 +1,18 @@
 """
-AGE Sync Worker
+AGE Sync Worker (EXPERIMENTAL - Not Recommended for Production)
+
+DEPRECATED: Apache AGE development slowed significantly after October 2024
+when Bitnine/AGEDB dismissed the entire development team. Use Neo4jProvenanceWorker
+for production deployments instead.
+
+This worker is kept for experimental purposes only.
 
 Background worker that listens for PostgreSQL NOTIFY events
 and syncs atom_relation changes to Apache AGE graph.
 
 Uses LISTEN/NOTIFY for zero-latency async updates.
 
-Copyright © 2025 Anthony Hart. All Rights Reserved.
+Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 """
 
 import asyncio

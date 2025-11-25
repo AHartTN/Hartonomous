@@ -3,7 +3,7 @@ Azure configuration management using Key Vault + App Configuration.
 
 Replaces .env files with enterprise Azure security.
 
-Copyright © 2025 Anthony Hart. All Rights Reserved.
+Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 """
 
 import os

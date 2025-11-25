@@ -3,7 +3,7 @@ Training routes for in-database machine learning.
 
 POST /v1/train/batch  - Train on batch of samples
 
-Copyright © 2025 Anthony Hart. All Rights Reserved.
+Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 """
 
 import time

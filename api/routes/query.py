@@ -5,7 +5,7 @@ GET /v1/query/atoms/{atom_id}           - Get atom by ID
 GET /v1/query/atoms/{atom_id}/lineage   - Get provenance lineage
 POST /v1/query/search                   - Spatial search
 
-Copyright © 2025 Anthony Hart. All Rights Reserved.
+Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 """
 
 import time

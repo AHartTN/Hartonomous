@@ -1,7 +1,7 @@
 """
 Export service for model serialization (ONNX, etc.).
 
-Copyright © 2025 Anthony Hart. All Rights Reserved.
+Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 """
 
 import logging

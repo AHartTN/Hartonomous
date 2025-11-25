@@ -7,7 +7,7 @@ Supports:
 - OAuth2 / OIDC flows
 - JWT validation
 
-Copyright © 2025 Anthony Hart. All Rights Reserved.
+Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 """
 
 import logging

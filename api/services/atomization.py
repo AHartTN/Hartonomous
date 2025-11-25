@@ -3,7 +3,7 @@ Atomization service for converting content to atoms.
 
 Wraps SQL function calls with Python convenience methods.
 
-Copyright © 2025 Anthony Hart. All Rights Reserved.
+Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 """
 
 import logging

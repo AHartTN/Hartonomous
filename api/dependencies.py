@@ -3,7 +3,7 @@ Dependency injection for FastAPI routes.
 
 Provides reusable dependencies for database connections, authentication, etc.
 
-Copyright © 2025 Anthony Hart. All Rights Reserved.
+Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 """
 
 from typing import AsyncGenerator

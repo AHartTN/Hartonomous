@@ -1,9 +1,10 @@
+# -*- coding: utf-8 -*-
 """
 Hartonomous REST API
 
 FastAPI application with PostgreSQL connection pooling and background workers.
 
-Copyright © 2025 Anthony Hart. All Rights Reserved.
+Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 """
 
 import logging
@@ -58,16 +59,29 @@ async def lifespan(app: FastAPI):
     # Set global pool for dependencies
     set_connection_pool(pool)
     
-    # Start AGE worker (if enabled)
+    # Start background workers
     age_worker_task = None
+    neo4j_worker_task = None
+
+    # Start Neo4j provenance worker (RECOMMENDED for production)
+    if settings.neo4j_enabled:
+        logger.info("Starting Neo4j provenance worker...")
+        from api.workers.neo4j_sync import Neo4jProvenanceWorker
+        import asyncio
+
+        neo4j_worker = Neo4jProvenanceWorker(pool)
+        neo4j_worker_task = asyncio.create_task(neo4j_worker.start())
+        logger.info("Neo4j provenance worker started (production-ready)")
+
+    # Start AGE worker (EXPERIMENTAL - disabled by default)
     if settings.age_worker_enabled:
-        logger.info("Starting AGE sync worker...")
+        logger.warning("Starting EXPERIMENTAL AGE sync worker (not recommended for production)")
         from api.workers.age_sync import AGESyncWorker
         import asyncio
-        
+
         age_worker = AGESyncWorker(pool)
         age_worker_task = asyncio.create_task(age_worker.start())
-        logger.info("AGE sync worker started")
+        logger.info("AGE sync worker started (experimental only)")
     
     logger.info("? Hartonomous API ready")
     
@@ -87,6 +101,16 @@ async def lifespan(app: FastAPI):
             pass
         logger.info("AGE sync worker stopped")
     
+    # Stop Neo4j worker
+    if neo4j_worker_task:
+        logger.info("Stopping Neo4j provenance worker...")
+        neo4j_worker_task.cancel()
+        try:
+            await neo4j_worker_task
+        except asyncio.CancelledError:
+            pass
+        logger.info("Neo4j provenance worker stopped")
+    
     # Close connection pool
     logger.info("Closing connection pool...")
     await pool.close()
@@ -100,7 +124,7 @@ app = FastAPI(
     title="Hartonomous API",
     description=(
         "REST API for Hartonomous - The First Self-Organizing Intelligence Substrate\n\n"
-        "In-Database AI • Zero Latency • Provenance Tracking • 100x Performance"
+        "In-Database AI ï¿½ Zero Latency ï¿½ Provenance Tracking ï¿½ 100x Performance"
     ),
     version="0.6.0",
     lifespan=lifespan,

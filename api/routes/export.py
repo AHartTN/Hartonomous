@@ -3,7 +3,7 @@ Export routes for model serialization.
 
 POST /v1/export/onnx  - Export model to ONNX format
 
-Copyright © 2025 Anthony Hart. All Rights Reserved.
+Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 """
 
 import time

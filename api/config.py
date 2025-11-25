@@ -15,7 +15,7 @@ Azure (production):
 - APP_CONFIG_ENDPOINT: Azure App Configuration endpoint
 - AZURE_CLIENT_ID: Managed Identity client ID (optional)
 
-Copyright © 2025 Anthony Hart. All Rights Reserved.
+Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 """
 
 import os
@@ -82,6 +82,15 @@ class Settings(BaseSettings):
         description="Allowed CORS origins"
     )
     
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, v):
+        """Parse CORS origins from comma-separated string or list."""
+        if isinstance(v, str):
+            # Split by comma and strip whitespace
+            return [origin.strip() for origin in v.split(",") if origin.strip()]
+        return v
+    
     # Logging
     log_level: str = Field(default="INFO", description="Logging level")
     log_json: bool = Field(default=False, description="Use JSON logging")
@@ -102,13 +111,21 @@ class Settings(BaseSettings):
     b2c_client_id: Optional[str] = Field(default=None, description="B2C client ID")
     b2c_policy_name: Optional[str] = Field(default=None, description="B2C policy name")
     
-    # AGE Worker Settings
-    age_worker_enabled: bool = Field(default=True, description="Enable AGE sync worker")
+    # AGE Worker Settings (EXPERIMENTAL - Not recommended for production)
+    # Apache AGE development paused after Oct 2024 team dismissal
+    # Use Neo4j for production provenance tracking instead
+    age_worker_enabled: bool = Field(default=False, description="Enable AGE sync worker (experimental)")
     age_worker_poll_interval: int = Field(
         default=5,
         description="Worker poll interval (seconds)"
     )
-    
+
+    # Neo4j Settings (RECOMMENDED - Production-ready provenance graph)
+    neo4j_enabled: bool = Field(default=True, description="Enable Neo4j provenance sync")
+    neo4j_uri: str = Field(default="bolt://localhost:7687", description="Neo4j URI")
+    neo4j_user: str = Field(default="neo4j", description="Neo4j username")
+    neo4j_password: str = Field(default="neo4jneo4j", description="Neo4j password")
+    neo4j_database: str = Field(default="neo4j", description="Neo4j database name")
     # Model configuration
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -208,7 +225,30 @@ class Settings(BaseSettings):
                         logger.info("Loaded PostgreSQL password from Key Vault")
                     except Exception as e:
                         logger.warning(f"Could not load PostgreSQL password: {e}")
-                    
+
+                    # Neo4j credentials (for hart-server)
+                    if self.neo4j_enabled:
+                        try:
+                            # Determine which Neo4j instance to use based on hostname
+                            import socket
+                            hostname = socket.gethostname().upper()
+
+                            if hostname.lower() == "hart-server":
+                                # Load hart-server Neo4j credentials from Key Vault
+                                neo4j_password = kv_client.get_secret("Neo4j-hart-server-Password")
+                                if neo4j_password:
+                                    self.neo4j_password = neo4j_password
+                                    # Update URI for hart-server
+                                    neo4j_uri = app_config_client.get_setting("Neo4j:hart-server:Uri") if app_config_client else None
+                                    if neo4j_uri:
+                                        self.neo4j_uri = neo4j_uri
+                                    logger.info("Loaded Neo4j credentials for hart-server from Key Vault")
+                            # HART-DESKTOP uses default config (neo4j:neo4jneo4j @ localhost:7687)
+                            else:
+                                logger.info(f"Using local Neo4j Desktop configuration for {hostname}")
+                        except Exception as e:
+                            logger.warning(f"Could not load Neo4j credentials: {e}")
+
                     # Entra ID client secret
                     if self.auth_enabled:
                         try:
@@ -216,7 +256,7 @@ class Settings(BaseSettings):
                             logger.info("Loaded Entra ID client secret from Key Vault")
                         except Exception as e:
                             logger.warning(f"Could not load Entra ID client secret: {e}")
-                    
+
                     # B2C client secret
                     if self.b2c_enabled:
                         try:
@@ -231,30 +271,28 @@ class Settings(BaseSettings):
         
         return self
     
-    @field_validator("database_url", mode="before")
+    @field_validator("database_url", mode="after")
     @classmethod
     def build_database_url(cls, v: Optional[str], info) -> str:
         """Build DATABASE_URL from components if not provided."""
         if v:
             return v
         
-        # Get values from context (other fields being validated)
-        values = info.data
-        host = values.get("pghost", "localhost")
-        port = values.get("pgport", 5432)
-        user = values.get("pguser", "postgres")
-        password = values.get("pgpassword", "postgres")
-        database = values.get("pgdatabase", "hartonomous")
-        sslmode = values.get("pgsslmode", "prefer")
-        
-        return (
-            f"postgresql://{user}:{password}@{host}:{port}/{database}"
-            f"?sslmode={sslmode}"
-        )
+        # At this point, all fields should be populated from .env
+        # Access via info.data doesn't work in 'after' mode, use self instead
+        # This validator should actually be removed and we should use a property
+        return None  # Will be built by get_connection_string()
     
     def get_connection_string(self) -> str:
         """Get PostgreSQL connection string."""
-        return self.database_url
+        if self.database_url:
+            return self.database_url
+        
+        # Build from components
+        return (
+            f"postgresql://{self.pguser}:{self.pgpassword}@{self.pghost}:{self.pgport}/{self.pgdatabase}"
+            f"?sslmode={self.pgsslmode}"
+        )
 
 
 # Global settings instance

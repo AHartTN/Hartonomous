@@ -26,15 +26,31 @@ wheels/
 # IDEs
 .vscode/
 .idea/
+.vs/
+.vscode-test/
 *.swp
 *.swo
 *~
 .DS_Store
 
-# Environment variables
+# Environment variables & Secrets
 .env
 .env.local
+.env.production
+.env.development
+.env.test
 *.env
+.env.*
+
+# Azure credentials & secrets
+.azure/
+azure.json
+credentials.json
+service-principal.json
+
+# Neo4j credentials
+.neo4j/
+neo4j.conf.local
 
 # PostgreSQL
 *.sql.bak
@@ -47,6 +63,10 @@ wheels/
 # Logs
 *.log
 logs/
+*.log.*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
 # Database data
 postgres_data/
@@ -65,6 +85,10 @@ htmlcov/
 # Documentation builds
 docs/_build/
 docs/.doctrees/
+site/
+
+# MkDocs
+.cache/
 
 # Temporary files
 tmp/
@@ -76,6 +100,14 @@ Thumbs.db
 .Spotlight-V100
 .Trashes
 
-# Git commit message files (except convention)
+# Git commit message files
 .gitmsg/*.txt
 .gitmsg/archive/
+commit-msg-*.txt
+final-commit-message.txt
+
+# Root documentation clutter (should be in docs/)
+# Uncomment these after moving files to docs/
+# CHECKLIST.md
+# IMPLEMENTATION.md
+# REFACTORING.md

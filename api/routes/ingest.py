@@ -5,7 +5,7 @@ POST /v1/ingest/text   - Atomize text
 POST /v1/ingest/image  - Atomize image
 POST /v1/ingest/audio  - Atomize audio
 
-Copyright © 2025 Anthony Hart. All Rights Reserved.
+Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 """
 
 import time

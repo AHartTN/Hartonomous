@@ -1,7 +1,7 @@
 """
 Health check routes for monitoring and readiness probes.
 
-Copyright © 2025 Anthony Hart. All Rights Reserved.
+Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -63,10 +63,10 @@ async def readiness_check(conn: AsyncConnection = Depends(get_db_connection)):
             """)
             table_count = await cur.fetchone()
             
-            # Check extensions
+            # Check extensions (only PostGIS is required)
             await cur.execute("""
                 SELECT COUNT(*) FROM pg_extension
-                WHERE extname IN ('postgis', 'age', 'plpython3u');
+                WHERE extname IN ('postgis');
             """)
             ext_count = await cur.fetchone()
             
@@ -76,10 +76,10 @@ async def readiness_check(conn: AsyncConnection = Depends(get_db_connection)):
                     detail=f"Core tables missing (found {table_count[0]}/3)"
                 )
             
-            if ext_count[0] != 3:
+            if ext_count[0] != 1:
                 raise HTTPException(
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail=f"Required extensions missing (found {ext_count[0]}/3)"
+                    detail=f"Required extensions missing (found {ext_count[0]}/1: PostGIS required)"
                 )
             
             return {

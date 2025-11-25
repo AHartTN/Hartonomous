@@ -1,7 +1,7 @@
 """
 Pydantic models for export requests/responses.
 
-Copyright © 2025 Anthony Hart. All Rights Reserved.
+Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 """
 
 from typing import List, Optional
