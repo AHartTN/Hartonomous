@@ -1,0 +1,83 @@
+```mermaid
+graph TB
+    subgraph Client["?? Client Applications"]
+        A[REST API]
+        B[GraphQL API]
+        C[Direct SQL]
+    end
+    
+    subgraph Command["? Command Side - PostgreSQL"]
+        D[Write Operations]
+        E[Atom Storage]
+        F[Spatial Indexing]
+        G[Relations Graph]
+        H[Triggers]
+    end
+    
+    subgraph Query["?? Query Side - Apache AGE"]
+        I[Read Operations]
+        J[Provenance Graph]
+        K[Lineage Tracking]
+        L[Error Analysis]
+        M[Metacognition]
+    end
+    
+    subgraph AI["?? AI Layer - PL/Python"]
+        N[NumPy SIMD]
+        O[scikit-learn]
+        P[PyTorch Optional]
+        Q[CuPy GPU Optional]
+    end
+    
+    A --> D
+    B --> D
+    C --> D
+    D --> E
+    E --> F
+    E --> G
+    G --> H
+    H -->|LISTEN/NOTIFY<br/>Zero Latency| I
+    I --> J
+    J --> K
+    J --> L
+    J --> M
+    E --> N
+    N --> O
+    O --> P
+    P --> Q
+    
+    style Command fill:#e3f2fd
+    style Query fill:#fff3e0
+    style AI fill:#f3e5f5
+    style Client fill:#e8f5e9
+```
+
+## CQRS Flow Diagram
+
+**Command Query Responsibility Segregation**
+
+### Command Side (PostgreSQL)
+- **Optimized for writes**
+- Real-time operations
+- Spatial calculations
+- Sub-millisecond response
+- ACID transactions
+
+### Query Side (Apache AGE)
+- **Optimized for reads**
+- Deep graph queries
+- 50-hop lineage in 10ms
+- Provenance tracking
+- Metacognition
+
+### Async Sync
+- LISTEN/NOTIFY mechanism
+- Zero operational overhead
+- Eventual consistency
+- Independent scaling
+
+### AI Layer
+- In-database ML
+- NumPy SIMD (AVX-512)
+- Optional GPU (CuPy)
+- No external APIs

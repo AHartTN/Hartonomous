@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  hartonomous-postgres:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: hartonomous
+    environment:
+      POSTGRES_DB: hartonomous
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../schema:/docker-entrypoint-initdb.d:ro
+    restart: unless-stopped
+    networks:
+      - hartonomous_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d hartonomous"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+        reservations:
+          cpus: '2'
+          memory: 4G
+
+  # Optional: PgBouncer for connection pooling
+  pgbouncer:
+    image: pgbouncer/pgbouncer:latest
+    container_name: hartonomous-pgbouncer
+    environment:
+      DATABASES_HOST: hartonomous-postgres
+      DATABASES_PORT: 5432
+      DATABASES_DBNAME: hartonomous
+      DATABASES_USER: postgres
+      DATABASES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 1000
+      DEFAULT_POOL_SIZE: 25
+    ports:
+      - "6432:6432"
+    depends_on:
+      hartonomous-postgres:
+        condition: service_healthy
+    networks:
+      - hartonomous_network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  hartonomous_network:
+    driver: bridge
