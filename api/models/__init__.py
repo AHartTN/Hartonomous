@@ -17,6 +17,13 @@ from api.models.query import (
     SearchResponse,
 )
 
+from api.models.training import (
+    TrainingSample,
+    BatchTrainRequest,
+    TrainingSampleResult,
+    BatchTrainResponse,
+)
+
 __all__ = [
     "TextIngestRequest",
     "ImageIngestRequest",
@@ -29,4 +36,8 @@ __all__ = [
     "SearchRequest",
     "SearchResult",
     "SearchResponse",
+    "TrainingSample",
+    "BatchTrainRequest",
+    "TrainingSampleResult",
+    "BatchTrainResponse",
 ]

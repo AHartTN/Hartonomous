@@ -2,5 +2,6 @@
 
 from api.services.atomization import AtomizationService
 from api.services.query import QueryService
+from api.services.training import TrainingService
 
-__all__ = ["AtomizationService", "QueryService"]
+__all__ = ["AtomizationService", "QueryService", "TrainingService"]

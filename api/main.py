@@ -141,9 +141,16 @@ app.include_router(
     tags=["query"]
 )
 
+# Train routes
+from api.routes import train
+app.include_router(
+    train.router,
+    prefix=f"{settings.api_v1_prefix}/train",
+    tags=["train"]
+)
+
 # Future routers (will be added as we build them)
-# from api.routes import train, export
-# app.include_router(train.router, prefix=f"{settings.api_v1_prefix}/train", tags=["train"])
+# from api.routes import export
 # app.include_router(export.router, prefix=f"{settings.api_v1_prefix}/export", tags=["export"])
 
 
