@@ -3,7 +3,7 @@
 # Runs pytest unit tests for Hartonomous API
 # Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 
-set -euo pipefail
+set -eo pipefail
 
 # Import common modules
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
