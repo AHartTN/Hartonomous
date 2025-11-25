@@ -1,0 +1,49 @@
+name: Community - Sponsor Thank You
+
+on:
+  sponsorship:
+    types: [created, tier_changed]
+
+jobs:
+  thank-sponsor:
+    name: Thank New Sponsor
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create thank you issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const sponsor = context.payload.sponsorship.sponsor.login;
+            const tier = context.payload.sponsorship.tier.name;
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `🎉 Thank you @${sponsor} for sponsoring!`,
+              body: `## 💖 New Sponsor!
+
+            Thank you **@${sponsor}** for sponsoring Hartonomous at the **${tier}** tier!
+
+            Your support helps make this project possible and enables continuous development of cutting-edge AI infrastructure.
+
+            ### What your sponsorship enables:
+            - ✨ Ongoing development and maintenance
+            - 🔬 Research into novel AI architectures
+            - 📚 Comprehensive documentation
+            - 🛡️ Security and stability improvements
+            - 🚀 New features and enhancements
+
+            We truly appreciate your generosity and belief in this project!
+
+            ---
+            **Anthony Hart**
+            *Creator of Hartonomous*`,
+              labels: ['sponsor', 'thank-you']
+            });
+
+      - name: Send Discord notification
+        if: ${{ vars.DISCORD_WEBHOOK_URL }}
+        run: |
+          curl -H "Content-Type: application/json" \
+               -d "{\"content\": \"🎉 New sponsor: @${{ github.event.sponsorship.sponsor.login }} at ${{ github.event.sponsorship.tier.name }} tier!\"}" \
+               ${{ vars.DISCORD_WEBHOOK_URL }}

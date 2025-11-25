@@ -1,0 +1,34 @@
+name: Community - Buy Me a Coffee
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 12 * * 1'  # Every Monday at noon
+
+jobs:
+  update-readme:
+    name: Update Coffee Supporters
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Fetch supporters from Ko-fi
+        id: fetch-supporters
+        run: |
+          # This would integrate with Ko-fi API
+          # For now, placeholder
+          echo "supporters=[]" >> $GITHUB_OUTPUT
+
+      - name: Update README with supporters
+        run: |
+          # Update supporters section in README
+          echo "☕ Coffee supporters would be listed here"
+
+      - name: Commit changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "docs: Update coffee supporters list"
+          file_pattern: README.md

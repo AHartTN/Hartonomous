@@ -1,0 +1,63 @@
+{
+  "environment": "production",
+  "target": {
+    "machine": "hart-server",
+    "os": "linux",
+    "runner_labels": ["self-hosted", "linux", "hart-server"]
+  },
+  "database": {
+    "host": "localhost",
+    "port": 5432,
+    "name": "Hartonomous",
+    "ssl_mode": "require",
+    "backup_enabled": true,
+    "migration_timeout": 900
+  },
+  "neo4j": {
+    "uri": "bolt://localhost:7687",
+    "database": "neo4j",
+    "edition": "community"
+  },
+  "api": {
+    "host": "0.0.0.0",
+    "port": 8000,
+    "workers": 16,
+    "reload": false,
+    "log_level": "WARNING"
+  },
+  "azure": {
+    "resource_group": "rg-hartonomous",
+    "key_vault_name": "kv-hartonomous",
+    "app_config_endpoint": "https://appconfig-hartonomous.azconfig.io",
+    "use_managed_identity": true
+  },
+  "deployment": {
+    "install_path": "/opt/hartonomous/api",
+    "backup_path": "/var/backups/hartonomous",
+    "log_path": "/var/log/hartonomous",
+    "service_name": "hartonomous-api",
+    "auto_rollback": true,
+    "skip_tests": false
+  },
+  "secrets": {
+    "postgres_password": "PostgreSQL-Hartonomous-Password",
+    "neo4j_password": "Neo4j-hart-server-Password",
+    "azure_client_secret": "AzureAd-ClientSecret"
+  },
+  "features": {
+    "neo4j_enabled": true,
+    "age_worker_enabled": false,
+    "auth_enabled": true,
+    "b2c_enabled": true
+  },
+  "monitoring": {
+    "application_insights_enabled": true,
+    "prometheus_enabled": true,
+    "alerts_enabled": true
+  },
+  "security": {
+    "require_https": true,
+    "cors_strict_mode": true,
+    "rate_limit_per_minute": 100
+  }
+}

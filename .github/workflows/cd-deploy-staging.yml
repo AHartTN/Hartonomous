@@ -1,0 +1,112 @@
+name: CD - Deploy to Staging
+
+on:
+  push:
+    branches: [ staging ]
+  workflow_dispatch:
+
+env:
+  DEPLOYMENT_ENVIRONMENT: staging
+  DEPLOYMENT_TARGET: hart-server
+
+jobs:
+  preflight:
+    name: Preflight Checks
+    runs-on: [self-hosted, linux, hart-server]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run preflight checks
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+        run: |
+          chmod +x ./deployment/scripts/preflight/check-prerequisites.sh
+          ./deployment/scripts/preflight/check-prerequisites.sh
+
+      - name: Validate secrets
+        env:
+          KEY_VAULT_URL: ${{ secrets.KEY_VAULT_URL }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+        run: |
+          chmod +x ./deployment/scripts/preflight/validate-secrets.sh
+          ./deployment/scripts/preflight/validate-secrets.sh
+
+  deploy-database:
+    name: Deploy Database
+    needs: preflight
+    runs-on: [self-hosted, linux, hart-server]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy schema
+        env:
+          DEPLOYMENT_ENVIRONMENT: ${{ env.DEPLOYMENT_ENVIRONMENT }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        run: |
+          chmod +x ./deployment/scripts/database/deploy-schema.sh
+          ./deployment/scripts/database/deploy-schema.sh
+
+  deploy-application:
+    name: Deploy Application
+    needs: deploy-database
+    runs-on: [self-hosted, linux, hart-server]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy API
+        env:
+          DEPLOYMENT_ENVIRONMENT: ${{ env.DEPLOYMENT_ENVIRONMENT }}
+          KEY_VAULT_URL: ${{ secrets.KEY_VAULT_URL }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        run: |
+          chmod +x ./deployment/scripts/application/deploy-api.sh
+          ./deployment/scripts/application/deploy-api.sh
+
+      - name: Deploy Neo4j Worker
+        env:
+          DEPLOYMENT_ENVIRONMENT: ${{ env.DEPLOYMENT_ENVIRONMENT }}
+          KEY_VAULT_URL: ${{ secrets.KEY_VAULT_URL }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        run: |
+          chmod +x ./deployment/scripts/neo4j/deploy-neo4j-worker.sh
+          ./deployment/scripts/neo4j/deploy-neo4j-worker.sh
+
+  validate:
+    name: Validate Deployment
+    needs: deploy-application
+    runs-on: [self-hosted, linux, hart-server]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Health check
+        run: |
+          chmod +x ./deployment/scripts/validation/health-check.sh
+          ./deployment/scripts/validation/health-check.sh
+
+      - name: Smoke tests
+        run: |
+          chmod +x ./deployment/scripts/validation/smoke-test.sh
+          ./deployment/scripts/validation/smoke-test.sh
+
+      - name: Create deployment summary
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Deployed to **Staging** environment" >> $GITHUB_STEP_SUMMARY
+          echo "- Target: hart-server" >> $GITHUB_STEP_SUMMARY
+          echo "- Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Branch: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,67 @@
+name: CI - Lint
+
+on:
+  push:
+    branches: [ develop, staging, main ]
+  pull_request:
+    branches: [ develop, staging, main ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-python:
+    name: Lint Python
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Run Python linting
+        run: |
+          chmod +x ./deployment/scripts/validation/lint-python.sh
+          ./deployment/scripts/validation/lint-python.sh
+
+  lint-yaml:
+    name: Lint YAML
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run YAML linting
+        run: |
+          chmod +x ./deployment/scripts/validation/lint-yaml.sh
+          ./deployment/scripts/validation/lint-yaml.sh
+
+  lint-markdown:
+    name: Lint Markdown
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Markdown linting
+        run: |
+          chmod +x ./deployment/scripts/validation/lint-markdown.sh
+          ./deployment/scripts/validation/lint-markdown.sh
+
+  lint-sql:
+    name: Lint SQL
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run SQL linting
+        run: |
+          chmod +x ./deployment/scripts/validation/lint-sql.sh
+          ./deployment/scripts/validation/lint-sql.sh

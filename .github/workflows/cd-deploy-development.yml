@@ -1,0 +1,113 @@
+name: CD - Deploy to Development
+
+on:
+  push:
+    branches: [ develop ]
+  workflow_dispatch:
+
+env:
+  DEPLOYMENT_ENVIRONMENT: development
+  DEPLOYMENT_TARGET: HART-DESKTOP
+
+jobs:
+  preflight:
+    name: Preflight Checks
+    runs-on: [self-hosted, windows, HART-DESKTOP]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run preflight checks
+        shell: pwsh
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+        run: |
+          .\deployment\scripts\preflight\check-prerequisites.ps1
+
+      - name: Validate secrets
+        shell: pwsh
+        env:
+          KEY_VAULT_URL: ${{ secrets.KEY_VAULT_URL }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+        run: |
+          .\deployment\scripts\preflight\validate-secrets.ps1
+
+  deploy-database:
+    name: Deploy Database
+    needs: preflight
+    runs-on: [self-hosted, windows, HART-DESKTOP]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy schema
+        shell: pwsh
+        env:
+          DEPLOYMENT_ENVIRONMENT: ${{ env.DEPLOYMENT_ENVIRONMENT }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        run: |
+          .\deployment\scripts\database\deploy-schema.ps1
+
+  deploy-application:
+    name: Deploy Application
+    needs: deploy-database
+    runs-on: [self-hosted, windows, HART-DESKTOP]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy API
+        shell: pwsh
+        env:
+          DEPLOYMENT_ENVIRONMENT: ${{ env.DEPLOYMENT_ENVIRONMENT }}
+          KEY_VAULT_URL: ${{ secrets.KEY_VAULT_URL }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        run: |
+          .\deployment\scripts\application\deploy-api.ps1
+
+      - name: Deploy Neo4j Worker
+        shell: pwsh
+        env:
+          DEPLOYMENT_ENVIRONMENT: ${{ env.DEPLOYMENT_ENVIRONMENT }}
+          KEY_VAULT_URL: ${{ secrets.KEY_VAULT_URL }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        run: |
+          .\deployment\scripts\neo4j\deploy-neo4j-worker.ps1
+
+  validate:
+    name: Validate Deployment
+    needs: deploy-application
+    runs-on: [self-hosted, windows, HART-DESKTOP]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Health check
+        shell: pwsh
+        run: |
+          .\deployment\scripts\validation\health-check.ps1
+
+      - name: Smoke tests
+        shell: pwsh
+        run: |
+          .\deployment\scripts\validation\smoke-test.ps1
+
+      - name: Create deployment summary
+        shell: pwsh
+        run: |
+          Write-Output "## Deployment Summary" >> $env:GITHUB_STEP_SUMMARY
+          Write-Output "" >> $env:GITHUB_STEP_SUMMARY
+          Write-Output "✅ Deployed to **Development** environment" >> $env:GITHUB_STEP_SUMMARY
+          Write-Output "- Target: HART-DESKTOP" >> $env:GITHUB_STEP_SUMMARY
+          Write-Output "- Commit: ${{ github.sha }}" >> $env:GITHUB_STEP_SUMMARY
+          Write-Output "- Branch: ${{ github.ref_name }}" >> $env:GITHUB_STEP_SUMMARY
