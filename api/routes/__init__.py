@@ -1,5 +1,5 @@
 """Routes package for Hartonomous API."""
 
-from api.routes import health, ingest
+from api.routes import health, ingest, query
 
-__all__ = ["health", "ingest"]
+__all__ = ["health", "ingest", "query"]

@@ -133,9 +133,16 @@ app.include_router(
     tags=["ingest"]
 )
 
+# Query routes
+from api.routes import query
+app.include_router(
+    query.router,
+    prefix=f"{settings.api_v1_prefix}/query",
+    tags=["query"]
+)
+
 # Future routers (will be added as we build them)
-# from api.routes import query, train, export
-# app.include_router(query.router, prefix=f"{settings.api_v1_prefix}/query", tags=["query"])
+# from api.routes import train, export
 # app.include_router(train.router, prefix=f"{settings.api_v1_prefix}/train", tags=["train"])
 # app.include_router(export.router, prefix=f"{settings.api_v1_prefix}/export", tags=["export"])
 
