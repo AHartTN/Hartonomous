@@ -125,9 +125,16 @@ app.include_router(
     tags=["health"]
 )
 
+# Ingest routes
+from api.routes import ingest
+app.include_router(
+    ingest.router,
+    prefix=f"{settings.api_v1_prefix}/ingest",
+    tags=["ingest"]
+)
+
 # Future routers (will be added as we build them)
-# from api.routes import ingest, query, train, export
-# app.include_router(ingest.router, prefix=f"{settings.api_v1_prefix}/ingest", tags=["ingest"])
+# from api.routes import query, train, export
 # app.include_router(query.router, prefix=f"{settings.api_v1_prefix}/query", tags=["query"])
 # app.include_router(train.router, prefix=f"{settings.api_v1_prefix}/train", tags=["train"])
 # app.include_router(export.router, prefix=f"{settings.api_v1_prefix}/export", tags=["export"])
