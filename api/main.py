@@ -195,6 +195,12 @@ async def root():
 
 if __name__ == "__main__":
     import uvicorn
+    import sys
+    import asyncio
+    
+    # Windows-specific: Use SelectorEventLoop for psycopg async compatibility
+    if sys.platform == 'win32':
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     
     uvicorn.run(
         "api.main:app",
