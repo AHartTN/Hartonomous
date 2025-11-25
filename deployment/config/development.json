@@ -8,7 +8,8 @@
   "database": {
     "host": "localhost",
     "port": 5432,
-    "name": "Hartonomous-DEV-development",
+    "name": "hartonomous",
+    "user": "hartonomous",
     "ssl_mode": "prefer",
     "backup_enabled": true,
     "migration_timeout": 300
