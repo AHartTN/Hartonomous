@@ -30,8 +30,12 @@ write_step "Checking Test Dependencies"
 if ! python3 -m pytest --version &>/dev/null; then
     write_log "Installing test dependencies..." "INFO"
     python3 -m pip install --quiet --upgrade pip
-    python3 -m pip install --quiet pytest pytest-cov pytest-asyncio pytest-mock httpx psycopg2-binary
+    python3 -m pip install --quiet pytest pytest-cov pytest-asyncio pytest-mock httpx
 fi
+
+# Install API dependencies for tests
+write_log "Installing API dependencies..." "INFO"
+python3 -m pip install --quiet -r requirements.txt
 
 write_success "Test dependencies ready"
 
