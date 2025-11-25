@@ -1,0 +1,42 @@
+# FastAPI & ASGI server
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+
+# PostgreSQL async driver (psycopg3)
+psycopg[binary,pool]>=3.1.0
+
+# Environment variables
+python-dotenv>=1.0.0
+
+# Validation
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+
+# Async utilities
+aiofiles>=23.0.0
+httpx>=0.26.0
+
+# Retry logic
+tenacity>=8.2.0
+
+# NumPy/SciPy (matches in-database versions)
+numpy>=1.26.0
+scipy>=1.12.0
+scikit-learn>=1.4.0
+
+# Optional: ML/AI
+# torch>=2.1.0
+# onnx>=1.15.0
+
+# Optional: GPU acceleration
+# cupy-cuda12x>=12.0.0
+
+# Monitoring & logging
+prometheus-client>=0.19.0
+python-json-logger>=2.0.0
+
+# Testing (dev dependencies)
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+httpx>=0.26.0  # for test client
