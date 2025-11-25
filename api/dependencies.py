@@ -83,17 +83,15 @@ async def get_current_user():
     """
     Dependency: Get current authenticated user.
     
-    TODO: Implement JWT authentication
+    Uses Entra ID (internal) or B2C (external) authentication.
     
     Raises:
         HTTPException: If authentication required but not provided
     """
     if settings.auth_enabled:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        # Import here to avoid circular dependency
+        from api.auth import get_current_user as auth_get_current_user
+        return await auth_get_current_user()
     
     # For now, return None (no auth)
     return None

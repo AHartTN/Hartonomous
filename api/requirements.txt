@@ -30,6 +30,15 @@ pillow>=10.2.0
 # Audio processing  
 # wave (stdlib, no install needed)
 
+# Azure SDKs (production)
+azure-identity>=1.15.0
+azure-keyvault-secrets>=4.8.0
+azure-appconfiguration>=1.5.0
+
+# Entra ID / OAuth2
+msal>=1.25.0
+pyjwt[crypto]>=2.8.0
+
 # Optional: ML/AI
 # torch>=2.1.0
 # onnx>=1.15.0

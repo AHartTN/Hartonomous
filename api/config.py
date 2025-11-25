@@ -1,6 +1,8 @@
 """
 Configuration management using Pydantic Settings.
 
+Supports both local .env files and Azure Key Vault + App Configuration.
+
 Environment variables:
 - DATABASE_URL: PostgreSQL connection string
 - PGHOST, PGPORT, PGUSER, PGPASSWORD, PGDATABASE: Individual components
@@ -8,17 +10,43 @@ Environment variables:
 - API_PORT: API server port (default: 8000)
 - LOG_LEVEL: Logging level (default: INFO)
 
+Azure (production):
+- KEY_VAULT_URL: Azure Key Vault URL
+- APP_CONFIG_ENDPOINT: Azure App Configuration endpoint
+- AZURE_CLIENT_ID: Managed Identity client ID (optional)
+
 Copyright © 2025 Anthony Hart. All Rights Reserved.
 """
 
 import os
+import logging
 from typing import Optional
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
     """Application settings with environment variable support."""
+    
+    # Azure Configuration (production)
+    use_azure_config: bool = Field(
+        default=False,
+        description="Use Azure Key Vault + App Configuration"
+    )
+    key_vault_url: Optional[str] = Field(
+        default=None,
+        description="Azure Key Vault URL"
+    )
+    app_config_endpoint: Optional[str] = Field(
+        default=None,
+        description="Azure App Configuration endpoint"
+    )
+    azure_client_id: Optional[str] = Field(
+        default=None,
+        description="Managed Identity client ID"
+    )
     
     # Database Configuration
     database_url: Optional[str] = Field(
@@ -62,9 +90,17 @@ class Settings(BaseSettings):
     rate_limit_enabled: bool = Field(default=True, description="Enable rate limiting")
     rate_limit_per_minute: int = Field(default=100, description="Requests per minute")
     
-    # Authentication (future)
+    # Authentication (Entra ID)
     auth_enabled: bool = Field(default=False, description="Enable authentication")
-    auth_secret_key: Optional[str] = Field(default=None, description="JWT secret key")
+    entra_tenant_id: Optional[str] = Field(default=None, description="Entra ID tenant ID")
+    entra_client_id: Optional[str] = Field(default=None, description="Entra ID client ID")
+    entra_client_secret: Optional[str] = Field(default=None, description="Entra ID client secret")
+    
+    # B2C (CIAM for external users)
+    b2c_enabled: bool = Field(default=False, description="Enable Azure AD B2C")
+    b2c_tenant_name: Optional[str] = Field(default=None, description="B2C tenant name")
+    b2c_client_id: Optional[str] = Field(default=None, description="B2C client ID")
+    b2c_policy_name: Optional[str] = Field(default=None, description="B2C policy name")
     
     # AGE Worker Settings
     age_worker_enabled: bool = Field(default=True, description="Enable AGE sync worker")
@@ -80,6 +116,38 @@ class Settings(BaseSettings):
         case_sensitive=False,
         extra="ignore"
     )
+    
+    @model_validator(mode="after")
+    def load_from_azure(self):
+        """Load secrets from Azure Key Vault if enabled."""
+        if self.use_azure_config and self.key_vault_url:
+            logger.info("Loading configuration from Azure Key Vault...")
+            
+            try:
+                from api.azure_config import get_key_vault_client
+                
+                kv_client = get_key_vault_client()
+                
+                if kv_client:
+                    # Load database password from Key Vault
+                    try:
+                        self.pgpassword = kv_client.get_secret("postgres-password")
+                        logger.info("Loaded postgres-password from Key Vault")
+                    except Exception as e:
+                        logger.warning(f"Could not load postgres-password: {e}")
+                    
+                    # Load Entra ID secret from Key Vault
+                    if self.auth_enabled:
+                        try:
+                            self.entra_client_secret = kv_client.get_secret("entra-client-secret")
+                            logger.info("Loaded entra-client-secret from Key Vault")
+                        except Exception as e:
+                            logger.warning(f"Could not load entra-client-secret: {e}")
+            
+            except ImportError:
+                logger.error("azure-identity or azure-keyvault-secrets not installed")
+        
+        return self
     
     @field_validator("database_url", mode="before")
     @classmethod
