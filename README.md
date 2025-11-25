@@ -27,6 +27,12 @@ This unique architecture provides several key advantages over traditional AI and
 *   **Scalability:** The content-addressed, deduplicated nature of atoms means the database grows very efficiently. The use of PostgreSQL provides a rock-solid, scalable, and battle-tested foundation.
 *   **Data Integrity:** By relying on a transactional database like PostgreSQL, the system ensures data consistency and durability.
 
+## Documentation
+
+*   [Architectural Overview](docs/02-ARCHITECTURE.md)
+*   [Potential Improvements & Technical Roadmap](docs/analysis/IMPROVEMENTS.md)
+*   [Monetization & Commercialization Opportunities](docs/analysis/MONETIZATION.md)
+
 ## System Components
 
 *   **Primary Database:** [PostgreSQL](https://www.postgresql.org/)
