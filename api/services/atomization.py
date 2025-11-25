@@ -31,30 +31,31 @@ class AtomizationService:
             metadata: Optional metadata
         
         Returns:
-            dict: {atom_count: int, root_atom_id: int}
+            dict: {atom_count: int, root_atom_id: int, atom_ids: list}
         """
         try:
+            if metadata is None:
+                metadata = {}
+            
+            import json
             async with conn.cursor() as cur:
                 # Call atomize_text SQL function
                 await cur.execute(
-                    "SELECT atomize_text(%s, %s);",
-                    (text, metadata)
+                    "SELECT atomize_text(%s, %s::jsonb);",
+                    (text, json.dumps(metadata))
                 )
                 
                 result = await cur.fetchone()
-                root_atom_id = result[0] if result else None
-                
-                # Count created atoms (approximate - count characters)
-                atom_count = len(text)
+                atom_ids = result[0] if result else []
                 
                 logger.info(
-                    f"Atomized text: {atom_count} atoms, "
-                    f"root_id={root_atom_id}"
+                    f"Atomized text: {len(atom_ids)} atoms created"
                 )
                 
                 return {
-                    "atom_count": atom_count,
-                    "root_atom_id": root_atom_id
+                    "atom_count": len(atom_ids),
+                    "root_atom_id": atom_ids[0] if atom_ids else None,
+                    "atom_ids": atom_ids
                 }
         
         except Exception as e:
