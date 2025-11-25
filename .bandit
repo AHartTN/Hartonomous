@@ -1,0 +1,22 @@
+# Bandit security scanner configuration
+# https://bandit.readthedocs.io/en/latest/config.html
+
+[bandit]
+# Exclude paths
+exclude_dirs = [
+    '/tests/',
+    '/test/',
+    '/.venv/',
+    '/venv/',
+    '/alembic/versions/'
+]
+
+# Skip specific tests
+skips = [
+    'B101',  # assert_used - allow in test files
+    'B601',  # paramiko_calls
+    'B602',  # subprocess_popen_with_shell_equals_true
+]
+
+# Test IDs to run
+tests = []

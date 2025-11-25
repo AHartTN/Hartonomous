@@ -21,8 +21,8 @@ fi
 
 # Run Bandit (SAST)
 echo "Running Bandit security scan..."
-bandit -r api/ -f json -o bandit-report.json || true
-bandit -r api/ -f txt
+bandit -r api/ -c .bandit -f json -o bandit-report.json || true
+bandit -r api/ -c .bandit -f txt
 
 # Run Safety (dependency vulnerability check)
 echo ""

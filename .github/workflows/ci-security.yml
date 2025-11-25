@@ -2,9 +2,9 @@ name: CI - Security Scanning
 
 on:
   push:
-    branches: [ develop, staging, main ]
+    branches: [develop, staging, main]
   pull_request:
-    branches: [ develop, staging, main ]
+    branches: [develop, staging, main]
   schedule:
     - cron: '0 0 * * 0'  # Weekly on Sunday
   workflow_dispatch:

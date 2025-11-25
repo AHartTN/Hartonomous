@@ -2,9 +2,9 @@ name: CI - Test
 
 on:
   push:
-    branches: [ develop, staging, main ]
+    branches: [develop, staging, main]
   pull_request:
-    branches: [ develop, staging, main ]
+    branches: [develop, staging, main]
   workflow_dispatch:
 
 concurrency:

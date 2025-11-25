@@ -21,6 +21,10 @@ rules:
 
   trailing-spaces: enable
 
+  brackets:
+    max-spaces-inside: 1
+    min-spaces-inside: 0
+
   indentation:
     spaces: 2
     indent-sequences: true

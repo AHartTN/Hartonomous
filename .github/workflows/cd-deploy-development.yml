@@ -2,7 +2,7 @@ name: CD - Deploy to Development
 
 on:
   push:
-    branches: [ develop ]
+    branches: [develop]
   workflow_dispatch:
 
 env:

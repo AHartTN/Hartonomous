@@ -35,6 +35,10 @@ if ! python -m pytest --version &>/dev/null; then
     pip install --quiet pytest pytest-cov pytest-asyncio pytest-mock
 fi
 
+# Install dependencies needed for tests
+write_log "Installing test dependencies..." "INFO"
+pip install --quiet httpx psycopg
+
 write_success "Test dependencies ready"
 
 # Check if tests directory exists
