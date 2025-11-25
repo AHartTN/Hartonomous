@@ -41,6 +41,8 @@ wheels/
 .env.test
 *.env
 .env.*
+setup-github-secrets.ps1
+setup-github-secrets.sh
 
 # Azure credentials & secrets
 .azure/
@@ -94,6 +96,7 @@ site/
 tmp/
 temp/
 *.tmp
+*.tmp.*
 
 # OS
 Thumbs.db

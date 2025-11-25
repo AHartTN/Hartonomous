@@ -48,7 +48,10 @@ function Get-DeploymentTarget {
     param()
 
     $hostname = $env:COMPUTERNAME
-    $osType = if ($IsWindows -or $env:OS -match 'Windows') { 'windows' } else { 'linux' }
+
+    # Check if running on Windows (compatible with PS 5.1 and PS Core)
+    $isWindowsOS = (-not (Get-Variable -Name IsWindows -ErrorAction SilentlyContinue)) -or $IsWindows -or ($env:OS -match 'Windows')
+    $osType = if ($isWindowsOS) { 'windows' } else { 'linux' }
 
     return @{
         Hostname = $hostname

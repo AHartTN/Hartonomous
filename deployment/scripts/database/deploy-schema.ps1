@@ -46,7 +46,8 @@ Write-Log "Database: $dbHost:$dbPort/$dbName" -Level INFO
 
 # Get database password
 $dbPassword = $null
-if ($config.azure.key_vault_url -and $Environment -ne 'development') {
+$kvName = $config.azure.key_vault_name
+if ($kvName -and $Environment -ne 'development') {
     Write-Step "Retrieving Database Credentials from Azure Key Vault"
 
     # Authenticate to Azure
@@ -56,9 +57,8 @@ if ($config.azure.key_vault_url -and $Environment -ne 'development') {
         -ClientSecret $env:AZURE_CLIENT_SECRET `
         -SubscriptionId $env:AZURE_SUBSCRIPTION_ID
 
-    # Get database password
-    $kvName = ($config.azure.key_vault_url -replace 'https://', '' -replace '\.vault\.azure\.net.*', '')
-    $secretName = "PostgreSQL-$($config.database.name)-Password"
+    # Get database password from Key Vault
+    $secretName = $config.secrets.postgres_password
     $dbPassword = Get-KeyVaultSecret -VaultName $kvName -SecretName $secretName
 }
 else {

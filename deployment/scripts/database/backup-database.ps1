@@ -55,7 +55,8 @@ $dbPort = $config.database.port
 $dbUser = $config.database.user
 
 $dbPassword = $null
-if ($config.azure.key_vault_url -and $Environment -ne 'development') {
+$kvName = $config.azure.key_vault_name
+if ($kvName -and $Environment -ne 'development') {
     # Production/Staging: Get from Azure Key Vault
     Connect-AzureWithServicePrincipal `
         -TenantId $env:AZURE_TENANT_ID `
@@ -63,8 +64,7 @@ if ($config.azure.key_vault_url -and $Environment -ne 'development') {
         -ClientSecret $env:AZURE_CLIENT_SECRET `
         -SubscriptionId $env:AZURE_SUBSCRIPTION_ID
 
-    $kvName = ($config.azure.key_vault_url -replace 'https://', '' -replace '\.vault\.azure\.net.*', '')
-    $secretName = "PostgreSQL-$dbName-Password"
+    $secretName = $config.secrets.postgres_password
     $dbPassword = Get-KeyVaultSecret -VaultName $kvName -SecretName $secretName
 }
 else {
