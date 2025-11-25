@@ -114,11 +114,12 @@ orchestrate.sh deploy <env>
    ?? Database backup
    ?? Application backup
     ?
-3. Database Deployment
-   ?? Load extensions
-   ?? Create tables
-   ?? Load functions
-   ?? Create triggers
+3. Database Deployment (Alembic)
+   ?? Create isolated venv (.deployment-venv)
+   ?? Install alembic (hermetic, no system pollution)
+   ?? Run: alembic upgrade head
+   ?? Idempotent (only applies new migrations)
+   ?? Rollback capability (alembic downgrade)
     ?
 4. API Deployment
    ?? Install dependencies

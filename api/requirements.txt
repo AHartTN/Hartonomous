@@ -5,6 +5,9 @@ uvicorn[standard]>=0.27.0
 # PostgreSQL async driver (psycopg3)
 psycopg[binary,pool]>=3.1.0
 
+# Database migrations (Alembic)
+alembic>=1.13.0
+
 # Neo4j Python driver (for provenance graph)
 neo4j>=5.15.0
 

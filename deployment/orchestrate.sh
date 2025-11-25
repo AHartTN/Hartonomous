@@ -183,7 +183,7 @@ cmd_deploy() {
     
     # Step 3: Database
     log_info "Step 3/6: Deploying database schema"
-    "$SCRIPT_DIR/scripts/database/deploy-schema.sh"
+    "$SCRIPT_DIR/scripts/database/migrate.sh" -e "$ENVIRONMENT"
     
     # Step 4: Application
     log_info "Step 4/6: Deploying API"
