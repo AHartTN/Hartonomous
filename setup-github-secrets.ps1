@@ -11,9 +11,9 @@ $AZURE_TENANT_ID = Read-Host "Enter Azure Tenant ID"
 $KEY_VAULT_URL = Read-Host "Enter Key Vault URL (e.g., https://kv-name.vault.azure.net)"
 
 # Development Service Principal
-$AZURE_CLIENT_ID = Read-Host "Enter Azure Client ID"
-$AZURE_CLIENT_SECRET = Read-Host "Enter Azure Client Secret" -AsSecureString
-$AZURE_CLIENT_SECRET_PLAIN = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto([System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($AZURE_CLIENT_SECRET))
+$AZURE_CLIENT_ID = Read-Host "Enter Azure Client ID (Development/Staging)"
+$AZURE_CLIENT_SECRET = Read-Host "Enter Azure Client Secret (Development/Staging)" -AsSecureString
+$AZURE_CLIENT_SECRET_TEXT = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto([System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($AZURE_CLIENT_SECRET))
 
 Write-Host ""
 Write-Host "Configuring repository secrets..." -ForegroundColor Yellow
@@ -23,10 +23,10 @@ gh secret set AZURE_SUBSCRIPTION_ID --body $AZURE_SUBSCRIPTION_ID --repo AHartTN
 gh secret set AZURE_TENANT_ID --body $AZURE_TENANT_ID --repo AHartTN/Hartonomous
 gh secret set KEY_VAULT_URL --body $KEY_VAULT_URL --repo AHartTN/Hartonomous
 gh secret set AZURE_CLIENT_ID --body $AZURE_CLIENT_ID --repo AHartTN/Hartonomous
-gh secret set AZURE_CLIENT_SECRET --body $AZURE_CLIENT_SECRET_PLAIN --repo AHartTN/Hartonomous
+gh secret set AZURE_CLIENT_SECRET --body $AZURE_CLIENT_SECRET_TEXT --repo AHartTN/Hartonomous
 
 # Clear sensitive variable
-$AZURE_CLIENT_SECRET_PLAIN = $null
+$AZURE_CLIENT_SECRET_TEXT = $null
 
 Write-Host ""
 Write-Host "✓ GitHub secrets configured successfully!" -ForegroundColor Green

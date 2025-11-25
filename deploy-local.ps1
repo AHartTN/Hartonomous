@@ -18,10 +18,10 @@ Get-Content ".env" | ForEach-Object {
 
 # Set Azure credentials for deployment scripts
 # These should be loaded from environment variables or .env file
-$env:AZURE_TENANT_ID = $env:AZURE_TENANT_ID ?? "REPLACE_WITH_YOUR_TENANT_ID"
-$env:AZURE_CLIENT_ID = $env:AZURE_CLIENT_ID ?? "REPLACE_WITH_YOUR_CLIENT_ID"
-$env:AZURE_CLIENT_SECRET = $env:AZURE_CLIENT_SECRET ?? "REPLACE_WITH_YOUR_CLIENT_SECRET"
-$env:AZURE_SUBSCRIPTION_ID = $env:AZURE_SUBSCRIPTION_ID ?? "REPLACE_WITH_YOUR_SUBSCRIPTION_ID"
+$env:AZURE_TENANT_ID = $env:AZURE_TENANT_ID ?? ""
+$env:AZURE_CLIENT_ID = $env:AZURE_CLIENT_ID ?? ""
+$env:AZURE_CLIENT_SECRET = $env:AZURE_CLIENT_SECRET ?? ""
+$env:AZURE_SUBSCRIPTION_ID = $env:AZURE_SUBSCRIPTION_ID ?? ""
 
 # Set deployment-specific variables
 $env:LOG_LEVEL = "INFO"
