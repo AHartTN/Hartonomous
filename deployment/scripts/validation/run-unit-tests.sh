@@ -24,8 +24,8 @@ fi
 
 cd "$REPO_ROOT"
 
-# Add API directory to PYTHONPATH
-export PYTHONPATH="$API_PATH:$PYTHONPATH"
+# Add API directory to PYTHONPATH (initialize if unset)
+export PYTHONPATH="${PYTHONPATH:+$PYTHONPATH:}$API_PATH"
 
 # Check if pytest is installed
 write_step "Checking Test Dependencies"
