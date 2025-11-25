@@ -65,7 +65,7 @@ class EntraIDAuth:
         Returns:
             JWKS response
         """
-        global _jwks_cache
+        global _jwks_cache  # noqa: F824
 
         now = datetime.utcnow()
         cache_key = self.jwks_uri
@@ -206,7 +206,7 @@ class B2CAuth:
         Returns:
             JWKS response
         """
-        global _jwks_cache
+        global _jwks_cache  # noqa: F824
 
         now = datetime.utcnow()
         cache_key = self.jwks_uri
