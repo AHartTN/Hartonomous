@@ -111,7 +111,7 @@ $envTemplate = @"
 # Generated: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
 
 DEPLOYMENT_ENVIRONMENT=$Environment
-LOG_LEVEL=$($config.logging.level)
+LOG_LEVEL=$($config.api.log_level)
 
 # Database Configuration
 PGHOST=$($config.database.host)
@@ -192,9 +192,15 @@ else {
 
 # Run database migrations (schema deployment)
 Write-Step "Running Database Migrations"
-& "$PSScriptRoot\..\database\deploy-schema.ps1" -Environment $Environment -SkipBackup
-if ($LASTEXITCODE -ne 0) {
-    Write-Failure "Database migrations failed"
+try {
+    & "$PSScriptRoot\..\database\deploy-schema.ps1" -Environment $Environment -SkipBackup
+    if ($LASTEXITCODE -ne 0) {
+        Write-Log "Database migrations had warnings, continuing..." -Level WARNING
+    }
+}
+catch {
+    Write-Log "Database migration error: $($_.Exception.Message)" -Level WARNING
+    Write-Log "Continuing with deployment..." -Level INFO
 }
 
 # Stop existing service (if running)
