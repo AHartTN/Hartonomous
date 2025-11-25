@@ -1,0 +1,108 @@
+[MAIN]
+# Python code to execute, usually for sys.path manipulation
+init-hook='import sys; sys.path.append(".")'
+
+# Files or directories to be skipped
+ignore=CVS,.git,__pycache__,.venv,venv,alembic/versions
+
+# Use multiple processes to speed up Pylint
+jobs=4
+
+# Pickle collected data for later comparisons
+persistent=yes
+
+# When enabled, pylint would attempt to guess common misconfiguration and emit
+# user-friendly hints instead of false-positive error messages
+suggestion-mode=yes
+
+[MESSAGES CONTROL]
+# Disable specific warnings
+disable=
+    C0103,  # invalid-name (snake_case preference)
+    C0114,  # missing-module-docstring
+    C0115,  # missing-class-docstring
+    C0116,  # missing-function-docstring
+    R0801,  # duplicate-code (acceptable for similar services)
+    R0903,  # too-few-public-methods
+    R0913,  # too-many-arguments
+    W0511,  # fixme (TODO comments)
+    W1203,  # logging-fstring-interpolation
+    E1101,  # no-member (false positives with dynamic attrs)
+
+[REPORTS]
+# Set the output format
+output-format=colorized
+
+# Tells whether to display a full report or only the messages
+reports=no
+
+# Activate the evaluation score
+score=yes
+
+[BASIC]
+# Good variable names which should always be accepted
+good-names=i,j,k,ex,Run,_,id,db,conn,cur,app,e
+
+# Regular expression matching correct function names
+function-rgx=[a-z_][a-z0-9_]{2,50}$
+
+# Regular expression matching correct variable names
+variable-rgx=[a-z_][a-z0-9_]{2,50}$
+
+# Regular expression matching correct constant names
+const-rgx=(([A-Z_][A-Z0-9_]*)|(__.*__))$
+
+# Regular expression matching correct class names
+class-rgx=[A-Z_][a-zA-Z0-9]+$
+
+[FORMAT]
+# Maximum number of characters on a single line
+max-line-length=120
+
+# Maximum number of lines in a module
+max-module-lines=1500
+
+# String used as indentation unit
+indent-string='    '
+
+# Expected format of line ending
+expected-line-ending-format=LF
+
+[DESIGN]
+# Maximum number of arguments for function / method
+max-args=10
+
+# Maximum number of locals for function / method body
+max-locals=25
+
+# Maximum number of return / yield for function / method body
+max-returns=10
+
+# Maximum number of branch for function / method body
+max-branches=20
+
+# Maximum number of statements in function / method body
+max-statements=100
+
+# Maximum number of parents for a class
+max-parents=7
+
+# Maximum number of attributes for a class
+max-attributes=15
+
+# Minimum number of public methods for a class
+min-public-methods=1
+
+# Maximum number of public methods for a class
+max-public-methods=30
+
+[IMPORTS]
+# Deprecated modules which should not be used
+deprecated-modules=optparse
+
+# Allow wildcard imports from specific modules
+allow-wildcard-with-all=no
+
+[EXCEPTIONS]
+# Exceptions that will emit a warning when being caught
+overgeneral-exceptions=builtins.Exception

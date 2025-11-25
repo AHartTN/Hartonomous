@@ -9,12 +9,14 @@
     "host": "localhost",
     "port": 5432,
     "name": "hartonomous_staging",
+    "user": "hartonomous",
     "ssl_mode": "require",
     "backup_enabled": true,
     "migration_timeout": 600
   },
   "neo4j": {
     "uri": "bolt://localhost:7687",
+    "user": "neo4j",
     "database": "neo4j",
     "edition": "community"
   },
@@ -28,6 +30,7 @@
   "azure": {
     "resource_group": "rg-hartonomous",
     "key_vault_name": "kv-hartonomous",
+    "key_vault_url": "https://kv-hartonomous.vault.azure.net",
     "app_config_endpoint": "https://appconfig-hartonomous.azconfig.io",
     "use_managed_identity": true
   },

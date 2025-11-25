@@ -17,12 +17,7 @@ source "$SCRIPT_DIR/../common/azure-auth.sh"
 # Initialize logger
 ENVIRONMENT="${DEPLOYMENT_ENVIRONMENT:-}"
 LOG_LEVEL="${LOG_LEVEL:-INFO}"
-LOG_PATH="${LOG_PATH:-/var/log/hartonomous}"
-
-# Create log directory if it doesn't exist
-mkdir -p "$LOG_PATH"
-
-initialize_logger "$LOG_PATH/preflight-$(date '+%Y%m%d-%H%M%S').log" "$LOG_LEVEL"
+initialize_logger "/var/log/hartonomous/preflight-$(date '+%Y%m%d-%H%M%S').log" "$LOG_LEVEL"
 
 write_step "Preflight Checks - Prerequisites"
 

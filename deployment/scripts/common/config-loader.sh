@@ -10,13 +10,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./logger.sh
 source "$SCRIPT_DIR/logger.sh"
 
-function get_deployment_config() {
+function load_deployment_config() {
     # Load environment-specific configuration
-    # Usage: get_deployment_config <environment>
+    # Usage: load_deployment_config <environment>
 
     local environment="$1"
 
-    write_step "Loading Configuration for $environment"
+    write_log "Loading configuration for: $environment" "INFO"
 
     # Config file path
     local config_path="$SCRIPT_DIR/../../config/${environment}.json"
@@ -25,12 +25,21 @@ function get_deployment_config() {
         write_failure "Configuration file not found: $config_path"
     fi
 
-    # Load and parse JSON
-    if ! cat "$config_path"; then
+    # Load and parse JSON - expose as global variable
+    if ! DEPLOYMENT_CONFIG=$(cat "$config_path"); then
         write_failure "Failed to load configuration"
     fi
 
-    write_success "Configuration loaded: $environment"
+    # Export for use in other scripts
+    export DEPLOYMENT_CONFIG
+
+    write_log "Configuration loaded successfully" "DEBUG"
+}
+
+function get_deployment_config() {
+    # Legacy function - redirects to load_deployment_config
+    load_deployment_config "$1"
+    echo "$DEPLOYMENT_CONFIG"
 }
 
 function get_deployment_target() {

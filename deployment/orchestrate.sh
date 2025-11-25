@@ -360,45 +360,8 @@ main() {
             cmd_logs "$@"
             ;;
         rollback)
-            if [[ $# -eq 0 ]]; then
-                log_error "Environment required"
-                show_usage
-                exit 1
-            fi
-            
-            ENV=$(normalize_env "$1")
-            shift
-            
-            # Parse rollback options
-            FORCE=false
-            while [[ $# -gt 0 ]]; do
-                case $1 in
-                    --force) FORCE=true; shift ;;
-                    *) log_error "Unknown option: $1"; exit 1 ;;
-                esac
-            done
-            
-            log_warning "========================================="
-            log_warning "ROLLBACK DEPLOYMENT"
-            log_warning "Environment: $ENV"
-            log_warning "========================================="
-            
-            if [[ "$FORCE" != "true" && "$ENV" == "production" ]]; then
-                read -p "Rollback PRODUCTION deployment? This will restore backups. Type 'rollback production' to confirm: " confirm
-                if [[ "$confirm" != "rollback production" ]]; then
-                    log_warning "Rollback cancelled"
-                    exit 0
-                fi
-            fi
-            
-            export DEPLOYMENT_ENVIRONMENT="$ENV"
-            
-            if [[ -f "$SCRIPT_DIR/scripts/rollback/rollback-deployment.sh" ]]; then
-                "$SCRIPT_DIR/scripts/rollback/rollback-deployment.sh"
-            else
-                log_error "Rollback script not found: $SCRIPT_DIR/scripts/rollback/rollback-deployment.sh"
-                exit 1
-            fi
+            log_error "Rollback not yet implemented"
+            exit 1
             ;;
         --help|-h|help)
             show_usage

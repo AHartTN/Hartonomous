@@ -16,46 +16,19 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Fetch supporters from Ko-fi
-        if: ${{ secrets.KOFI_TOKEN != '' }}
         id: fetch-supporters
-        env:
-          KOFI_TOKEN: ${{ secrets.KOFI_TOKEN }}
         run: |
-          # Ko-fi doesn't have a public API - supporters must be manually maintained
-          # This workflow checks if a supporters JSON file exists
-          if [ -f ".github/supporters/coffee.json" ]; then
-            SUPPORTERS=$(cat .github/supporters/coffee.json | jq -r '.supporters | join(", ")')
-            echo "supporters=$SUPPORTERS" >> $GITHUB_OUTPUT
-            echo "has_supporters=true" >> $GITHUB_OUTPUT
-          else
-            echo "supporters=" >> $GITHUB_OUTPUT
-            echo "has_supporters=false" >> $GITHUB_OUTPUT
-          fi
+          # This would integrate with Ko-fi API
+          # For now, placeholder
+          echo "supporters=[]" >> $GITHUB_OUTPUT
 
       - name: Update README with supporters
-        if: steps.fetch-supporters.outputs.has_supporters == 'true'
         run: |
-          SUPPORTERS="${{ steps.fetch-supporters.outputs.supporters }}"
-          
-          # Create or update supporters section in README
-          if grep -q "## ☕ Coffee Supporters" README.md; then
-            # Update existing section
-            sed -i "/## ☕ Coffee Supporters/,/^##/c\## ☕ Coffee Supporters\n\nThank you to these generous supporters:\n\n$SUPPORTERS\n\n" README.md
-          else
-            # Append new section
-            echo "" >> README.md
-            echo "## ☕ Coffee Supporters" >> README.md
-            echo "" >> README.md
-            echo "Thank you to these generous supporters:" >> README.md
-            echo "" >> README.md
-            echo "$SUPPORTERS" >> README.md
-          fi
+          # Update supporters section in README
+          echo "☕ Coffee supporters would be listed here"
 
       - name: Commit changes
-        if: steps.fetch-supporters.outputs.has_supporters == 'true'
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "docs: Update coffee supporters list"
           file_pattern: README.md
-          commit_user_name: "github-actions[bot]"
-          commit_user_email: "github-actions[bot]@users.noreply.github.com"

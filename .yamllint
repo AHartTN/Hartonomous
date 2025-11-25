@@ -1,0 +1,26 @@
+---
+# YAML Lint Configuration for Hartonomous
+# This configuration relaxes some rules for GitHub Actions workflows
+
+extends: default
+
+rules:
+  line-length:
+    max: 120
+    level: warning
+
+  document-start:
+    present: false
+
+  truthy:
+    allowed-values: ['true', 'false', 'on', 'off']
+    check-keys: false
+
+  comments:
+    min-spaces-from-content: 1
+
+  trailing-spaces: enable
+
+  indentation:
+    spaces: 2
+    indent-sequences: true

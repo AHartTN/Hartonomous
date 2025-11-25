@@ -73,17 +73,14 @@ if [[ "$ENVIRONMENT" != "development" ]]; then
     write_step "Retrieving Database Credentials from Azure Key Vault"
 
     # Authenticate to Azure
-    connect_azure_service_principal \
-        "$AZURE_TENANT_ID" \
-        "$AZURE_CLIENT_ID" \
-        "$AZURE_CLIENT_SECRET" \
-        "${AZURE_SUBSCRIPTION_ID:-}"
+    azure_login
 
-    # Get Key Vault name and secret name from config
-    KV_NAME=$(echo "$DEPLOYMENT_CONFIG" | jq -r '.azure.key_vault_name')
-    SECRET_NAME=$(echo "$DEPLOYMENT_CONFIG" | jq -r '.secrets.postgres_password')
+    # Get Key Vault name
+    KV_URL=$(echo "$DEPLOYMENT_CONFIG" | jq -r '.azure.key_vault_url')
+    KV_NAME=$(echo "$KV_URL" | sed 's|https://||' | sed 's|\.vault\.azure\.net.*||')
 
-    # Get database password from Key Vault
+    # Get database password
+    SECRET_NAME="PostgreSQL-$DB_NAME-Password"
     DB_PASSWORD=$(get_keyvault_secret "$KV_NAME" "$SECRET_NAME")
 else
     # Development: Use environment variable

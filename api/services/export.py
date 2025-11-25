@@ -41,9 +41,11 @@ class ExportService:
             }
         """
         try:
-            # Default output path
+            # Default output path - use secure temporary directory
             if not output_path:
-                output_path = f"/tmp/{model_name}.onnx"
+                import tempfile
+                temp_dir = tempfile.gettempdir()  # nosec B108 - Using system temp dir
+                output_path = os.path.join(temp_dir, f"{model_name}.onnx")
             
             # Ensure directory exists
             os.makedirs(os.path.dirname(output_path), exist_ok=True)

@@ -69,7 +69,10 @@ class Settings(BaseSettings):
     pool_max_idle: int = Field(default=600, description="Max idle time (seconds)")
     
     # API Server Settings
-    api_host: str = Field(default="0.0.0.0", description="API host")
+    api_host: str = Field(
+        default="127.0.0.1",  # nosec B104 - Bind to localhost by default for security
+        description="API host"
+    )
     api_port: int = Field(default=8000, description="API port")
     api_reload: bool = Field(default=False, description="Enable auto-reload")
     

@@ -22,8 +22,8 @@ Set-StrictMode -Version Latest
 . "$PSScriptRoot\..\common\config-loader.ps1"
 . "$PSScriptRoot\..\common\azure-auth.ps1"
 
-# Initialize logger (no file logging for now)
-Initialize-Logger -Level ($env:LOG_LEVEL ?? 'INFO')
+# Initialize logger
+Initialize-Logger -Level $env:LOG_LEVEL ?? 'INFO'
 
 Write-Step "API Application Deployment"
 
@@ -111,7 +111,7 @@ $envTemplate = @"
 # Generated: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
 
 DEPLOYMENT_ENVIRONMENT=$Environment
-LOG_LEVEL=$($config.api.log_level)
+LOG_LEVEL=$($config.logging.level)
 
 # Database Configuration
 PGHOST=$($config.database.host)
@@ -192,15 +192,9 @@ else {
 
 # Run database migrations (schema deployment)
 Write-Step "Running Database Migrations"
-try {
-    & "$PSScriptRoot\..\database\deploy-schema.ps1" -Environment $Environment -SkipBackup
-    if ($LASTEXITCODE -ne 0) {
-        Write-Log "Database migrations had warnings, continuing..." -Level WARNING
-    }
-}
-catch {
-    Write-Log "Database migration error: $($_.Exception.Message)" -Level WARNING
-    Write-Log "Continuing with deployment..." -Level INFO
+& "$PSScriptRoot\..\database\deploy-schema.ps1" -Environment $Environment -SkipBackup
+if ($LASTEXITCODE -ne 0) {
+    Write-Failure "Database migrations failed"
 }
 
 # Stop existing service (if running)
