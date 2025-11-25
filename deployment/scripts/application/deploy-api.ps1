@@ -22,8 +22,8 @@ Set-StrictMode -Version Latest
 . "$PSScriptRoot\..\common\config-loader.ps1"
 . "$PSScriptRoot\..\common\azure-auth.ps1"
 
-# Initialize logger
-Initialize-Logger -Level $env:LOG_LEVEL ?? 'INFO'
+# Initialize logger (no file logging for now)
+Initialize-Logger -Level ($env:LOG_LEVEL ?? 'INFO')
 
 Write-Step "API Application Deployment"
 
