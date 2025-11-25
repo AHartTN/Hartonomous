@@ -149,9 +149,13 @@ app.include_router(
     tags=["train"]
 )
 
-# Future routers (will be added as we build them)
-# from api.routes import export
-# app.include_router(export.router, prefix=f"{settings.api_v1_prefix}/export", tags=["export"])
+# Export routes
+from api.routes import export
+app.include_router(
+    export.router,
+    prefix=f"{settings.api_v1_prefix}/export",
+    tags=["export"]
+)
 
 
 @app.get("/")

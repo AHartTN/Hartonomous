@@ -24,6 +24,11 @@ from api.models.training import (
     BatchTrainResponse,
 )
 
+from api.models.export import (
+    OnnxExportRequest,
+    OnnxExportResponse,
+)
+
 __all__ = [
     "TextIngestRequest",
     "ImageIngestRequest",
@@ -40,4 +45,6 @@ __all__ = [
     "BatchTrainRequest",
     "TrainingSampleResult",
     "BatchTrainResponse",
+    "OnnxExportRequest",
+    "OnnxExportResponse",
 ]
