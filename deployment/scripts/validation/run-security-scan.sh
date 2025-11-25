@@ -27,8 +27,11 @@ bandit -r api/ -c .bandit -f txt
 # Run Safety (dependency vulnerability check)
 echo ""
 echo "Running Safety dependency check..."
-safety check --json || true
-safety check
+cd api
+safety check --file requirements.txt --json || true
+safety check --file requirements.txt
+
+cd "$REPO_ROOT"
 
 echo ""
 echo "Security scan complete"
