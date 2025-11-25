@@ -75,3 +75,7 @@ temp/
 Thumbs.db
 .Spotlight-V100
 .Trashes
+
+# Git commit message files (except convention)
+.gitmsg/*.txt
+.gitmsg/archive/

@@ -1,0 +1,3 @@
+# .gitmsg directory should be in gitignore except CONVENTION.md
+*.txt
+!CONVENTION.md
