@@ -17,6 +17,18 @@ CQRS + Vectorization: PostgreSQL (Command) + Apache AGE (Query)
 
 ---
 
+## ?? Documentation
+
+**? [Complete Documentation Index](docs/INDEX.md)** ?
+
+**Quick Links:**
+- **New Users**: [Getting Started](docs/03-GETTING-STARTED.md)
+- **Developers**: [Python App Guide](docs/PYTHON-APP-RESEARCH.md) | [API Reference](docs/10-API-REFERENCE.md)
+- **Architects**: [CQRS Architecture](docs/CQRS-ARCHITECTURE.md) | [Vectorization](docs/VECTORIZATION.md)
+- **Current Status**: [Development Roadmap](DEVELOPMENT-ROADMAP.md)
+
+---
+
 ## The Innovation Stack
 
 ### 1. CQRS Architecture
@@ -158,10 +170,18 @@ SELECT * FROM gram_schmidt_vectorized(atom_ids);
 
 ## Documentation
 
-- **[VECTORIZATION.md](docs/VECTORIZATION.md)** - Complete vectorization guide
-- **[AI-OPERATIONS.md](docs/AI-OPERATIONS.md)** - In-database AI operations
-- **[CQRS-ARCHITECTURE.md](docs/CQRS-ARCHITECTURE.md)** - CQRS pattern
-- **[AUDIT-REPORT.md](AUDIT-REPORT.md)** - Code quality
+**? [Complete Documentation Index](docs/INDEX.md)** ?
+
+**Technical Guides:**
+- [CQRS Architecture](docs/CQRS-ARCHITECTURE.md) - PostgreSQL + AGE pattern
+- [Vectorization Guide](docs/VECTORIZATION.md) - SIMD/AVX strategies
+- [AI Operations](docs/AI-OPERATIONS.md) - In-database ML
+- [Python App Guide](docs/PYTHON-APP-RESEARCH.md) - FastAPI + psycopg3
+
+**Project Docs:**
+- [Development Roadmap](DEVELOPMENT-ROADMAP.md) - Current status & priorities
+- [Audit Report](AUDIT-REPORT.md) - Code quality
+- [Business Summary](BUSINESS-SUMMARY.md) - Business value
 
 ---
 
