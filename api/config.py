@@ -119,33 +119,115 @@ class Settings(BaseSettings):
     
     @model_validator(mode="after")
     def load_from_azure(self):
-        """Load secrets from Azure Key Vault if enabled."""
-        if self.use_azure_config and self.key_vault_url:
-            logger.info("Loading configuration from Azure Key Vault...")
+        """Load secrets from Azure Key Vault and settings from App Configuration."""
+        if self.use_azure_config:
+            logger.info("Loading configuration from Azure...")
             
             try:
-                from api.azure_config import get_key_vault_client
+                from api.azure_config import get_key_vault_client, get_app_config_client
                 
                 kv_client = get_key_vault_client()
+                app_config_client = get_app_config_client()
                 
-                if kv_client:
-                    # Load database password from Key Vault
+                # Load from App Configuration
+                if app_config_client:
                     try:
-                        self.pgpassword = kv_client.get_secret("postgres-password")
-                        logger.info("Loaded postgres-password from Key Vault")
-                    except Exception as e:
-                        logger.warning(f"Could not load postgres-password: {e}")
+                        # API settings
+                        self.api_host = app_config_client.get_setting("Hartonomous:Api:Host") or self.api_host
+                        self.api_port = int(app_config_client.get_setting("Hartonomous:Api:Port") or self.api_port)
+                        self.log_level = app_config_client.get_setting("Hartonomous:Api:LogLevel") or self.log_level
+                        
+                        # CORS origins (comma-separated)
+                        cors_origins_str = app_config_client.get_setting("Hartonomous:Api:CorsOrigins")
+                        if cors_origins_str:
+                            self.cors_origins = [origin.strip() for origin in cors_origins_str.split(",")]
+                        
+                        # Auth settings
+                        auth_enabled_str = app_config_client.get_setting("Hartonomous:Api:AuthEnabled")
+                        if auth_enabled_str:
+                            self.auth_enabled = auth_enabled_str.lower() == "true"
+                        
+                        # Pool settings
+                        pool_min = app_config_client.get_setting("Hartonomous:Api:PoolMinSize")
+                        if pool_min:
+                            self.pool_min_size = int(pool_min)
+                        
+                        pool_max = app_config_client.get_setting("Hartonomous:Api:PoolMaxSize")
+                        if pool_max:
+                            self.pool_max_size = int(pool_max)
+                        
+                        # AGE worker settings
+                        age_enabled_str = app_config_client.get_setting("Hartonomous:AgeWorker:Enabled")
+                        if age_enabled_str:
+                            self.age_worker_enabled = age_enabled_str.lower() == "true"
+                        
+                        age_interval = app_config_client.get_setting("Hartonomous:AgeWorker:PollInterval")
+                        if age_interval:
+                            self.age_worker_poll_interval = int(age_interval)
+                        
+                        # PostgreSQL connection string (choose based on environment)
+                        # For now, use HART-DESKTOP (current machine)
+                        import socket
+                        hostname = socket.gethostname().upper()
+                        
+                        if hostname == "HART-DESKTOP":
+                            pg_host_str = app_config_client.get_setting("ConnectionStrings:PostgreSQL-HART-DESKTOP")
+                        elif hostname.lower() == "hart-server":
+                            pg_host_str = app_config_client.get_setting("ConnectionStrings:PostgreSQL-hart-server")
+                        else:
+                            # Fallback to HART-DESKTOP
+                            pg_host_str = app_config_client.get_setting("ConnectionStrings:PostgreSQL-HART-DESKTOP")
+                        
+                        if pg_host_str:
+                            # Parse connection string components
+                            for part in pg_host_str.split(";"):
+                                if "=" in part:
+                                    key, val = part.split("=", 1)
+                                    key = key.strip().lower()
+                                    val = val.strip()
+                                    
+                                    if key == "host":
+                                        self.pghost = val
+                                    elif key == "port":
+                                        self.pgport = int(val)
+                                    elif key == "database":
+                                        self.pgdatabase = val
+                                    elif key == "username":
+                                        self.pguser = val
+                        
+                        logger.info("Loaded settings from App Configuration")
                     
-                    # Load Entra ID secret from Key Vault
+                    except Exception as e:
+                        logger.warning(f"Could not load from App Configuration: {e}")
+                
+                # Load secrets from Key Vault
+                if kv_client:
+                    try:
+                        # PostgreSQL password
+                        self.pgpassword = kv_client.get_secret("PostgreSQL-Hartonomous-Password")
+                        logger.info("Loaded PostgreSQL password from Key Vault")
+                    except Exception as e:
+                        logger.warning(f"Could not load PostgreSQL password: {e}")
+                    
+                    # Entra ID client secret
                     if self.auth_enabled:
                         try:
-                            self.entra_client_secret = kv_client.get_secret("entra-client-secret")
-                            logger.info("Loaded entra-client-secret from Key Vault")
+                            self.entra_client_secret = kv_client.get_secret("AzureAd-ClientSecret")
+                            logger.info("Loaded Entra ID client secret from Key Vault")
                         except Exception as e:
-                            logger.warning(f"Could not load entra-client-secret: {e}")
+                            logger.warning(f"Could not load Entra ID client secret: {e}")
+                    
+                    # B2C client secret
+                    if self.b2c_enabled:
+                        try:
+                            # Note: Using EntraExternalId-ClientSecret (CIAM successor to B2C)
+                            self.entra_client_secret = kv_client.get_secret("EntraExternalId-ClientSecret")
+                            logger.info("Loaded CIAM client secret from Key Vault")
+                        except Exception as e:
+                            logger.warning(f"Could not load CIAM client secret: {e}")
             
             except ImportError:
-                logger.error("azure-identity or azure-keyvault-secrets not installed")
+                logger.error("Azure SDKs not installed (azure-identity, azure-keyvault-secrets, azure-appconfiguration)")
         
         return self
     
