@@ -87,8 +87,7 @@ stages:
   dependsOn: DeployDev
   condition: succeeded()
   jobs:
-  - deployment: DeployStaging
-Job
+  - deployment: DeployStagingJob
     displayName: 'Deploy to Staging Environment'
     pool:
       name: 'Default'
