@@ -20,7 +20,6 @@ jobs:
             docker/
             alembic/
             alembic.ini
-            .env
           retention-days: 7
 
   deploy-development:
@@ -53,14 +52,12 @@ jobs:
         run: |
           cd source
           tar -czf ../deploy.tar.gz .
-          ARTIFACT_B64=$(base64 -w 0 ../deploy.tar.gz)
+          base64 -w 0 ../deploy.tar.gz > ../deploy.b64
           
           if [ "${{ vars.OS_TYPE }}" == "windows" ]; then
-            SCRIPT="cd C:\temp; if (Test-Path deploy) { Remove-Item -Recurse -Force deploy }; mkdir deploy; cd deploy; @'
-$ARTIFACT_B64
-'@ | Out-File -Encoding ASCII a.b64; certutil -decode a.b64 a.tar.gz; tar -xzf a.tar.gz; docker build -t ${{ vars.CONTAINER_NAME }}:${{ github.sha }} -f docker/Dockerfile .; docker stop ${{ vars.CONTAINER_NAME }} 2>\$null; docker rm ${{ vars.CONTAINER_NAME }} 2>\$null; docker run -d --name ${{ vars.CONTAINER_NAME }} --restart unless-stopped -p ${{ vars.API_PORT }}:8000 -e LOG_LEVEL=${{ vars.LOG_LEVEL }} ${{ vars.CONTAINER_NAME }}:${{ github.sha }}; docker ps"
+            SCRIPT='cd C:\temp; if (Test-Path deploy) { Remove-Item -Recurse -Force deploy }; mkdir deploy; cd deploy; Invoke-WebRequest -Uri https://github.com/AHartTN/Hartonomous/archive/${{ github.sha }}.tar.gz -OutFile code.tar.gz; tar -xzf code.tar.gz --strip-components=1; docker build -t ${{ vars.CONTAINER_NAME }}:${{ github.sha }} -f docker/Dockerfile .; docker stop ${{ vars.CONTAINER_NAME }} 2>$null; docker rm ${{ vars.CONTAINER_NAME }} 2>$null; docker run -d --name ${{ vars.CONTAINER_NAME }} --restart unless-stopped -p ${{ vars.API_PORT }}:8000 -e LOG_LEVEL=${{ vars.LOG_LEVEL }} ${{ vars.CONTAINER_NAME }}:${{ github.sha }}; docker ps'
           else
-            SCRIPT="cd /tmp; rm -rf deploy; mkdir deploy; cd deploy; echo '$ARTIFACT_B64' | base64 -d > a.tar.gz; tar -xzf a.tar.gz; docker build -t ${{ vars.CONTAINER_NAME }}:${{ github.sha }} -f docker/Dockerfile .; docker stop ${{ vars.CONTAINER_NAME }} 2>/dev/null || true; docker rm ${{ vars.CONTAINER_NAME }} 2>/dev/null || true; docker run -d --name ${{ vars.CONTAINER_NAME }} --restart unless-stopped -p ${{ vars.API_PORT }}:8000 -e LOG_LEVEL=${{ vars.LOG_LEVEL }} ${{ vars.CONTAINER_NAME }}:${{ github.sha }}; docker ps | grep ${{ vars.CONTAINER_NAME }}"
+            SCRIPT='cd /tmp; rm -rf deploy; mkdir deploy; cd deploy; curl -sL https://github.com/AHartTN/Hartonomous/archive/${{ github.sha }}.tar.gz | tar -xz --strip-components=1; docker build -t ${{ vars.CONTAINER_NAME }}:${{ github.sha }} -f docker/Dockerfile .; docker stop ${{ vars.CONTAINER_NAME }} 2>/dev/null || true; docker rm ${{ vars.CONTAINER_NAME }} 2>/dev/null || true; docker run -d --name ${{ vars.CONTAINER_NAME }} --restart unless-stopped -p ${{ vars.API_PORT }}:8000 -e LOG_LEVEL=${{ vars.LOG_LEVEL }} ${{ vars.CONTAINER_NAME }}:${{ github.sha }}; docker ps | grep ${{ vars.CONTAINER_NAME }}'
           fi
           
           az connectedmachine run-command create \
@@ -83,11 +80,6 @@ $ARTIFACT_B64
       contents: read
     
     steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: source-code
-          path: source
-      
       - uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -98,16 +90,10 @@ $ARTIFACT_B64
       
       - name: Deploy to Staging
         run: |
-          cd source
-          tar -czf ../deploy.tar.gz .
-          ARTIFACT_B64=$(base64 -w 0 ../deploy.tar.gz)
-          
           if [ "${{ vars.OS_TYPE }}" == "windows" ]; then
-            SCRIPT="cd C:\temp; if (Test-Path deploy) { Remove-Item -Recurse -Force deploy }; mkdir deploy; cd deploy; @'
-$ARTIFACT_B64
-'@ | Out-File -Encoding ASCII a.b64; certutil -decode a.b64 a.tar.gz; tar -xzf a.tar.gz; docker build -t ${{ vars.CONTAINER_NAME }}:${{ github.sha }} -f docker/Dockerfile .; docker stop ${{ vars.CONTAINER_NAME }} 2>\$null; docker rm ${{ vars.CONTAINER_NAME }} 2>\$null; docker run -d --name ${{ vars.CONTAINER_NAME }} --restart unless-stopped -p ${{ vars.API_PORT }}:8000 -e LOG_LEVEL=${{ vars.LOG_LEVEL }} ${{ vars.CONTAINER_NAME }}:${{ github.sha }}; docker ps"
+            SCRIPT='cd C:\temp; if (Test-Path deploy) { Remove-Item -Recurse -Force deploy }; mkdir deploy; cd deploy; Invoke-WebRequest -Uri https://github.com/AHartTN/Hartonomous/archive/${{ github.sha }}.tar.gz -OutFile code.tar.gz; tar -xzf code.tar.gz --strip-components=1; docker build -t ${{ vars.CONTAINER_NAME }}:${{ github.sha }} -f docker/Dockerfile .; docker stop ${{ vars.CONTAINER_NAME }} 2>$null; docker rm ${{ vars.CONTAINER_NAME }} 2>$null; docker run -d --name ${{ vars.CONTAINER_NAME }} --restart unless-stopped -p ${{ vars.API_PORT }}:8000 -e LOG_LEVEL=${{ vars.LOG_LEVEL }} ${{ vars.CONTAINER_NAME }}:${{ github.sha }}; docker ps'
           else
-            SCRIPT="cd /tmp; rm -rf deploy; mkdir deploy; cd deploy; echo '$ARTIFACT_B64' | base64 -d > a.tar.gz; tar -xzf a.tar.gz; docker build -t ${{ vars.CONTAINER_NAME }}:${{ github.sha }} -f docker/Dockerfile .; docker stop ${{ vars.CONTAINER_NAME }} 2>/dev/null || true; docker rm ${{ vars.CONTAINER_NAME }} 2>/dev/null || true; docker run -d --name ${{ vars.CONTAINER_NAME }} --restart unless-stopped -p ${{ vars.API_PORT }}:8000 -e LOG_LEVEL=${{ vars.LOG_LEVEL }} ${{ vars.CONTAINER_NAME }}:${{ github.sha }}; docker ps | grep ${{ vars.CONTAINER_NAME }}"
+            SCRIPT='cd /tmp; rm -rf deploy; mkdir deploy; cd deploy; curl -sL https://github.com/AHartTN/Hartonomous/archive/${{ github.sha }}.tar.gz | tar -xz --strip-components=1; docker build -t ${{ vars.CONTAINER_NAME }}:${{ github.sha }} -f docker/Dockerfile .; docker stop ${{ vars.CONTAINER_NAME }} 2>/dev/null || true; docker rm ${{ vars.CONTAINER_NAME }} 2>/dev/null || true; docker run -d --name ${{ vars.CONTAINER_NAME }} --restart unless-stopped -p ${{ vars.API_PORT }}:8000 -e LOG_LEVEL=${{ vars.LOG_LEVEL }} ${{ vars.CONTAINER_NAME }}:${{ github.sha }}; docker ps | grep ${{ vars.CONTAINER_NAME }}'
           fi
           
           az connectedmachine run-command create \
