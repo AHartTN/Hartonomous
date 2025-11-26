@@ -4,7 +4,9 @@
       "WebSearch",
       "Bash(gh workflow:*)",
       "Bash(cat:*)",
-      "Bash(gh run view:*)"
+      "Bash(gh run view:*)",
+      "Bash(az connectedmachine list:*)",
+      "Bash(az connectedmachine show:*)"
     ],
     "deny": [],
     "ask": []

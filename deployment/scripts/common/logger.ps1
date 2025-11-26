@@ -7,7 +7,7 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 # Log levels
-$script:LogLevel = @{
+$script:LogLevelMap = @{
     DEBUG   = 0
     INFO    = 1
     WARNING = 2
@@ -15,7 +15,7 @@ $script:LogLevel = @{
 }
 
 # Current log level (default: INFO)
-$script:CurrentLogLevel = $script:LogLevel.INFO
+$script:CurrentLogLevel = $script:LogLevelMap.INFO
 
 # Log file path
 $script:LogFile = $null
@@ -26,16 +26,16 @@ function Initialize-Logger {
         Initialize the logging system
     .PARAMETER LogFilePath
         Path to log file (optional)
-    .PARAMETER Level
+    .PARAMETER LogLevelName
         Minimum log level (DEBUG, INFO, WARNING, ERROR)
     #>
     param(
         [string]$LogFilePath = $null,
         [ValidateSet('DEBUG', 'INFO', 'WARNING', 'ERROR')]
-        [string]$Level = 'INFO'
+        [string]$LogLevelName = 'INFO'
     )
 
-    $script:CurrentLogLevel = $script:LogLevel[$Level]
+    $script:CurrentLogLevel = $script:LogLevelMap[$LogLevelName]
     $script:LogFile = $LogFilePath
 
     if ($LogFilePath) {
@@ -45,7 +45,7 @@ function Initialize-Logger {
         }
     }
 
-    Write-Log "Logger initialized (Level: $Level)" -Level DEBUG
+    Write-Log "Logger initialized (Level: $LogLevelName)" -Level DEBUG
 }
 
 function Write-Log {
@@ -70,7 +70,7 @@ function Write-Log {
     )
 
     # Check if we should log this level
-    if ($script:LogLevel[$Level] -lt $script:CurrentLogLevel) {
+    if ($script:LogLevelMap[$Level] -lt $script:CurrentLogLevel) {
         return
     }
 

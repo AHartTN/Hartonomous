@@ -11,7 +11,7 @@ param(
     [switch]$DryRun,
 
     [Parameter(Mandatory = $false)]
-    [switch]$SkipBackup
+    [switch]$SkipBackup = $false
 )
 
 $ErrorActionPreference = "Stop"
@@ -23,9 +23,9 @@ Set-StrictMode -Version Latest
 . "$PSScriptRoot\..\common\azure-auth.ps1"
 
 # Initialize logger
-$logLevel = if ($env:LOG_LEVEL) { $env:LOG_LEVEL } else { 'INFO' }
+$logLevelName = if ($env:LOG_LEVEL) { $env:LOG_LEVEL } else { 'INFO' }
 $logPath = "D:\Hartonomous\logs\database-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
-Initialize-Logger -LogFilePath $logPath -Level $logLevel
+Initialize-Logger -LogFilePath $logPath -LogLevelName $logLevelName
 
 Write-Step "Database Schema Deployment"
 
