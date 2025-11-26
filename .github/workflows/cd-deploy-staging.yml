@@ -4,22 +4,93 @@ on:
   workflow_dispatch:
     inputs:
       git_ref:
-        description: 'Git ref (tag, branch, or SHA) to deploy'
+        description: 'Git ref (tag, branch, or SHA) to deploy - should be tested in dev first'
         required: true
         type: string
-        default: 'develop'
 
 permissions:
   id-token: write
   contents: read
-  actions: write
+
+env:
+  DEPLOYMENT_ENVIRONMENT: staging
+  DEPLOYMENT_TARGET: hart-server
 
 jobs:
   deploy:
     name: Deploy to Staging
-    uses: ./.github/workflows/cd-deploy-environment.yml
-    with:
-      environment: staging
-      git_ref: ${{ inputs.git_ref }}
-      skip_tests: false
-    secrets: inherit
+    runs-on: [self-hosted, linux, hart-server]
+    environment: staging
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.git_ref }}
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Run preflight checks
+        env:
+          LOG_LEVEL: INFO
+        run: |
+          chmod +x ./deployment/scripts/preflight/check-prerequisites.sh
+          ./deployment/scripts/preflight/check-prerequisites.sh
+
+      - name: Validate secrets
+        env:
+          LOG_LEVEL: INFO
+          KEY_VAULT_URL: ${{ secrets.KEY_VAULT_URL }}
+        run: |
+          chmod +x ./deployment/scripts/preflight/validate-secrets.sh
+          ./deployment/scripts/preflight/validate-secrets.sh
+
+      - name: Deploy schema
+        env:
+          LOG_LEVEL: INFO
+          DEPLOYMENT_ENVIRONMENT: ${{ env.DEPLOYMENT_ENVIRONMENT }}
+        run: |
+          chmod +x ./deployment/scripts/database/deploy-schema.sh
+          ./deployment/scripts/database/deploy-schema.sh
+
+      - name: Deploy API
+        env:
+          LOG_LEVEL: INFO
+          DEPLOYMENT_ENVIRONMENT: ${{ env.DEPLOYMENT_ENVIRONMENT }}
+          KEY_VAULT_URL: ${{ secrets.KEY_VAULT_URL }}
+        run: |
+          chmod +x ./deployment/scripts/application/deploy-api.sh
+          ./deployment/scripts/application/deploy-api.sh
+
+      - name: Deploy Neo4j Worker
+        env:
+          LOG_LEVEL: INFO
+          DEPLOYMENT_ENVIRONMENT: ${{ env.DEPLOYMENT_ENVIRONMENT }}
+          KEY_VAULT_URL: ${{ secrets.KEY_VAULT_URL }}
+        run: |
+          chmod +x ./deployment/scripts/neo4j/deploy-neo4j-worker.sh
+          ./deployment/scripts/neo4j/deploy-neo4j-worker.sh
+
+      - name: Health check
+        run: |
+          chmod +x ./deployment/scripts/validation/health-check.sh
+          ./deployment/scripts/validation/health-check.sh
+
+      - name: Smoke tests
+        run: |
+          chmod +x ./deployment/scripts/validation/smoke-test.sh
+          ./deployment/scripts/validation/smoke-test.sh
+
+      - name: Create deployment summary
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Deployed to **Staging** environment" >> $GITHUB_STEP_SUMMARY
+          echo "- Git Ref: \`${{ inputs.git_ref }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Target: hart-server" >> $GITHUB_STEP_SUMMARY
+          echo "- Triggered by: @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY

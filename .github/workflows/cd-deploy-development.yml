@@ -4,11 +4,16 @@ on:
   push:
     branches: [develop]
   workflow_dispatch:
+    inputs:
+      git_ref:
+        description: 'Git ref (branch, tag, or SHA) to deploy'
+        required: false
+        type: string
+        default: 'develop'
 
 permissions:
   id-token: write
   contents: read
-  actions: write
 
 env:
   DEPLOYMENT_ENVIRONMENT: development
@@ -17,9 +22,79 @@ env:
 jobs:
   deploy:
     name: Deploy to Development
-    uses: ./.github/workflows/cd-deploy-environment.yml
-    with:
-      environment: development
-      git_ref: ${{ github.sha }}
-      skip_tests: false
-    secrets: inherit
+    runs-on: [self-hosted, windows, HART-DESKTOP]
+    environment: development
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.git_ref || github.sha }}
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Run preflight checks
+        shell: pwsh
+        env:
+          LOG_LEVEL: INFO
+        run: |
+          .\deployment\scripts\preflight\check-prerequisites.ps1
+
+      - name: Validate secrets
+        shell: pwsh
+        env:
+          LOG_LEVEL: INFO
+          KEY_VAULT_URL: ${{ secrets.KEY_VAULT_URL }}
+        run: |
+          .\deployment\scripts\preflight\validate-secrets.ps1
+
+      - name: Deploy schema
+        shell: pwsh
+        env:
+          LOG_LEVEL: INFO
+          DEPLOYMENT_ENVIRONMENT: ${{ env.DEPLOYMENT_ENVIRONMENT }}
+        run: |
+          .\deployment\scripts\database\deploy-schema.ps1
+
+      - name: Deploy API
+        shell: pwsh
+        env:
+          LOG_LEVEL: INFO
+          DEPLOYMENT_ENVIRONMENT: ${{ env.DEPLOYMENT_ENVIRONMENT }}
+          KEY_VAULT_URL: ${{ secrets.KEY_VAULT_URL }}
+        run: |
+          .\deployment\scripts\application\deploy-api.ps1
+
+      - name: Deploy Neo4j Worker
+        shell: pwsh
+        env:
+          LOG_LEVEL: INFO
+          DEPLOYMENT_ENVIRONMENT: ${{ env.DEPLOYMENT_ENVIRONMENT }}
+          KEY_VAULT_URL: ${{ secrets.KEY_VAULT_URL }}
+        run: |
+          .\deployment\scripts\neo4j\deploy-neo4j-worker.ps1
+
+      - name: Health check
+        shell: pwsh
+        run: |
+          .\deployment\scripts\validation\health-check.ps1
+
+      - name: Smoke tests
+        shell: pwsh
+        run: |
+          .\deployment\scripts\validation\smoke-test.ps1
+
+      - name: Create deployment summary
+        shell: pwsh
+        run: |
+          Write-Output "## Deployment Summary" >> $env:GITHUB_STEP_SUMMARY
+          Write-Output "" >> $env:GITHUB_STEP_SUMMARY
+          Write-Output "✅ Deployed to **Development** environment" >> $env:GITHUB_STEP_SUMMARY
+          Write-Output "- Git Ref: ``${{ inputs.git_ref || github.sha }}``" >> $env:GITHUB_STEP_SUMMARY
+          Write-Output "- Target: HART-DESKTOP" >> $env:GITHUB_STEP_SUMMARY
+          Write-Output "- Triggered by: @${{ github.actor }}" >> $env:GITHUB_STEP_SUMMARY
+          Write-Output "- Timestamp: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC')" >> $env:GITHUB_STEP_SUMMARY

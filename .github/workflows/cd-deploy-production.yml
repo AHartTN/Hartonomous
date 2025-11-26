@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       git_ref:
-        description: 'Git ref (tag/SHA) to deploy - MUST be a release tag'
+        description: 'Release tag to deploy (e.g., v1.2.3) - MUST be tested in staging first'
         required: true
         type: string
       skip_tests:
@@ -16,7 +16,10 @@ on:
 permissions:
   id-token: write
   contents: write
-  actions: write
+
+env:
+  DEPLOYMENT_ENVIRONMENT: production
+  DEPLOYMENT_TARGET: hart-server
 
 jobs:
   approval:
@@ -30,24 +33,107 @@ jobs:
         run: |
           echo "✅ Production deployment approved"
           echo "Git Ref: ${{ inputs.git_ref }}"
+          echo "Skip Tests: ${{ inputs.skip_tests }}"
 
   deploy:
     name: Deploy to Production
     needs: approval
-    uses: ./.github/workflows/cd-deploy-environment.yml
-    with:
-      environment: production
-      git_ref: ${{ inputs.git_ref }}
-      skip_tests: ${{ inputs.skip_tests }}
-    secrets: inherit
+    runs-on: [self-hosted, linux, hart-server]
+    environment: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.git_ref }}
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Backup database
+        env:
+          DEPLOYMENT_ENVIRONMENT: ${{ env.DEPLOYMENT_ENVIRONMENT }}
+        run: |
+          chmod +x ./deployment/scripts/database/backup-database.sh
+          ./deployment/scripts/database/backup-database.sh
+
+      - name: Backup application
+        env:
+          DEPLOYMENT_ENVIRONMENT: ${{ env.DEPLOYMENT_ENVIRONMENT }}
+        run: |
+          chmod +x ./deployment/scripts/application/backup-application.sh
+          ./deployment/scripts/application/backup-application.sh
+
+      - name: Run preflight checks
+        env:
+          LOG_LEVEL: INFO
+        run: |
+          chmod +x ./deployment/scripts/preflight/check-prerequisites.sh
+          ./deployment/scripts/preflight/check-prerequisites.sh
+
+      - name: Validate secrets
+        env:
+          LOG_LEVEL: INFO
+          KEY_VAULT_URL: ${{ secrets.KEY_VAULT_URL }}
+        run: |
+          chmod +x ./deployment/scripts/preflight/validate-secrets.sh
+          ./deployment/scripts/preflight/validate-secrets.sh
+
+      - name: Deploy schema
+        env:
+          LOG_LEVEL: INFO
+          DEPLOYMENT_ENVIRONMENT: ${{ env.DEPLOYMENT_ENVIRONMENT }}
+        run: |
+          chmod +x ./deployment/scripts/database/deploy-schema.sh
+          ./deployment/scripts/database/deploy-schema.sh
+
+      - name: Deploy API
+        env:
+          LOG_LEVEL: INFO
+          DEPLOYMENT_ENVIRONMENT: ${{ env.DEPLOYMENT_ENVIRONMENT }}
+          KEY_VAULT_URL: ${{ secrets.KEY_VAULT_URL }}
+        run: |
+          chmod +x ./deployment/scripts/application/deploy-api.sh
+          ./deployment/scripts/application/deploy-api.sh
+
+      - name: Deploy Neo4j Worker
+        env:
+          LOG_LEVEL: INFO
+          DEPLOYMENT_ENVIRONMENT: ${{ env.DEPLOYMENT_ENVIRONMENT }}
+          KEY_VAULT_URL: ${{ secrets.KEY_VAULT_URL }}
+        run: |
+          chmod +x ./deployment/scripts/neo4j/deploy-neo4j-worker.sh
+          ./deployment/scripts/neo4j/deploy-neo4j-worker.sh
+
+      - name: Health check
+        run: |
+          chmod +x ./deployment/scripts/validation/health-check.sh
+          ./deployment/scripts/validation/health-check.sh
+
+      - name: Smoke tests
+        if: ${{ !inputs.skip_tests }}
+        run: |
+          chmod +x ./deployment/scripts/validation/smoke-test.sh
+          ./deployment/scripts/validation/smoke-test.sh
+
+      - name: Create deployment summary
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Deployed to **Production** environment" >> $GITHUB_STEP_SUMMARY
+          echo "- Release: \`${{ inputs.git_ref }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Target: hart-server" >> $GITHUB_STEP_SUMMARY
+          echo "- Triggered by: @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
 
   create-release:
     name: Create GitHub Release
     needs: deploy
     runs-on: ubuntu-latest
     if: startsWith(inputs.git_ref, 'v')
-    permissions:
-      contents: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -64,7 +150,6 @@ jobs:
 
             **Deployed to**: hart-server (Production)
             **Deployed by**: @${{ github.actor }}
-            **Deployed at**: ${{ github.event.repository.updated_at }}
 
             ### Deployment Summary
             - ✅ Database migration successful
