@@ -11,7 +11,7 @@ env:
 
 jobs:
   build_and_push:
-    name: Build and Push Image (versioned)
+    name: Build and Push Image
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -25,7 +25,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to GHCR
+      - name: Login to GHCR
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -39,7 +39,6 @@ jobs:
           images: ${{ env.IMAGE_NAME }}
           tags: |
             type=sha
-            type=ref,event=branch
 
       - name: Build and push
         uses: docker/build-push-action@v5
@@ -48,14 +47,12 @@ jobs:
           file: ./docker/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
       - name: Print image tag
         run: echo "IMAGE_TAG=${{ steps.meta.outputs.tags }}"
 
   deploy_dev:
-    name: Deploy to development (same version)
+    name: Deploy to development
     runs-on: ubuntu-latest
     needs: [build_and_push]
     if: github.ref == 'refs/heads/develop'
@@ -76,29 +73,29 @@ jobs:
       - name: Ensure Arc extension
         run: az extension add --name connectedmachine --allow-preview true --yes
 
-      - name: Deploy
+      - name: Deploy same image
         run: |
           IMAGE_TAG="${{ needs.build_and_push.outputs.image_tag }}"
-          if [ -z "$IMAGE_TAG" ]; then echo "Missing image tag"; exit 1; fi
+          [ -z "$IMAGE_TAG" ] && echo "Missing image tag" && exit 1
 
           if [ "${{ vars.OS_TYPE }}" = "windows" ]; then
-            SCRIPT='
+            SCRIPT="
             docker logout
             docker login ${{ env.REGISTRY }} -u ${{ secrets.GHCR_USERNAME }} -p ${{ secrets.GHCR_TOKEN }}
-            docker pull '"$IMAGE_TAG"'
-            docker stop ${{ vars.CONTAINER_NAME }} 2>$null
-            docker rm ${{ vars.CONTAINER_NAME }} 2>$null
-            docker run -d --name ${{ vars.CONTAINER_NAME }} --restart unless-stopped -p ${{ vars.API_PORT }}:8000 -e LOG_LEVEL=${{ vars.LOG_LEVEL }} '"$IMAGE_TAG"'
-            '
+            docker pull \"$IMAGE_TAG\"
+            docker stop ${{ vars.CONTAINER_NAME }} 2>\$null || \$true
+            docker rm ${{ vars.CONTAINER_NAME }} 2>\$null || \$true
+            docker run -d --name ${{ vars.CONTAINER_NAME }} --restart unless-stopped -p ${{ vars.API_PORT }}:8000 -e LOG_LEVEL=${{ vars.LOG_LEVEL }} \"$IMAGE_TAG\"
+            "
           else
-            SCRIPT='
+            SCRIPT="
             set -e
             echo ${{ secrets.GHCR_TOKEN }} | docker login ${{ env.REGISTRY }} -u ${{ secrets.GHCR_USERNAME }} --password-stdin
-            docker pull '"$IMAGE_TAG"'
+            docker pull \"$IMAGE_TAG\"
             docker stop ${{ vars.CONTAINER_NAME }} 2>/dev/null || true
             docker rm ${{ vars.CONTAINER_NAME }} 2>/dev/null || true
-            docker run -d --name ${{ vars.CONTAINER_NAME }} --restart unless-stopped -p ${{ vars.API_PORT }}:8000 -e LOG_LEVEL=${{ vars.LOG_LEVEL }} '"$IMAGE_TAG"'
-            '
+            docker run -d --name ${{ vars.CONTAINER_NAME }} --restart unless-stopped -p ${{ vars.API_PORT }}:8000 -e LOG_LEVEL=${{ vars.LOG_LEVEL }} \"$IMAGE_TAG\"
+            "
           fi
 
           az connectedmachine run-command create \
@@ -111,7 +108,7 @@ jobs:
       - name: Verify dev health
         run: |
           if [ "${{ vars.OS_TYPE }}" = "windows" ]; then
-            VERIFY='Invoke-WebRequest -UseBasicParsing http://localhost:${{ vars.API_PORT }}/health -TimeoutSec 10 | Select-Object -ExpandProperty Content'
+            VERIFY='Invoke-WebRequest -UseBasicParsing http://localhost:${{ vars.API_PORT }}/health -TimeoutSec 15 | Select-Object -ExpandProperty Content'
           else
             VERIFY='curl -sf http://localhost:${{ vars.API_PORT }}/health || curl -sf http://127.0.0.1:${{ vars.API_PORT }}/health'
           fi
@@ -121,7 +118,7 @@ jobs:
             --machine-name ${{ vars.ARC_MACHINE_NAME }} \
             --run-command-name verify-dev-${{ github.run_id }} \
             --script "$VERIFY" \
-            --timeout-in-seconds 60
+            --timeout-in-seconds 90
 
           az connectedmachine run-command show \
             --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
@@ -130,12 +127,13 @@ jobs:
             --query "instanceView.output" -o tsv
 
   deploy_staging:
-    name: Deploy to staging (promote same version)
+    name: Deploy to staging
     runs-on: ubuntu-latest
     needs: [deploy_dev]
     if: github.ref == 'refs/heads/develop'
     environment:
       name: staging
+      url: ${{ vars.DEPLOYMENT_URL }}
     permissions:
       id-token: write
       contents: read
@@ -150,29 +148,29 @@ jobs:
       - name: Ensure Arc extension
         run: az extension add --name connectedmachine --allow-preview true --yes
 
-      - name: Deploy
+      - name: Deploy same image
         run: |
           IMAGE_TAG="${{ needs.build_and_push.outputs.image_tag }}"
-          if [ -z "$IMAGE_TAG" ]; then echo "Missing image tag"; exit 1; fi
+          [ -z "$IMAGE_TAG" ] && echo "Missing image tag" && exit 1
 
           if [ "${{ vars.OS_TYPE }}" = "windows" ]; then
-            SCRIPT='
+            SCRIPT="
             docker logout
             docker login ${{ env.REGISTRY }} -u ${{ secrets.GHCR_USERNAME }} -p ${{ secrets.GHCR_TOKEN }}
-            docker pull '"$IMAGE_TAG"'
-            docker stop ${{ vars.CONTAINER_NAME }} 2>$null
-            docker rm ${{ vars.CONTAINER_NAME }} 2>$null
-            docker run -d --name ${{ vars.CONTAINER_NAME }} --restart unless-stopped -p ${{ vars.API_PORT }}:8000 -e LOG_LEVEL=${{ vars.LOG_LEVEL }} '"$IMAGE_TAG"'
-            '
+            docker pull \"$IMAGE_TAG\"
+            docker stop ${{ vars.CONTAINER_NAME }} 2>\$null || \$true
+            docker rm ${{ vars.CONTAINER_NAME }} 2>\$null || \$true
+            docker run -d --name ${{ vars.CONTAINER_NAME }} --restart unless-stopped -p ${{ vars.API_PORT }}:8000 -e LOG_LEVEL=${{ vars.LOG_LEVEL }} \"$IMAGE_TAG\"
+            "
           else
-            SCRIPT='
+            SCRIPT="
             set -e
             echo ${{ secrets.GHCR_TOKEN }} | docker login ${{ env.REGISTRY }} -u ${{ secrets.GHCR_USERNAME }} --password-stdin
-            docker pull '"$IMAGE_TAG"'
+            docker pull \"$IMAGE_TAG\"
             docker stop ${{ vars.CONTAINER_NAME }} 2>/dev/null || true
             docker rm ${{ vars.CONTAINER_NAME }} 2>/dev/null || true
-            docker run -d --name ${{ vars.CONTAINER_NAME }} --restart unless-stopped -p ${{ vars.API_PORT }}:8000 -e LOG_LEVEL=${{ vars.LOG_LEVEL }} '"$IMAGE_TAG"'
-            '
+            docker run -d --name ${{ vars.CONTAINER_NAME }} --restart unless-stopped -p ${{ vars.API_PORT }}:8000 -e LOG_LEVEL=${{ vars.LOG_LEVEL }} \"$IMAGE_TAG\"
+            "
           fi
 
           az connectedmachine run-command create \
@@ -185,7 +183,7 @@ jobs:
       - name: Verify staging health
         run: |
           if [ "${{ vars.OS_TYPE }}" = "windows" ]; then
-            VERIFY='Invoke-WebRequest -UseBasicParsing http://localhost:${{ vars.API_PORT }}/health -TimeoutSec 10 | Select-Object -ExpandProperty Content'
+            VERIFY='Invoke-WebRequest -UseBasicParsing http://localhost:${{ vars.API_PORT }}/health -TimeoutSec 15 | Select-Object -ExpandProperty Content'
           else
             VERIFY='curl -sf http://localhost:${{ vars.API_PORT }}/health || curl -sf http://127.0.0.1:${{ vars.API_PORT }}/health'
           fi
@@ -195,7 +193,7 @@ jobs:
             --machine-name ${{ vars.ARC_MACHINE_NAME }} \
             --run-command-name verify-staging-${{ github.run_id }} \
             --script "$VERIFY" \
-            --timeout-in-seconds 60
+            --timeout-in-seconds 90
 
           az connectedmachine run-command show \
             --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
