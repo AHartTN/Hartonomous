@@ -79,8 +79,8 @@ try {
 # Summary
 Write-Step "Health Check Summary"
 
-$passed = ($healthChecks | Where-Object { $_.Status -eq "PASS" }).Count
-$failed = ($healthChecks | Where-Object { $_.Status -eq "FAIL" }).Count
+$passed = @($healthChecks | Where-Object { $_.Status -eq "PASS" }).Count
+$failed = @($healthChecks | Where-Object { $_.Status -eq "FAIL" }).Count
 $total = $healthChecks.Count
 
 Write-Host ""
