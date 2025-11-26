@@ -42,7 +42,7 @@ $dbPort = $config.database.port
 $dbName = $config.database.name
 $dbUser = $config.database.user
 
-Write-Log "Database: $dbHost:$dbPort/$dbName" -Level INFO
+Write-Log "Database: ${dbHost}:${dbPort}/${dbName}" -Level INFO
 
 # Get database password
 $dbPassword = $null
