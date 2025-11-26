@@ -67,7 +67,7 @@ jobs:
           DEPLOYMENT_ENVIRONMENT: ${{ env.DEPLOYMENT_ENVIRONMENT }}
           KEY_VAULT_URL: ${{ secrets.KEY_VAULT_URL }}
         run: |
-          .\deployment\scripts\application\deploy-api.ps1
+          .\deployment\scripts\application\deploy-api.ps1 -SkipBackup
 
       - name: Deploy Neo4j Worker
         shell: pwsh
