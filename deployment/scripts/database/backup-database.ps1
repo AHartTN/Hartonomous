@@ -122,8 +122,8 @@ Write-Success "Backup size: $fileSizeMB MB"
 
 # Retention policy: Keep last 10 backups per environment
 Write-Step "Applying Retention Policy"
-$allBackups = Get-ChildItem -Path $BackupPath -Filter "$dbName-$Environment-*.sql" |
-    Sort-Object LastWriteTime -Descending
+$allBackups = @(Get-ChildItem -Path $BackupPath -Filter "$dbName-$Environment-*.sql" -ErrorAction SilentlyContinue |
+    Sort-Object LastWriteTime -Descending)
 
 $keepCount = 10
 if ($allBackups.Count -gt $keepCount) {
