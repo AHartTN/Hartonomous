@@ -9,6 +9,7 @@ on:
         description: 'Git ref to deploy'
         required: false
         type: string
+        default: ''
 
 jobs:
   deploy:
@@ -16,7 +17,7 @@ jobs:
     with:
       environment: development
       runner_labels: '["self-hosted", "windows", "HART-DESKTOP"]'
-      git_ref: ${{ inputs.git_ref || github.sha }}
+      git_ref: ${{ github.event.inputs.git_ref || github.sha }}
       skip_tests: false
     secrets:
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
