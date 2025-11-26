@@ -134,11 +134,22 @@ foreach ($test in $testHosts) {
 # Check 8: Required Environment Variables
 Write-Step "Checking Environment Variables"
 $requiredVars = @(
-    'DEPLOYMENT_ENVIRONMENT',
-    'AZURE_TENANT_ID',
-    'AZURE_CLIENT_ID',
-    'AZURE_CLIENT_SECRET'
+    'DEPLOYMENT_ENVIRONMENT'
 )
+
+# Check if running on Arc-enabled machine (has managed identity)
+try {
+    $arcStatus = & az connectedmachine show --machine-name $env:COMPUTERNAME --resource-group rg-hartonomous --query "identity.type" -o tsv 2>$null
+    if ($arcStatus -eq "SystemAssigned") {
+        Write-Success "Azure Arc managed identity detected - using system-assigned identity"
+    } else {
+        Write-Log "Not running on Arc-enabled machine, checking for service principal credentials" -Level INFO
+        $requiredVars += 'AZURE_TENANT_ID', 'AZURE_CLIENT_ID', 'AZURE_CLIENT_SECRET'
+    }
+} catch {
+    Write-Log "Could not detect Arc status, assuming service principal authentication" -Level INFO
+    $requiredVars += 'AZURE_TENANT_ID', 'AZURE_CLIENT_ID', 'AZURE_CLIENT_SECRET'
+}
 
 Test-EnvironmentVariables -Required $requiredVars
 
