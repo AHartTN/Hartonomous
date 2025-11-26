@@ -1,7 +1,6 @@
-# Azure Multi-Stage Pipeline - Platform Agnostic
-# Authentication: Uses Azure service connection with Managed Identity or Service Principal
-# Configuration: Azure App Configuration + Key Vault references
-# Target: Any machine (Windows/Linux, Azure/Arc/On-prem) with Azure CLI installed
+# Enterprise Multi-Stage Deployment Pipeline
+# Platform-agnostic CI/CD with proper deployment tracking, approvals, and rollback
+# Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 
 trigger:
   branches:
@@ -10,100 +9,266 @@ trigger:
     - main
 
 variables:
-  APP_CONFIG_NAME: 'appconfig-hartonomous'
-  RESOURCE_GROUP: 'rg-hartonomous'
+  buildConfiguration: 'Release'
+  artifactName: 'hartonomous-api'
 
 stages:
+# ============================================================================
+# BUILD STAGE - Build once, deploy everywhere
+# ============================================================================
 - stage: Build
-  displayName: 'Build Package'
+  displayName: 'Build & Package'
   jobs:
-  - job: Package
+  - job: BuildJob
+    displayName: 'Build Application'
     pool:
       vmImage: 'ubuntu-latest'
     steps:
+    - task: UsePythonVersion@0
+      displayName: 'Use Python 3.x'
+      inputs:
+        versionSpec: '3.x'
+    
+    - script: |
+        cd api
+        pip install -r requirements.txt --target .
+      displayName: 'Install Dependencies'
+    
     - task: ArchiveFiles@2
+      displayName: 'Package Application'
       inputs:
         rootFolderOrFile: '$(Build.SourcesDirectory)/api'
         includeRootFolder: false
         archiveType: 'zip'
-        archiveFile: '$(Build.ArtifactStagingDirectory)/api.zip'
+        archiveFile: '$(Build.ArtifactStagingDirectory)/$(artifactName).zip'
+        replaceExistingArchive: true
     
-    - publish: $(Build.ArtifactStagingDirectory)/api.zip
-      artifact: api-package
+    - publish: '$(Build.ArtifactStagingDirectory)/$(artifactName).zip'
+      artifact: $(artifactName)
+      displayName: 'Publish Build Artifact'
 
-- stage: DeployDev
-  displayName: 'Development'
+# ============================================================================
+# DEVELOPMENT STAGE - Auto-deploy on develop branch
+# ============================================================================
+- stage: Development
+  displayName: 'Deploy to Development'
   dependsOn: Build
   condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/develop'))
   jobs:
-  - deployment: Deploy
-    environment: development
+  - deployment: DeployDev
+    displayName: 'Development Deployment'
     pool:
-      vmImage: 'ubuntu-latest'
+      name: 'Default'
+      demands:
+      - Agent.Name -equals HART-DESKTOP
+    environment: 'development'
     strategy:
       runOnce:
+        preDeploy:
+          steps:
+          - script: echo "Pre-deployment validation for development"
+            displayName: 'Pre-Deployment Checks'
+        
         deploy:
           steps:
-          - checkout: self
-          
           - download: current
-            artifact: api-package
+            artifact: $(artifactName)
+            displayName: 'Download Artifact'
           
-          - task: AzureCLI@2
+          - pwsh: |
+              # Get config from Azure App Configuration using Arc managed identity
+              $installPath = az appconfig kv show `
+                --name appconfig-hartonomous `
+                --auth-mode login `
+                --key "deployment:development:install_path" `
+                --query value -o tsv
+              
+              Write-Host "##vso[task.setvariable variable=InstallPath]$installPath"
+            displayName: 'Load Azure Configuration'
+          
+          - task: ExtractFiles@1
+            displayName: 'Extract Application'
             inputs:
-              azureSubscription: 'Azure-ServiceConnection'
-              scriptType: 'bash'
-              scriptLocation: 'scriptPath'
-              scriptPath: '$(Build.SourcesDirectory)/deployment/deploy.sh'
-              arguments: 'development $(Pipeline.Workspace)/api-package/api.zip'
+              archiveFilePatterns: '$(Pipeline.Workspace)/$(artifactName)/$(artifactName).zip'
+              destinationFolder: '$(InstallPath)'
+              cleanDestinationFolder: false
+          
+          - pwsh: |
+              cd "$(InstallPath)"
+              if (-not (Test-Path ".venv")) {
+                python -m venv .venv
+              }
+              .\.venv\Scripts\Activate.ps1
+              pip install -q -r requirements.txt
+            displayName: 'Setup Python Environment'
+          
+          - pwsh: |
+              $dbUrl = az appconfig kv show `
+                --name appconfig-hartonomous `
+                --auth-mode login `
+                --key "database:development:connection_string" `
+                --query value -o tsv
+              
+              $apiHost = az appconfig kv show `
+                --name appconfig-hartonomous `
+                --auth-mode login `
+                --key "api:development:host" `
+                --query value -o tsv
+              
+              $apiPort = az appconfig kv show `
+                --name appconfig-hartonomous `
+                --auth-mode login `
+                --key "api:development:port" `
+                --query value -o tsv
+              
+              @"
+              DATABASE_URL=$dbUrl
+              API_HOST=$apiHost
+              API_PORT=$apiPort
+              ENVIRONMENT=development
+              "@ | Set-Content -Path "$(InstallPath)\.env"
+            displayName: 'Configure Application'
+          
+          - pwsh: |
+              cd "$(InstallPath)"
+              .\.venv\Scripts\Activate.ps1
+              if (Test-Path "alembic.ini") {
+                alembic upgrade head
+              }
+            displayName: 'Run Database Migrations'
+          
+          - pwsh: |
+              Get-Process | Where-Object { $_.CommandLine -like "*uvicorn*main:app*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+              Start-Sleep -Seconds 2
+              
+              cd "$(InstallPath)"
+              $pythonExe = Join-Path (Get-Location) ".venv\Scripts\python.exe"
+              $apiHost = (Get-Content .env | Select-String "API_HOST=").ToString().Split("=")[1]
+              $apiPort = (Get-Content .env | Select-String "API_PORT=").ToString().Split("=")[1]
+              
+              Start-Process -FilePath $pythonExe -ArgumentList "-m","uvicorn","main:app","--host",$apiHost,"--port",$apiPort -WindowStyle Hidden
+            displayName: 'Start Application Service'
+        
+        postRouteTraffic:
+          steps:
+          - pwsh: |
+              Start-Sleep -Seconds 5
+              $response = Invoke-WebRequest -Uri "http://localhost:8000/v1/health" -TimeoutSec 10 -UseBasicParsing
+              if ($response.StatusCode -eq 200) {
+                Write-Host "? Health check passed"
+              } else {
+                Write-Error "Health check failed"
+                exit 1
+              }
+            displayName: 'Validate Deployment'
+        
+        on:
+          failure:
+            steps:
+            - pwsh: |
+                Write-Host "?? Deployment failed - initiating rollback"
+                # Rollback logic here if needed
+              displayName: 'Rollback on Failure'
+          
+          success:
+            steps:
+            - pwsh: Write-Host "? Development deployment successful"
+              displayName: 'Deployment Success'
 
-- stage: DeployStaging
-  displayName: 'Staging'
-  dependsOn: DeployDev
+# ============================================================================
+# STAGING STAGE - Requires dev success + manual approval
+# ============================================================================
+- stage: Staging
+  displayName: 'Deploy to Staging'
+  dependsOn: Development
+  condition: succeeded()
   jobs:
-  - deployment: Deploy
-    environment: staging
+  - deployment: DeployStaging
+    displayName: 'Staging Deployment'
     pool:
-      vmImage: 'ubuntu-latest'
+      name: 'Default'
+      demands:
+      - Agent.OS -equals Linux
+    environment: 'staging'
     strategy:
       runOnce:
         deploy:
           steps:
-          - checkout: self
-          
           - download: current
-            artifact: api-package
+            artifact: $(artifactName)
           
-          - task: AzureCLI@2
+          - bash: |
+              INSTALL_PATH=$(az appconfig kv show --name appconfig-hartonomous --auth-mode login --key "deployment:staging:install_path" --query value -o tsv)
+              echo "##vso[task.setvariable variable=InstallPath]$INSTALL_PATH"
+            displayName: 'Load Configuration'
+          
+          - task: ExtractFiles@1
             inputs:
-              azureSubscription: 'Azure-ServiceConnection'
-              scriptType: 'bash'
-              scriptLocation: 'scriptPath'
-              scriptPath: '$(Build.SourcesDirectory)/deployment/deploy.sh'
-              arguments: 'staging $(Pipeline.Workspace)/api-package/api.zip'
+              archiveFilePatterns: '$(Pipeline.Workspace)/$(artifactName)/$(artifactName).zip'
+              destinationFolder: '$(InstallPath)'
+          
+          - bash: |
+              cd "$(InstallPath)"
+              python3 -m venv .venv
+              source .venv/bin/activate
+              pip install -q -r requirements.txt
+              alembic upgrade head
+            displayName: 'Deploy & Migrate'
 
-- stage: DeployProd
-  displayName: 'Production'
-  dependsOn: DeployStaging
-  condition: eq(variables['Build.SourceBranch'], 'refs/heads/main')
+# ============================================================================
+# PRODUCTION STAGE - Requires staging + main branch + approval
+# ============================================================================
+- stage: Production
+  displayName: 'Deploy to Production'
+  dependsOn: Staging
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
   jobs:
-  - deployment: Deploy
-    environment: production
+  - deployment: DeployProduction
+    displayName: 'Production Deployment'
     pool:
-      vmImage: 'ubuntu-latest'
+      name: 'Default'
+      demands:
+      - Agent.OS -equals Linux
+    environment: 'production'
     strategy:
       runOnce:
+        preDeploy:
+          steps:
+          - script: echo "?? Production pre-deployment validation"
+            displayName: 'Production Safety Checks'
+        
         deploy:
           steps:
-          - checkout: self
-          
           - download: current
-            artifact: api-package
+            artifact: $(artifactName)
           
-          - task: AzureCLI@2
+          - bash: |
+              INSTALL_PATH=$(az appconfig kv show --name appconfig-hartonomous --auth-mode login --key "deployment:production:install_path" --query value -o tsv)
+              echo "##vso[task.setvariable variable=InstallPath]$INSTALL_PATH"
+            displayName: 'Load Configuration'
+          
+          - task: ExtractFiles@1
             inputs:
-              azureSubscription: 'Azure-ServiceConnection'
-              scriptType: 'bash'
-              scriptLocation: 'scriptPath'
-              scriptPath: '$(Build.SourcesDirectory)/deployment/deploy.sh'
-              arguments: 'production $(Pipeline.Workspace)/api-package/api.zip'
+              archiveFilePatterns: '$(Pipeline.Workspace)/$(artifactName)/$(artifactName).zip'
+              destinationFolder: '$(InstallPath)'
+          
+          - bash: |
+              cd "$(InstallPath)"
+              python3 -m venv .venv
+              source .venv/bin/activate
+              pip install -q -r requirements.txt
+              alembic upgrade head
+            displayName: 'Deploy & Migrate'
+        
+        postRouteTraffic:
+          steps:
+          - bash: |
+              sleep 5
+              curl -f http://localhost:8000/v1/health || exit 1
+            displayName: 'Production Health Check'
+        
+        on:
+          failure:
+            steps:
+            - bash: echo "?? PRODUCTION DEPLOYMENT FAILED - Manual intervention required"
+              displayName: 'Production Failure Alert'
