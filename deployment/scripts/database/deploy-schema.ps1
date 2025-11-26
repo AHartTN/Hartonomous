@@ -23,7 +23,8 @@ Set-StrictMode -Version Latest
 . "$PSScriptRoot\..\common\azure-auth.ps1"
 
 # Initialize logger
-Initialize-Logger -Level $env:LOG_LEVEL ?? 'INFO'
+$logLevel = if ($env:LOG_LEVEL) { $env:LOG_LEVEL } else { 'INFO' }
+Initialize-Logger -Level $logLevel
 
 Write-Step "Database Schema Deployment"
 
