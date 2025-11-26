@@ -13,6 +13,10 @@ on:
         type: boolean
         default: false
 
+permissions:
+  id-token: write
+  contents: write
+
 env:
   DEPLOYMENT_ENVIRONMENT: production
   DEPLOYMENT_TARGET: hart-server
@@ -40,11 +44,14 @@ jobs:
         with:
           ref: ${{ inputs.version }}
 
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
       - name: Run preflight checks
-        env:
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID_PROD }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET_PROD }}
         run: |
           chmod +x ./deployment/scripts/preflight/check-prerequisites.sh
           ./deployment/scripts/preflight/check-prerequisites.sh
@@ -52,9 +59,6 @@ jobs:
       - name: Validate secrets
         env:
           KEY_VAULT_URL: ${{ secrets.KEY_VAULT_URL }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID_PROD }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET_PROD }}
         run: |
           chmod +x ./deployment/scripts/preflight/validate-secrets.sh
           ./deployment/scripts/preflight/validate-secrets.sh
@@ -93,12 +97,16 @@ jobs:
         with:
           ref: ${{ inputs.version }}
 
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
       - name: Deploy schema
         env:
           DEPLOYMENT_ENVIRONMENT: ${{ env.DEPLOYMENT_ENVIRONMENT }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID_PROD }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET_PROD }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
         run: |
           chmod +x ./deployment/scripts/database/deploy-schema.sh
           ./deployment/scripts/database/deploy-schema.sh
@@ -113,13 +121,17 @@ jobs:
         with:
           ref: ${{ inputs.version }}
 
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
       - name: Deploy API
         env:
           DEPLOYMENT_ENVIRONMENT: ${{ env.DEPLOYMENT_ENVIRONMENT }}
           KEY_VAULT_URL: ${{ secrets.KEY_VAULT_URL }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID_PROD }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET_PROD }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
         run: |
           chmod +x ./deployment/scripts/application/deploy-api.sh
           ./deployment/scripts/application/deploy-api.sh
@@ -128,9 +140,6 @@ jobs:
         env:
           DEPLOYMENT_ENVIRONMENT: ${{ env.DEPLOYMENT_ENVIRONMENT }}
           KEY_VAULT_URL: ${{ secrets.KEY_VAULT_URL }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID_PROD }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET_PROD }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
         run: |
           chmod +x ./deployment/scripts/neo4j/deploy-neo4j-worker.sh
           ./deployment/scripts/neo4j/deploy-neo4j-worker.sh
@@ -158,14 +167,17 @@ jobs:
 
       - name: Notify deployment success
         uses: actions/github-script@v7
+        if: success()
         with:
           script: |
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: '🚀 Production deployment successful!\n\n- Version: ${{ inputs.version }}\n- Environment: Production\n- Target: hart-server'
-            })
+            const message = `🚀 Production deployment successful!
+
+            - Version: ${{ inputs.version }}
+            - Environment: Production
+            - Target: hart-server
+            - Deployed by: @${{ github.actor }}`;
+
+            console.log(message);
 
   create-release:
     name: Create GitHub Release
@@ -180,7 +192,7 @@ jobs:
           ref: ${{ inputs.version }}
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.version }}
           name: Release ${{ inputs.version }}
@@ -190,9 +202,6 @@ jobs:
             **Deployed to**: hart-server (Production)
             **Deployed by**: @${{ github.actor }}
             **Deployed at**: ${{ github.event.repository.updated_at }}
-
-            ### What's Changed
-            See commit history for details.
 
             ### Deployment Summary
             - ✅ Database migration successful

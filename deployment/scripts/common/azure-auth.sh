@@ -10,35 +10,59 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./logger.sh
 source "$SCRIPT_DIR/logger.sh"
 
-function connect_azure_service_principal() {
-    # Authenticate to Azure using Service Principal
-    # Usage: connect_azure_service_principal <tenant_id> <client_id> <client_secret> [subscription_id]
-
-    local tenant_id="$1"
-    local client_id="$2"
-    local client_secret="$3"
-    local subscription_id="${4:-}"
+function azure_login() {
+    # Smart Azure login - uses OIDC in GitHub Actions, falls back to service principal
+    # Reads from environment variables
 
     write_step "Authenticating to Azure"
 
-    # Login with service principal
-    write_log "Connecting to Azure AD tenant: $tenant_id" "DEBUG"
+    # Check if already authenticated
+    if az account show &>/dev/null; then
+        local account_name
+        account_name=$(az account show --query "user.name" -o tsv)
+        write_log "Already authenticated as: $account_name" "INFO"
+        return 0
+    fi
 
-    if az login --service-principal \
-        --username "$client_id" \
-        --password "$client_secret" \
-        --tenant "$tenant_id" \
-        --output none 2>&1; then
+    # Try OIDC first (GitHub Actions with federated credentials)
+    if [[ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]] && [[ -n "${AZURE_CLIENT_ID:-}" ]] && [[ -n "${AZURE_TENANT_ID:-}" ]]; then
+        write_log "Detected GitHub Actions OIDC environment" "INFO"
 
-        write_success "Authenticated to Azure"
+        if az login \
+            --service-principal \
+            --username "$AZURE_CLIENT_ID" \
+            --tenant "$AZURE_TENANT_ID" \
+            --federated-token "$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=api://AzureADTokenExchange" | jq -r .value)" \
+            --output none 2>&1; then
+
+            write_success "Authenticated via OIDC"
+        else
+            write_failure "OIDC authentication failed"
+        fi
+
+    # Fallback to service principal with client secret
+    elif [[ -n "${AZURE_CLIENT_ID:-}" ]] && [[ -n "${AZURE_CLIENT_SECRET:-}" ]] && [[ -n "${AZURE_TENANT_ID:-}" ]]; then
+        write_log "Using service principal with client secret" "INFO"
+
+        if az login --service-principal \
+            --username "$AZURE_CLIENT_ID" \
+            --password "$AZURE_CLIENT_SECRET" \
+            --tenant "$AZURE_TENANT_ID" \
+            --output none 2>&1; then
+
+            write_success "Authenticated via service principal"
+        else
+            write_failure "Service principal authentication failed"
+        fi
+
     else
-        write_failure "Azure authentication failed"
+        write_failure "Missing Azure credentials. Set AZURE_CLIENT_ID and AZURE_TENANT_ID (and optionally AZURE_CLIENT_SECRET)"
     fi
 
     # Set subscription if provided
-    if [[ -n "$subscription_id" ]]; then
-        write_log "Setting subscription: $subscription_id" "DEBUG"
-        az account set --subscription "$subscription_id"
+    if [[ -n "${AZURE_SUBSCRIPTION_ID:-}" ]]; then
+        write_log "Setting subscription: $AZURE_SUBSCRIPTION_ID" "DEBUG"
+        az account set --subscription "$AZURE_SUBSCRIPTION_ID"
     fi
 
     # Verify authentication
@@ -49,6 +73,18 @@ function connect_azure_service_principal() {
     local subscription_name
     subscription_name=$(az account show --query "name" -o tsv)
     write_log "Subscription: $subscription_name" "INFO"
+}
+
+function connect_azure_service_principal() {
+    # Legacy function - deprecated, use azure_login() instead
+    # Usage: connect_azure_service_principal <tenant_id> <client_id> <client_secret> [subscription_id]
+
+    export AZURE_TENANT_ID="$1"
+    export AZURE_CLIENT_ID="$2"
+    export AZURE_CLIENT_SECRET="$3"
+    export AZURE_SUBSCRIPTION_ID="${4:-}"
+
+    azure_login
 }
 
 function get_keyvault_secret() {
@@ -131,7 +167,8 @@ function test_azure_connectivity() {
 
 # Export functions (documented for bash)
 # Available functions:
-# - connect_azure_service_principal
+# - azure_login (recommended - auto-detects OIDC vs service principal)
+# - connect_azure_service_principal (legacy)
 # - get_keyvault_secret
 # - get_appconfig_value
 # - test_azure_connectivity

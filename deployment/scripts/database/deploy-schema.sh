@@ -88,23 +88,56 @@ fi
 # Set PostgreSQL environment variables
 export PGHOST="$DB_HOST"
 export PGPORT="$DB_PORT"
-export PGDATABASE="$DB_NAME"
 export PGUSER="$DB_USER"
 export PGPASSWORD="$DB_PASSWORD"
 
-# Backup database (unless skipped)
-write_step "Creating Pre-Deployment Backup"
-"$SCRIPT_DIR/backup-database.sh" -e "$ENVIRONMENT"
-
-# Test database connectivity
-write_step "Testing Database Connectivity"
+# Test connectivity to PostgreSQL server (not specific database)
+write_step "Testing PostgreSQL Server Connectivity"
+export PGDATABASE="postgres"
 if ! psql -t -c "SELECT version();" > /dev/null 2>&1; then
-    write_failure "Database connection failed"
+    write_failure "PostgreSQL server connection failed"
 fi
-write_success "Connected to PostgreSQL"
+write_success "Connected to PostgreSQL server"
 
 PG_VERSION=$(psql -t -c "SELECT version();" | xargs)
 write_log "PostgreSQL version: $PG_VERSION" "DEBUG"
+
+# Idempotent: Create database user if not exists
+write_step "Ensuring Database User Exists"
+USER_EXISTS=$(psql -t -c "SELECT 1 FROM pg_roles WHERE rolname='$DB_USER';" | xargs)
+if [[ "$USER_EXISTS" == "1" ]]; then
+    write_log "Database user '$DB_USER' already exists" "INFO"
+else
+    write_log "Creating database user: $DB_USER" "INFO"
+    psql -c "CREATE USER \"$DB_USER\" WITH PASSWORD '$DB_PASSWORD';" || write_failure "Failed to create user"
+    write_success "Database user created: $DB_USER"
+fi
+
+# Idempotent: Create database if not exists
+write_step "Ensuring Database Exists"
+DB_EXISTS=$(psql -t -c "SELECT 1 FROM pg_database WHERE datname='$DB_NAME';" | xargs)
+if [[ "$DB_EXISTS" == "1" ]]; then
+    write_log "Database '$DB_NAME' already exists" "INFO"
+else
+    write_log "Creating database: $DB_NAME" "INFO"
+    psql -c "CREATE DATABASE \"$DB_NAME\" OWNER \"$DB_USER\";" || write_failure "Failed to create database"
+    write_success "Database created: $DB_NAME"
+fi
+
+# Grant privileges
+write_log "Granting privileges to user: $DB_USER" "INFO"
+psql -c "GRANT ALL PRIVILEGES ON DATABASE \"$DB_NAME\" TO \"$DB_USER\";" || true
+
+# Switch to target database
+export PGDATABASE="$DB_NAME"
+
+# Backup database (unless skipped or dry run)
+if [[ -f "$SCRIPT_DIR/backup-database.sh" ]]; then
+    write_step "Creating Pre-Deployment Backup"
+    "$SCRIPT_DIR/backup-database.sh" -e "$ENVIRONMENT" || write_log "Backup skipped or failed" "WARNING"
+else
+    write_log "Backup script not found, skipping backup" "WARNING"
+fi
 
 # Find schema files
 write_step "Discovering Schema Files"

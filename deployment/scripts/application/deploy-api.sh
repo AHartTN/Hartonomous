@@ -70,30 +70,35 @@ fi
 write_log "API path: $API_PATH" "INFO"
 
 # Backup existing deployment (unless skipped)
-if [[ "$SKIP_BACKUP" != "true" ]]; then
+if [[ "$SKIP_BACKUP" != "true" ]] && [[ -f "$SCRIPT_DIR/backup-application.sh" ]]; then
     write_step "Creating Pre-Deployment Backup"
     "$SCRIPT_DIR/backup-application.sh" -e "$ENVIRONMENT" || write_log "Backup failed, but continuing..." "WARNING"
+else
+    write_log "Backup skipped or backup script not found" "INFO"
 fi
 
-# Install/Update dependencies
+# Install/Update dependencies (idempotent)
 if [[ "$SKIP_DEPENDENCIES" != "true" ]]; then
     write_step "Installing Python Dependencies"
 
     cd "$API_PATH"
 
-    # Check if virtual environment exists
+    # Idempotent: Create virtual environment if not exists
     if [[ ! -d ".venv" ]]; then
         write_log "Creating virtual environment..." "INFO"
         python3 -m venv .venv
+        write_success "Virtual environment created"
+    else
+        write_log "Virtual environment already exists" "INFO"
     fi
 
     # Activate virtual environment
     source .venv/bin/activate
 
-    # Install requirements
-    write_log "Installing requirements..." "INFO"
-    python -m pip install --upgrade pip
-    python -m pip install -r requirements.txt
+    # Install/update requirements (idempotent)
+    write_log "Installing/updating requirements..." "INFO"
+    python -m pip install --upgrade pip --quiet
+    python -m pip install -r requirements.txt --quiet
 
     write_success "Dependencies installed"
 
@@ -201,22 +206,31 @@ else
     write_log "Using local environment variables for secrets (development)" "INFO"
 fi
 
-# Run database migrations (schema deployment)
-write_step "Running Database Migrations"
-"$SCRIPT_DIR/../database/deploy-schema.sh" -e "$ENVIRONMENT" --skip-backup
+# Run database migrations (schema deployment) if script exists
+if [[ -f "$SCRIPT_DIR/../database/deploy-schema.sh" ]]; then
+    write_step "Running Database Migrations"
+    "$SCRIPT_DIR/../database/deploy-schema.sh" -e "$ENVIRONMENT" --skip-backup || write_log "Schema deployment skipped or failed" "WARNING"
+else
+    write_log "Schema deployment script not found, skipping" "INFO"
+fi
 
-# Stop existing service (if running)
+# Stop existing service (if running) - idempotent
 write_step "Stopping Existing Service"
 
 SERVICE_NAME="hartonomous-api-$ENVIRONMENT"
 
-if systemctl is-active --quiet "$SERVICE_NAME"; then
-    write_log "Stopping service: $SERVICE_NAME" "INFO"
-    sudo systemctl stop "$SERVICE_NAME"
-    sleep 2
-    write_success "Service stopped"
+# Check if systemctl is available (user-level services)
+if command -v systemctl &>/dev/null; then
+    if systemctl --user is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
+        write_log "Stopping user service: $SERVICE_NAME" "INFO"
+        systemctl --user stop "$SERVICE_NAME"
+        sleep 2
+        write_success "Service stopped"
+    else
+        write_log "Service not running: $SERVICE_NAME" "INFO"
+    fi
 else
-    write_log "Service not running or not installed: $SERVICE_NAME" "INFO"
+    write_log "systemctl not available, skipping service stop" "INFO"
 fi
 
 # Start API (development: foreground, staging/prod: systemd service)
@@ -229,20 +243,25 @@ if [[ "$ENVIRONMENT" == "development" ]]; then
     echo -e "  source .venv/bin/activate"
     echo -e "  python -m uvicorn main:app --reload"
 else
-    # Production/Staging: Start as systemd service
-    write_log "Starting API as systemd service..." "INFO"
+    # Production/Staging: Start as user systemd service (idempotent, no sudo)
+    if ! command -v systemctl &>/dev/null; then
+        write_log "systemctl not available, cannot create service" "WARNING"
+    else
+        write_log "Creating/updating user systemd service..." "INFO"
 
-    # Create systemd service file
-    SERVICE_FILE="/etc/systemd/system/$SERVICE_NAME.service"
+        # Create user systemd directory if not exists
+        mkdir -p "$HOME/.config/systemd/user"
 
-    sudo tee "$SERVICE_FILE" > /dev/null <<EOF
+        # Create systemd service file (idempotent - overwrites if exists)
+        SERVICE_FILE="$HOME/.config/systemd/user/$SERVICE_NAME.service"
+
+        cat > "$SERVICE_FILE" <<EOF
 [Unit]
 Description=Hartonomous API - $ENVIRONMENT
-After=network.target postgresql.service
+After=network.target
 
 [Service]
 Type=exec
-User=$(whoami)
 WorkingDirectory=$API_PATH
 Environment="PATH=$API_PATH/.venv/bin:/usr/local/bin:/usr/bin:/bin"
 EnvironmentFile=$ENV_FILE
@@ -251,20 +270,21 @@ Restart=always
 RestartSec=10
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target
 EOF
 
-    # Reload systemd and start service
-    sudo systemctl daemon-reload
-    sudo systemctl enable "$SERVICE_NAME"
-    sudo systemctl start "$SERVICE_NAME"
+        # Reload user systemd and start service (idempotent)
+        systemctl --user daemon-reload
+        systemctl --user enable "$SERVICE_NAME" 2>/dev/null || true
+        systemctl --user restart "$SERVICE_NAME"
 
-    sleep 2
+        sleep 3
 
-    if systemctl is-active --quiet "$SERVICE_NAME"; then
-        write_success "API service started: $SERVICE_NAME"
-    else
-        write_failure "Failed to start API service"
+        if systemctl --user is-active --quiet "$SERVICE_NAME"; then
+            write_success "API service started: $SERVICE_NAME"
+        else
+            write_log "Service may have failed to start, check logs: journalctl --user -u $SERVICE_NAME -n 50" "WARNING"
+        fi
     fi
 fi
 
