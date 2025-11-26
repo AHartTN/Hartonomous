@@ -131,25 +131,27 @@ foreach ($test in $testHosts) {
     }
 }
 
-# Check 8: Required Environment Variables
+# Check 8: Azure Authentication
+Write-Step "Checking Azure Authentication"
+
+# Test if already authenticated (Arc managed identity or existing login)
+try {
+    $account = & az account show 2>$null | ConvertFrom-Json
+    if ($account) {
+        Write-Success "Azure: Authenticated as $($account.user.name)"
+        Write-Log "Using existing Azure authentication (Arc managed identity or cached login)" -Level INFO
+    } else {
+        Write-Log "Not authenticated to Azure - will require credentials" -Level INFO
+    }
+} catch {
+    Write-Log "Not authenticated to Azure - will require credentials" -Level INFO
+}
+
+# Check required environment variables
 Write-Step "Checking Environment Variables"
 $requiredVars = @(
     'DEPLOYMENT_ENVIRONMENT'
 )
-
-# Check if running on Arc-enabled machine (has managed identity)
-try {
-    $arcStatus = & az connectedmachine show --machine-name $env:COMPUTERNAME --resource-group rg-hartonomous --query "identity.type" -o tsv 2>$null
-    if ($arcStatus -eq "SystemAssigned") {
-        Write-Success "Azure Arc managed identity detected - using system-assigned identity"
-    } else {
-        Write-Log "Not running on Arc-enabled machine, checking for service principal credentials" -Level INFO
-        $requiredVars += 'AZURE_TENANT_ID', 'AZURE_CLIENT_ID', 'AZURE_CLIENT_SECRET'
-    }
-} catch {
-    Write-Log "Could not detect Arc status, assuming service principal authentication" -Level INFO
-    $requiredVars += 'AZURE_TENANT_ID', 'AZURE_CLIENT_ID', 'AZURE_CLIENT_SECRET'
-}
 
 Test-EnvironmentVariables -Required $requiredVars
 
