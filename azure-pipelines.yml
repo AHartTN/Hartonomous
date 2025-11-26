@@ -10,8 +10,8 @@ trigger:
     - main
 
 variables:
-  APP_CONFIG_NAME: 'hartonomous-appconfig'
-  RESOURCE_GROUP: 'hartonomous-rg'
+  APP_CONFIG_NAME: 'appconfig-hartonomous'
+  RESOURCE_GROUP: 'rg-hartonomous'
 
 stages:
 - stage: Build
