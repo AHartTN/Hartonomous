@@ -53,12 +53,21 @@ jobs:
           .\deployment\scripts\preflight\validate-secrets.ps1
 
       - name: Deploy schema
+        id: deploy-schema
         shell: pwsh
         env:
           LOG_LEVEL: INFO
           DEPLOYMENT_ENVIRONMENT: ${{ env.DEPLOYMENT_ENVIRONMENT }}
         run: |
           .\deployment\scripts\database\deploy-schema.ps1
+
+      - name: Upload database backup
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: database-backup-${{ github.sha }}
+          path: D:\Hartonomous\backups\database\*
+          retention-days: 30
 
       - name: Deploy API
         shell: pwsh

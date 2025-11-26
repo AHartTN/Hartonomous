@@ -1,5 +1,5 @@
 # Database Backup Script (PowerShell)
-# Creates timestamped backup of PostgreSQL database
+# Creates PostgreSQL backup using pg_dump
 # Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 
 param(
@@ -17,7 +17,6 @@ Set-StrictMode -Version Latest
 # Import common modules
 . "$PSScriptRoot\..\common\logger.ps1"
 . "$PSScriptRoot\..\common\config-loader.ps1"
-. "$PSScriptRoot\..\common\azure-auth.ps1"
 
 # Initialize logger
 $logLevelName = if ($env:LOG_LEVEL) { $env:LOG_LEVEL } else { 'INFO' }
@@ -36,7 +35,7 @@ $config = Get-DeploymentConfig -Environment $Environment
 
 # Construct backup directory
 if (-not $BackupPath) {
-    $BackupPath = Join-Path $PSScriptRoot "..\..\..\backups\database"
+    $BackupPath = "D:\Hartonomous\backups\database"
 }
 
 if (-not (Test-Path $BackupPath)) {
@@ -47,7 +46,7 @@ if (-not (Test-Path $BackupPath)) {
 # Generate backup filename with timestamp
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $dbName = $config.database.name
-$backupFile = Join-Path $BackupPath "$dbName-$Environment-$timestamp.sql"
+$backupFile = Join-Path $BackupPath "$dbName-$Environment-$timestamp.dump"
 
 Write-Log "Backup file: $backupFile" -Level INFO
 
@@ -56,24 +55,34 @@ $dbHost = $config.database.host
 $dbPort = $config.database.port
 $dbUser = $config.database.user
 
+# Get password from Key Vault or environment
 $dbPassword = $null
-if ($config.azure.key_vault_url -and $Environment -ne 'development') {
-    # Production/Staging: Get from Azure Key Vault
-    Connect-AzureWithServicePrincipal `
-        -TenantId $env:AZURE_TENANT_ID `
-        -ClientId $env:AZURE_CLIENT_ID `
-        -ClientSecret $env:AZURE_CLIENT_SECRET `
-        -SubscriptionId $env:AZURE_SUBSCRIPTION_ID
-
+if ($config.azure.key_vault_url) {
     $kvName = ($config.azure.key_vault_url -replace 'https://', '' -replace '\.vault\.azure\.net.*', '')
-    $secretName = "PostgreSQL-$dbName-Password"
-    $dbPassword = Get-KeyVaultSecret -VaultName $kvName -SecretName $secretName
+    $machineName = $env:COMPUTERNAME
+    $secretName = "PostgreSQL-${machineName}-${dbName}-Password"
+    
+    try {
+        $dbPassword = az keyvault secret show --vault-name $kvName --name $secretName --query "value" -o tsv 2>$null
+        if ($LASTEXITCODE -eq 0 -and $dbPassword) {
+            Write-Log "Retrieved password from Key Vault" -Level DEBUG
+        }
+        else {
+            # Try fallback secret name
+            $secretName = "PostgreSQL-$($config.database.name)-Password"
+            $dbPassword = az keyvault secret show --vault-name $kvName --name $secretName --query "value" -o tsv 2>$null
+        }
+    }
+    catch {
+        Write-Log "Key Vault retrieval failed, using PGPASSWORD" -Level WARNING
+    }
 }
-else {
-    # Development: Use environment variable
+
+# Fallback to environment variable
+if (-not $dbPassword) {
     $dbPassword = $env:PGPASSWORD
     if (-not $dbPassword) {
-        Write-Failure "PGPASSWORD environment variable not set"
+        Write-Failure "PGPASSWORD environment variable not set and could not retrieve from Key Vault"
     }
 }
 
@@ -85,20 +94,12 @@ $env:PGUSER = $dbUser
 $env:PGPASSWORD = $dbPassword
 
 # Create backup using pg_dump
-Write-Step "Creating Backup"
+Write-Step "Running pg_dump"
 try {
-    Write-Log "Running pg_dump..." -Level DEBUG
+    Write-Log "Running pg_dump with custom format..." -Level DEBUG
 
-    # Use pg_dump with custom format for better compression
-    $dumpArgs = @(
-        "-F", "c",  # Custom format (compressed)
-        "-b",       # Include large objects
-        "-v",       # Verbose
-        "-f", $backupFile,
-        $dbName
-    )
-
-    $output = & pg_dump @dumpArgs 2>&1
+    # Use custom format (-Fc) with no compression for performance
+    $output = & pg_dump -Fc -Z0 -f $backupFile $dbName 2>&1
 
     if ($LASTEXITCODE -ne 0) {
         Write-Log "pg_dump output: $output" -Level ERROR
@@ -120,24 +121,5 @@ $fileSize = (Get-Item $backupFile).Length
 $fileSizeMB = [math]::Round($fileSize / 1MB, 2)
 Write-Success "Backup size: $fileSizeMB MB"
 
-# Retention policy: Keep last 10 backups per environment
-Write-Step "Applying Retention Policy"
-$allBackups = @(Get-ChildItem -Path $BackupPath -Filter "$dbName-$Environment-*.sql" -ErrorAction SilentlyContinue |
-    Sort-Object LastWriteTime -Descending)
-
-$keepCount = 10
-if ($allBackups.Count -gt $keepCount) {
-    $toDelete = $allBackups | Select-Object -Skip $keepCount
-
-    foreach ($old in $toDelete) {
-        Write-Log "Removing old backup: $($old.Name)" -Level INFO
-        Remove-Item $old.FullName -Force
-    }
-
-    Write-Success "Retained $keepCount most recent backups, deleted $($toDelete.Count) old backups"
-}
-else {
-    Write-Log "Current backups: $($allBackups.Count) (retention: $keepCount)" -Level INFO
-}
-
 Write-Log "Database backup completed: $backupFile" -Level INFO
+Write-Output "BACKUP_FILE=$backupFile" >> $env:GITHUB_OUTPUT
