@@ -18,91 +18,102 @@ jobs:
   preflight:
     name: Preflight Checks
     runs-on: [self-hosted, windows, HART-DESKTOP]
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Run preflight checks
-        shell: pwsh -File {0}
         env:
           LOG_LEVEL: INFO
         run: |
-          .\deployment\scripts\preflight\check-prerequisites.ps1
+          chmod +x ./deployment/scripts/preflight/check-prerequisites.sh
+          ./deployment/scripts/preflight/check-prerequisites.sh
 
       - name: Validate secrets
-        shell: pwsh -File {0}
         env:
           LOG_LEVEL: INFO
           KEY_VAULT_URL: ${{ secrets.KEY_VAULT_URL }}
         run: |
-          .\deployment\scripts\preflight\validate-secrets.ps1
+          chmod +x ./deployment/scripts/preflight/validate-secrets.sh
+          ./deployment/scripts/preflight/validate-secrets.sh
 
   deploy-database:
     name: Deploy Database
     needs: preflight
     runs-on: [self-hosted, windows, HART-DESKTOP]
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Deploy schema
-        shell: pwsh -File {0}
         env:
           LOG_LEVEL: INFO
           DEPLOYMENT_ENVIRONMENT: ${{ env.DEPLOYMENT_ENVIRONMENT }}
         run: |
-          .\deployment\scripts\database\deploy-schema.ps1
+          chmod +x ./deployment/scripts/database/deploy-schema.sh
+          ./deployment/scripts/database/deploy-schema.sh
 
   deploy-application:
     name: Deploy Application
     needs: deploy-database
     runs-on: [self-hosted, windows, HART-DESKTOP]
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Deploy API
-        shell: pwsh -File {0}
         env:
           LOG_LEVEL: INFO
           DEPLOYMENT_ENVIRONMENT: ${{ env.DEPLOYMENT_ENVIRONMENT }}
           KEY_VAULT_URL: ${{ secrets.KEY_VAULT_URL }}
         run: |
-          .\deployment\scripts\application\deploy-api.ps1
+          chmod +x ./deployment/scripts/application/deploy-api.sh
+          ./deployment/scripts/application/deploy-api.sh
 
       - name: Deploy Neo4j Worker
-        shell: pwsh -File {0}
         env:
           LOG_LEVEL: INFO
           DEPLOYMENT_ENVIRONMENT: ${{ env.DEPLOYMENT_ENVIRONMENT }}
           KEY_VAULT_URL: ${{ secrets.KEY_VAULT_URL }}
         run: |
-          .\deployment\scripts\neo4j\deploy-neo4j-worker.ps1
+          chmod +x ./deployment/scripts/neo4j/deploy-neo4j-worker.sh
+          ./deployment/scripts/neo4j/deploy-neo4j-worker.sh
 
   validate:
     name: Validate Deployment
     needs: deploy-application
     runs-on: [self-hosted, windows, HART-DESKTOP]
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Health check
-        shell: pwsh -File {0}
         run: |
-          .\deployment\scripts\validation\health-check.ps1
+          chmod +x ./deployment/scripts/validation/health-check.sh
+          ./deployment/scripts/validation/health-check.sh
 
       - name: Smoke tests
-        shell: pwsh -File {0}
         run: |
-          .\deployment\scripts\validation\smoke-test.ps1
+          chmod +x ./deployment/scripts/validation/smoke-test.sh
+          ./deployment/scripts/validation/smoke-test.sh
 
       - name: Create deployment summary
-        shell: pwsh
         run: |
-          Write-Output "## Deployment Summary" >> $env:GITHUB_STEP_SUMMARY
-          Write-Output "" >> $env:GITHUB_STEP_SUMMARY
-          Write-Output "✅ Deployed to **Development** environment" >> $env:GITHUB_STEP_SUMMARY
-          Write-Output "- Target: HART-DESKTOP" >> $env:GITHUB_STEP_SUMMARY
-          Write-Output "- Commit: ${{ github.sha }}" >> $env:GITHUB_STEP_SUMMARY
-          Write-Output "- Branch: ${{ github.ref_name }}" >> $env:GITHUB_STEP_SUMMARY
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Deployed to **Development** environment" >> $GITHUB_STEP_SUMMARY
+          echo "- Target: HART-DESKTOP" >> $GITHUB_STEP_SUMMARY
+          echo "- Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Branch: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
