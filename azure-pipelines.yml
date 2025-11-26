@@ -1,5 +1,7 @@
-# CI/CD Pipeline - Works with GitHub Actions and Azure DevOps
-# Builds artifacts once, deploys to any environment
+# Azure Multi-Stage Pipeline - Platform Agnostic
+# Authentication: Uses Azure service connection with Managed Identity or Service Principal
+# Configuration: Azure App Configuration + Key Vault references
+# Target: Any machine (Windows/Linux, Azure/Arc/On-prem) with Azure CLI installed
 
 trigger:
   branches:
@@ -7,153 +9,95 @@ trigger:
     - develop
     - main
 
-pr:
-  branches:
-    include:
-    - develop
-    - main
+variables:
+  APP_CONFIG_NAME: 'hartonomous-appconfig'
+  RESOURCE_GROUP: 'hartonomous-rg'
 
 stages:
 - stage: Build
-  displayName: 'Build Artifacts'
+  displayName: 'Build Package'
   jobs:
-  - job: BuildJob
-    displayName: 'Create Deployment Package'
+  - job: Package
     pool:
       vmImage: 'ubuntu-latest'
     steps:
-    - checkout: self
-      displayName: 'Checkout Source'
-    
     - task: ArchiveFiles@2
-      displayName: 'Package API'
       inputs:
         rootFolderOrFile: '$(Build.SourcesDirectory)/api'
         includeRootFolder: false
         archiveType: 'zip'
-        archiveFile: '$(Build.ArtifactStagingDirectory)/api-package.zip'
-        replaceExistingArchive: true
-        excludePaths: |
-          **/.venv/**
-          **/__pycache__/**
-          **/*.pyc
-          **/.pytest_cache/**
-          **/.env
+        archiveFile: '$(Build.ArtifactStagingDirectory)/api.zip'
     
-    - publish: $(Build.ArtifactStagingDirectory)/api-package.zip
+    - publish: $(Build.ArtifactStagingDirectory)/api.zip
       artifact: api-package
-      displayName: 'Publish Build Artifact'
 
 - stage: DeployDev
-  displayName: 'Deploy to Development'
+  displayName: 'Development'
   dependsOn: Build
   condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/develop'))
   jobs:
-  - deployment: DeployDevJob
-    displayName: 'Deploy to Dev Environment'
+  - deployment: Deploy
+    environment: development
     pool:
-      name: 'Default'
-      demands:
-      - agent.name -equals HART-DESKTOP
-    environment: 'development'
+      vmImage: 'ubuntu-latest'
     strategy:
       runOnce:
-        preDeploy:
-          steps:
-          - download: none
-          - checkout: self
-          - pwsh: |
-              .\deployment\Install-Requirements.ps1 -Environment development
-            displayName: 'Backup Database'
-        
         deploy:
           steps:
           - download: current
             artifact: api-package
-            displayName: 'Download Artifact'
           
-          - pwsh: |
-              .\deployment\Deploy-Application.ps1 -Environment development -ArtifactPath "$(Pipeline.Workspace)\api-package\api-package.zip"
-            displayName: 'Deploy Application'
-        
-        postDeploy:
-          steps:
-          - pwsh: |
-              .\deployment\Test-Deployment.ps1 -Environment development
-            displayName: 'Validate Deployment'
+          - task: AzureCLI@2
+            inputs:
+              azureSubscription: 'Azure-ServiceConnection'
+              scriptType: 'bash'
+              scriptLocation: 'scriptPath'
+              scriptPath: '$(Pipeline.Workspace)/s/deployment/deploy.sh'
+              arguments: 'development $(Pipeline.Workspace)/api-package/api.zip'
 
 - stage: DeployStaging
-  displayName: 'Deploy to Staging'
+  displayName: 'Staging'
   dependsOn: DeployDev
-  condition: succeeded()
   jobs:
-  - deployment: DeployStagingJob
-    displayName: 'Deploy to Staging Environment'
+  - deployment: Deploy
+    environment: staging
     pool:
-      name: 'Default'
-      demands:
-      - agent.name -equals hart-server
-    environment: 'staging'
+      vmImage: 'ubuntu-latest'
     strategy:
       runOnce:
-        preDeploy:
-          steps:
-          - download: none
-          - checkout: self
-          - pwsh: |
-              .\deployment\Install-Requirements.ps1 -Environment staging
-            displayName: 'Backup Database'
-        
         deploy:
           steps:
           - download: current
             artifact: api-package
-            displayName: 'Download Artifact'
           
-          - pwsh: |
-              .\deployment\Deploy-Application.ps1 -Environment staging -ArtifactPath "$(Pipeline.Workspace)\api-package\api-package.zip"
-            displayName: 'Deploy Application'
-        
-        postDeploy:
-          steps:
-          - pwsh: |
-              .\deployment\Test-Deployment.ps1 -Environment staging
-            displayName: 'Validate Deployment'
+          - task: AzureCLI@2
+            inputs:
+              azureSubscription: 'Azure-ServiceConnection'
+              scriptType: 'bash'
+              scriptLocation: 'scriptPath'
+              scriptPath: '$(Pipeline.Workspace)/s/deployment/deploy.sh'
+              arguments: 'staging $(Pipeline.Workspace)/api-package/api.zip'
 
-- stage: DeployProduction
-  displayName: 'Deploy to Production'
+- stage: DeployProd
+  displayName: 'Production'
   dependsOn: DeployStaging
-  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  condition: eq(variables['Build.SourceBranch'], 'refs/heads/main')
   jobs:
-  - deployment: DeployProductionJob
-    displayName: 'Deploy to Production Environment'
+  - deployment: Deploy
+    environment: production
     pool:
-      name: 'Default'
-      demands:
-      - agent.name -equals hart-server
-    environment: 'production'
+      vmImage: 'ubuntu-latest'
     strategy:
       runOnce:
-        preDeploy:
-          steps:
-          - download: none
-          - checkout: self
-          - pwsh: |
-              .\deployment\Install-Requirements.ps1 -Environment production
-            displayName: 'Backup Database'
-        
         deploy:
           steps:
           - download: current
             artifact: api-package
-            displayName: 'Download Artifact'
           
-          - pwsh: |
-              .\deployment\Deploy-Application.ps1 -Environment production -ArtifactPath "$(Pipeline.Workspace)\api-package\api-package.zip"
-            displayName: 'Deploy Application'
-        
-        postDeploy:
-          steps:
-          - pwsh: |
-              .\deployment\Test-Deployment.ps1 -Environment production
-            displayName: 'Validate Deployment'
+          - task: AzureCLI@2
+            inputs:
+              azureSubscription: 'Azure-ServiceConnection'
+              scriptType: 'bash'
+              scriptLocation: 'scriptPath'
+              scriptPath: '$(Pipeline.Workspace)/s/deployment/deploy.sh'
+              arguments: 'production $(Pipeline.Workspace)/api-package/api.zip'
