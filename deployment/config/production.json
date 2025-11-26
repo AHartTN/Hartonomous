@@ -8,7 +8,7 @@
   "database": {
     "host": "localhost",
     "port": 5432,
-    "name": "Hartonomous",
+    "name": "hartonomous_production",
     "user": "hartonomous",
     "ssl_mode": "require",
     "backup_enabled": true,
@@ -17,7 +17,7 @@
   "neo4j": {
     "uri": "bolt://localhost:7687",
     "user": "neo4j",
-    "database": "neo4j",
+    "database": "hartonomous_production",
     "edition": "community"
   },
   "api": {
@@ -35,17 +35,17 @@
     "use_managed_identity": true
   },
   "deployment": {
-    "install_path": "/opt/hartonomous/api",
-    "backup_path": "/var/backups/hartonomous",
-    "log_path": "/var/log/hartonomous",
-    "service_name": "hartonomous-api",
+    "install_path": "/srv/www/production",
+    "backup_path": "/var/backups/hartonomous/production",
+    "log_path": "/var/log/hartonomous/production",
+    "service_name": "hartonomous-api-production",
     "auto_rollback": true,
     "skip_tests": false
   },
   "secrets": {
-    "postgres_password": "PostgreSQL-Hartonomous-Password",
-    "neo4j_password": "Neo4j-hart-server-Password",
-    "azure_client_secret": "AzureAd-ClientSecret"
+    "postgres_password": "PostgreSQL-Hartonomous-Production-Password",
+    "neo4j_password": "Neo4j-Production-Password",
+    "azure_client_secret": "AzureAd-ClientSecret-Production"
   },
   "features": {
     "neo4j_enabled": true,

@@ -17,12 +17,12 @@
   "neo4j": {
     "uri": "bolt://localhost:7687",
     "user": "neo4j",
-    "database": "neo4j",
+    "database": "hartonomous_staging",
     "edition": "community"
   },
   "api": {
     "host": "0.0.0.0",
-    "port": 8000,
+    "port": 8001,
     "workers": 8,
     "reload": false,
     "log_level": "INFO"
@@ -35,17 +35,17 @@
     "use_managed_identity": true
   },
   "deployment": {
-    "install_path": "/opt/hartonomous/api",
-    "backup_path": "/var/backups/hartonomous",
-    "log_path": "/var/log/hartonomous",
+    "install_path": "/srv/www/staging",
+    "backup_path": "/var/backups/hartonomous/staging",
+    "log_path": "/var/log/hartonomous/staging",
     "service_name": "hartonomous-api-staging",
     "auto_rollback": true,
     "skip_tests": false
   },
   "secrets": {
-    "postgres_password": "PostgreSQL-Hartonomous-Password",
-    "neo4j_password": "Neo4j-hart-server-Password",
-    "azure_client_secret": "AzureAd-ClientSecret"
+    "postgres_password": "PostgreSQL-Hartonomous-Staging-Password",
+    "neo4j_password": "Neo4j-Staging-Password",
+    "azure_client_secret": "AzureAd-ClientSecret-Staging"
   },
   "features": {
     "neo4j_enabled": true,
