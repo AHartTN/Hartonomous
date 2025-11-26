@@ -129,7 +129,7 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       
       - name: Install Azure Arc extension
-        run: az extension add --name connectedmachine --yes
+        run: az extension add --name connectedmachine --allow-preview true --yes
       
       - name: Deploy via Azure Arc
         run: |
