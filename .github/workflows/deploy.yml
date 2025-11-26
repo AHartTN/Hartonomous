@@ -41,7 +41,7 @@ jobs:
     name: Deploy to Development
     needs: build
     if: github.ref == 'refs/heads/develop'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, windows, HART-DESKTOP]
     environment: development
     steps:
       - uses: actions/checkout@v4
@@ -51,14 +51,8 @@ jobs:
         with:
           name: api-package-${{ github.sha }}
       
-      - name: Azure Login
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      
       - name: Deploy
+        shell: bash
         env:
           APP_CONFIG_NAME: appconfig-hartonomous
           RESOURCE_GROUP: rg-hartonomous
@@ -69,7 +63,7 @@ jobs:
     name: Deploy to Staging
     needs: deploy-dev
     if: github.ref == 'refs/heads/develop'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, hart-server]
     environment: staging
     steps:
       - uses: actions/checkout@v4
@@ -78,13 +72,6 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: api-package-${{ github.sha }}
-      
-      - name: Azure Login
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       
       - name: Deploy
         env:
@@ -97,7 +84,7 @@ jobs:
     name: Deploy to Production
     needs: deploy-staging
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, hart-server]
     environment: production
     steps:
       - uses: actions/checkout@v4
@@ -106,13 +93,6 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: api-package-${{ github.sha }}
-      
-      - name: Azure Login
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       
       - name: Deploy
         env:
