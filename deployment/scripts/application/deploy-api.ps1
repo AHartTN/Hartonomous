@@ -226,10 +226,55 @@ Write-Step "Starting API Application"
 Push-Location $apiPath
 try {
     if ($Environment -eq 'development') {
-        Write-Success "Development environment - API ready to start manually"
-        Write-Log "To start API, run:" -Level INFO
-        Write-Host "  cd api" -ForegroundColor Cyan
-        Write-Host "  python -m uvicorn main:app --reload" -ForegroundColor Cyan
+        # Development: Start API as background job
+        Write-Log "Starting API as background process for development..." -Level INFO
+        
+        $pythonExe = ".venv\Scripts\python.exe"
+        if (-not (Test-Path $pythonExe)) {
+            Write-Failure "Python venv not found: $pythonExe"
+        }
+
+        # Kill any existing uvicorn processes on the port
+        $existingProcess = Get-NetTCPConnection -LocalPort $config.api.port -ErrorAction SilentlyContinue | 
+            Select-Object -ExpandProperty OwningProcess | Get-Process -ErrorAction SilentlyContinue
+        
+        if ($existingProcess) {
+            Write-Log "Stopping existing API process on port $($config.api.port)..." -Level INFO
+            Stop-Process -Id $existingProcess.Id -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 2
+        }
+
+        # Start uvicorn in background
+        $startArgs = @(
+            "-m", "uvicorn",
+            "main:app",
+            "--host", $config.api.host,
+            "--port", $config.api.port,
+            "--reload",
+            "--log-level", $config.api.log_level.ToLower()
+        )
+
+        $proc = Start-Process -FilePath $pythonExe -ArgumentList $startArgs -WorkingDirectory $apiPath -WindowStyle Hidden -PassThru
+        
+        Write-Success "API started in background (PID: $($proc.Id))"
+        Write-Log "API URL: http://$($config.api.host):$($config.api.port)" -Level INFO
+        
+        # Wait briefly for API to start
+        Start-Sleep -Seconds 3
+        
+        # Verify it's listening
+        try {
+            $testConnection = Test-NetConnection -ComputerName localhost -Port $config.api.port -InformationLevel Quiet -WarningAction SilentlyContinue
+            if ($testConnection) {
+                Write-Success "API is listening on port $($config.api.port)"
+            }
+            else {
+                Write-Log "API may still be starting..." -Level WARNING
+            }
+        }
+        catch {
+            Write-Log "Could not verify API port: $($_.Exception.Message)" -Level WARNING
+        }
     }
     else {
         # Production/Staging: Start as Windows service
