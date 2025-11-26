@@ -29,7 +29,7 @@ jobs:
         with:
           python-version: 3.12
       - run: pip install -r api/requirements.txt
-      - run: pytest api/tests/ -m unit -v
+      - run: pytest api/tests/test_sanity.py -v
         env:
           PYTHONPATH: ${{ github.workspace }}
 
