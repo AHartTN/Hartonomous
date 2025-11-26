@@ -76,14 +76,22 @@ stages:
             displayName: 'Download Artifact'
           
           - pwsh: |
-              # Get config from Azure App Configuration using Arc managed identity
-              $installPath = az appconfig kv show `
-                --name appconfig-hartonomous `
-                --auth-mode login `
-                --key "deployment:development:install_path" `
-                --query value -o tsv
+              # Load config from Azure App Configuration
+              $installPath = az appconfig kv show --name appconfig-hartonomous --auth-mode login --key "deployment:development:install_path" --query value -o tsv
+              $apiHost = az appconfig kv show --name appconfig-hartonomous --auth-mode login --key "api:development:host" --query value -o tsv
+              $apiPort = az appconfig kv show --name appconfig-hartonomous --auth-mode login --key "api:development:port" --query value -o tsv
+              
+              # Get connection string template and password from Key Vault
+              $connStr = az appconfig kv show --name appconfig-hartonomous --auth-mode login --key "ConnectionStrings:PostgreSQL-HART-DESKTOP" --query value -o tsv
+              $password = az keyvault secret show --vault-name kv-hartonomous --name "PostgreSQL-Hartonomous-Password" --query value -o tsv
+              
+              # Build full connection string with password
+              $dbUrl = "$connStr;Password=$password"
               
               Write-Host "##vso[task.setvariable variable=InstallPath]$installPath"
+              Write-Host "##vso[task.setvariable variable=ApiHost]$apiHost"
+              Write-Host "##vso[task.setvariable variable=ApiPort]$apiPort"
+              Write-Host "##vso[task.setvariable variable=DatabaseUrl;issecret=true]$dbUrl"
             displayName: 'Load Azure Configuration'
           
           - task: ExtractFiles@1
@@ -103,28 +111,10 @@ stages:
             displayName: 'Setup Python Environment'
           
           - pwsh: |
-              $dbUrl = az appconfig kv show `
-                --name appconfig-hartonomous `
-                --auth-mode login `
-                --key "database:development:connection_string" `
-                --query value -o tsv
-              
-              $apiHost = az appconfig kv show `
-                --name appconfig-hartonomous `
-                --auth-mode login `
-                --key "api:development:host" `
-                --query value -o tsv
-              
-              $apiPort = az appconfig kv show `
-                --name appconfig-hartonomous `
-                --auth-mode login `
-                --key "api:development:port" `
-                --query value -o tsv
-              
               @"
-              DATABASE_URL=$dbUrl
-              API_HOST=$apiHost
-              API_PORT=$apiPort
+              DATABASE_URL=$(DatabaseUrl)
+              API_HOST=$(ApiHost)
+              API_PORT=$(ApiPort)
               ENVIRONMENT=development
               "@ | Set-Content -Path "$(InstallPath)\.env"
             displayName: 'Configure Application'

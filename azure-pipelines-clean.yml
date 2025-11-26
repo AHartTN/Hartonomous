@@ -1,0 +1,246 @@
+# Hartonomous Enterprise Deployment Pipeline - Azure DevOps
+# Platform-agnostic, cloud-agnostic, configuration-driven deployment
+# Compatible with any customer's infrastructure
+
+trigger:
+  branches:
+    include:
+    - develop
+    - main
+
+variables:
+  # Azure configuration (set via pipeline variables or variable groups)
+  azureAppConfigName: '$(AZURE_APP_CONFIG_NAME)'
+  azureKeyVaultName: '$(AZURE_KEY_VAULT_NAME)'
+  azureResourceGroup: '$(AZURE_RESOURCE_GROUP)'
+  
+  # Application configuration
+  artifactName: 'hartonomous-api'
+  buildConfiguration: 'Release'
+  
+stages:
+# =============================================================================
+# BUILD STAGE - Platform-agnostic build
+# =============================================================================
+- stage: Build
+  displayName: 'Build & Package Application'
+  jobs:
+  - job: BuildJob
+    displayName: 'Build'
+    pool:
+      vmImage: 'ubuntu-latest'
+    
+    steps:
+    - task: UsePythonVersion@0
+      displayName: 'Use Python 3.x'
+      inputs:
+        versionSpec: '3.x'
+        addToPath: true
+    
+    - script: |
+        cd api
+        pip install -r requirements.txt --target .
+      displayName: 'Install Dependencies to Package'
+    
+    - task: ArchiveFiles@2
+      displayName: 'Create Deployment Package'
+      inputs:
+        rootFolderOrFile: '$(Build.SourcesDirectory)/api'
+        includeRootFolder: false
+        archiveType: 'zip'
+        archiveFile: '$(Build.ArtifactStagingDirectory)/$(artifactName).zip'
+        replaceExistingArchive: true
+    
+    - publish: '$(Build.ArtifactStagingDirectory)/$(artifactName).zip'
+      artifact: $(artifactName)
+      displayName: 'Publish Build Artifact'
+    
+    - publish: '$(Build.SourcesDirectory)/scripts'
+      artifact: 'deployment-scripts'
+      displayName: 'Publish Deployment Scripts'
+
+# =============================================================================
+# DEVELOPMENT DEPLOYMENT
+# =============================================================================
+- stage: DeployDevelopment
+  displayName: 'Deploy to Development'
+  dependsOn: Build
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/develop'))
+  
+  jobs:
+  - deployment: DeployDev
+    displayName: 'Development Deployment'
+    pool:
+      name: 'Default'
+    environment: 'development'
+    
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - download: current
+            artifact: $(artifactName)
+          
+          - download: current
+            artifact: 'deployment-scripts'
+          
+          - task: PowerShell@2
+            displayName: 'Deploy Application'
+            inputs:
+              targetType: 'inline'
+              pwsh: true
+              script: |
+                Import-Module "$(Pipeline.Workspace)/deployment-scripts/DeploymentHelpers.psm1" -Force
+                
+                $platform = Get-PlatformInfo
+                Write-Host "??? Platform: $(if ($platform.IsWindows) { 'Windows' } elseif ($platform.IsLinux) { 'Linux' } else { 'macOS' })"
+                
+                # Load environment configuration
+                $config = Get-EnvironmentConfig -AppConfigName "$(azureAppConfigName)" -Environment "development"
+                
+                # Extract artifact
+                Write-Host "?? Extracting application..."
+                Expand-Archive -Path "$(Pipeline.Workspace)/$(artifactName)/$(artifactName).zip" -DestinationPath $config.InstallPath -Force
+                
+                # Setup Python environment
+                Initialize-PythonEnvironment -InstallPath $config.InstallPath -RequirementsFile "requirements.txt"
+                
+                # Configure application
+                Set-ApplicationConfig -Config $config -InstallPath $config.InstallPath -Environment "development"
+                
+                # Run database migrations
+                Invoke-DatabaseMigration -InstallPath $config.InstallPath
+                
+                # Restart service
+                Restart-ApplicationService -Config $config -InstallPath $config.InstallPath
+                
+                # Health check
+                $healthy = Test-ApplicationHealth -Config $config -Timeout 10 -Retries 3 -Delay 5
+                
+                if (-not $healthy) {
+                  Write-Error "? Deployment failed health check"
+                  exit 1
+                }
+                
+                Write-Host "? Development deployment completed successfully"
+
+# =============================================================================
+# STAGING DEPLOYMENT
+# =============================================================================
+- stage: DeployStaging
+  displayName: 'Deploy to Staging'
+  dependsOn: DeployDevelopment
+  condition: succeeded()
+  
+  jobs:
+  - deployment: DeployStaging
+    displayName: 'Staging Deployment'
+    pool:
+      name: 'Default'
+    environment: 'staging'
+    
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - download: current
+            artifact: $(artifactName)
+          
+          - download: current
+            artifact: 'deployment-scripts'
+          
+          - task: PowerShell@2
+            displayName: 'Deploy Application'
+            inputs:
+              targetType: 'inline'
+              pwsh: true
+              script: |
+                Import-Module "$(Pipeline.Workspace)/deployment-scripts/DeploymentHelpers.psm1" -Force
+                
+                $platform = Get-PlatformInfo
+                Write-Host "??? Platform: $(if ($platform.IsWindows) { 'Windows' } elseif ($platform.IsLinux) { 'Linux' } else { 'macOS' })"
+                
+                $config = Get-EnvironmentConfig -AppConfigName "$(azureAppConfigName)" -Environment "staging"
+                
+                Write-Host "?? Extracting application..."
+                Expand-Archive -Path "$(Pipeline.Workspace)/$(artifactName)/$(artifactName).zip" -DestinationPath $config.InstallPath -Force
+                
+                Initialize-PythonEnvironment -InstallPath $config.InstallPath -RequirementsFile "requirements.txt"
+                Set-ApplicationConfig -Config $config -InstallPath $config.InstallPath -Environment "staging"
+                Invoke-DatabaseMigration -InstallPath $config.InstallPath
+                Restart-ApplicationService -Config $config -InstallPath $config.InstallPath
+                
+                $healthy = Test-ApplicationHealth -Config $config -Timeout 10 -Retries 3 -Delay 5
+                
+                if (-not $healthy) {
+                  Write-Error "? Deployment failed health check"
+                  exit 1
+                }
+                
+                Write-Host "? Staging deployment completed successfully"
+
+# =============================================================================
+# PRODUCTION DEPLOYMENT
+# =============================================================================
+- stage: DeployProduction
+  displayName: 'Deploy to Production'
+  dependsOn: DeployStaging
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  
+  jobs:
+  - deployment: DeployProd
+    displayName: 'Production Deployment'
+    pool:
+      name: 'Default'
+    environment: 'production'
+    
+    strategy:
+      runOnce:
+        preDeploy:
+          steps:
+          - script: echo "?? Pre-deployment validation for production"
+            displayName: 'Production Safety Gate'
+        
+        deploy:
+          steps:
+          - download: current
+            artifact: $(artifactName)
+          
+          - download: current
+            artifact: 'deployment-scripts'
+          
+          - task: PowerShell@2
+            displayName: 'Deploy Application'
+            inputs:
+              targetType: 'inline'
+              pwsh: true
+              script: |
+                Import-Module "$(Pipeline.Workspace)/deployment-scripts/DeploymentHelpers.psm1" -Force
+                
+                $platform = Get-PlatformInfo
+                Write-Host "??? Platform: $(if ($platform.IsWindows) { 'Windows' } elseif ($platform.IsLinux) { 'Linux' } else { 'macOS' })"
+                
+                $config = Get-EnvironmentConfig -AppConfigName "$(azureAppConfigName)" -Environment "production"
+                
+                Write-Host "?? Extracting application..."
+                Expand-Archive -Path "$(Pipeline.Workspace)/$(artifactName)/$(artifactName).zip" -DestinationPath $config.InstallPath -Force
+                
+                Initialize-PythonEnvironment -InstallPath $config.InstallPath -RequirementsFile "requirements.txt"
+                Set-ApplicationConfig -Config $config -InstallPath $config.InstallPath -Environment "production"
+                Invoke-DatabaseMigration -InstallPath $config.InstallPath
+                Restart-ApplicationService -Config $config -InstallPath $config.InstallPath
+                
+                $healthy = Test-ApplicationHealth -Config $config -Timeout 10 -Retries 3 -Delay 5
+                
+                if (-not $healthy) {
+                  Write-Error "? Deployment failed health check"
+                  exit 1
+                }
+                
+                Write-Host "? Production deployment completed successfully"
+        
+        on:
+          failure:
+            steps:
+            - script: echo "?? Production deployment failed - manual intervention required"
+              displayName: 'Failure Alert'

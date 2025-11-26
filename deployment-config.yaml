@@ -1,0 +1,257 @@
+# Hartonomous Deployment Configuration
+# This file defines ALL deployment parameters for any environment
+# Customers modify this file to match their infrastructure
+
+# =============================================================================
+# DEPLOYMENT METADATA
+# =============================================================================
+deployment:
+  application:
+    name: "hartonomous-api"
+    version: "1.0.0"
+    description: "Hartonomous API Service"
+  
+  artifact:
+    name: "hartonomous-api"
+    type: "zip"
+    includePatterns:
+      - "**/*.py"
+      - "**/requirements.txt"
+      - "**/alembic.ini"
+      - "**/alembic/**"
+    excludePatterns:
+      - "**/.venv/**"
+      - "**/__pycache__/**"
+      - "**/*.pyc"
+      - "**/.pytest_cache/**"
+      - "**/.env"
+
+# =============================================================================
+# CLOUD CONFIGURATION
+# =============================================================================
+cloud:
+  provider: "azure"  # azure, aws, gcp, on-premises
+  
+  azure:
+    # Azure App Configuration for centralized config
+    appConfiguration:
+      name: "${AZURE_APP_CONFIG_NAME}"  # Set via environment variable
+      resourceGroup: "${AZURE_RESOURCE_GROUP}"
+      authMode: "login"  # login (managed identity) or key
+    
+    # Azure Key Vault for secrets
+    keyVault:
+      name: "${AZURE_KEY_VAULT_NAME}"
+      authMode: "login"
+    
+    # Azure subscription (optional - uses default if not specified)
+    subscription:
+      id: "${AZURE_SUBSCRIPTION_ID}"
+      tenantId: "${AZURE_TENANT_ID}"
+
+# =============================================================================
+# ENVIRONMENT DEFINITIONS
+# =============================================================================
+environments:
+  development:
+    name: "development"
+    deployOnBranches: ["develop"]
+    requiresApproval: false
+    
+    # Runner/Agent configuration
+    runner:
+      type: "self-hosted"  # self-hosted or cloud-hosted
+      os: "auto-detect"    # auto-detect, windows, linux, macos
+      pool: "Default"
+      labels: []           # Additional runner labels for selection
+    
+    # Application configuration keys (stored in Azure App Config)
+    appConfig:
+      keyPrefix: "App:Development:"
+      keys:
+        - "InstallPath"
+        - "ApiHost"
+        - "ApiPort"
+        - "DatabaseHost"
+        - "DatabasePort"
+        - "DatabaseName"
+        - "DatabaseUser"
+    
+    # Secrets (stored in Azure Key Vault)
+    secrets:
+      - "DatabasePassword"
+      - "ApiSecret"
+    
+    # Health check configuration
+    healthCheck:
+      enabled: true
+      endpoint: "/v1/health"
+      expectedStatus: 200
+      timeout: 10
+      retries: 3
+      delay: 5
+  
+  staging:
+    name: "staging"
+    deployOnBranches: ["develop"]
+    requiresApproval: true
+    approvers: []  # List of approver emails/usernames
+    
+    runner:
+      type: "self-hosted"
+      os: "auto-detect"
+      pool: "Default"
+      labels: []
+    
+    appConfig:
+      keyPrefix: "App:Staging:"
+      keys:
+        - "InstallPath"
+        - "ApiHost"
+        - "ApiPort"
+        - "DatabaseHost"
+        - "DatabasePort"
+        - "DatabaseName"
+        - "DatabaseUser"
+    
+    secrets:
+      - "DatabasePassword"
+      - "ApiSecret"
+    
+    healthCheck:
+      enabled: true
+      endpoint: "/v1/health"
+      expectedStatus: 200
+      timeout: 10
+      retries: 3
+      delay: 5
+  
+  production:
+    name: "production"
+    deployOnBranches: ["main"]
+    requiresApproval: true
+    approvers: []
+    
+    runner:
+      type: "self-hosted"
+      os: "auto-detect"
+      pool: "Default"
+      labels: []
+    
+    appConfig:
+      keyPrefix: "App:Production:"
+      keys:
+        - "InstallPath"
+        - "ApiHost"
+        - "ApiPort"
+        - "DatabaseHost"
+        - "DatabasePort"
+        - "DatabaseName"
+        - "DatabaseUser"
+    
+    secrets:
+      - "DatabasePassword"
+      - "ApiSecret"
+    
+    healthCheck:
+      enabled: true
+      endpoint: "/v1/health"
+      expectedStatus: 200
+      timeout: 10
+      retries: 3
+      delay: 5
+
+# =============================================================================
+# APPLICATION SETTINGS
+# =============================================================================
+application:
+  runtime: "python"
+  version: "3.x"
+  
+  # Source directory (relative to repo root)
+  sourceDirectory: "api"
+  
+  # Python-specific settings
+  python:
+    requirementsFile: "requirements.txt"
+    virtualEnv: ".venv"
+    entrypoint: "main:app"
+    server: "uvicorn"
+  
+  # Database migration settings
+  database:
+    migrationTool: "alembic"
+    migrationCommand: "alembic upgrade head"
+    migrationConfig: "alembic.ini"
+  
+  # Service settings
+  service:
+    restartCommand: "auto"  # auto-detect based on OS
+    startupDelay: 5
+    shutdownTimeout: 10
+
+# =============================================================================
+# DEPLOYMENT STRATEGY
+# =============================================================================
+strategy:
+  type: "runOnce"  # runOnce, rolling, canary
+  
+  # Lifecycle hooks
+  hooks:
+    preDeploy:
+      enabled: true
+      steps:
+        - "validate-config"
+        - "check-prerequisites"
+    
+    deploy:
+      enabled: true
+      steps:
+        - "download-artifact"
+        - "extract-artifact"
+        - "setup-environment"
+        - "install-dependencies"
+        - "configure-application"
+        - "run-migrations"
+        - "restart-service"
+    
+    postDeploy:
+      enabled: true
+      steps:
+        - "health-check"
+        - "smoke-test"
+    
+    onFailure:
+      enabled: true
+      steps:
+        - "capture-logs"
+        - "notify-failure"
+        - "rollback"  # If rollback enabled
+  
+  # Rollback configuration
+  rollback:
+    enabled: true
+    keepPreviousVersions: 3
+    autoRollbackOnFailure: true
+
+# =============================================================================
+# PLATFORM-SPECIFIC OVERRIDES
+# =============================================================================
+platformOverrides:
+  windows:
+    shell: "pwsh"
+    pathSeparator: "\\"
+    pythonCommand: "python"
+    serviceManagement: "windows-service"
+  
+  linux:
+    shell: "bash"
+    pathSeparator: "/"
+    pythonCommand: "python3"
+    serviceManagement: "systemd"
+  
+  macos:
+    shell: "bash"
+    pathSeparator: "/"
+    pythonCommand: "python3"
+    serviceManagement: "launchd"
