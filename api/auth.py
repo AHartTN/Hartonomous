@@ -11,15 +11,15 @@ Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 """
 
 import logging
-from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
 from functools import lru_cache
+from typing import Any, Dict, Optional
 
 import jwt
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import msal
 import requests
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from api.config import settings
 
@@ -34,30 +34,32 @@ _jwks_cache: Dict[str, tuple[Dict[str, Any], datetime]] = {}
 
 class EntraIDAuth:
     """Entra ID authentication handler."""
-    
+
     def __init__(self):
         """Initialize Entra ID authentication."""
         self.tenant_id = settings.entra_tenant_id
         self.client_id = settings.entra_client_id
         self.client_secret = settings.entra_client_secret
-        
+
         if not all([self.tenant_id, self.client_id]):
             logger.warning("Entra ID not fully configured")
             return
-        
+
         # MSAL confidential client
         self.app = msal.ConfidentialClientApplication(
             client_id=self.client_id,
             client_credential=self.client_secret,
-            authority=f"https://login.microsoftonline.com/{self.tenant_id}"
+            authority=f"https://login.microsoftonline.com/{self.tenant_id}",
         )
-        
+
         # JWT validation settings
         self.issuer = f"https://sts.windows.net/{self.tenant_id}/"
-        self.jwks_uri = f"https://login.microsoftonline.com/{self.tenant_id}/discovery/v2.0/keys"
-        
+        self.jwks_uri = (
+            f"https://login.microsoftonline.com/{self.tenant_id}/discovery/v2.0/keys"
+        )
+
         logger.info(f"Entra ID initialized for tenant: {self.tenant_id}")
-    
+
     def _get_jwks(self) -> Dict[str, Any]:
         """
         Get JWKS keys with 24-hour caching.
@@ -92,7 +94,7 @@ class EntraIDAuth:
             logger.error(f"Failed to fetch JWKS: {e}")
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Unable to fetch JWT signing keys"
+                detail="Unable to fetch JWT signing keys",
             )
 
     def validate_token(self, token: str) -> Dict[str, Any]:
@@ -126,7 +128,7 @@ class EntraIDAuth:
             if not signing_key:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Token signing key not found"
+                    detail="Token signing key not found",
                 )
 
             # Verify and decode token
@@ -135,28 +137,29 @@ class EntraIDAuth:
                 signing_key,
                 algorithms=["RS256"],
                 audience=self.client_id,
-                issuer=self.issuer
+                issuer=self.issuer,
             )
 
-            logger.debug(f"Token validated for user: {payload.get('preferred_username')}")
+            logger.debug(
+                f"Token validated for user: {payload.get('preferred_username')}"
+            )
 
             return payload
 
         except jwt.ExpiredSignatureError:
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token expired"
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired"
             )
         except jwt.InvalidTokenError as e:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"Invalid token: {str(e)}"
+                detail=f"Invalid token: {str(e)}",
             )
         except Exception as e:
             logger.error(f"Token validation failed: {e}", exc_info=True)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token validation failed"
+                detail="Token validation failed",
             )
 
 
@@ -193,8 +196,7 @@ class B2CAuth:
 
         # MSAL public client (B2C uses public client flow)
         self.app = msal.PublicClientApplication(
-            client_id=self.client_id,
-            authority=self.authority
+            client_id=self.client_id, authority=self.authority
         )
 
         logger.info(f"B2C initialized for tenant: {self.tenant_name}")
@@ -233,7 +235,7 @@ class B2CAuth:
             logger.error(f"Failed to fetch B2C JWKS: {e}")
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Unable to fetch B2C JWT signing keys"
+                detail="Unable to fetch B2C JWT signing keys",
             )
 
     def validate_token(self, token: str) -> Dict[str, Any]:
@@ -267,7 +269,7 @@ class B2CAuth:
             if not signing_key:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="B2C token signing key not found"
+                    detail="B2C token signing key not found",
                 )
 
             # Verify and decode token
@@ -277,7 +279,7 @@ class B2CAuth:
                 algorithms=["RS256"],
                 audience=self.client_id,
                 issuer=self.issuer,
-                options={"verify_signature": True}  # ✅ Signature verification ENABLED
+                options={"verify_signature": True},  # ✅ Signature verification ENABLED
             )
 
             logger.debug(f"B2C token validated for user: {payload.get('sub')}")
@@ -286,19 +288,18 @@ class B2CAuth:
 
         except jwt.ExpiredSignatureError:
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="B2C token expired"
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="B2C token expired"
             )
         except jwt.InvalidTokenError as e:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"Invalid B2C token: {str(e)}"
+                detail=f"Invalid B2C token: {str(e)}",
             )
         except Exception as e:
             logger.error(f"B2C token validation failed: {e}", exc_info=True)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="B2C token validation failed"
+                detail="B2C token validation failed",
             )
 
 
@@ -324,17 +325,17 @@ def get_b2c_auth() -> B2CAuth:
 
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    credentials: HTTPAuthorizationCredentials = Depends(security),
 ) -> Dict[str, Any]:
     """
     Dependency: Get current authenticated user.
-    
+
     Validates JWT token from Authorization header.
     Supports both Entra ID (internal) and B2C (external) users.
-    
+
     Returns:
         User claims from JWT
-    
+
     Raises:
         HTTPException: If authentication fails
     """
@@ -343,11 +344,11 @@ async def get_current_user(
         return {
             "sub": "anonymous",
             "name": "Anonymous User",
-            "email": "anonymous@example.com"
+            "email": "anonymous@example.com",
         }
-    
+
     token = credentials.credentials
-    
+
     # Try Entra ID first (internal users)
     if settings.entra_tenant_id:
         try:
@@ -357,7 +358,7 @@ async def get_current_user(
             return user
         except HTTPException:
             pass  # Fall through to B2C
-    
+
     # Try B2C (external users)
     if settings.b2c_enabled:
         try:
@@ -367,60 +368,58 @@ async def get_current_user(
             return user
         except HTTPException:
             pass
-    
+
     # Authentication failed
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid or expired token",
-        headers={"WWW-Authenticate": "Bearer"}
+        headers={"WWW-Authenticate": "Bearer"},
     )
 
 
 async def require_internal_user(
-    user: Dict[str, Any] = Depends(get_current_user)
+    user: Dict[str, Any] = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """
     Dependency: Require internal user (Entra ID).
-    
+
     Rejects B2C users.
-    
+
     Returns:
         User claims
-    
+
     Raises:
         HTTPException: If user is not internal
     """
     if user.get("auth_type") != "entra_id":
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Internal users only"
+            status_code=status.HTTP_403_FORBIDDEN, detail="Internal users only"
         )
-    
+
     return user
 
 
 async def require_admin(
-    user: Dict[str, Any] = Depends(get_current_user)
+    user: Dict[str, Any] = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """
     Dependency: Require admin role.
-    
+
     Checks for 'admin' role in token claims.
-    
+
     Returns:
         User claims
-    
+
     Raises:
         HTTPException: If user is not admin
     """
     roles = user.get("roles", [])
-    
+
     if "admin" not in roles and "Admin" not in roles:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required"
+            status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required"
         )
-    
+
     return user
 
 

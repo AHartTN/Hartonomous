@@ -6,18 +6,15 @@ POST /v1/train/batch  - Train on batch of samples
 Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 """
 
-import time
 import logging
+import time
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from psycopg import AsyncConnection
 
 from api.dependencies import get_db_connection
-from api.models.training import (
-    BatchTrainRequest,
-    BatchTrainResponse,
-)
 from api.models.ingest import ErrorResponse
+from api.models.training import BatchTrainRequest, BatchTrainResponse
 from api.services.training import TrainingService
 
 router = APIRouter()
@@ -47,15 +44,14 @@ logger = logging.getLogger(__name__)
         "- Fine-tune on domain-specific data\n"
         "- Reinforce user feedback\n"
         "- Continuous learning from interactions"
-    )
+    ),
 )
 async def train_batch(
-    request: BatchTrainRequest,
-    conn: AsyncConnection = Depends(get_db_connection)
+    request: BatchTrainRequest, conn: AsyncConnection = Depends(get_db_connection)
 ) -> BatchTrainResponse:
     """
     Train on batch of samples.
-    
+
     Example:
         ```json
         {
@@ -73,39 +69,36 @@ async def train_batch(
             "epochs": 10
         }
         ```
-    
+
     Returns:
         BatchTrainResponse with loss statistics and convergence rate
     """
     start_time = time.time()
-    
+
     try:
         # Convert Pydantic models to dicts
         samples = [
-            {
-                "input_atoms": s.input_atom_ids,
-                "target_atom": s.target_atom_id
-            }
+            {"input_atoms": s.input_atom_ids, "target_atom": s.target_atom_id}
             for s in request.samples
         ]
-        
+
         # Train
         result = await TrainingService.train_batch(
             conn=conn,
             samples=samples,
             learning_rate=request.learning_rate,
-            epochs=request.epochs
+            epochs=request.epochs,
         )
-        
+
         processing_time = (time.time() - start_time) * 1000
         samples_per_second = (result["total_samples"] / processing_time) * 1000
-        
+
         logger.info(
             f"Batch training complete: {result['total_samples']} samples "
             f"in {processing_time:.2f}ms ({samples_per_second:.0f} samples/sec), "
             f"avg_loss={result['average_loss']:.6f}"
         )
-        
+
         return BatchTrainResponse(
             total_samples=result["total_samples"],
             epochs_completed=request.epochs,
@@ -118,19 +111,16 @@ async def train_batch(
             message=(
                 f"Training complete: {result['convergence_rate']:.1%} convergence rate, "
                 f"avg_loss={result['average_loss']:.6f}"
-            )
+            ),
         )
-    
+
     except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
         logger.error(f"Batch training failed: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Training failed: {str(e)}"
+            detail=f"Training failed: {str(e)}",
         )
 
 

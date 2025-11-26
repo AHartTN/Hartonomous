@@ -6,17 +6,14 @@ POST /v1/export/onnx  - Export model to ONNX format
 Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 """
 
-import time
 import logging
+import time
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from psycopg import AsyncConnection
 
 from api.dependencies import get_db_connection
-from api.models.export import (
-    OnnxExportRequest,
-    OnnxExportResponse,
-)
+from api.models.export import OnnxExportRequest, OnnxExportResponse
 from api.models.ingest import ErrorResponse
 from api.services.export import ExportService
 
@@ -51,15 +48,14 @@ logger = logging.getLogger(__name__)
         "- Model versioning\n"
         "- Cross-platform compatibility\n\n"
         "Performance: O(N) where N = atom count"
-    )
+    ),
 )
 async def export_onnx(
-    request: OnnxExportRequest,
-    conn: AsyncConnection = Depends(get_db_connection)
+    request: OnnxExportRequest, conn: AsyncConnection = Depends(get_db_connection)
 ) -> OnnxExportResponse:
     """
     Export model to ONNX format.
-    
+
     Example:
         ```json
         {
@@ -68,29 +64,29 @@ async def export_onnx(
             "output_path": "/models/my_model.onnx"
         }
         ```
-    
+
     Returns:
         OnnxExportResponse with file path and statistics
     """
     start_time = time.time()
-    
+
     try:
         # Export
         result = await ExportService.export_to_onnx(
             conn=conn,
             atom_ids=request.atom_ids,
             model_name=request.model_name,
-            output_path=request.output_path
+            output_path=request.output_path,
         )
-        
+
         processing_time = (time.time() - start_time) * 1000
-        
+
         logger.info(
             f"ONNX export complete: '{request.model_name}' "
             f"({result['atom_count']} atoms, {result['relation_count']} relations) "
             f"in {processing_time:.2f}ms"
         )
-        
+
         return OnnxExportResponse(
             model_name=request.model_name,
             output_path=result["output_path"],
@@ -101,19 +97,16 @@ async def export_onnx(
             message=(
                 f"Model '{request.model_name}' exported to {result['output_path']} "
                 f"({result['atom_count']} atoms, {result['relation_count']} relations)"
-            )
+            ),
         )
-    
+
     except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
         logger.error(f"ONNX export failed: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Export failed: {str(e)}"
+            detail=f"Export failed: {str(e)}",
         )
 
 

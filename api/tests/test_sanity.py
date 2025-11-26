@@ -5,12 +5,14 @@ These tests verify basic functionality and ensure the test framework is working 
 
 Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 """
-import sys
+
 import os
+import sys
+
 import pytest
 
 # Add parent directory to path for imports
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 
 def test_sanity():
@@ -44,11 +46,10 @@ def test_imports():
     """Test that core modules can be imported."""
     try:
         # pylint: disable=import-outside-toplevel,unused-import
-        import main
         import config
-        from services import atomization
-        from services import query
+        import main
         from models import ingest
+        from services import atomization, query
     except ImportError as e:
         pytest.skip(f"Failed to import modules (expected in CI): {e}")
 
@@ -56,6 +57,7 @@ def test_imports():
 @pytest.mark.asyncio
 async def test_async_sanity():
     """Test async functionality."""
+
     async def sample_async():
         return True
 
@@ -117,9 +119,9 @@ async def test_database_imports():
     """Test database-related imports."""
     try:
         # pylint: disable=import-outside-toplevel,unused-import
-        from psycopg_pool import AsyncConnectionPool
-        from psycopg.rows import dict_row
         import psycopg
+        from psycopg.rows import dict_row
+        from psycopg_pool import AsyncConnectionPool
 
         assert True
     except ImportError as e:
@@ -130,7 +132,7 @@ def test_fastapi_imports():
     """Test FastAPI imports."""
     try:
         # pylint: disable=import-outside-toplevel,unused-import
-        from fastapi import FastAPI, HTTPException, Depends
+        from fastapi import Depends, FastAPI, HTTPException
         from fastapi.middleware.cors import CORSMiddleware
 
         assert True

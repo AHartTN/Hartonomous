@@ -3,12 +3,14 @@ Configuration tests for Hartonomous API
 
 Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 """
-import sys
+
 import os
+import sys
+
 import pytest
 
 # Add parent directory to path for imports
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 
 class TestConfiguration:
@@ -22,7 +24,13 @@ class TestConfiguration:
 
             assert settings.api_port >= 1000
             assert settings.api_port <= 65535
-            assert settings.log_level in ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+            assert settings.log_level in [
+                "DEBUG",
+                "INFO",
+                "WARNING",
+                "ERROR",
+                "CRITICAL",
+            ]
         except ImportError:
             pytest.skip("Config module not available in CI")
 

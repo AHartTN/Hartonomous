@@ -5,10 +5,11 @@ These tests require PostgreSQL to be running and accessible.
 
 Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 """
-import os
-import pytest
-import psycopg
 
+import os
+
+import psycopg
+import pytest
 
 pytestmark = pytest.mark.integration
 
@@ -65,11 +66,13 @@ async def test_database_extensions(db_connection):
     """Test required PostgreSQL extensions are available."""
     async with db_connection.cursor() as cur:
         # Check if required extensions exist
-        await cur.execute("""
+        await cur.execute(
+            """
             SELECT extname 
             FROM pg_extension 
             WHERE extname IN ('vector', 'age', 'plpython3u')
-        """)
+        """
+        )
         extensions = await cur.fetchall()
         extension_names = [ext[0] for ext in extensions]
 
@@ -83,13 +86,15 @@ async def test_schema_exists(db_connection):
     """Test that expected schema objects exist."""
     async with db_connection.cursor() as cur:
         # Check for atoms table
-        await cur.execute("""
+        await cur.execute(
+            """
             SELECT EXISTS (
                 SELECT FROM information_schema.tables 
                 WHERE table_schema = 'public' 
                 AND table_name = 'atoms'
             )
-        """)
+        """
+        )
         result = await cur.fetchone()
         # May not exist in test database, so we just check the query works
         assert result is not None
@@ -102,18 +107,17 @@ async def test_connection_pool():
     from psycopg_pool import AsyncConnectionPool
 
     conn_string = os.getenv("PGHOST", "localhost")
-    conn_string = (f"postgresql://"
-                   f"{os.getenv('PGUSER', 'postgres')}@"
-                   f"{os.getenv('PGHOST', 'localhost')}:"
-                   f"{os.getenv('PGPORT', '5432')}/"
-                   f"{os.getenv('PGDATABASE', 'hartonomous_test')}")
+    conn_string = (
+        f"postgresql://"
+        f"{os.getenv('PGUSER', 'postgres')}@"
+        f"{os.getenv('PGHOST', 'localhost')}:"
+        f"{os.getenv('PGPORT', '5432')}/"
+        f"{os.getenv('PGDATABASE', 'hartonomous_test')}"
+    )
 
     try:
         pool = AsyncConnectionPool(
-            conninfo=conn_string,
-            min_size=1,
-            max_size=2,
-            open=False
+            conninfo=conn_string, min_size=1, max_size=2, open=False
         )
 
         await pool.open()
@@ -138,18 +142,22 @@ async def test_transaction_handling(db_connection):
         async with db_connection.transaction():
             async with db_connection.cursor() as cur:
                 # Create a temporary table
-                await cur.execute("""
+                await cur.execute(
+                    """
                     CREATE TEMP TABLE test_table (
                         id SERIAL PRIMARY KEY,
                         value TEXT
                     )
-                """)
+                """
+                )
 
                 # Insert data
-                await cur.execute("""
+                await cur.execute(
+                    """
                     INSERT INTO test_table (value) 
                     VALUES ('test_value')
-                """)
+                """
+                )
 
                 # Query data
                 await cur.execute("SELECT value FROM test_table")

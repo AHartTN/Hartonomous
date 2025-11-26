@@ -5,10 +5,11 @@ These tests require the API to be running or use TestClient.
 
 Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 """
+
 import os
+
 import pytest
 from httpx import AsyncClient
-
 
 pytestmark = pytest.mark.integration
 
@@ -25,6 +26,7 @@ async def test_client():
     try:
         # pylint: disable=import-outside-toplevel
         from api.main import app
+
         async with AsyncClient(app=app, base_url="http://test") as client:
             yield client
     except Exception as e:
@@ -71,8 +73,7 @@ async def test_openapi_docs(test_client):
 async def test_cors_headers(test_client):
     """Test CORS headers are present."""
     response = await test_client.options(
-        "/api/v1/health",
-        headers={"Origin": "http://localhost:3000"}
+        "/api/v1/health", headers={"Origin": "http://localhost:3000"}
     )
 
     # Check CORS headers
