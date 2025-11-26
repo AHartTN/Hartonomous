@@ -38,15 +38,38 @@ if (-not $Environment) {
 $config = Get-DeploymentConfig -Environment $Environment
 Write-Log "Loaded configuration for: $Environment" -Level INFO
 
-# Get repository root
+# Determine paths
 $repoRoot = Join-Path $PSScriptRoot "..\..\..\"
-$apiPath = Join-Path $repoRoot "api"
+$sourceApiPath = Join-Path $repoRoot "api"
+$targetApiPath = $config.deployment.install_path
 
-if (-not (Test-Path $apiPath)) {
-    Write-Failure "API directory not found: $apiPath"
+Write-Log "Source API path: $sourceApiPath" -Level INFO
+Write-Log "Target install path: $targetApiPath" -Level INFO
+
+# Validate source exists
+if (-not (Test-Path $sourceApiPath)) {
+    Write-Failure "Source API directory not found: $sourceApiPath"
 }
 
-Write-Log "API path: $apiPath" -Level INFO
+# Create target directory if it doesn't exist
+if (-not (Test-Path $targetApiPath)) {
+    Write-Log "Creating target directory: $targetApiPath" -Level INFO
+    New-Item -ItemType Directory -Path $targetApiPath -Force | Out-Null
+}
+
+# Copy source to target (excluding venv and cache)
+Write-Step "Copying Application Files"
+$excludePatterns = @(".venv", "__pycache__", "*.pyc", ".pytest_cache", ".env")
+
+Write-Log "Syncing from source to target..." -Level INFO
+robocopy $sourceApiPath $targetApiPath /MIR /XD .venv __pycache__ .pytest_cache /XF *.pyc .env /NFL /NDL /NJH /NJS /NC /NS /NP
+if ($LASTEXITCODE -gt 7) {
+    Write-Failure "Failed to copy application files (robocopy exit code: $LASTEXITCODE)"
+}
+Write-Success "Application files copied to: $targetApiPath"
+
+# Now work in the target path
+$apiPath = $targetApiPath
 
 # Backup existing deployment (unless skipped)
 if (-not $SkipBackup) {
