@@ -231,3 +231,5 @@ if ($Environment -eq 'development') {
 }
 
 Write-Log "Neo4j worker deployment completed" -Level INFO
+
+exit 0
