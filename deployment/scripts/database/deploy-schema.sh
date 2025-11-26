@@ -14,7 +14,6 @@ source "$SCRIPT_DIR/../common/azure-auth.sh"
 # Parse arguments
 ENVIRONMENT="${DEPLOYMENT_ENVIRONMENT:-}"
 DRY_RUN=false
-SKIP_BACKUP=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -24,10 +23,6 @@ while [[ $# -gt 0 ]]; do
             ;;
         --dry-run)
             DRY_RUN=true
-            shift
-            ;;
-        --skip-backup)
-            SKIP_BACKUP=true
             shift
             ;;
         *)
@@ -98,10 +93,8 @@ export PGUSER="$DB_USER"
 export PGPASSWORD="$DB_PASSWORD"
 
 # Backup database (unless skipped)
-if [[ "$SKIP_BACKUP" != "true" ]]; then
-    write_step "Creating Pre-Deployment Backup"
-    "$SCRIPT_DIR/backup-database.sh" -e "$ENVIRONMENT"
-fi
+write_step "Creating Pre-Deployment Backup"
+"$SCRIPT_DIR/backup-database.sh" -e "$ENVIRONMENT"
 
 # Test database connectivity
 write_step "Testing Database Connectivity"
