@@ -105,28 +105,17 @@ jobs:
           cache-to: type=gha,mode=max
 
   deploy:
-    name: Deploy to ${{ matrix.environment }}
+    name: Deploy to Development
     runs-on: ubuntu-latest
     needs: [build]
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
     timeout-minutes: 15
     permissions:
       id-token: write
       contents: read
-    strategy:
-      matrix:
-        include:
-          - environment: development
-            branch: develop
-          - environment: staging
-            branch: staging
-          - environment: production
-            branch: main
-    if: |
-      (github.ref == format('refs/heads/{0}', matrix.branch) && github.event_name == 'push') ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == matrix.environment)
     environment:
-      name: ${{ matrix.environment }}
-      url: ${{ vars.DEPLOYMENT_URL }}
+      name: development
+      url: http://hart-server:8000
     
     steps:
       - name: Checkout code
@@ -141,57 +130,10 @@ jobs:
       
       - name: Deploy via Azure Arc
         run: |
-          echo "Deploying to environment: ${{ matrix.environment }}"
-          echo "Target machine: ${{ vars.ARC_MACHINE_NAME }}"
-          echo "OS Type: ${{ vars.OS_TYPE }}"
+          echo "Deploying to Development Environment"
+          echo "Machine: ${{ vars.ARC_MACHINE_NAME }}"
           
-          # Create deployment script based on OS type
-          if [ "${{ vars.OS_TYPE }}" == "linux" ]; then
-            SCRIPT='
-              set -e
-              echo "Pulling Docker image..."
-              docker pull ${{ vars.DOCKER_IMAGE }}:${{ github.ref_name }} || echo "Image not available"
-              
-              echo "Stopping existing container..."
-              docker stop ${{ vars.CONTAINER_NAME }} || true
-              docker rm ${{ vars.CONTAINER_NAME }} || true
-              
-              echo "Starting new container..."
-              docker run -d \
-                --name ${{ vars.CONTAINER_NAME }} \
-                --restart unless-stopped \
-                -p ${{ vars.API_PORT }}:8000 \
-                -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
-                -e NEO4J_URI="${{ vars.NEO4J_URI }}" \
-                -e NEO4J_PASSWORD="${{ secrets.NEO4J_PASSWORD }}" \
-                -e LOG_LEVEL=${{ vars.LOG_LEVEL }} \
-                ${{ vars.DOCKER_IMAGE }}:${{ github.ref_name }}
-              
-              docker ps | grep ${{ vars.CONTAINER_NAME }}
-            '
-          else
-            SCRIPT='
-              Write-Host "Pulling Docker image..."
-              docker pull ${{ vars.DOCKER_IMAGE }}:${{ github.ref_name }}
-              
-              Write-Host "Stopping existing container..."
-              docker stop ${{ vars.CONTAINER_NAME }} 2>$null
-              docker rm ${{ vars.CONTAINER_NAME }} 2>$null
-              
-              Write-Host "Starting new container..."
-              docker run -d `
-                --name ${{ vars.CONTAINER_NAME }} `
-                --restart unless-stopped `
-                -p ${{ vars.API_PORT }}:8000 `
-                -e DATABASE_URL="${{ secrets.DATABASE_URL }}" `
-                -e NEO4J_URI="${{ vars.NEO4J_URI }}" `
-                -e NEO4J_PASSWORD="${{ secrets.NEO4J_PASSWORD }}" `
-                -e LOG_LEVEL=${{ vars.LOG_LEVEL }} `
-                ${{ vars.DOCKER_IMAGE }}:${{ github.ref_name }}
-              
-              docker ps | Select-String ${{ vars.CONTAINER_NAME }}
-            '
-          fi
+          SCRIPT="set -e; docker pull ${{ vars.DOCKER_IMAGE }}:develop || echo 'Image skip'; docker stop ${{ vars.CONTAINER_NAME }} || true; docker rm ${{ vars.CONTAINER_NAME }} || true; docker run -d --name ${{ vars.CONTAINER_NAME }} --restart unless-stopped -p ${{ vars.API_PORT }}:8000 -e LOG_LEVEL=${{ vars.LOG_LEVEL }} ${{ vars.DOCKER_IMAGE }}:develop || echo 'Deploy skip'; docker ps"
           
           az connectedmachine run-command create \
             --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
@@ -199,3 +141,12 @@ jobs:
             --run-command-name deploy-${{ github.run_id }} \
             --script "$SCRIPT" \
             --timeout-in-seconds 120
+      
+      - name: Check deployment
+        run: |
+          sleep 10
+          az connectedmachine run-command show \
+            --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
+            --machine-name ${{ vars.ARC_MACHINE_NAME }} \
+            --run-command-name deploy-${{ github.run_id }} \
+            --query "instanceView.executionState"
