@@ -1,0 +1,160 @@
+# CI/CD Pipeline - Works with GitHub Actions and Azure DevOps
+# Builds artifacts once, deploys to any environment
+
+trigger:
+  branches:
+    include:
+    - develop
+    - main
+
+pr:
+  branches:
+    include:
+    - develop
+    - main
+
+stages:
+- stage: Build
+  displayName: 'Build Artifacts'
+  jobs:
+  - job: BuildJob
+    displayName: 'Create Deployment Package'
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps:
+    - checkout: self
+      displayName: 'Checkout Source'
+    
+    - task: ArchiveFiles@2
+      displayName: 'Package API'
+      inputs:
+        rootFolderOrFile: '$(Build.SourcesDirectory)/api'
+        includeRootFolder: false
+        archiveType: 'zip'
+        archiveFile: '$(Build.ArtifactStagingDirectory)/api-package.zip'
+        replaceExistingArchive: true
+        excludePaths: |
+          **/.venv/**
+          **/__pycache__/**
+          **/*.pyc
+          **/.pytest_cache/**
+          **/.env
+    
+    - publish: $(Build.ArtifactStagingDirectory)/api-package.zip
+      artifact: api-package
+      displayName: 'Publish Build Artifact'
+
+- stage: DeployDev
+  displayName: 'Deploy to Development'
+  dependsOn: Build
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/develop'))
+  jobs:
+  - deployment: DeployDevJob
+    displayName: 'Deploy to Dev Environment'
+    pool:
+      name: 'Default'
+      demands:
+      - agent.name -equals HART-DESKTOP
+    environment: 'development'
+    strategy:
+      runOnce:
+        preDeploy:
+          steps:
+          - download: none
+          - checkout: self
+          - pwsh: |
+              .\deployment\Install-Requirements.ps1 -Environment development
+            displayName: 'Backup Database'
+        
+        deploy:
+          steps:
+          - download: current
+            artifact: api-package
+            displayName: 'Download Artifact'
+          
+          - pwsh: |
+              .\deployment\Deploy-Application.ps1 -Environment development -ArtifactPath "$(Pipeline.Workspace)\api-package\api-package.zip"
+            displayName: 'Deploy Application'
+        
+        postDeploy:
+          steps:
+          - pwsh: |
+              .\deployment\Test-Deployment.ps1 -Environment development
+            displayName: 'Validate Deployment'
+
+- stage: DeployStaging
+  displayName: 'Deploy to Staging'
+  dependsOn: DeployDev
+  condition: succeeded()
+  jobs:
+  - deployment: DeployStaging
+Job
+    displayName: 'Deploy to Staging Environment'
+    pool:
+      name: 'Default'
+      demands:
+      - agent.name -equals hart-server
+    environment: 'staging'
+    strategy:
+      runOnce:
+        preDeploy:
+          steps:
+          - download: none
+          - checkout: self
+          - pwsh: |
+              .\deployment\Install-Requirements.ps1 -Environment staging
+            displayName: 'Backup Database'
+        
+        deploy:
+          steps:
+          - download: current
+            artifact: api-package
+            displayName: 'Download Artifact'
+          
+          - pwsh: |
+              .\deployment\Deploy-Application.ps1 -Environment staging -ArtifactPath "$(Pipeline.Workspace)\api-package\api-package.zip"
+            displayName: 'Deploy Application'
+        
+        postDeploy:
+          steps:
+          - pwsh: |
+              .\deployment\Test-Deployment.ps1 -Environment staging
+            displayName: 'Validate Deployment'
+
+- stage: DeployProduction
+  displayName: 'Deploy to Production'
+  dependsOn: DeployStaging
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  jobs:
+  - deployment: DeployProductionJob
+    displayName: 'Deploy to Production Environment'
+    pool:
+      name: 'Default'
+      demands:
+      - agent.name -equals hart-server
+    environment: 'production'
+    strategy:
+      runOnce:
+        preDeploy:
+          steps:
+          - download: none
+          - checkout: self
+          - pwsh: |
+              .\deployment\Install-Requirements.ps1 -Environment production
+            displayName: 'Backup Database'
+        
+        deploy:
+          steps:
+          - download: current
+            artifact: api-package
+            displayName: 'Download Artifact'
+          
+          - pwsh: |
+              .\deployment\Deploy-Application.ps1 -Environment production -ArtifactPath "$(Pipeline.Workspace)\api-package\api-package.zip"
+            displayName: 'Deploy Application'
+        
+        postDeploy:
+          steps:
+          - pwsh: |
+              .\deployment\Test-Deployment.ps1 -Environment production
+            displayName: 'Validate Deployment'
