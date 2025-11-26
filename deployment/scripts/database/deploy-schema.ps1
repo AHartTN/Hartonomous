@@ -163,7 +163,7 @@ foreach ($subPath in $schemaOrder) {
     Write-Step "Deploying: $subPath"
 
     # Get SQL files in order
-    $sqlFiles = Get-ChildItem -Path $schemaPath -Filter "*.sql" | Sort-Object Name
+    $sqlFiles = @(Get-ChildItem -Path $schemaPath -Filter "*.sql" -ErrorAction SilentlyContinue | Sort-Object Name)
 
     if ($sqlFiles.Count -eq 0) {
         Write-Log "No SQL files found in: $subPath" -Level WARNING
