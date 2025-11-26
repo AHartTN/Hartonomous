@@ -25,23 +25,23 @@ echo "?? Loading configuration from Azure App Configuration..."
 
 # Get configuration (Key Vault references are auto-resolved by Azure CLI)
 INSTALL_PATH=$(az appconfig kv show \
-    --endpoint "$APP_CONFIG_ENDPOINT" \
+    --name "$APP_CONFIG_NAME" \
     --key "deployment:$ENV:install_path" \
     --query value -o tsv)
 
 API_HOST=$(az appconfig kv show \
-    --endpoint "$APP_CONFIG_ENDPOINT" \
+    --name "$APP_CONFIG_NAME" \
     --key "api:$ENV:host" \
     --query value -o tsv)
 
 API_PORT=$(az appconfig kv show \
-    --endpoint "$APP_CONFIG_ENDPOINT" \
+    --name "$APP_CONFIG_NAME" \
     --key "api:$ENV:port" \
     --query value -o tsv)
 
 # Database connection string (stored as Key Vault reference in App Config)
 DB_URL=$(az appconfig kv show \
-    --endpoint "$APP_CONFIG_ENDPOINT" \
+    --name "$APP_CONFIG_NAME" \
     --key "database:$ENV:connection_string" \
     --query value -o tsv)
 
