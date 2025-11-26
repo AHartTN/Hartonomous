@@ -23,14 +23,14 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Run preflight checks
-        shell: pwsh
+        shell: pwsh -File {0}
         env:
           LOG_LEVEL: INFO
         run: |
           .\deployment\scripts\preflight\check-prerequisites.ps1
 
       - name: Validate secrets
-        shell: pwsh
+        shell: pwsh -File {0}
         env:
           LOG_LEVEL: INFO
           KEY_VAULT_URL: ${{ secrets.KEY_VAULT_URL }}
@@ -46,7 +46,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Deploy schema
-        shell: pwsh
+        shell: pwsh -File {0}
         env:
           LOG_LEVEL: INFO
           DEPLOYMENT_ENVIRONMENT: ${{ env.DEPLOYMENT_ENVIRONMENT }}
@@ -62,7 +62,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Deploy API
-        shell: pwsh
+        shell: pwsh -File {0}
         env:
           LOG_LEVEL: INFO
           DEPLOYMENT_ENVIRONMENT: ${{ env.DEPLOYMENT_ENVIRONMENT }}
@@ -71,7 +71,7 @@ jobs:
           .\deployment\scripts\application\deploy-api.ps1
 
       - name: Deploy Neo4j Worker
-        shell: pwsh
+        shell: pwsh -File {0}
         env:
           LOG_LEVEL: INFO
           DEPLOYMENT_ENVIRONMENT: ${{ env.DEPLOYMENT_ENVIRONMENT }}
@@ -88,12 +88,12 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Health check
-        shell: pwsh
+        shell: pwsh -File {0}
         run: |
           .\deployment\scripts\validation\health-check.ps1
 
       - name: Smoke tests
-        shell: pwsh
+        shell: pwsh -File {0}
         run: |
           .\deployment\scripts\validation\smoke-test.ps1
 
