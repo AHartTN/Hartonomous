@@ -1,0 +1,67 @@
+name: Deploy to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      git_ref:
+        description: 'Release tag (MUST be tested in staging)'
+        required: true
+        type: string
+      skip_tests:
+        description: 'Skip validation tests'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  approval:
+    name: Production Approval Gate
+    runs-on: ubuntu-latest
+    environment:
+      name: production-approval
+    steps:
+      - name: Approval checkpoint
+        run: |
+          echo "? Production deployment approved"
+          echo "Release: ${{ inputs.git_ref }}"
+
+  deploy:
+    needs: approval
+    uses: ./.github/workflows/deploy-template.yml
+    with:
+      environment: production
+      runner_labels: '["self-hosted", "linux", "hart-server"]'
+      git_ref: ${{ inputs.git_ref }}
+      skip_tests: ${{ inputs.skip_tests }}
+    secrets:
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      KEY_VAULT_URL: ${{ secrets.KEY_VAULT_URL }}
+
+  create-release:
+    name: Create GitHub Release
+    needs: deploy
+    runs-on: ubuntu-latest
+    if: startsWith(inputs.git_ref, 'v')
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.git_ref }}
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.git_ref }}
+          name: Release ${{ inputs.git_ref }}
+          body: |
+            ## ?? Production Release ${{ inputs.git_ref }}
+            
+            **Deployed to**: Production
+            **Deployed by**: @${{ github.actor }}
+            **Deployment validated**: ${{ !inputs.skip_tests }}
+          draft: false
+          prerelease: false

@@ -1,0 +1,98 @@
+name: Deployment Template (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: 'Target environment (development, staging, production)'
+        required: true
+        type: string
+      runner_labels:
+        description: 'Runner labels as JSON array'
+        required: true
+        type: string
+      git_ref:
+        description: 'Git reference to deploy'
+        required: false
+        type: string
+        default: ''
+      skip_tests:
+        description: 'Skip smoke tests'
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      AZURE_CLIENT_ID:
+        required: true
+      AZURE_TENANT_ID:
+        required: true
+      AZURE_SUBSCRIPTION_ID:
+        required: true
+      KEY_VAULT_URL:
+        required: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to ${{ inputs.environment }}
+    runs-on: ${{ fromJSON(inputs.runner_labels) }}
+    environment: ${{ inputs.environment }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.git_ref || github.sha }}
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Backup database
+        id: backup
+        shell: pwsh
+        env:
+          DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
+          LOG_LEVEL: INFO
+        run: |
+          .\deployment\scripts\core\backup.ps1 -Component database
+
+      - name: Upload backup artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: database-backup-${{ inputs.environment }}-${{ github.sha }}
+          path: ${{ steps.backup.outputs.backup_path }}
+          retention-days: 30
+
+      - name: Deploy
+        shell: pwsh
+        env:
+          DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
+          LOG_LEVEL: INFO
+          KEY_VAULT_URL: ${{ secrets.KEY_VAULT_URL }}
+        run: |
+          .\deployment\scripts\core\deploy.ps1
+
+      - name: Validate deployment
+        if: ${{ !inputs.skip_tests }}
+        shell: pwsh
+        env:
+          DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          .\deployment\scripts\validation\validate-deployment.ps1
+
+      - name: Create deployment summary
+        if: always()
+        shell: pwsh
+        run: |
+          .\deployment\scripts\reporting\create-summary.ps1 `
+            -Environment "${{ inputs.environment }}" `
+            -GitRef "${{ inputs.git_ref || github.sha }}" `
+            -Actor "${{ github.actor }}"
