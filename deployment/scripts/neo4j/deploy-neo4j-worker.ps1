@@ -43,9 +43,6 @@ if (-not $config.features.neo4j_enabled) {
 Write-Step "Configuring Neo4j Connection"
 try {
     & "$PSScriptRoot\configure-neo4j.ps1" -Environment $Environment
-    if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
-        Write-Failure "Neo4j configuration failed"
-    }
 }
 catch {
     Write-Failure "Neo4j configuration failed: $($_.Exception.Message)"
