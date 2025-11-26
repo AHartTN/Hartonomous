@@ -44,6 +44,8 @@ stages:
       runOnce:
         deploy:
           steps:
+          - checkout: self
+          
           - download: current
             artifact: api-package
           
@@ -52,7 +54,7 @@ stages:
               azureSubscription: 'Azure-ServiceConnection'
               scriptType: 'bash'
               scriptLocation: 'scriptPath'
-              scriptPath: '$(Pipeline.Workspace)/s/deployment/deploy.sh'
+              scriptPath: '$(Build.SourcesDirectory)/deployment/deploy.sh'
               arguments: 'development $(Pipeline.Workspace)/api-package/api.zip'
 
 - stage: DeployStaging
@@ -67,6 +69,8 @@ stages:
       runOnce:
         deploy:
           steps:
+          - checkout: self
+          
           - download: current
             artifact: api-package
           
@@ -75,7 +79,7 @@ stages:
               azureSubscription: 'Azure-ServiceConnection'
               scriptType: 'bash'
               scriptLocation: 'scriptPath'
-              scriptPath: '$(Pipeline.Workspace)/s/deployment/deploy.sh'
+              scriptPath: '$(Build.SourcesDirectory)/deployment/deploy.sh'
               arguments: 'staging $(Pipeline.Workspace)/api-package/api.zip'
 
 - stage: DeployProd
@@ -91,6 +95,8 @@ stages:
       runOnce:
         deploy:
           steps:
+          - checkout: self
+          
           - download: current
             artifact: api-package
           
@@ -99,5 +105,5 @@ stages:
               azureSubscription: 'Azure-ServiceConnection'
               scriptType: 'bash'
               scriptLocation: 'scriptPath'
-              scriptPath: '$(Pipeline.Workspace)/s/deployment/deploy.sh'
+              scriptPath: '$(Build.SourcesDirectory)/deployment/deploy.sh'
               arguments: 'production $(Pipeline.Workspace)/api-package/api.zip'
