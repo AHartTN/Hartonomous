@@ -24,7 +24,8 @@ Set-StrictMode -Version Latest
 
 # Initialize logger
 $logLevel = if ($env:LOG_LEVEL) { $env:LOG_LEVEL } else { 'INFO' }
-Initialize-Logger -Level $logLevel
+$logPath = "D:\Hartonomous\logs\database-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
+Initialize-Logger -LogFilePath $logPath -Level $logLevel
 
 Write-Step "Database Schema Deployment"
 
