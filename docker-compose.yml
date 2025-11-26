@@ -1,59 +1,211 @@
-version: '3.8'
+# ============================================================================
+# Hartonomous Docker Compose - Development Environment
+# 
+# Services:
+#   - postgres:  PostgreSQL 15 + PostGIS
+#   - neo4j:     Neo4j 5.15 (provenance graph)
+#   - api:       FastAPI application
+#
+# Usage:
+#   docker-compose up -d          # Start all services
+#   docker-compose logs -f api    # View API logs
+#   docker-compose down           # Stop all services
+#   docker-compose down -v        # Stop and remove volumes (DESTROYS DATA)
+#
+# Copyright (c) 2025 Anthony Hart. All Rights Reserved.
+# ============================================================================
 
 services:
   # PostgreSQL with PostGIS + AGE + PL/Python
   postgres:
-    image: postgres:15-alpine
+    image: postgis/postgis:15-3.4
     container_name: hartonomous-postgres
+    restart: unless-stopped
+    
     environment:
-      POSTGRES_USER: ${PGUSER:-postgres}
-      POSTGRES_PASSWORD: ${PGPASSWORD:-postgres}
+      POSTGRES_USER: ${PGUSER:-hartonomous}
+      POSTGRES_PASSWORD: ${PGPASSWORD:-Revolutionary-AI-2025!Geometry}
       POSTGRES_DB: ${PGDATABASE:-hartonomous}
+      # PostgreSQL performance tuning
+      POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
+    
     ports:
       - "${PGPORT:-5432}:5432"
+    
     volumes:
+      # Persistent data
       - postgres_data:/var/lib/postgresql/data
-      - ./schema:/docker-entrypoint-initdb.d
+      
+      # Schema files (read-only)
+      - ./schema:/schema:ro
+      
+      # Initialization script
+      - ./docker/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
+    
+    # PostgreSQL configuration overrides
+    command: >
+      postgres
+      -c shared_buffers=256MB
+      -c effective_cache_size=1GB
+      -c work_mem=64MB
+      -c maintenance_work_mem=256MB
+      -c max_parallel_workers_per_gather=2
+      -c random_page_cost=1.1
+      -c wal_level=logical
+      -c max_wal_senders=10
+      -c max_replication_slots=10
+    
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${PGUSER:-postgres}"]
+      test: ["CMD-SHELL", "pg_isready -U ${PGUSER:-hartonomous}"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
+    
     networks:
       - hartonomous-network
-
-  # FastAPI application
+  
+  # Neo4j Graph Database (Provenance Tracking)
+  neo4j:
+    image: neo4j:5.15
+    container_name: hartonomous-neo4j
+    restart: unless-stopped
+    
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-neo4jneo4j}
+      NEO4J_ACCEPT_LICENSE_AGREEMENT: 'yes'
+      
+      # Memory settings
+      NEO4J_server_memory_heap_initial__size: 512m
+      NEO4J_server_memory_heap_max__size: 1G
+      NEO4J_server_memory_pagecache_size: 512m
+      
+      # Performance tuning
+      NEO4J_dbms_memory_transaction_total_max: 256m
+      NEO4J_db_checkpoint_interval_time: 15m
+      
+      # Security
+      NEO4J_dbms_security_procedures_unrestricted: apoc.*
+      NEO4J_dbms_security_procedures_allowlist: apoc.*
+    
+    ports:
+      - "${NEO4J_BOLT_PORT:-7687}:7687"  # Bolt protocol
+      - "${NEO4J_HTTP_PORT:-7474}:7474"  # HTTP/UI
+    
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+      - neo4j_plugins:/plugins
+    
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:7474"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    
+    networks:
+      - hartonomous-network
+  
+  # FastAPI Application
   api:
     build:
       context: .
       dockerfile: docker/Dockerfile
+      args:
+        PYTHON_VERSION: 3.14
+    
     container_name: hartonomous-api
-    environment:
-      DATABASE_URL: postgresql://${PGUSER:-postgres}:${PGPASSWORD:-postgres}@postgres:5432/${PGDATABASE:-hartonomous}
-      API_HOST: 0.0.0.0
-      API_PORT: 8000
-      LOG_LEVEL: INFO
-      AGE_WORKER_ENABLED: "true"
-    ports:
-      - "8000:8000"
+    restart: unless-stopped
+    
     depends_on:
       postgres:
         condition: service_healthy
+      neo4j:
+        condition: service_healthy
+    
+    environment:
+      # Database connection
+      DATABASE_URL: postgresql://${PGUSER:-hartonomous}:${PGPASSWORD:-Revolutionary-AI-2025!Geometry}@postgres:5432/${PGDATABASE:-hartonomous}
+      PGHOST: postgres
+      PGPORT: 5432
+      PGUSER: ${PGUSER:-hartonomous}
+      PGPASSWORD: ${PGPASSWORD:-Revolutionary-AI-2025!Geometry}
+      PGDATABASE: ${PGDATABASE:-hartonomous}
+      
+      # Neo4j connection
+      NEO4J_ENABLED: ${NEO4J_ENABLED:-true}
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: ${NEO4J_USER:-neo4j}
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-neo4jneo4j}
+      NEO4J_DATABASE: neo4j
+      
+      # API server
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      API_RELOAD: ${API_RELOAD:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
+      
+      # Connection pool
+      POOL_MIN_SIZE: 5
+      POOL_MAX_SIZE: 20
+      
+      # Workers
+      AGE_WORKER_ENABLED: false
+      
+      # Authentication (disabled for local development)
+      AUTH_ENABLED: false
+      
+      # Azure config (disabled for local)
+      USE_AZURE_CONFIG: false
+    
+    ports:
+      - "${API_PORT:-8000}:8000"
+    
     volumes:
-      - ./api:/app/api
+      # Mount API code for hot reload
+      - ./api:/app/api:ro
+      
+      # Temporary files
       - /tmp:/tmp
+    
+    command: >
+      uvicorn api.main:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
+      --log-level ${LOG_LEVEL:-debug}
+    
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/v1/health"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 15s
+    
     networks:
       - hartonomous-network
-    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
 
+# Volumes (Persistent Storage)
 volumes:
   postgres_data:
+    driver: local
+    name: hartonomous_postgres_data
+  
+  neo4j_data:
+    driver: local
+    name: hartonomous_neo4j_data
+  
+  neo4j_logs:
+    driver: local
+    name: hartonomous_neo4j_logs
+  
+  neo4j_plugins:
+    driver: local
+    name: hartonomous_neo4j_plugins
 
+# Networks
 networks:
   hartonomous-network:
     driver: bridge
+    name: hartonomous-network

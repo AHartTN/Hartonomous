@@ -85,13 +85,13 @@ async def test_database_extensions(db_connection):
 async def test_schema_exists(db_connection):
     """Test that expected schema objects exist."""
     async with db_connection.cursor() as cur:
-        # Check for atoms table
+        # Check for atom table (not 'atoms')
         await cur.execute(
             """
             SELECT EXISTS (
                 SELECT FROM information_schema.tables 
                 WHERE table_schema = 'public' 
-                AND table_name = 'atoms'
+                AND table_name = 'atom'
             )
         """
         )
