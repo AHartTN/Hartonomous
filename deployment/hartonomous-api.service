@@ -1,0 +1,31 @@
+[Unit]
+Description=Hartonomous API Service
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=hartonomous
+Group=hartonomous
+WorkingDirectory=/opt/hartonomous/api
+Environment="PATH=/opt/hartonomous/api/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+EnvironmentFile=/opt/hartonomous/api/.env
+ExecStart=/opt/hartonomous/api/.venv/bin/python -m uvicorn main:app --host ${API_HOST} --port ${API_PORT}
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=hartonomous-api
+
+# Security hardening
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/hartonomous/api
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

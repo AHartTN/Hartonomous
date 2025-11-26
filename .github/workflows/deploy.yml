@@ -1,0 +1,122 @@
+name: Deploy
+
+on:
+  push:
+    branches: [develop, main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        type: choice
+        options:
+          - development
+          - staging
+          - production
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build:
+    name: Build Package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Create artifact
+        run: |
+          cd api
+          zip -r ../api-package.zip . -x ".venv/*" "__pycache__/*" "*.pyc" ".pytest_cache/*" ".env"
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-package-${{ github.sha }}
+          path: api-package.zip
+          retention-days: 90
+
+  deploy-dev:
+    name: Deploy to Development
+    needs: build
+    if: github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    environment: development
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: api-package-${{ github.sha }}
+      
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      
+      - name: Deploy
+        env:
+          APP_CONFIG_NAME: appconfig-hartonomous
+          RESOURCE_GROUP: rg-hartonomous
+        run: |
+          bash deployment/deploy.sh development api-package.zip
+
+  deploy-staging:
+    name: Deploy to Staging
+    needs: deploy-dev
+    if: github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: api-package-${{ github.sha }}
+      
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      
+      - name: Deploy
+        env:
+          APP_CONFIG_NAME: appconfig-hartonomous
+          RESOURCE_GROUP: rg-hartonomous
+        run: |
+          bash deployment/deploy.sh staging api-package.zip
+
+  deploy-prod:
+    name: Deploy to Production
+    needs: deploy-staging
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: api-package-${{ github.sha }}
+      
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      
+      - name: Deploy
+        env:
+          APP_CONFIG_NAME: appconfig-hartonomous
+          RESOURCE_GROUP: rg-hartonomous
+        run: |
+          bash deployment/deploy.sh production api-package.zip
