@@ -51,13 +51,82 @@ jobs:
         with:
           name: api-package-${{ github.sha }}
       
-      - name: Deploy
+      - name: Get Configuration from Azure
+        id: config
         shell: pwsh
-        env:
-          APP_CONFIG_NAME: appconfig-hartonomous
-          RESOURCE_GROUP: rg-hartonomous
         run: |
-          .\deployment\deploy.ps1 -Environment development -ArtifactPath "api-package.zip"
+          $installPath = az appconfig kv show --name appconfig-hartonomous --key "deployment:development:install_path" --query value -o tsv
+          $apiHost = az appconfig kv show --name appconfig-hartonomous --key "api:development:host" --query value -o tsv
+          $apiPort = az appconfig kv show --name appconfig-hartonomous --key "api:development:port" --query value -o tsv
+          $dbUrl = az appconfig kv show --name appconfig-hartonomous --key "database:development:connection_string" --query value -o tsv
+          
+          echo "install_path=$installPath" >> $env:GITHUB_OUTPUT
+          echo "api_host=$apiHost" >> $env:GITHUB_OUTPUT
+          echo "api_port=$apiPort" >> $env:GITHUB_OUTPUT
+          echo "db_url=$dbUrl" >> $env:GITHUB_OUTPUT
+      
+      - name: Extract Application
+        shell: pwsh
+        run: |
+          $installPath = "${{ steps.config.outputs.install_path }}"
+          if (-not (Test-Path $installPath)) {
+            New-Item -ItemType Directory -Path $installPath -Force | Out-Null
+          }
+          Expand-Archive -Path "api-package.zip" -DestinationPath $installPath -Force
+      
+      - name: Setup Python Environment
+        shell: pwsh
+        working-directory: ${{ steps.config.outputs.install_path }}
+        run: |
+          if (-not (Test-Path ".venv")) {
+            python -m venv .venv
+          }
+          .\.venv\Scripts\Activate.ps1
+          pip install --quiet --upgrade pip
+          pip install --quiet -r requirements.txt
+      
+      - name: Configure Environment
+        shell: pwsh
+        working-directory: ${{ steps.config.outputs.install_path }}
+        run: |
+          @"
+          DATABASE_URL=${{ steps.config.outputs.db_url }}
+          API_HOST=${{ steps.config.outputs.api_host }}
+          API_PORT=${{ steps.config.outputs.api_port }}
+          ENVIRONMENT=development
+          "@ | Set-Content -Path ".env" -Force
+      
+      - name: Run Database Migrations
+        shell: pwsh
+        working-directory: ${{ steps.config.outputs.install_path }}
+        run: |
+          .\.venv\Scripts\Activate.ps1
+          if (Test-Path "alembic.ini") {
+            alembic upgrade head
+          }
+      
+      - name: Restart Service
+        shell: pwsh
+        working-directory: ${{ steps.config.outputs.install_path }}
+        run: |
+          Get-Process | Where-Object { $_.CommandLine -like "*uvicorn*main:app*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 2
+          
+          $pythonExe = Join-Path (Get-Location) ".venv\Scripts\python.exe"
+          Start-Process -FilePath $pythonExe -ArgumentList "-m","uvicorn","main:app","--host","${{ steps.config.outputs.api_host }}","--port","${{ steps.config.outputs.api_port }}" -WindowStyle Hidden
+      
+      - name: Verify Deployment
+        shell: pwsh
+        run: |
+          Start-Sleep -Seconds 5
+          $healthUrl = "http://${{ steps.config.outputs.api_host }}:${{ steps.config.outputs.api_port }}/health"
+          $response = Invoke-WebRequest -Uri $healthUrl -TimeoutSec 10 -UseBasicParsing
+          if ($response.StatusCode -eq 200) {
+            Write-Host "? Deployment successful"
+          } else {
+            Write-Host "? Health check failed"
+            exit 1
+          }
 
   deploy-staging:
     name: Deploy to Staging
