@@ -1,0 +1,153 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - development
+          - staging
+          - production
+      build_run_id:
+        description: 'Build run ID (from Build workflow)'
+        required: true
+        type: string
+      skip_validation:
+        description: 'Skip validation tests'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  backup:
+    name: Backup Database
+    runs-on: ${{ inputs.environment == 'development' && fromJSON('["self-hosted", "windows", "HART-DESKTOP"]') || fromJSON('["self-hosted", "linux", "hart-server"]') }}
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Run backup
+        shell: pwsh
+        env:
+          DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
+          LOG_LEVEL: INFO
+        run: |
+          .\deployment\scripts\core\backup.ps1 -Component database
+
+  deploy:
+    name: Deploy to ${{ inputs.environment }}
+    needs: backup
+    runs-on: ${{ inputs.environment == 'development' && fromJSON('["self-hosted", "windows", "HART-DESKTOP"]') || fromJSON('["self-hosted", "linux", "hart-server"]') }}
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: api-package-${{ github.sha }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.build_run_id }}
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Extract artifact to deployment location
+        shell: pwsh
+        env:
+          DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          $config = Get-Content "deployment\config\$env:DEPLOYMENT_ENVIRONMENT.json" | ConvertFrom-Json
+          $installPath = $config.deployment.install_path
+          
+          if (-not (Test-Path $installPath)) {
+            New-Item -ItemType Directory -Path $installPath -Force | Out-Null
+          }
+          
+          Expand-Archive -Path "api-package.zip" -DestinationPath $installPath -Force
+          Write-Host "? Artifact extracted to: $installPath"
+
+      - name: Install dependencies
+        shell: pwsh
+        env:
+          DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          .\deployment\scripts\core\install-dependencies.ps1
+
+      - name: Deploy database
+        shell: pwsh
+        env:
+          DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          .\deployment\scripts\core\deploy-database.ps1
+
+      - name: Configure services
+        shell: pwsh
+        env:
+          DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
+          KEY_VAULT_URL: ${{ secrets.KEY_VAULT_URL }}
+        run: |
+          .\deployment\scripts\core\configure-service.ps1 -Component api
+
+      - name: Start services
+        shell: pwsh
+        env:
+          DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          .\deployment\scripts\core\start-service.ps1 -Component api
+
+  validate:
+    name: Validate Deployment
+    needs: deploy
+    if: ${{ !inputs.skip_validation }}
+    runs-on: ${{ inputs.environment == 'development' && fromJSON('["self-hosted", "windows", "HART-DESKTOP"]') || fromJSON('["self-hosted", "linux", "hart-server"]') }}
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run validation
+        shell: pwsh
+        env:
+          DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          .\deployment\scripts\validation\validate-deployment.ps1
+
+  summary:
+    name: Release Summary
+    needs: [backup, deploy, validate]
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Create summary
+        run: |
+          echo "## Release to ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "? **Deployment Complete**" >> $GITHUB_STEP_SUMMARY
+          echo "- Environment: **${{ inputs.environment }}**" >> $GITHUB_STEP_SUMMARY
+          echo "- Build: \`${{ inputs.build_run_id }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Deployed by: @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY

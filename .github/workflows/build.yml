@@ -1,0 +1,43 @@
+name: Build
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+    branches: [develop, main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Artifacts
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create artifact package
+        run: |
+          cd api
+          zip -r ../api-package.zip . -x ".venv/*" "__pycache__/*" "*.pyc" ".pytest_cache/*" ".env"
+          cd ..
+          echo "? Package created: api-package.zip"
+          ls -lh api-package.zip
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-package-${{ github.sha }}
+          path: api-package.zip
+          retention-days: 90
+
+      - name: Build summary
+        run: |
+          echo "## Build Artifacts Created" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "? **api-package-${{ github.sha }}.zip**" >> $GITHUB_STEP_SUMMARY
+          echo "- Commit: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Branch: \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Triggered by: @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
