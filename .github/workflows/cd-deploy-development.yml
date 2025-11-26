@@ -24,12 +24,15 @@ jobs:
 
       - name: Run preflight checks
         shell: pwsh
+        env:
+          LOG_LEVEL: INFO
         run: |
           .\deployment\scripts\preflight\check-prerequisites.ps1
 
       - name: Validate secrets
         shell: pwsh
         env:
+          LOG_LEVEL: INFO
           KEY_VAULT_URL: ${{ secrets.KEY_VAULT_URL }}
         run: |
           .\deployment\scripts\preflight\validate-secrets.ps1
@@ -45,6 +48,7 @@ jobs:
       - name: Deploy schema
         shell: pwsh
         env:
+          LOG_LEVEL: INFO
           DEPLOYMENT_ENVIRONMENT: ${{ env.DEPLOYMENT_ENVIRONMENT }}
         run: |
           .\deployment\scripts\database\deploy-schema.ps1
@@ -60,6 +64,7 @@ jobs:
       - name: Deploy API
         shell: pwsh
         env:
+          LOG_LEVEL: INFO
           DEPLOYMENT_ENVIRONMENT: ${{ env.DEPLOYMENT_ENVIRONMENT }}
           KEY_VAULT_URL: ${{ secrets.KEY_VAULT_URL }}
         run: |
@@ -68,6 +73,7 @@ jobs:
       - name: Deploy Neo4j Worker
         shell: pwsh
         env:
+          LOG_LEVEL: INFO
           DEPLOYMENT_ENVIRONMENT: ${{ env.DEPLOYMENT_ENVIRONMENT }}
           KEY_VAULT_URL: ${{ secrets.KEY_VAULT_URL }}
         run: |
