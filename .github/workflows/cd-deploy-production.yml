@@ -3,8 +3,8 @@ name: CD - Deploy to Production
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Version to deploy (e.g., v1.2.3)'
+      git_ref:
+        description: 'Git ref (tag/SHA) to deploy - MUST be a release tag'
         required: true
         type: string
       skip_tests:
@@ -16,167 +16,51 @@ on:
 permissions:
   id-token: write
   contents: write
-
-env:
-  DEPLOYMENT_ENVIRONMENT: production
-  DEPLOYMENT_TARGET: hart-server
+  actions: write
 
 jobs:
   approval:
     name: Manual Approval Required
     runs-on: ubuntu-latest
     environment:
-      name: production
+      name: production-approval
       url: https://api.hartonomous.com
     steps:
       - name: Approval checkpoint
         run: |
           echo "✅ Production deployment approved"
-          echo "Version: ${{ inputs.version }}"
+          echo "Git Ref: ${{ inputs.git_ref }}"
 
-  preflight:
-    name: Preflight Checks
+  deploy:
+    name: Deploy to Production
     needs: approval
-    runs-on: [self-hosted, linux, hart-server]
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.version }}
-
-      - name: Run preflight checks
-        run: |
-          chmod +x ./deployment/scripts/preflight/check-prerequisites.sh
-          ./deployment/scripts/preflight/check-prerequisites.sh
-
-      - name: Validate secrets
-        env:
-          KEY_VAULT_URL: ${{ secrets.KEY_VAULT_URL }}
-        run: |
-          chmod +x ./deployment/scripts/preflight/validate-secrets.sh
-          ./deployment/scripts/preflight/validate-secrets.sh
-
-  backup:
-    name: Backup Current Production
-    needs: preflight
-    runs-on: [self-hosted, linux, hart-server]
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.version }}
-
-      - name: Backup database
-        env:
-          DEPLOYMENT_ENVIRONMENT: ${{ env.DEPLOYMENT_ENVIRONMENT }}
-        run: |
-          chmod +x ./deployment/scripts/database/backup-database.sh
-          ./deployment/scripts/database/backup-database.sh
-
-      - name: Backup application
-        env:
-          DEPLOYMENT_ENVIRONMENT: ${{ env.DEPLOYMENT_ENVIRONMENT }}
-        run: |
-          chmod +x ./deployment/scripts/application/backup-application.sh
-          ./deployment/scripts/application/backup-application.sh
-
-  deploy-database:
-    name: Deploy Database
-    needs: backup
-    runs-on: [self-hosted, linux, hart-server]
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.version }}
-
-      - name: Deploy schema
-        env:
-          DEPLOYMENT_ENVIRONMENT: ${{ env.DEPLOYMENT_ENVIRONMENT }}
-        run: |
-          chmod +x ./deployment/scripts/database/deploy-schema.sh
-          ./deployment/scripts/database/deploy-schema.sh
-
-  deploy-application:
-    name: Deploy Application
-    needs: deploy-database
-    runs-on: [self-hosted, linux, hart-server]
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.version }}
-
-      - name: Deploy API
-        env:
-          DEPLOYMENT_ENVIRONMENT: ${{ env.DEPLOYMENT_ENVIRONMENT }}
-          KEY_VAULT_URL: ${{ secrets.KEY_VAULT_URL }}
-        run: |
-          chmod +x ./deployment/scripts/application/deploy-api.sh
-          ./deployment/scripts/application/deploy-api.sh
-
-      - name: Deploy Neo4j Worker
-        env:
-          DEPLOYMENT_ENVIRONMENT: ${{ env.DEPLOYMENT_ENVIRONMENT }}
-          KEY_VAULT_URL: ${{ secrets.KEY_VAULT_URL }}
-        run: |
-          chmod +x ./deployment/scripts/neo4j/deploy-neo4j-worker.sh
-          ./deployment/scripts/neo4j/deploy-neo4j-worker.sh
-
-  validate:
-    name: Validate Deployment
-    needs: deploy-application
-    runs-on: [self-hosted, linux, hart-server]
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.version }}
-
-      - name: Health check
-        run: |
-          chmod +x ./deployment/scripts/validation/health-check.sh
-          ./deployment/scripts/validation/health-check.sh
-
-      - name: Smoke tests
-        if: ${{ !inputs.skip_tests }}
-        run: |
-          chmod +x ./deployment/scripts/validation/smoke-test.sh
-          ./deployment/scripts/validation/smoke-test.sh
-
-      - name: Notify deployment success
-        uses: actions/github-script@v7
-        if: success()
-        with:
-          script: |
-            const message = `🚀 Production deployment successful!
-
-            - Version: ${{ inputs.version }}
-            - Environment: Production
-            - Target: hart-server
-            - Deployed by: @${{ github.actor }}`;
-
-            console.log(message);
+    uses: ./.github/workflows/cd-deploy-environment.yml
+    with:
+      environment: production
+      git_ref: ${{ inputs.git_ref }}
+      skip_tests: ${{ inputs.skip_tests }}
+    secrets: inherit
 
   create-release:
     name: Create GitHub Release
-    needs: validate
+    needs: deploy
     runs-on: ubuntu-latest
+    if: startsWith(inputs.git_ref, 'v')
     permissions:
       contents: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.version }}
+          ref: ${{ inputs.git_ref }}
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ inputs.version }}
-          name: Release ${{ inputs.version }}
+          tag_name: ${{ inputs.git_ref }}
+          name: Release ${{ inputs.git_ref }}
           body: |
-            ## 🚀 Production Release ${{ inputs.version }}
+            ## 🚀 Production Release ${{ inputs.git_ref }}
 
             **Deployed to**: hart-server (Production)
             **Deployed by**: @${{ github.actor }}
@@ -187,6 +71,6 @@ jobs:
             - ✅ Application deployment successful
             - ✅ Neo4j worker deployment successful
             - ✅ Health checks passing
-            - ✅ Smoke tests passing
+            ${{ !inputs.skip_tests && '- ✅ Smoke tests passing' || '- ⚠️ Smoke tests skipped' }}
           draft: false
           prerelease: false
