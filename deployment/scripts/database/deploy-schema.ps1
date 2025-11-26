@@ -48,8 +48,44 @@ Write-Log "Database: ${dbHost}:${dbPort}/${dbName}" -Level INFO
 
 # Get database password
 $dbPassword = $null
-if ($config.azure.key_vault_url -and $Environment -ne 'development') {
-    Write-Step "Retrieving Database Credentials from Azure Key Vault"
+
+# Check if running on Arc-enabled machine
+$arcMetadataEndpoint = "http://localhost:40342/metadata/instance?api-version=2020-06-01"
+try {
+    $arcMetadata = Invoke-RestMethod -Uri $arcMetadataEndpoint -Headers @{"Metadata"="true"} -TimeoutSec 2 -ErrorAction SilentlyContinue
+    $isArcMachine = $arcMetadata -ne $null
+}
+catch {
+    $isArcMachine = $false
+}
+
+if ($isArcMachine -and $config.azure.key_vault_url) {
+    Write-Step "Retrieving Database Credentials from Azure Key Vault (Arc Managed Identity)"
+    
+    # Get access token using Arc managed identity
+    $tokenEndpoint = "http://localhost:40342/metadata/identity/oauth2/token?api-version=2020-06-01&resource=https://vault.azure.net"
+    $tokenResponse = Invoke-RestMethod -Uri $tokenEndpoint -Headers @{"Metadata"="true"}
+    $accessToken = $tokenResponse.access_token
+    
+    # Get secret from Key Vault
+    $kvName = ($config.azure.key_vault_url -replace 'https://', '' -replace '\.vault\.azure\.net.*', '')
+    $machineName = $env:COMPUTERNAME
+    $secretName = "PostgreSQL-${machineName}-${dbName}-Password"
+    $secretUri = "https://${kvName}.vault.azure.net/secrets/${secretName}?api-version=7.4"
+    
+    try {
+        $secretResponse = Invoke-RestMethod -Uri $secretUri -Headers @{"Authorization"="Bearer $accessToken"}
+        $dbPassword = $secretResponse.value
+        Write-Success "Retrieved password from Key Vault using Arc managed identity"
+    }
+    catch {
+        Write-Log "Failed to retrieve secret '$secretName' from Key Vault: $($_.Exception.Message)" -Level WARNING
+        Write-Log "Falling back to environment variable" -Level INFO
+        $dbPassword = $env:PGPASSWORD
+    }
+}
+elseif ($config.azure.key_vault_url -and $Environment -ne 'development') {
+    Write-Step "Retrieving Database Credentials from Azure Key Vault (Service Principal)"
 
     # Authenticate to Azure
     Connect-AzureWithServicePrincipal `
@@ -66,8 +102,16 @@ if ($config.azure.key_vault_url -and $Environment -ne 'development') {
 else {
     # Development: Use environment variable
     $dbPassword = $env:PGPASSWORD
-    if (-not $dbPassword) {
-        Write-Failure "PGPASSWORD environment variable not set"
+}
+
+if (-not $dbPassword) {
+    if ($env:GITHUB_ACTIONS -eq 'true' -or $env:CI -eq 'true') {
+        Write-Log "PGPASSWORD not set in CI environment - skipping actual database deployment" -Level WARNING
+        Write-Log "Schema validation and dry-run checks will proceed" -Level INFO
+        $DryRun = $true
+    }
+    else {
+        Write-Failure "PGPASSWORD environment variable not set and could not retrieve from Key Vault"
     }
 }
 
