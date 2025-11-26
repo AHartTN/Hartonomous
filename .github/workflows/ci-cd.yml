@@ -7,7 +7,7 @@ on:
 
 jobs:
   test:
-    name: Test Code
+    name: Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -35,23 +35,44 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}
 
-  deploy:
-    name: Deploy to ${{ matrix.environment }}
+  build:
+    name: Build Artifact
     runs-on: ubuntu-latest
     needs: [test]
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Package source for deployment
+        run: |
+          tar -czf deployment-${{ github.sha }}.tar.gz \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='*.md' \
+            --exclude='docs' \
+            .
+      
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deployment-package
+          path: deployment-${{ github.sha }}.tar.gz
+          retention-days: 7
+
+  deploy-development:
+    name: Deploy to Development
+    runs-on: ubuntu-latest
+    needs: [build]
     if: github.ref == 'refs/heads/develop'
-    strategy:
-      matrix:
-        environment: [development, staging]
     environment:
-      name: ${{ matrix.environment }}
+      name: development
       url: ${{ vars.DEPLOYMENT_URL }}
     permissions:
       id-token: write
       contents: read
     
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: deployment-package
       
       - uses: azure/login@v2
         with:
@@ -61,48 +82,117 @@ jobs:
       
       - run: az extension add --name connectedmachine --allow-preview true --yes
       
-      - name: Build and Deploy on Arc Machine
+      - name: Deploy to Development
         run: |
-          # Create deployment script based on OS
+          ARTIFACT="deployment-${{ github.sha }}.tar.gz"
+          BASE64_ARTIFACT=$(base64 -w 0 "$ARTIFACT")
+          
           if [ "${{ vars.OS_TYPE }}" == "windows" ]; then
-            SCRIPT='
-            cd C:\temp
-            if (Test-Path hartonomous) { Remove-Item -Recurse -Force hartonomous }
-            git clone --depth 1 --branch develop https://github.com/AHartTN/Hartonomous hartonomous
-            cd hartonomous
-            docker build -t hartonomous:${{ github.sha }} -f docker/Dockerfile .
-            docker stop ${{ vars.CONTAINER_NAME }} 2>$null
-            docker rm ${{ vars.CONTAINER_NAME }} 2>$null
-            docker run -d --name ${{ vars.CONTAINER_NAME }} --restart unless-stopped -p ${{ vars.API_PORT }}:8000 -e LOG_LEVEL=${{ vars.LOG_LEVEL }} hartonomous:${{ github.sha }}
+            SCRIPT="
+            Set-Location C:\temp
+            if (Test-Path deploy-${{ github.sha }}) { Remove-Item -Recurse -Force deploy-${{ github.sha }} }
+            New-Item -ItemType Directory -Path deploy-${{ github.sha }} | Out-Null
+            Set-Location deploy-${{ github.sha }}
+            @'
+            $BASE64_ARTIFACT
+            '@ | Out-File -Encoding ASCII artifact.b64
+            certutil -decode artifact.b64 artifact.tar.gz
+            tar -xzf artifact.tar.gz
+            docker build -t ${{ vars.CONTAINER_NAME }}:${{ github.sha }} -f docker/Dockerfile .
+            docker stop ${{ vars.CONTAINER_NAME }} 2>\$null
+            docker rm ${{ vars.CONTAINER_NAME }} 2>\$null
+            docker run -d --name ${{ vars.CONTAINER_NAME }} --restart unless-stopped -p ${{ vars.API_PORT }}:8000 -e LOG_LEVEL=${{ vars.LOG_LEVEL }} ${{ vars.CONTAINER_NAME }}:${{ github.sha }}
             docker ps
-            '
+            "
           else
-            SCRIPT='
+            SCRIPT="
             cd /tmp
-            rm -rf hartonomous
-            git clone --depth 1 --branch develop https://github.com/AHartTN/Hartonomous hartonomous
-            cd hartonomous
-            docker build -t hartonomous:${{ github.sha }} -f docker/Dockerfile .
+            rm -rf deploy-${{ github.sha }}
+            mkdir -p deploy-${{ github.sha }}
+            cd deploy-${{ github.sha }}
+            echo '$BASE64_ARTIFACT' | base64 -d > artifact.tar.gz
+            tar -xzf artifact.tar.gz
+            docker build -t ${{ vars.CONTAINER_NAME }}:${{ github.sha }} -f docker/Dockerfile .
             docker stop ${{ vars.CONTAINER_NAME }} 2>/dev/null || true
             docker rm ${{ vars.CONTAINER_NAME }} 2>/dev/null || true
-            docker run -d --name ${{ vars.CONTAINER_NAME }} --restart unless-stopped -p ${{ vars.API_PORT }}:8000 -e LOG_LEVEL=${{ vars.LOG_LEVEL }} hartonomous:${{ github.sha }}
+            docker run -d --name ${{ vars.CONTAINER_NAME }} --restart unless-stopped -p ${{ vars.API_PORT }}:8000 -e LOG_LEVEL=${{ vars.LOG_LEVEL }} ${{ vars.CONTAINER_NAME }}:${{ github.sha }}
             docker ps | grep ${{ vars.CONTAINER_NAME }}
-            '
+            "
           fi
           
           az connectedmachine run-command create \
             --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
             --machine-name ${{ vars.ARC_MACHINE_NAME }} \
-            --run-command-name deploy-${{ github.run_id }} \
+            --run-command-name deploy-dev-${{ github.run_id }} \
             --script "$SCRIPT" \
             --timeout-in-seconds 300
+
+  deploy-staging:
+    name: Deploy to Staging  
+    runs-on: ubuntu-latest
+    needs: [deploy-development]
+    if: github.ref == 'refs/heads/develop'
+    environment:
+      name: staging
+      url: ${{ vars.DEPLOYMENT_URL }}
+    permissions:
+      id-token: write
+      contents: read
+    
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: deployment-package
       
-      - name: Verify Deployment
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      
+      - run: az extension add --name connectedmachine --allow-preview true --yes
+      
+      - name: Deploy to Staging
         run: |
-          sleep 20
-          az connectedmachine run-command show \
+          ARTIFACT="deployment-${{ github.sha }}.tar.gz"
+          BASE64_ARTIFACT=$(base64 -w 0 "$ARTIFACT")
+          
+          if [ "${{ vars.OS_TYPE }}" == "windows" ]; then
+            SCRIPT="
+            Set-Location C:\temp
+            if (Test-Path deploy-${{ github.sha }}) { Remove-Item -Recurse -Force deploy-${{ github.sha }} }
+            New-Item -ItemType Directory -Path deploy-${{ github.sha }} | Out-Null
+            Set-Location deploy-${{ github.sha }}
+            @'
+            $BASE64_ARTIFACT
+            '@ | Out-File -Encoding ASCII artifact.b64
+            certutil -decode artifact.b64 artifact.tar.gz
+            tar -xzf artifact.tar.gz
+            docker build -t ${{ vars.CONTAINER_NAME }}:${{ github.sha }} -f docker/Dockerfile .
+            docker stop ${{ vars.CONTAINER_NAME }} 2>\$null
+            docker rm ${{ vars.CONTAINER_NAME }} 2>\$null
+            docker run -d --name ${{ vars.CONTAINER_NAME }} --restart unless-stopped -p ${{ vars.API_PORT }}:8000 -e LOG_LEVEL=${{ vars.LOG_LEVEL }} ${{ vars.CONTAINER_NAME }}:${{ github.sha }}
+            docker ps
+            "
+          else
+            SCRIPT="
+            cd /tmp
+            rm -rf deploy-${{ github.sha }}
+            mkdir -p deploy-${{ github.sha }}
+            cd deploy-${{ github.sha }}
+            echo '$BASE64_ARTIFACT' | base64 -d > artifact.tar.gz
+            tar -xzf artifact.tar.gz
+            docker build -t ${{ vars.CONTAINER_NAME }}:${{ github.sha }} -f docker/Dockerfile .
+            docker stop ${{ vars.CONTAINER_NAME }} 2>/dev/null || true
+            docker rm ${{ vars.CONTAINER_NAME }} 2>/dev/null || true
+            docker run -d --name ${{ vars.CONTAINER_NAME }} --restart unless-stopped -p ${{ vars.API_PORT }}:8000 -e LOG_LEVEL=${{ vars.LOG_LEVEL }} ${{ vars.CONTAINER_NAME }}:${{ github.sha }}
+            docker ps | grep ${{ vars.CONTAINER_NAME }}
+            "
+          fi
+          
+          az connectedmachine run-command create \
             --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
             --machine-name ${{ vars.ARC_MACHINE_NAME }} \
-            --run-command-name deploy-${{ github.run_id }} \
-            --query "instanceView.{state:executionState,exitCode:exitCode,output:output}" \
-            -o table
+            --run-command-name deploy-staging-${{ github.run_id }} \
+            --script "$SCRIPT" \
+            --timeout-in-seconds 300
