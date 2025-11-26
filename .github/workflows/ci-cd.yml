@@ -7,21 +7,14 @@ on:
     branches: [develop, staging, main]
   workflow_dispatch:
     inputs:
-      target_machine:
-        description: 'Target deployment machine'
+      environment:
+        description: 'Target environment'
         required: true
         type: choice
         options:
-          - hart-server
-          - HART-DESKTOP
-          - both
-
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
-  AZURE_SUBSCRIPTION_ID: ed614e1a-7d8b-4608-90c8-66e86c37080b
-  AZURE_RESOURCE_GROUP: rg-hartonomous
-  AZURE_TENANT_ID: 6c9c44c4-f04b-4b5f-bea0-f1069179799c
+          - development
+          - staging
+          - production
 
 jobs:
   validate:
@@ -57,16 +50,6 @@ jobs:
       - name: Check dependency vulnerabilities
         run: safety check --json > safety-report.json
         continue-on-error: true
-      
-      - name: Upload security scan results
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: security-scan-results
-          path: |
-            bandit-report.json
-            safety-report.json
-          retention-days: 30
 
   test-unit:
     name: Unit Tests
@@ -91,19 +74,9 @@ jobs:
           pip install -r api/requirements.txt
       
       - name: Run unit tests
-        run: pytest api/tests/test_sanity.py -v --cov=api --cov-report=xml --cov-report=term
+        run: pytest api/tests/test_sanity.py -v --cov=api --cov-report=xml
         env:
           PYTHONPATH: ${{ github.workspace }}
-      
-      - name: Upload coverage report
-        uses: codecov/codecov-action@v4
-        if: always()
-        with:
-          file: ./coverage.xml
-          flags: unit
-          name: unit-tests
-          token: ${{ secrets.CODECOV_TOKEN }}
-        continue-on-error: true
 
   build:
     name: Build Docker Image
@@ -121,7 +94,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       
-      - name: Build Docker image (no push)
+      - name: Build Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -130,24 +103,30 @@ jobs:
           tags: ghcr.io/ahartn/hartonomous:${{ github.ref_name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      
-      - name: Image built successfully
-        run: |
-          echo "Docker image built successfully"
-          echo "To push to GHCR, configure package permissions in GitHub settings"
-          echo "Image tag: ghcr.io/ahartn/hartonomous:${{ github.ref_name }}"
 
-  deploy-linux:
-    name: Deploy to hart-server (Linux)
+  deploy:
+    name: Deploy to ${{ matrix.environment }}
     runs-on: ubuntu-latest
     needs: [build]
-    if: |
-      (github.ref == 'refs/heads/develop' && github.event_name == 'push') ||
-      (github.event_name == 'workflow_dispatch' && (github.event.inputs.target_machine == 'hart-server' || github.event.inputs.target_machine == 'both'))
     timeout-minutes: 15
+    permissions:
+      id-token: write
+      contents: read
+    strategy:
+      matrix:
+        include:
+          - environment: development
+            branch: develop
+          - environment: staging
+            branch: staging
+          - environment: production
+            branch: main
+    if: |
+      (github.ref == format('refs/heads/{0}', matrix.branch) && github.event_name == 'push') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == matrix.environment)
     environment:
-      name: hart-server
-      url: http://hart-server:8000
+      name: ${{ matrix.environment }}
+      url: ${{ vars.DEPLOYMENT_URL }}
     
     steps:
       - name: Checkout code
@@ -157,146 +136,66 @@ jobs:
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ env.AZURE_TENANT_ID }}
-          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       
-      - name: Deploy to hart-server via Azure Arc
+      - name: Deploy via Azure Arc
         run: |
-          echo "Deploying to hart-server (Linux/Docker)"
+          echo "Deploying to environment: ${{ matrix.environment }}"
+          echo "Target machine: ${{ vars.ARC_MACHINE_NAME }}"
+          echo "OS Type: ${{ vars.OS_TYPE }}"
           
-          az connectedmachine run-command create \
-            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-            --machine-name hart-server \
-            --run-command-name deploy-hartonomous-${{ github.run_id }} \
-            --script "
+          # Create deployment script based on OS type
+          if [ "${{ vars.OS_TYPE }}" == "linux" ]; then
+            SCRIPT='
               set -e
-              echo 'Pulling latest Docker image...'
-              docker pull ghcr.io/ahartn/hartonomous:${{ github.ref_name }} || echo 'Image pull skipped (not published to GHCR yet)'
+              echo "Pulling Docker image..."
+              docker pull ${{ vars.DOCKER_IMAGE }}:${{ github.ref_name }} || echo "Image not available"
               
-              echo 'Stopping existing container...'
-              docker stop hartonomous-api || true
-              docker rm hartonomous-api || true
+              echo "Stopping existing container..."
+              docker stop ${{ vars.CONTAINER_NAME }} || true
+              docker rm ${{ vars.CONTAINER_NAME }} || true
               
-              echo 'Starting new container...'
+              echo "Starting new container..."
               docker run -d \
-                --name hartonomous-api \
+                --name ${{ vars.CONTAINER_NAME }} \
                 --restart unless-stopped \
-                --network bridge \
-                -p 8000:8000 \
-                -e DATABASE_URL='postgresql://hartonomous:\${PGPASSWORD}@localhost:5432/hartonomous' \
-                -e NEO4J_URI='bolt://localhost:7687' \
-                -e NEO4J_ENABLED=true \
-                -e AUTH_ENABLED=false \
-                -e LOG_LEVEL=INFO \
-                ghcr.io/ahartn/hartonomous:${{ github.ref_name }} || echo 'Container start skipped (image not available)'
+                -p ${{ vars.API_PORT }}:8000 \
+                -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
+                -e NEO4J_URI="${{ vars.NEO4J_URI }}" \
+                -e NEO4J_PASSWORD="${{ secrets.NEO4J_PASSWORD }}" \
+                -e LOG_LEVEL=${{ vars.LOG_LEVEL }} \
+                ${{ vars.DOCKER_IMAGE }}:${{ github.ref_name }}
               
-              echo 'Deployment complete'
-              docker ps | grep hartonomous || echo 'Container not running yet'
-            " \
-            --timeout-in-seconds 120
-          
-          echo "Deployment command sent to hart-server"
-      
-      - name: Check deployment status
-        run: |
-          sleep 10
-          az connectedmachine run-command show \
-            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-            --machine-name hart-server \
-            --run-command-name deploy-hartonomous-${{ github.run_id }} \
-            --query "instanceView.{status:executionState,output:output,error:error}" \
-            --output table
-
-  deploy-windows:
-    name: Deploy to HART-DESKTOP (Windows)
-    runs-on: ubuntu-latest
-    needs: [build]
-    if: |
-      (github.event_name == 'workflow_dispatch' && (github.event.inputs.target_machine == 'HART-DESKTOP' || github.event.inputs.target_machine == 'both'))
-    timeout-minutes: 15
-    environment:
-      name: HART-DESKTOP
-      url: http://HART-DESKTOP:8000
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Azure Login
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ env.AZURE_TENANT_ID }}
-          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
-      
-      - name: Deploy to HART-DESKTOP via Azure Arc
-        run: |
-          echo "Deploying to HART-DESKTOP (Windows/Docker)"
+              docker ps | grep ${{ vars.CONTAINER_NAME }}
+            '
+          else
+            SCRIPT='
+              Write-Host "Pulling Docker image..."
+              docker pull ${{ vars.DOCKER_IMAGE }}:${{ github.ref_name }}
+              
+              Write-Host "Stopping existing container..."
+              docker stop ${{ vars.CONTAINER_NAME }} 2>$null
+              docker rm ${{ vars.CONTAINER_NAME }} 2>$null
+              
+              Write-Host "Starting new container..."
+              docker run -d `
+                --name ${{ vars.CONTAINER_NAME }} `
+                --restart unless-stopped `
+                -p ${{ vars.API_PORT }}:8000 `
+                -e DATABASE_URL="${{ secrets.DATABASE_URL }}" `
+                -e NEO4J_URI="${{ vars.NEO4J_URI }}" `
+                -e NEO4J_PASSWORD="${{ secrets.NEO4J_PASSWORD }}" `
+                -e LOG_LEVEL=${{ vars.LOG_LEVEL }} `
+                ${{ vars.DOCKER_IMAGE }}:${{ github.ref_name }}
+              
+              docker ps | Select-String ${{ vars.CONTAINER_NAME }}
+            '
+          fi
           
           az connectedmachine run-command create \
-            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-            --machine-name HART-DESKTOP \
-            --run-command-name deploy-hartonomous-${{ github.run_id }} \
-            --script "
-              Write-Host 'Pulling latest Docker image...'
-              docker pull ghcr.io/ahartn/hartonomous:${{ github.ref_name }}
-              
-              Write-Host 'Stopping existing container...'
-              docker stop hartonomous-api 2>\$null
-              docker rm hartonomous-api 2>\$null
-              
-              Write-Host 'Starting new container...'
-              docker run -d \`
-                --name hartonomous-api \`
-                --restart unless-stopped \`
-                -p 8000:8000 \`
-                -e DATABASE_URL='postgresql://hartonomous:\$env:PGPASSWORD@localhost:5432/hartonomous' \`
-                -e NEO4J_URI='bolt://localhost:7687' \`
-                -e NEO4J_ENABLED=true \`
-                -e AUTH_ENABLED=false \`
-                -e LOG_LEVEL=INFO \`
-                ghcr.io/ahartn/hartonomous:${{ github.ref_name }}
-              
-              Write-Host 'Deployment complete'
-              docker ps | Select-String hartonomous
-            " \
+            --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
+            --machine-name ${{ vars.ARC_MACHINE_NAME }} \
+            --run-command-name deploy-${{ github.run_id }} \
+            --script "$SCRIPT" \
             --timeout-in-seconds 120
-          
-          echo "Deployment command sent to HART-DESKTOP"
-      
-      - name: Check deployment status
-        run: |
-          sleep 10
-          az connectedmachine run-command show \
-            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-            --machine-name HART-DESKTOP \
-            --run-command-name deploy-hartonomous-${{ github.run_id }} \
-            --query "instanceView.{status:executionState,output:output,error:error}" \
-            --output table
-
-  summary:
-    name: Pipeline Summary
-    runs-on: ubuntu-latest
-    needs: [validate, test-unit, build, deploy-linux, deploy-windows]
-    if: always()
-    
-    steps:
-      - name: Pipeline results
-        run: |
-          echo "=========================================="
-          echo "CI/CD Pipeline Completed"
-          echo "=========================================="
-          echo "Validation:      ${{ needs.validate.result }}"
-          echo "Unit Tests:      ${{ needs.test-unit.result }}"
-          echo "Build:           ${{ needs.build.result }}"
-          echo "Deploy (Linux):  ${{ needs.deploy-linux.result }}"
-          echo "Deploy (Windows): ${{ needs.deploy-windows.result }}"
-          echo "=========================================="
-          
-          if [[ "${{ needs.validate.result }}" == "success" && "${{ needs.test-unit.result }}" == "success" && "${{ needs.build.result }}" == "success" ]]; then
-            echo "All required checks passed!"
-            exit 0
-          else
-            echo "Some checks failed"
-            exit 1
-          fi
