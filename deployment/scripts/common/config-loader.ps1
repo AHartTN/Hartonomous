@@ -5,8 +5,7 @@
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-# Import logger
-. "$PSScriptRoot\logger.ps1"
+# Note: Assumes logger.ps1 is already imported by calling script
 
 function Get-DeploymentConfig {
     <#
