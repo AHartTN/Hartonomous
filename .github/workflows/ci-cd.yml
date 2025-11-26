@@ -128,6 +128,9 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       
+      - name: Install Azure Arc extension
+        run: az extension add --name connectedmachine --yes
+      
       - name: Deploy via Azure Arc
         run: |
           echo "Deploying to Development Environment"
