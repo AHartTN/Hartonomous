@@ -52,12 +52,12 @@ jobs:
           name: api-package-${{ github.sha }}
       
       - name: Deploy
-        shell: bash
+        shell: pwsh
         env:
           APP_CONFIG_NAME: appconfig-hartonomous
           RESOURCE_GROUP: rg-hartonomous
         run: |
-          bash deployment/deploy.sh development api-package.zip
+          .\deployment\deploy.ps1 -Environment development -ArtifactPath "api-package.zip"
 
   deploy-staging:
     name: Deploy to Staging
