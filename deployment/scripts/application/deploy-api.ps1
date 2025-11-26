@@ -113,7 +113,7 @@ $envTemplate = @"
 # Generated: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
 
 DEPLOYMENT_ENVIRONMENT=$Environment
-LOG_LEVEL=$($config.logging.level)
+LOG_LEVEL=$($config.api.log_level)
 
 # Database Configuration
 PGHOST=$($config.database.host)
@@ -266,7 +266,7 @@ Get-Content "$envFile" | ForEach-Object {
     --host $($config.api.host) ``
     --port $($config.api.port) ``
     --workers $($config.api.workers) ``
-    --log-level $($config.logging.level.ToLower())
+    --log-level $($config.api.log_level.ToLower())
 "@
 
         Set-Content -Path $wrapperScript -Value $wrapperContent
@@ -380,3 +380,4 @@ if ($Environment -eq 'development') {
 }
 
 Write-Log "API application deployment completed" -Level INFO
+
