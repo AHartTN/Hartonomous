@@ -16,7 +16,9 @@ Set-StrictMode -Version Latest
 . "$PSScriptRoot\..\common\azure-auth.ps1"
 
 # Initialize logger
-Initialize-Logger -Level $env:LOG_LEVEL -LogFilePath "D:\Hartonomous\logs\preflight-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
+$logLevelName = if ($env:LOG_LEVEL) { $env:LOG_LEVEL } else { 'INFO' }
+$logPath = "D:\Hartonomous\logs\preflight-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
+Initialize-Logger -LogFilePath $logPath -LogLevelName $logLevelName
 
 Write-Step "Preflight Checks - Prerequisites"
 
