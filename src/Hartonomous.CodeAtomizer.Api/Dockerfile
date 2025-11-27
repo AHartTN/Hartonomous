@@ -1,20 +1,21 @@
 # Stage 1: Build the application
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
 # Copy the project file and restore dependencies
 COPY ["src/Hartonomous.CodeAtomizer.Api/Hartonomous.CodeAtomizer.Api.csproj", "Hartonomous.CodeAtomizer.Api/"]
+COPY ["src/Hartonomous.CodeAtomizer.Core/Hartonomous.CodeAtomizer.Core.csproj", "Hartonomous.CodeAtomizer.Core/"]
 RUN dotnet restore "Hartonomous.CodeAtomizer.Api/Hartonomous.CodeAtomizer.Api.csproj"
 
 # Copy the rest of the source code
-COPY . .
+COPY src/ .
 
 # Publish the application
-WORKDIR "/src/src/Hartonomous.CodeAtomizer.Api"
+WORKDIR "/src/Hartonomous.CodeAtomizer.Api"
 RUN dotnet publish "Hartonomous.CodeAtomizer.Api.csproj" -c Release -o /app/publish
 
 # Stage 2: Create the final runtime image
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
 COPY --from=build /app/publish .
 
