@@ -6,7 +6,7 @@ Provides reusable dependencies for database connections, authentication, etc.
 Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 """
 
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 
 from fastapi import Depends, HTTPException, status
 from psycopg import AsyncConnection
@@ -15,7 +15,7 @@ from psycopg_pool import AsyncConnectionPool
 from api.config import settings
 
 # Global connection pool (initialized in main.py lifespan)
-_connection_pool: AsyncConnectionPool | None = None
+_connection_pool: Optional[AsyncConnectionPool] = None
 
 
 def set_connection_pool(pool: AsyncConnectionPool) -> None:
