@@ -193,6 +193,13 @@ app.include_router(
     github.router, prefix=f"{settings.api_v1_prefix}/ingest", tags=["github"]
 )
 
+# Model routes (GGUF, SafeTensors, PyTorch, ONNX)
+from api.routes import models
+
+app.include_router(
+    models.router, prefix=f"{settings.api_v1_prefix}/ingest", tags=["models"]
+)
+
 
 @app.get("/")
 async def root():
