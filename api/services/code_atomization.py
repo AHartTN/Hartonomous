@@ -164,6 +164,7 @@ class CodeAtomizationService:
     ) -> Dict[str, int]:
         """
         Bulk insert atoms into database.
+        Stores spatial_key as POINTZM(x, y, z, hilbert_index) for efficient spatial queries.
 
         Returns:
             Mapping of content_hash (base64) to atom_id
@@ -187,8 +188,21 @@ class CodeAtomizationService:
                     atom_id_map[atom["contentHash"]] = existing[0]
                     continue
 
-                # Insert new atom
-                spatial_key = f"SRID=0;POINTZ({atom['spatialKey']['x']} {atom['spatialKey']['y']} {atom['spatialKey']['z']})"
+                # Extract Hilbert index from metadata
+                import json
+
+                metadata = json.loads(atom["metadata"])
+                hilbert_index = metadata.get("hilbertIndex", 0)
+
+                # Store as POINTZM (x, y, z, hilbert_index)
+                # M dimension holds the Hilbert curve index for O(log n) spatial queries
+                spatial_key = (
+                    f"SRID=0;POINTZM("
+                    f"{atom['spatialKey']['x']} "
+                    f"{atom['spatialKey']['y']} "
+                    f"{atom['spatialKey']['z']} "
+                    f"{hilbert_index})"
+                )
 
                 await cur.execute(
                     """
@@ -218,7 +232,7 @@ class CodeAtomizationService:
                 result = await cur.fetchone()
                 atom_id_map[atom["contentHash"]] = result[0]
 
-        logger.info(f"Inserted {len(atoms)} atoms")
+        logger.info(f"Inserted {len(atoms)} atoms with Hilbert spatial indexing")
         return atom_id_map
 
     async def _bulk_insert_compositions(

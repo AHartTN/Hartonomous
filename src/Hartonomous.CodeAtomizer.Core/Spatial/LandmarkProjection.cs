@@ -193,4 +193,28 @@ public static class LandmarkProjection
     {
         return SHA256.HashData(Encoding.UTF8.GetBytes(text));
     }
+
+    /// <summary>
+    /// Compute 3D spatial position AND Hilbert index for an atom using landmark projection.
+    /// </summary>
+    /// <param name="modality">Modality type (code, text, image, etc.)</param>
+    /// <param name="category">Semantic category (class, method, field, etc.)</param>
+    /// <param name="specificity">Abstraction level (abstract, concrete, literal)</param>
+    /// <param name="identifier">Unique identifier for fine-tuning position</param>
+    /// <param name="hilbertOrder">Hilbert curve resolution (default 10 = 1024³)</param>
+    /// <returns>3D position and Hilbert index</returns>
+    public static (double X, double Y, double Z, long HilbertIndex) ComputePositionWithHilbert(
+        string modality,
+        string category,
+        string? specificity = null,
+        string? identifier = null,
+        int hilbertOrder = 10)
+    {
+        var (x, y, z) = ComputePosition(modality, category, specificity, identifier);
+        
+        // Compute Hilbert index for this 3D position
+        var hilbertIndex = HilbertCurve.Encode(x, y, z, hilbertOrder);
+        
+        return (x, y, z, hilbertIndex);
+    }
 }

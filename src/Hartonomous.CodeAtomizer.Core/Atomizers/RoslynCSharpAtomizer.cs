@@ -52,7 +52,7 @@ public sealed class RoslynCSharpAtomizer
         var fileBytes = Encoding.UTF8.GetBytes($"csharp:file:{fileName}:{code.Length}");
         var hash = ComputeHash(fileBytes);
 
-        var position = LandmarkProjection.ComputePosition(
+        var (x, y, z, hilbertIndex) = LandmarkProjection.ComputePositionWithHilbert(
             modality: "code",
             category: "file",
             specificity: "concrete",
@@ -64,7 +64,8 @@ public sealed class RoslynCSharpAtomizer
             ContentHash = hash,
             AtomicValue = fileBytes,
             CanonicalText = $"{fileName} ({code.Length:N0} bytes)",
-            SpatialKey = new SpatialPosition(position.X, position.Y, position.Z),
+            SpatialKey = new SpatialPosition(x, y, z),
+            HilbertIndex = hilbertIndex,
             Modality = "code",
             Subtype = "file",
             Metadata = JsonSerializer.Serialize(new
@@ -74,6 +75,7 @@ public sealed class RoslynCSharpAtomizer
                 size = code.Length,
                 lines = code.Split('\n').Length,
                 parsingEngine = "Roslyn",
+                hilbertIndex,
                 metadata
             })
         });
@@ -106,8 +108,8 @@ public sealed class RoslynCSharpAtomizer
         
         var specificity = LandmarkProjection.InferSpecificity(nodeType, isAbstract);
 
-        // Compute spatial position using landmark projection
-        var position = LandmarkProjection.ComputePosition(
+        // Compute spatial position AND Hilbert index using landmark projection
+        var (x, y, z, hilbertIndex) = LandmarkProjection.ComputePositionWithHilbert(
             modality: "code",
             category: nodeType,
             specificity: specificity,
@@ -124,7 +126,8 @@ public sealed class RoslynCSharpAtomizer
             ["endLine"] = endLine,
             ["endColumn"] = endColumn,
             ["parsingEngine"] = "Roslyn",
-            ["spatialPosition"] = new { x = position.X, y = position.Y, z = position.Z },
+            ["spatialPosition"] = new { x, y, z },
+            ["hilbertIndex"] = hilbertIndex,
             ["specificity"] = specificity
         };
 
@@ -141,7 +144,8 @@ public sealed class RoslynCSharpAtomizer
             ContentHash = hash,
             AtomicValue = atomicValue,
             CanonicalText = text.Length > 100 ? text[..100] + "..." : text,
-            SpatialKey = new SpatialPosition(position.X, position.Y, position.Z),
+            SpatialKey = new SpatialPosition(x, y, z),
+            HilbertIndex = hilbertIndex,
             Modality = "code",
             Subtype = nodeType,
             Metadata = JsonSerializer.Serialize(metadata)

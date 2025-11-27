@@ -27,6 +27,13 @@ public sealed record Atom
     public required SpatialPosition SpatialKey { get; init; }
 
     /// <summary>
+    /// Hilbert curve index (1D representation of 3D position)
+    /// Stored in PostGIS as POINTZM(x, y, z, hilbert_index)
+    /// Enables O(log n) spatial queries via single integer comparison
+    /// </summary>
+    public required long HilbertIndex { get; init; }
+
+    /// <summary>
     /// Modality: "code", "text", "numeric", etc.
     /// </summary>
     public required string Modality { get; init; }
@@ -44,6 +51,7 @@ public sealed record Atom
 
 /// <summary>
 /// 3D spatial position in semantic space
+/// Maps to PostGIS POINTZ or POINTZM geometry type
 /// </summary>
 public sealed record SpatialPosition(double X, double Y, double Z);
 

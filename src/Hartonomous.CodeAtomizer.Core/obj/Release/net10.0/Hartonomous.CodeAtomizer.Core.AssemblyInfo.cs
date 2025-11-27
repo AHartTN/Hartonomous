@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Hartonomous.CodeAtomizer.Core")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("0.1.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("0.1.0+b9f088e5562589efbb4ddb0efebd5d44a5ee0448")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("0.1.0+b5f87fbf30ffcdc9c9b8da72e3c6fb2c7080d4df")]
 [assembly: System.Reflection.AssemblyProductAttribute("Hartonomous.CodeAtomizer.Core")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Hartonomous.CodeAtomizer.Core")]
 [assembly: System.Reflection.AssemblyVersionAttribute("0.1.0.0")]
