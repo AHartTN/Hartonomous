@@ -41,6 +41,10 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 
 # Copy application code
 COPY api/ /app/api/
+COPY run.py /app/run.py
+
+# Set working directory
+WORKDIR /app
 
 # Environment variables
 ENV POSTGRES_DB=hartonomous
@@ -60,5 +64,5 @@ EXPOSE 5432 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
     CMD pg_isready -U postgres -d hartonomous || exit 1
 
-# Run application
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run application with proper event loop configuration
+CMD ["python3", "run.py"]
