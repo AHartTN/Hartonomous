@@ -28,17 +28,7 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Lifespan context manager for startup/shutdown.
-
-    Startup:
-    - Create AsyncConnectionPool
-    - Start AGE sync worker (if enabled)
-
-    Shutdown:
-    - Stop AGE worker
-    - Close connection pool gracefully
-    """
+    """Lifespan context manager for startup/shutdown."""
     logger.info("Starting Hartonomous API v0.6.0...")
 
     # Create connection pool
@@ -89,7 +79,7 @@ async def lifespan(app: FastAPI):
         age_worker_task = asyncio.create_task(age_worker.start())
         logger.info("AGE sync worker started (experimental only)")
 
-    logger.info("? Hartonomous API ready")
+    logger.info("✓ Hartonomous API ready")
 
     # Application runs here
     yield
@@ -122,7 +112,7 @@ async def lifespan(app: FastAPI):
     await pool.close()
     logger.info("Connection pool closed")
 
-    logger.info("? Hartonomous API shutdown complete")
+    logger.info("✓ Hartonomous API shutdown complete")
 
 
 # Create FastAPI app
@@ -217,10 +207,6 @@ if __name__ == "__main__":
     import sys
 
     import uvicorn
-
-    # Windows-specific: Use SelectorEventLoop for psycopg async compatibility
-    if sys.platform == "win32":
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
     uvicorn.run(
         "api.main:app",

@@ -76,19 +76,20 @@ class Settings(BaseSettings):
     api_v1_prefix: str = Field(default="/v1", description="API v1 prefix")
 
     # CORS Settings
-    cors_origins: list[str] = Field(
-        default=["http://localhost:3000", "http://localhost:8000"],
-        description="Allowed CORS origins",
+    cors_origins: str = Field(
+        default="http://localhost:3000,http://localhost:8000",
+        description="Allowed CORS origins (comma-separated)",
     )
 
-    @field_validator("cors_origins", mode="before")
+    @field_validator("cors_origins", mode="after")
     @classmethod
     def parse_cors_origins(cls, v):
-        """Parse CORS origins from comma-separated string or list."""
+        """Parse CORS origins from comma-separated string to list."""
         if isinstance(v, str):
-            # Split by comma and strip whitespace
             return [origin.strip() for origin in v.split(",") if origin.strip()]
-        return v
+        if isinstance(v, list):
+            return v
+        return [str(v)]
 
     # Logging
     log_level: str = Field(default="INFO", description="Logging level")

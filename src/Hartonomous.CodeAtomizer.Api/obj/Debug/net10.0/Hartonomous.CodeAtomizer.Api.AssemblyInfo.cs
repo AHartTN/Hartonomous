@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyDescriptionAttribute("High-performance code AST atomization service using Roslyn and Tree-sitter")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("0.1.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("0.1.0+1eeb7f1fea87b10dd2d00ed0cc871360b47b59f6")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("0.1.0+7ebfc53132381a015c37fb2b526ca5500fc54363")]
 [assembly: System.Reflection.AssemblyProductAttribute("Code Atomization Microservice")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Hartonomous.CodeAtomizer.Api")]
 [assembly: System.Reflection.AssemblyVersionAttribute("0.1.0.0")]
