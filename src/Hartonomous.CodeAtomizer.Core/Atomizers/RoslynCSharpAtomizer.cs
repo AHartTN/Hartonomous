@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Hartonomous.CodeAtomizer.Core.Models;
+using Hartonomous.CodeAtomizer.Core.Spatial;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -51,12 +52,19 @@ public sealed class RoslynCSharpAtomizer
         var fileBytes = Encoding.UTF8.GetBytes($"csharp:file:{fileName}:{code.Length}");
         var hash = ComputeHash(fileBytes);
 
+        var position = LandmarkProjection.ComputePosition(
+            modality: "code",
+            category: "file",
+            specificity: "concrete",
+            identifier: fileName
+        );
+
         _atoms.Add(new Atom
         {
             ContentHash = hash,
             AtomicValue = fileBytes,
             CanonicalText = $"{fileName} ({code.Length:N0} bytes)",
-            SpatialKey = ComputeSpatialPosition("file", "csharp"),
+            SpatialKey = new SpatialPosition(position.X, position.Y, position.Z),
             Modality = "code",
             Subtype = "file",
             Metadata = JsonSerializer.Serialize(new
@@ -92,6 +100,20 @@ public sealed class RoslynCSharpAtomizer
             return existingHash;
         }
 
+        // Determine specificity from metadata
+        var isAbstract = additionalMetadata?.ContainsKey("modifiers") == true &&
+                        additionalMetadata["modifiers"].ToString()?.Contains("abstract") == true;
+        
+        var specificity = LandmarkProjection.InferSpecificity(nodeType, isAbstract);
+
+        // Compute spatial position using landmark projection
+        var position = LandmarkProjection.ComputePosition(
+            modality: "code",
+            category: nodeType,
+            specificity: specificity,
+            identifier: $"{nodeType}:{name}"
+        );
+
         var metadata = new Dictionary<string, object>
         {
             ["language"] = "csharp",
@@ -101,7 +123,9 @@ public sealed class RoslynCSharpAtomizer
             ["startColumn"] = startColumn,
             ["endLine"] = endLine,
             ["endColumn"] = endColumn,
-            ["parsingEngine"] = "Roslyn"
+            ["parsingEngine"] = "Roslyn",
+            ["spatialPosition"] = new { x = position.X, y = position.Y, z = position.Z },
+            ["specificity"] = specificity
         };
 
         if (additionalMetadata != null)
@@ -117,7 +141,7 @@ public sealed class RoslynCSharpAtomizer
             ContentHash = hash,
             AtomicValue = atomicValue,
             CanonicalText = text.Length > 100 ? text[..100] + "..." : text,
-            SpatialKey = ComputeSpatialPosition(nodeType, name),
+            SpatialKey = new SpatialPosition(position.X, position.Y, position.Z),
             Modality = "code",
             Subtype = nodeType,
             Metadata = JsonSerializer.Serialize(metadata)
@@ -159,27 +183,6 @@ public sealed class RoslynCSharpAtomizer
     private static byte[] ComputeHash(byte[] data)
     {
         return SHA256.HashData(data);
-    }
-
-    private static SpatialPosition ComputeSpatialPosition(string nodeType, string identifier)
-    {
-        // Landmark projection: map semantic concepts to 3D space
-        // This is a simplified version - real implementation uses landmark vectors
-
-        var x = ComputeCoordinate(nodeType, 0);
-        var y = ComputeCoordinate(nodeType, 1);
-        var z = ComputeCoordinate(identifier, 2);
-
-        return new SpatialPosition(x, y, z);
-    }
-
-    private static double ComputeCoordinate(string text, int dimension)
-    {
-        // Simple hash-based coordinate mapping
-        // Real implementation uses landmark projection with fixed semantic anchors
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(text + dimension));
-        var value = BitConverter.ToUInt32(hash, 0);
-        return (value % 1000) / 1000.0; // Normalize to [0, 1)
     }
 
     /// <summary>
