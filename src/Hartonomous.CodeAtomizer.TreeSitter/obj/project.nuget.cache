@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "dgSpecHash": "xoA20GZyOmc=",
+  "success": true,
+  "projectFilePath": "D:\\Repositories\\Hartonomous\\src\\Hartonomous.CodeGeneration.TreeSitter\\Hartonomous.CodeGeneration.TreeSitter.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\ahart\\.nuget\\packages\\treesitter.dotnet\\1.1.1\\treesitter.dotnet.1.1.1.nupkg.sha512"
+  ],
+  "logs": []
+}

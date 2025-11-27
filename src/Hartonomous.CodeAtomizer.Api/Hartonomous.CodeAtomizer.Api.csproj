@@ -23,21 +23,14 @@
     <PackageReference Include="Microsoft.CodeAnalysis.VisualBasic" Version="4.12.0" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.12.0" />
     
-    <!-- Tree-sitter (will need native bindings) -->
-    <!-- <PackageReference Include="TreeSitterSharp" Version="..." /> -->
-    
     <!-- PostgreSQL -->
     <PackageReference Include="Npgsql" Version="9.0.2" />
     <PackageReference Include="Npgsql.Json.NET" Version="9.0.2" />
     
-    <!-- Performance -->
-    <PackageReference Include="System.Threading.Channels" Version="9.0.0" />
-    <PackageReference Include="System.IO.Pipelines" Version="9.0.0" />
-    
     <!-- Observability -->
     <PackageReference Include="Serilog.AspNetCore" Version="9.0.0" />
     <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
-    <PackageReference Include="OpenTelemetry.Exporter.Prometheus.AspNetCore" Version="1.10.0" />
+    <PackageReference Include="OpenTelemetry.Exporter.Prometheus.AspNetCore" Version="1.11.0-beta.1" />
     
     <!-- Azure (for production) -->
     <PackageReference Include="Azure.Identity" Version="1.13.1" />

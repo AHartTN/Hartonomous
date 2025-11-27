@@ -14,21 +14,7 @@ builder.Host.UseSerilog();
 // Add services
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(c =>
-{
-    c.SwaggerDoc("v1", new()
-    {
-        Title = "Hartonomous Code Atomizer API",
-        Version = "v0.1.0",
-        Description = "High-performance code AST atomization using Roslyn and Tree-sitter",
-        Contact = new()
-        {
-            Name = "Anthony Hart",
-            Email = "aharttn@gmail.com",
-            Url = new Uri("https://github.com/AHartTN/Hartonomous")
-        }
-    });
-});
+builder.Services.AddSwaggerGen();
 
 // CORS for development
 builder.Services.AddCors(options =>
@@ -40,14 +26,6 @@ builder.Services.AddCors(options =>
               .AllowAnyHeader();
     });
 });
-
-// Metrics
-builder.Services.AddOpenTelemetry()
-    .WithMetrics(metrics =>
-    {
-        metrics.AddPrometheusExporter();
-        metrics.AddMeter("Hartonomous.CodeAtomizer");
-    });
 
 var app = builder.Build();
 
@@ -62,10 +40,10 @@ app.UseSerilogRequestLogging();
 app.UseCors();
 app.UseAuthorization();
 app.MapControllers();
-app.MapPrometheusScrapingEndpoint();
 
 Log.Information("?? Hartonomous Code Atomizer API starting...");
-Log.Information("   Roslyn: Microsoft.CodeAnalysis.CSharp 4.12.0");
-Log.Information("   Tree-sitter: Coming soon");
+Log.Information("   Roslyn: C# semantic analysis");
+Log.Information("   Tree-sitter: 18+ languages (Python, JS, Go, Rust, Java, etc.)");
+Log.Information("   Hilbert curves: 3D?1D spatial indexing");
 
 app.Run();

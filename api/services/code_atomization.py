@@ -92,6 +92,49 @@ class CodeAtomizerClient:
         """Close HTTP client."""
         await self.client.aclose()
 
+    async def atomize_any_language(
+        self, code: str, language: str, filename: str = "code.txt", metadata: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Atomize code in any supported language (Python, JS, Go, Rust, Java, etc.)
+
+        Args:
+            code: Source code
+            language: Language (python, javascript, go, rust, etc.)
+            filename: Filename for metadata
+            metadata: Optional JSON metadata
+
+        Returns:
+            Atomization result with atoms, compositions, relations
+        """
+        try:
+            response = await self.client.post(
+                f"{self.base_url}/api/v1/atomize/{language}",
+                json={"code": code, "fileName": filename, "metadata": metadata},
+            )
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPError as e:
+            logger.error(f"Code atomization failed for {language}: {e}")
+            raise
+
+    async def get_supported_languages(self) -> Dict[str, Any]:
+        """
+        Get list of supported languages.
+
+        Returns:
+            Dictionary of supported languages by parser
+        """
+        try:
+            response = await self.client.get(
+                f"{self.base_url}/api/v1/atomize/languages"
+            )
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPError as e:
+            logger.error(f"Failed to get supported languages: {e}")
+            raise
+
 
 class CodeAtomizationService:
     """

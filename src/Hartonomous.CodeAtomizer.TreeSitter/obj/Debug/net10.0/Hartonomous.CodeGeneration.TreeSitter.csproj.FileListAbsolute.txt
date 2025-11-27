@@ -1,0 +1,16 @@
+D:\Repositories\Hartonomous\src\Hartonomous.CodeGeneration.TreeSitter\bin\Debug\net10.0\Hartonomous.CodeGeneration.TreeSitter.deps.json
+D:\Repositories\Hartonomous\src\Hartonomous.CodeGeneration.TreeSitter\bin\Debug\net10.0\Hartonomous.CodeGeneration.TreeSitter.dll
+D:\Repositories\Hartonomous\src\Hartonomous.CodeGeneration.TreeSitter\bin\Debug\net10.0\Hartonomous.CodeGeneration.TreeSitter.pdb
+D:\Repositories\Hartonomous\src\Hartonomous.CodeGeneration.TreeSitter\bin\Debug\net10.0\Hartonomous.CodeGeneration.Core.dll
+D:\Repositories\Hartonomous\src\Hartonomous.CodeGeneration.TreeSitter\bin\Debug\net10.0\Hartonomous.CodeGeneration.Core.pdb
+D:\Repositories\Hartonomous\src\Hartonomous.CodeGeneration.TreeSitter\obj\Debug\net10.0\Hartonomous.CodeGeneration.TreeSitter.csproj.AssemblyReference.cache
+D:\Repositories\Hartonomous\src\Hartonomous.CodeGeneration.TreeSitter\obj\Debug\net10.0\Hartonomous.CodeGeneration.TreeSitter.GeneratedMSBuildEditorConfig.editorconfig
+D:\Repositories\Hartonomous\src\Hartonomous.CodeGeneration.TreeSitter\obj\Debug\net10.0\Hartonomous.CodeGeneration.TreeSitter.AssemblyInfoInputs.cache
+D:\Repositories\Hartonomous\src\Hartonomous.CodeGeneration.TreeSitter\obj\Debug\net10.0\Hartonomous.CodeGeneration.TreeSitter.AssemblyInfo.cs
+D:\Repositories\Hartonomous\src\Hartonomous.CodeGeneration.TreeSitter\obj\Debug\net10.0\Hartonomous.CodeGeneration.TreeSitter.csproj.CoreCompileInputs.cache
+D:\Repositories\Hartonomous\src\Hartonomous.CodeGeneration.TreeSitter\obj\Debug\net10.0\Hartonomous.CodeGeneration.TreeSitter.sourcelink.json
+D:\Repositories\Hartonomous\src\Hartonomous.CodeGeneration.TreeSitter\obj\Debug\net10.0\Hartonom.78D0A32D.Up2Date
+D:\Repositories\Hartonomous\src\Hartonomous.CodeGeneration.TreeSitter\obj\Debug\net10.0\Hartonomous.CodeGeneration.TreeSitter.dll
+D:\Repositories\Hartonomous\src\Hartonomous.CodeGeneration.TreeSitter\obj\Debug\net10.0\refint\Hartonomous.CodeGeneration.TreeSitter.dll
+D:\Repositories\Hartonomous\src\Hartonomous.CodeGeneration.TreeSitter\obj\Debug\net10.0\Hartonomous.CodeGeneration.TreeSitter.pdb
+D:\Repositories\Hartonomous\src\Hartonomous.CodeGeneration.TreeSitter\obj\Debug\net10.0\ref\Hartonomous.CodeGeneration.TreeSitter.dll
