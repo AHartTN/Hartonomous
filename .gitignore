@@ -23,6 +23,19 @@ wheels/
 .installed.cfg
 *.egg
 
+# .NET
+bin/
+obj/
+*.user
+*.suo
+*.userprefs
+*.pidb
+*.sln.docstates
+*.sln.iml
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
 # IDEs
 .vscode/
 .idea/
