@@ -186,6 +186,13 @@ app.include_router(
     code.router, prefix=f"{settings.api_v1_prefix}/ingest", tags=["code"]
 )
 
+# GitHub routes (repository ingestion)
+from api.routes import github
+
+app.include_router(
+    github.router, prefix=f"{settings.api_v1_prefix}/ingest", tags=["github"]
+)
+
 
 @app.get("/")
 async def root():

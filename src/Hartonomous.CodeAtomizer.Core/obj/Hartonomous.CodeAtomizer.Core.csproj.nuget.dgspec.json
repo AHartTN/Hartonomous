@@ -66,10 +66,6 @@
             "Npgsql": {
               "target": "Package",
               "version": "[9.0.2, )"
-            },
-            "System.Security.Cryptography.Algorithms": {
-              "target": "Package",
-              "version": "[4.3.1, )"
             }
           },
           "imports": [

@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "dgSpecHash": "HnkGC7rAXno=",
+  "dgSpecHash": "qpDSzvChZ0s=",
   "success": true,
   "projectFilePath": "D:\\Repositories\\Hartonomous\\src\\Hartonomous.CodeAtomizer.Core\\Hartonomous.CodeAtomizer.Core.csproj",
   "expectedPackageFiles": [
@@ -13,30 +13,13 @@
     "C:\\Users\\ahart\\.nuget\\packages\\microsoft.codeanalysis.workspaces.common\\4.12.0\\microsoft.codeanalysis.workspaces.common.4.12.0.nupkg.sha512",
     "C:\\Users\\ahart\\.nuget\\packages\\microsoft.extensions.dependencyinjection.abstractions\\8.0.2\\microsoft.extensions.dependencyinjection.abstractions.8.0.2.nupkg.sha512",
     "C:\\Users\\ahart\\.nuget\\packages\\microsoft.extensions.logging.abstractions\\8.0.2\\microsoft.extensions.logging.abstractions.8.0.2.nupkg.sha512",
-    "C:\\Users\\ahart\\.nuget\\packages\\microsoft.netcore.platforms\\1.1.0\\microsoft.netcore.platforms.1.1.0.nupkg.sha512",
     "C:\\Users\\ahart\\.nuget\\packages\\npgsql\\9.0.2\\npgsql.9.0.2.nupkg.sha512",
-    "C:\\Users\\ahart\\.nuget\\packages\\runtime.native.system.security.cryptography.apple\\4.3.1\\runtime.native.system.security.cryptography.apple.4.3.1.nupkg.sha512",
-    "C:\\Users\\ahart\\.nuget\\packages\\runtime.native.system.security.cryptography.openssl\\4.3.2\\runtime.native.system.security.cryptography.openssl.4.3.2.nupkg.sha512",
     "C:\\Users\\ahart\\.nuget\\packages\\system.composition\\8.0.0\\system.composition.8.0.0.nupkg.sha512",
     "C:\\Users\\ahart\\.nuget\\packages\\system.composition.attributedmodel\\8.0.0\\system.composition.attributedmodel.8.0.0.nupkg.sha512",
     "C:\\Users\\ahart\\.nuget\\packages\\system.composition.convention\\8.0.0\\system.composition.convention.8.0.0.nupkg.sha512",
     "C:\\Users\\ahart\\.nuget\\packages\\system.composition.hosting\\8.0.0\\system.composition.hosting.8.0.0.nupkg.sha512",
     "C:\\Users\\ahart\\.nuget\\packages\\system.composition.runtime\\8.0.0\\system.composition.runtime.8.0.0.nupkg.sha512",
-    "C:\\Users\\ahart\\.nuget\\packages\\system.composition.typedparts\\8.0.0\\system.composition.typedparts.8.0.0.nupkg.sha512",
-    "C:\\Users\\ahart\\.nuget\\packages\\system.security.cryptography.algorithms\\4.3.1\\system.security.cryptography.algorithms.4.3.1.nupkg.sha512"
+    "C:\\Users\\ahart\\.nuget\\packages\\system.composition.typedparts\\8.0.0\\system.composition.typedparts.8.0.0.nupkg.sha512"
   ],
-  "logs": [
-    {
-      "code": "NU1510",
-      "level": "Warning",
-      "message": "PackageReference System.Security.Cryptography.Algorithms will not be pruned. Consider removing this package from your dependencies, as it is likely unnecessary.",
-      "projectPath": "D:\\Repositories\\Hartonomous\\src\\Hartonomous.CodeAtomizer.Core\\Hartonomous.CodeAtomizer.Core.csproj",
-      "warningLevel": 1,
-      "filePath": "D:\\Repositories\\Hartonomous\\src\\Hartonomous.CodeAtomizer.Core\\Hartonomous.CodeAtomizer.Core.csproj",
-      "libraryId": "System.Security.Cryptography.Algorithms",
-      "targetGraphs": [
-        "net10.0"
-      ]
-    }
-  ]
+  "logs": []
 }

@@ -87,10 +87,6 @@
               "target": "Package",
               "version": "[9.0.2, )"
             },
-            "OpenTelemetry.Exporter.Prometheus.AspNetCore": {
-              "target": "Package",
-              "version": "[1.11.0-beta.1, )"
-            },
             "Serilog.AspNetCore": {
               "target": "Package",
               "version": "[9.0.0, )"
@@ -98,10 +94,6 @@
             "Serilog.Sinks.Console": {
               "target": "Package",
               "version": "[6.0.0, )"
-            },
-            "Swashbuckle.AspNetCore": {
-              "target": "Package",
-              "version": "[7.2.0, )"
             }
           },
           "imports": [
@@ -603,10 +595,6 @@
             "Npgsql": {
               "target": "Package",
               "version": "[9.0.2, )"
-            },
-            "System.Security.Cryptography.Algorithms": {
-              "target": "Package",
-              "version": "[4.3.1, )"
             }
           },
           "imports": [

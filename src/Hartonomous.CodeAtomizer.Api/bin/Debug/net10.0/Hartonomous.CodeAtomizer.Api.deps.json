@@ -17,10 +17,8 @@
           "Microsoft.CodeAnalysis.VisualBasic": "4.12.0",
           "Npgsql": "9.0.2",
           "Npgsql.Json.NET": "9.0.2",
-          "OpenTelemetry.Exporter.Prometheus.AspNetCore": "1.11.0-beta.1",
           "Serilog.AspNetCore": "9.0.0",
-          "Serilog.Sinks.Console": "6.0.0",
-          "Swashbuckle.AspNetCore": "7.2.0"
+          "Serilog.Sinks.Console": "6.0.0"
         },
         "runtime": {
           "Hartonomous.CodeAtomizer.Api.dll": {}
@@ -428,47 +426,6 @@
           }
         }
       },
-      "OpenTelemetry/1.11.0": {
-        "dependencies": {
-          "OpenTelemetry.Api.ProviderBuilderExtensions": "1.11.0"
-        },
-        "runtime": {
-          "lib/net9.0/OpenTelemetry.dll": {
-            "assemblyVersion": "1.0.0.0",
-            "fileVersion": "1.11.0.1535"
-          }
-        }
-      },
-      "OpenTelemetry.Api/1.11.0": {
-        "runtime": {
-          "lib/net9.0/OpenTelemetry.Api.dll": {
-            "assemblyVersion": "1.0.0.0",
-            "fileVersion": "1.11.0.1535"
-          }
-        }
-      },
-      "OpenTelemetry.Api.ProviderBuilderExtensions/1.11.0": {
-        "dependencies": {
-          "OpenTelemetry.Api": "1.11.0"
-        },
-        "runtime": {
-          "lib/net9.0/OpenTelemetry.Api.ProviderBuilderExtensions.dll": {
-            "assemblyVersion": "1.0.0.0",
-            "fileVersion": "1.11.0.1535"
-          }
-        }
-      },
-      "OpenTelemetry.Exporter.Prometheus.AspNetCore/1.11.0-beta.1": {
-        "dependencies": {
-          "OpenTelemetry": "1.11.0"
-        },
-        "runtime": {
-          "lib/net9.0/OpenTelemetry.Exporter.Prometheus.AspNetCore.dll": {
-            "assemblyVersion": "1.0.0.0",
-            "fileVersion": "1.11.0.1537"
-          }
-        }
-      },
       "Serilog/4.2.0": {
         "runtime": {
           "lib/net9.0/Serilog.dll": {
@@ -570,43 +527,6 @@
           "lib/net8.0/Serilog.Sinks.File.dll": {
             "assemblyVersion": "6.0.0.0",
             "fileVersion": "6.0.0.0"
-          }
-        }
-      },
-      "Swashbuckle.AspNetCore/7.2.0": {
-        "dependencies": {
-          "Swashbuckle.AspNetCore.Swagger": "7.2.0",
-          "Swashbuckle.AspNetCore.SwaggerGen": "7.2.0",
-          "Swashbuckle.AspNetCore.SwaggerUI": "7.2.0"
-        }
-      },
-      "Swashbuckle.AspNetCore.Swagger/7.2.0": {
-        "dependencies": {
-          "Microsoft.OpenApi": "2.0.0"
-        },
-        "runtime": {
-          "lib/net9.0/Swashbuckle.AspNetCore.Swagger.dll": {
-            "assemblyVersion": "7.2.0.0",
-            "fileVersion": "7.2.0.956"
-          }
-        }
-      },
-      "Swashbuckle.AspNetCore.SwaggerGen/7.2.0": {
-        "dependencies": {
-          "Swashbuckle.AspNetCore.Swagger": "7.2.0"
-        },
-        "runtime": {
-          "lib/net9.0/Swashbuckle.AspNetCore.SwaggerGen.dll": {
-            "assemblyVersion": "7.2.0.0",
-            "fileVersion": "7.2.0.956"
-          }
-        }
-      },
-      "Swashbuckle.AspNetCore.SwaggerUI/7.2.0": {
-        "runtime": {
-          "lib/net9.0/Swashbuckle.AspNetCore.SwaggerUI.dll": {
-            "assemblyVersion": "7.2.0.0",
-            "fileVersion": "7.2.0.956"
           }
         }
       },
@@ -860,34 +780,6 @@
       "path": "npgsql.json.net/9.0.2",
       "hashPath": "npgsql.json.net.9.0.2.nupkg.sha512"
     },
-    "OpenTelemetry/1.11.0": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-WVdOobTllpePASPpuyraV1k+rozdGL6bYPujDpla4MZtRH71m4sfZPbo+3pgqYiskDaK+M2cpGMvCvL6OIPOoQ==",
-      "path": "opentelemetry/1.11.0",
-      "hashPath": "opentelemetry.1.11.0.nupkg.sha512"
-    },
-    "OpenTelemetry.Api/1.11.0": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-3sZf2K3tBoBNO2ndU6LOr5AhkNURC/4J/DhuQ+g8th07/AGZOXAD5SalajarTwPr5p2naaDCwOtWYURBqPHgBw==",
-      "path": "opentelemetry.api/1.11.0",
-      "hashPath": "opentelemetry.api.1.11.0.nupkg.sha512"
-    },
-    "OpenTelemetry.Api.ProviderBuilderExtensions/1.11.0": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-IKY4WiJ/p88BfHZJTiQWwDdjuCcEXhbWUPeCd9m9owWI+oAS+rIZviFaEhZThcWREXdxTuRI6kxgTLaraWp7pQ==",
-      "path": "opentelemetry.api.providerbuilderextensions/1.11.0",
-      "hashPath": "opentelemetry.api.providerbuilderextensions.1.11.0.nupkg.sha512"
-    },
-    "OpenTelemetry.Exporter.Prometheus.AspNetCore/1.11.0-beta.1": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-N6sxJqXWkmpEdSuH5/BSNzTU5MT3RVTkd7SbvjCndJTUQa+8vdAAnyBBWL9jiJ7pWs7MLhBzhWRO3iWeqUqung==",
-      "path": "opentelemetry.exporter.prometheus.aspnetcore/1.11.0-beta.1",
-      "hashPath": "opentelemetry.exporter.prometheus.aspnetcore.1.11.0-beta.1.nupkg.sha512"
-    },
     "Serilog/4.2.0": {
       "type": "package",
       "serviceable": true,
@@ -950,34 +842,6 @@
       "sha512": "sha512-lxjg89Y8gJMmFxVkbZ+qDgjl+T4yC5F7WSLTvA+5q0R04tfKVLRL/EHpYoJ/MEQd2EeCKDuylBIVnAYMotmh2A==",
       "path": "serilog.sinks.file/6.0.0",
       "hashPath": "serilog.sinks.file.6.0.0.nupkg.sha512"
-    },
-    "Swashbuckle.AspNetCore/7.2.0": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-vJv19UpWm6OOgnS9QLDnWARNVasXUfj8SFvlG7UVALm4nBnfwRnEky7C0veSDqMUmBeMPC6Ec3d6G1ts/J04Uw==",
-      "path": "swashbuckle.aspnetcore/7.2.0",
-      "hashPath": "swashbuckle.aspnetcore.7.2.0.nupkg.sha512"
-    },
-    "Swashbuckle.AspNetCore.Swagger/7.2.0": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-y27fNDfIh1vGhJjXYynLcZjl7DLOW1bSO2MDsY9wB4Zm1fdxpPsuBSiR4U+0acWlAqLmnuOPKr/OeOgwRUkBlw==",
-      "path": "swashbuckle.aspnetcore.swagger/7.2.0",
-      "hashPath": "swashbuckle.aspnetcore.swagger.7.2.0.nupkg.sha512"
-    },
-    "Swashbuckle.AspNetCore.SwaggerGen/7.2.0": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-pMrTxGVuXM7t4wqft5CNNU8A0++Yw5kTLmYhB6tbEcyBfO8xEF/Y8pkJhO6BZ/2MYONrRYoQTfPFJqu8fOf5WQ==",
-      "path": "swashbuckle.aspnetcore.swaggergen/7.2.0",
-      "hashPath": "swashbuckle.aspnetcore.swaggergen.7.2.0.nupkg.sha512"
-    },
-    "Swashbuckle.AspNetCore.SwaggerUI/7.2.0": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-hgrXeKzyp5OGN8qVvL7A+vhmU7mDJTfGpiMBRL66IcfLOyna8UTLtn3cC3CghamXpRDufcc9ciklTszUGEQK0w==",
-      "path": "swashbuckle.aspnetcore.swaggerui/7.2.0",
-      "hashPath": "swashbuckle.aspnetcore.swaggerui.7.2.0.nupkg.sha512"
     },
     "System.ClientModel/1.1.0": {
       "type": "package",

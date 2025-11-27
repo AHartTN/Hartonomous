@@ -14,7 +14,9 @@ builder.Host.UseSerilog();
 // Add services
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+
+// .NET 10 built-in OpenAPI support (replaces Swashbuckle)
+builder.Services.AddOpenApi();
 
 // CORS for development
 builder.Services.AddCors(options =>
@@ -32,8 +34,7 @@ var app = builder.Build();
 // Configure pipeline
 if (app.Environment.IsDevelopment())
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
+    app.MapOpenApi(); // .NET 10 native OpenAPI endpoint
 }
 
 app.UseSerilogRequestLogging();
@@ -45,5 +46,6 @@ Log.Information("?? Hartonomous Code Atomizer API starting...");
 Log.Information("   Roslyn: C# semantic analysis");
 Log.Information("   Tree-sitter: 18+ languages (Python, JS, Go, Rust, Java, etc.)");
 Log.Information("   Hilbert curves: 3D?1D spatial indexing");
+Log.Information("   OpenAPI: http://localhost:8001/openapi/v1.json");
 
 app.Run();
