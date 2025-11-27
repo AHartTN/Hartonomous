@@ -1,0 +1,7 @@
+api.hartonomous.com {
+    reverse_proxy api:8000
+}
+
+code.hartonomous.com {
+    reverse_proxy code-atomizer:8080
+}

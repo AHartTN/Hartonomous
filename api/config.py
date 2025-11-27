@@ -135,6 +135,13 @@ class Settings(BaseSettings):
     neo4j_user: str = Field(default="neo4j", description="Neo4j username")
     neo4j_password: str = Field(default="neo4jneo4j", description="Neo4j password")
     neo4j_database: str = Field(default="neo4j", description="Neo4j database name")
+
+    # Code Atomizer Microservice
+    code_atomizer_url: str = Field(
+        default="http://localhost:8001",
+        description="URL for the Code Atomizer microservice",
+    )
+
     # Model configuration
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore"

@@ -10,6 +10,7 @@ import os
 import sys
 
 import pytest
+from httpx import AsyncClient
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -134,7 +135,28 @@ def test_fastapi_imports():
         # pylint: disable=import-outside-toplevel,unused-import
         from fastapi import Depends, FastAPI, HTTPException
         from fastapi.middleware.cors import CORSMiddleware
+        from httpx import AsyncClient
 
         assert True
     except ImportError as e:
         pytest.skip(f"FastAPI modules not available: {e}")
+
+
+@pytest.mark.asyncio
+async def test_health_check_endpoint():
+    """Test the API's health check endpoint."""
+    try:
+        # pylint: disable=import-outside-toplevel
+        from httpx import ASGITransport
+        from main import app
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get("/v1/health")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["status"] == "ok"
+            assert "service" in data
+            assert "version" in data
+    except ImportError:
+        pytest.skip("API main module not available in CI")

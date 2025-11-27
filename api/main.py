@@ -190,6 +190,13 @@ app.include_router(
     models.router, prefix=f"{settings.api_v1_prefix}/ingest", tags=["models"]
 )
 
+# Document routes (PDF, DOCX, MD, HTML, TXT)
+from api.routes import documents
+
+app.include_router(
+    documents.router, prefix=f"{settings.api_v1_prefix}/ingest", tags=["documents"]
+)
+
 
 @app.get("/")
 async def root():

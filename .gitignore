@@ -47,8 +47,14 @@ artifacts/
 .DS_Store
 
 # Environment variables & Secrets
+# Environment files (machine-specific configs)
 .env
-.env.local
+.env.*
+!.env.example
+
+# Machine-specific environment files
+.env.hart-server
+.env.hart-desktop
 .env.production
 .env.development
 .env.test

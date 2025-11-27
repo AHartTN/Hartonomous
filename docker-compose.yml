@@ -16,9 +16,9 @@
 # ============================================================================
 
 services:
-  # PostgreSQL with PostGIS + AGE + PL/Python
+  # PostgreSQL with PostGIS + PL/Python + PG-Strom (GPU)
   postgres:
-    image: postgis/postgis:15-3.4
+    image: postgis/postgis:16-3.4
     container_name: hartonomous-postgres
     restart: unless-stopped
     
@@ -111,9 +111,7 @@ services:
   api:
     build:
       context: .
-      dockerfile: docker/Dockerfile
-      args:
-        PYTHON_VERSION: 3.14
+      dockerfile: docker/Dockerfile.api
     
     container_name: hartonomous-api
     restart: unless-stopped
@@ -123,8 +121,13 @@ services:
         condition: service_healthy
       neo4j:
         condition: service_healthy
+      code-atomizer:
+        condition: service_started # or service_healthy if healthcheck is added
     
     environment:
+      # Code Atomizer connection
+      CODE_ATOMIZER_URL: http://code-atomizer:8080
+
       # Database connection
       DATABASE_URL: postgresql://${PGUSER:-hartonomous}:${PGPASSWORD:-Revolutionary-AI-2025!Geometry}@postgres:5432/${PGDATABASE:-hartonomous}
       PGHOST: postgres
@@ -140,11 +143,9 @@ services:
       NEO4J_PASSWORD: ${NEO4J_PASSWORD:-neo4jneo4j}
       NEO4J_DATABASE: neo4j
       
-      # API server
-      API_HOST: 0.0.0.0
-      API_PORT: 8000
-      API_RELOAD: ${API_RELOAD:-true}
+      # API server (internal only, exposed by Caddy)
       LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
+      API_RELOAD: ${API_RELOAD:-true} # For local dev
       
       # Connection pool
       POOL_MIN_SIZE: 5
@@ -158,9 +159,6 @@ services:
       
       # Azure config (disabled for local)
       USE_AZURE_CONFIG: false
-    
-    ports:
-      - "${API_PORT:-8000}:8000"
     
     volumes:
       # Mount API code for hot reload
@@ -183,6 +181,34 @@ services:
       retries: 5
       start_period: 15s
     
+    networks:
+      - hartonomous-network
+
+  # C# Code Atomizer Microservice (Roslyn/Tree-sitter)
+  code-atomizer:
+    container_name: hartonomous-code-atomizer
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: src/Hartonomous.CodeAtomizer.Api/Dockerfile
+    networks:
+      - hartonomous-network
+  
+  # Caddy Reverse Proxy
+  caddy:
+    image: caddy:2.7.5-alpine
+    container_name: hartonomous-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+    depends_on:
+      api:
+        condition: service_healthy
+      code-atomizer:
+        condition: service_started # or service_healthy if healthcheck is added
     networks:
       - hartonomous-network
 

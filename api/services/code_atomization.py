@@ -12,13 +12,15 @@ from typing import Any, Dict, List, Optional
 import httpx
 from psycopg import AsyncConnection
 
+from api.config import settings
+
 logger = logging.getLogger(__name__)
 
 
 class CodeAtomizerClient:
     """Client for Hartonomous Code Atomizer microservice (C# + Roslyn)."""
 
-    def __init__(self, base_url: str = "http://localhost:8001"):
+    def __init__(self, base_url: str = settings.code_atomizer_url):
         self.base_url = base_url.rstrip("/")
         self.client = httpx.AsyncClient(timeout=30.0)
 
@@ -142,8 +144,8 @@ class CodeAtomizationService:
     then inserting results into PostgreSQL.
     """
 
-    def __init__(self, atomizer_url: str = "http://localhost:8001"):
-        self.client = CodeAtomizerClient(atomizer_url)
+    def __init__(self):
+        self.client = CodeAtomizerClient()
 
     async def atomize_and_insert(
         self,

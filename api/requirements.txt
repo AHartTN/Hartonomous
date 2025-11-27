@@ -1,6 +1,7 @@
 # FastAPI & ASGI server
 fastapi>=0.109.0
 uvicorn[standard]>=0.27.0
+python-multipart>=0.0.17
 
 # PostgreSQL async driver (psycopg3)
 psycopg[binary,pool]>=3.1.0
@@ -12,6 +13,12 @@ psycopg2-binary>=2.9.0
 
 # Neo4j Python driver (for provenance graph)
 neo4j>=5.15.0
+
+# Document parsing
+pdfplumber>=0.11.0
+python-docx>=1.2.0
+markdown-it-py>=4.0.0
+beautifulsoup4>=4.14.0
 
 # Environment variables
 python-dotenv>=1.0.0
@@ -48,7 +55,10 @@ msal>=1.25.0
 pyjwt[crypto]>=2.8.0
 cryptography>=42.0.4
 
-# Optional: ML/AI
+# ML/AI model parsing
+gguf>=0.17.0
+
+# Optional: Deep learning frameworks
 # torch>=2.1.0
 # onnx>=1.15.0
 
