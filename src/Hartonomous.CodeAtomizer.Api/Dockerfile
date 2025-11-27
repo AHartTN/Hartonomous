@@ -4,14 +4,13 @@ WORKDIR /src
 
 # Copy the project file and restore dependencies
 COPY ["src/Hartonomous.CodeAtomizer.Api/Hartonomous.CodeAtomizer.Api.csproj", "Hartonomous.CodeAtomizer.Api/"]
-COPY ["src/Hartonomous.CodeAtomizer.Core/Hartonomous.CodeAtomizer.Core.csproj", "Hartonomous.CodeAtomizer.Core/"]
 RUN dotnet restore "Hartonomous.CodeAtomizer.Api/Hartonomous.CodeAtomizer.Api.csproj"
 
 # Copy the rest of the source code
-COPY src/ .
+COPY . .
 
 # Publish the application
-WORKDIR "/src/Hartonomous.CodeAtomizer.Api"
+WORKDIR "/src/src/Hartonomous.CodeAtomizer.Api"
 RUN dotnet publish "Hartonomous.CodeAtomizer.Api.csproj" -c Release -o /app/publish
 
 # Stage 2: Create the final runtime image
