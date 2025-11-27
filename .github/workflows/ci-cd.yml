@@ -2,7 +2,7 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [develop, main]
+    branches: [main]
   workflow_dispatch:
 
 env:
@@ -55,7 +55,6 @@ jobs:
     name: Deploy to development
     runs-on: ubuntu-latest
     needs: [build_and_push]
-    if: github.ref == 'refs/heads/develop'
     environment:
       name: development
       url: ${{ vars.DEPLOYMENT_URL }}
@@ -130,11 +129,6 @@ jobs:
     name: Deploy to staging
     runs-on: ubuntu-latest
     needs: [build_and_push, deploy_dev]
-    if: |
-      always() && 
-      (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main') &&
-      needs.build_and_push.result == 'success' &&
-      (needs.deploy_dev.result == 'success' || needs.deploy_dev.result == 'skipped')
     environment:
       name: staging
       url: ${{ vars.DEPLOYMENT_URL }}
@@ -209,7 +203,6 @@ jobs:
     name: Deploy to production
     runs-on: ubuntu-latest
     needs: [build_and_push, deploy_staging]
-    if: github.ref == 'refs/heads/main'
     environment:
       name: production
       url: ${{ vars.DEPLOYMENT_URL }}
