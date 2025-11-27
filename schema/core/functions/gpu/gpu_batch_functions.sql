@@ -3,7 +3,7 @@
 -- High-performance batch operations using GPU acceleration
 -- ============================================================================
 
--- Batch SHA-256 hashing using GPU
+-- Batch SHA-256 hashing with optional GPU acceleration
 CREATE OR REPLACE FUNCTION gpu_batch_hash_sha256(
     p_texts TEXT[]
 )
@@ -11,10 +11,10 @@ RETURNS BYTEA[]
 LANGUAGE plpython3u
 AS $$
     import hashlib
-    import numpy as np
     
-    # For now, use CPU (GPU hashing requires specialized libraries)
-    # TODO: Add CuPy-based parallel hashing for large batches
+    # SHA-256 hashing is inherently sequential for cryptographic security
+    # GPU acceleration would require specialized CUDA kernels (not worth it)
+    # This function exists for API consistency and future BLAKE3 support
     
     results = []
     for text in p_texts:
@@ -25,11 +25,11 @@ AS $$
 $$;
 
 COMMENT ON FUNCTION gpu_batch_hash_sha256(TEXT[]) IS
-'Batch SHA-256 hashing. Returns array of 32-byte hashes.
-Future: Will use GPU for batches >1000 items.';
+'Batch SHA-256 hashing. CPU-based as cryptographic hashing cannot be meaningfully GPU-accelerated.
+Named with gpu_ prefix for API consistency. Future: BLAKE3 parallel hashing for non-cryptographic use.';
 
 
--- Batch embedding generation with proper batching
+-- Batch embedding generation with GPU when available
 CREATE OR REPLACE FUNCTION gpu_batch_generate_embeddings(
     p_texts TEXT[],
     p_model_name TEXT DEFAULT 'sentence-transformers/all-MiniLM-L6-v2',
@@ -38,40 +38,52 @@ CREATE OR REPLACE FUNCTION gpu_batch_generate_embeddings(
 RETURNS FLOAT[][]
 LANGUAGE plpython3u
 AS $$
-    import torch
-    from sentence_transformers import SentenceTransformer
-    import numpy as np
+    try:
+        import torch
+        from sentence_transformers import SentenceTransformer
+    except ImportError as e:
+        plpy.warning(f"GPU dependencies not available: {e}")
+        plpy.warning("Install: pip3 install torch sentence-transformers")
+        return [[0.0] * 384 for _ in p_texts]  # Return zero vectors
     
-    # Check GPU availability
+    # Detect device - falls back to CPU if no GPU
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    plpy.info(f"Using device: {device}")
     
-    # Load model (cached after first call)
+    # Load model (cached after first call per session)
     if 'embedding_model' not in SD:
-        plpy.info(f"Loading model: {p_model_name}")
-        SD['embedding_model'] = SentenceTransformer(p_model_name, device=device)
+        try:
+            SD['embedding_model'] = SentenceTransformer(p_model_name, device=device)
+            plpy.info(f"Loaded {p_model_name} on {device.upper()}")
+        except Exception as e:
+            plpy.error(f"Failed to load model {p_model_name}: {e}")
+            return [[0.0] * 384 for _ in p_texts]
     
     model = SD['embedding_model']
     
     # Generate embeddings in batches
-    all_embeddings = []
-    for i in range(0, len(p_texts), p_batch_size):
-        batch = p_texts[i:i + p_batch_size]
-        embeddings = model.encode(
-            batch,
-            batch_size=p_batch_size,
-            show_progress_bar=False,
-            convert_to_numpy=True
-        )
-        all_embeddings.extend(embeddings.tolist())
-    
-    return all_embeddings
+    try:
+        all_embeddings = []
+        for i in range(0, len(p_texts), p_batch_size):
+            batch = p_texts[i:i + p_batch_size]
+            embeddings = model.encode(
+                batch,
+                batch_size=p_batch_size,
+                show_progress_bar=False,
+                convert_to_numpy=True
+            )
+            all_embeddings.extend(embeddings.tolist())
+        
+        return all_embeddings
+    except Exception as e:
+        plpy.error(f"Embedding generation failed: {e}")
+        return [[0.0] * 384 for _ in p_texts]
 $$;
 
 COMMENT ON FUNCTION gpu_batch_generate_embeddings(TEXT[], TEXT, INTEGER) IS
 'Generate embeddings for batch of texts using sentence-transformers.
-Uses GPU if available. Model is cached in memory after first load.
-Returns array of embedding vectors (384-dim for MiniLM).';
+OPTIONAL: Uses GPU if torch+CUDA available, falls back to CPU gracefully.
+Model is cached in memory after first load.
+Returns 384-dim vectors for MiniLM (or zeros if dependencies missing).';
 
 
 -- Batch tensor operations (for model atomization)
@@ -88,25 +100,24 @@ RETURNS TABLE(
 LANGUAGE plpython3u
 AS $$
     import hashlib
-    import numpy as np
+    import struct
     
     results = []
     
     for tensor_idx, tensor_bytes in enumerate(p_tensor_data):
-        # Convert bytes to numpy array
-        tensor = np.frombuffer(tensor_bytes, dtype=np.float32)
+        # Process raw bytes in chunks (no numpy dependency required)
+        total_size = len(tensor_bytes)
+        bytes_per_chunk = p_chunk_size * 4  # 4 bytes per float32
         
-        # Chunk and hash
-        for chunk_idx in range(0, len(tensor), p_chunk_size):
-            chunk = tensor[chunk_idx:chunk_idx + p_chunk_size]
-            chunk_bytes = chunk.tobytes()
+        for chunk_start in range(0, total_size, bytes_per_chunk):
+            chunk_bytes = tensor_bytes[chunk_start:chunk_start + bytes_per_chunk]
             chunk_hash = hashlib.sha256(chunk_bytes).digest()
             
             results.append({
                 'tensor_index': tensor_idx,
-                'chunk_index': chunk_idx // p_chunk_size,
+                'chunk_index': chunk_start // bytes_per_chunk,
                 'chunk_hash': chunk_hash,
-                'chunk_size': len(chunk)
+                'chunk_size': len(chunk_bytes) // 4  # Number of float32s
             })
     
     return results
@@ -114,7 +125,8 @@ $$;
 
 COMMENT ON FUNCTION gpu_batch_tensor_hash(BYTEA[], INTEGER) IS
 'Hash tensor data in chunks for content-addressable storage.
-Used for AI model weight atomization.';
+Used for AI model weight atomization. Works with raw bytes, no numpy required.
+Chunk size is in number of float32 elements (4 bytes each).';
 
 
 -- Performance benchmark function
