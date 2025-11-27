@@ -179,6 +179,13 @@ app.include_router(
     export.router, prefix=f"{settings.api_v1_prefix}/export", tags=["export"]
 )
 
+# Code routes (Roslyn/Tree-sitter microservice)
+from api.routes import code
+
+app.include_router(
+    code.router, prefix=f"{settings.api_v1_prefix}/ingest", tags=["code"]
+)
+
 
 @app.get("/")
 async def root():
