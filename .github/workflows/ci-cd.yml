@@ -130,7 +130,11 @@ jobs:
     name: Deploy to staging
     runs-on: ubuntu-latest
     needs: [build_and_push, deploy_dev]
-    if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main'
+    if: |
+      always() && 
+      (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main') &&
+      needs.build_and_push.result == 'success' &&
+      (needs.deploy_dev.result == 'success' || needs.deploy_dev.result == 'skipped')
     environment:
       name: staging
       url: ${{ vars.DEPLOYMENT_URL }}
