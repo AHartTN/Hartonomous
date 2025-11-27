@@ -243,6 +243,7 @@ class GGUFAtomizer:
     ) -> Tuple[List[Dict], List[Dict]]:
         """
         Atomize a single tensor with deduplication and sparse encoding.
+        Uses GPU acceleration if available.
         
         Returns:
             (atoms, compositions)
@@ -309,72 +310,125 @@ class GGUFAtomizer:
                     (model_id, tensor_id, 0)
                 )
 
-        # Atomize weights (with deduplication + sparse encoding)
+        # Try GPU-accelerated weight extraction
         flat_weights = tensor_data.flatten()
-        weight_atoms_created = 0
         
-        for idx, weight in enumerate(flat_weights):
-            # Sparse encoding: skip near-zero weights
-            if abs(weight) < self.threshold:
-                continue
-
-            # Content addressing (deduplication)
-            weight_bytes = struct.pack("<f", weight)
-            weight_hash = hashlib.sha256(weight_bytes).digest()
-
-            # Check if weight already exists
-            if weight_hash in self.unique_weights:
-                continue
-
-            # New unique weight - create atom
-            self.unique_weights[weight_hash] = weight
+        async with conn.cursor() as cur:
+            # Check if GPU available
+            await cur.execute("SELECT gpu_available()")
+            gpu_available = (await cur.fetchone())[0]
             
-            # Compute Hilbert index based on weight value
-            # Map weight to [0, 1] range for spatial positioning
-            normalized_weight = (weight + 1.0) / 2.0  # Assume weights in [-1, 1]
-            hilbert_index = int(normalized_weight * 1000000)
-            
-            weight_metadata = json.dumps({
-                "tensor": tensor_name,
-                "position": int(idx),
-                "value": float(weight),
-            })
-
-            async with conn.cursor() as cur:
+            if gpu_available:
+                logger.info(f"Using GPU acceleration for {tensor_name}")
+                # Use GPU function for deduplication
                 await cur.execute(
-                    """
-                    INSERT INTO atom (
-                        content_hash, atomic_value, canonical_text,
-                        spatial_key, modality, subtype, metadata
-                    )
-                    VALUES (
-                        %s, %s, %s,
-                        ST_GeomFromEWKT('SRID=0;POINTZM(0.5 0.7 ' || %s || ' ' || %s || ')'),
-                        %s, %s, %s::jsonb
-                    )
-                    ON CONFLICT (content_hash) DO NOTHING
-                    RETURNING atom_id
-                    """,
-                    (
-                        weight_hash,
-                        weight_bytes,
-                        f"{tensor_name}[{idx}]={weight:.6f}",
-                        normalized_weight,
-                        hilbert_index,
-                        "ml-model",
-                        "weight",
-                        weight_metadata,
-                    ),
+                    "SELECT * FROM extract_unique_weights_gpu(%s::float[], %s)",
+                    (flat_weights.tolist(), self.threshold)
+                )
+                unique_weights_result = await cur.fetchall()
+                
+                logger.info(
+                    f"GPU: {len(unique_weights_result)} unique weights from {flat_weights.size} total"
                 )
                 
-                result = await cur.fetchone()
-                if result:
-                    weight_atoms_created += 1
+                # Insert unique weights as atoms
+                for weight_value, occurrence_count in unique_weights_result:
+                    weight_bytes = struct.pack("<f", weight_value)
+                    weight_hash = hashlib.sha256(weight_bytes).digest()
+                    
+                    if weight_hash in self.unique_weights:
+                        continue
+                    
+                    self.unique_weights[weight_hash] = weight_value
+                    
+                    # Compute Hilbert index
+                    normalized_weight = (weight_value + 1.0) / 2.0
+                    hilbert_index = int(normalized_weight * 1000000)
+                    
+                    weight_metadata = json.dumps({
+                        "tensor": tensor_name,
+                        "value": float(weight_value),
+                        "occurrences": int(occurrence_count),
+                    })
 
-        logger.info(
-            f"Tensor {tensor_name}: {tensor_data.size} weights, "
-            f"{weight_atoms_created} unique atoms created"
-        )
+                    await cur.execute(
+                        """
+                        INSERT INTO atom (
+                            content_hash, atomic_value, canonical_text,
+                            spatial_key, modality, subtype, metadata
+                        )
+                        VALUES (
+                            %s, %s, %s,
+                            ST_GeomFromEWKT('SRID=0;POINTZM(0.5 0.7 ' || %s || ' ' || %s || ')'),
+                            %s, %s, %s::jsonb
+                        )
+                        ON CONFLICT (content_hash) DO NOTHING
+                        """,
+                        (
+                            weight_hash,
+                            weight_bytes,
+                            f"{tensor_name} weight={weight_value:.6f} (×{occurrence_count})",
+                            normalized_weight,
+                            hilbert_index,
+                            "ml-model",
+                            "weight",
+                            weight_metadata,
+                        ),
+                    )
+                
+            else:
+                # Fallback to CPU (original implementation)
+                logger.info(f"Using CPU for {tensor_name} (no GPU available)")
+                
+                weight_atoms_created = 0
+                for idx, weight in enumerate(flat_weights):
+                    if abs(weight) < self.threshold:
+                        continue
+
+                    weight_bytes = struct.pack("<f", weight)
+                    weight_hash = hashlib.sha256(weight_bytes).digest()
+
+                    if weight_hash in self.unique_weights:
+                        continue
+
+                    self.unique_weights[weight_hash] = weight
+                    
+                    normalized_weight = (weight + 1.0) / 2.0
+                    hilbert_index = int(normalized_weight * 1000000)
+                    
+                    weight_metadata = json.dumps({
+                        "tensor": tensor_name,
+                        "position": int(idx),
+                        "value": float(weight),
+                    })
+
+                    await cur.execute(
+                        """
+                        INSERT INTO atom (
+                            content_hash, atomic_value, canonical_text,
+                            spatial_key, modality, subtype, metadata
+                        )
+                        VALUES (
+                            %s, %s, %s,
+                            ST_GeomFromEWKT('SRID=0;POINTZM(0.5 0.7 ' || %s || ' ' || %s || ')'),
+                            %s, %s, %s::jsonb
+                        )
+                        ON CONFLICT (content_hash) DO NOTHING
+                        """,
+                        (
+                            weight_hash,
+                            weight_bytes,
+                            f"{tensor_name}[{idx}]={weight:.6f}",
+                            normalized_weight,
+                            hilbert_index,
+                            "ml-model",
+                            "weight",
+                            weight_metadata,
+                        ),
+                    )
+                    weight_atoms_created += 1
+                
+                logger.info(f"CPU: {weight_atoms_created} unique atoms created")
 
         return atoms, compositions
 
