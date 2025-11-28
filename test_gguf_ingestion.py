@@ -28,7 +28,7 @@ async def test_gguf_ingestion():
         logger.error(f"Model file not found: {model_path}")
         return
 
-    logger.info(f"Testing GGUF ingestion: {model_path.name}")
+    logger.info(f"Testing GGUF FULL ingestion: {model_path.name}")
     logger.info(f"File size: {model_path.stat().st_size / 1e9:.2f} GB")
 
     # Get proper database connection string
@@ -55,7 +55,7 @@ async def test_gguf_ingestion():
                     file_path=model_path,
                     model_name="qwen3-coder:30b",
                     conn=conn,
-                    max_tensors=3,  # Test with first 3 tensors (vocabulary + architecture + 3 weight tensors)
+                    # Full ingestion - no max_tensors limit
                 )
 
         logger.info("=" * 80)
