@@ -5,6 +5,7 @@ Main entry point for ingesting data into the system.
 
 import asyncio
 import logging
+import os
 from typing import Dict, Any, List, Optional
 from pathlib import Path
 
@@ -31,12 +32,15 @@ class IngestionCoordinator:
     def __init__(self, db: IngestionDB):
         self.db = db
         
+        # Get Code Atomizer URL from environment
+        code_atomizer_url = os.getenv("CODE_ATOMIZER_URL", "http://localhost:8001")
+        
         # Initialize parsers
         self.text_parser = TextParser()
         self.image_parser = ImageParser()
         self.audio_parser = AudioParser()
         self.video_parser = VideoParser()
-        self.code_parser = CodeParser()
+        self.code_parser = CodeParser(atomizer_service_url=code_atomizer_url)
         self.model_parser = ModelParser()
         self.structured_parser = StructuredParser()
         
