@@ -108,50 +108,46 @@ class IngestionCoordinator:
             # Detect parser
             parser = self._detect_parser(file_path)
             if parser is None:
-                return IngestionResult(
-                    source_id=source_id,
-                    status=IngestionStatus.FAILED,
-                    atoms_created=0,
-                    landmarks_created=0,
-                    associations_created=0,
-                    error=f"No parser found for {file_path.suffix}",
-                    metadata=metadata
-                )
-            
-            # Parse file
+            return IngestionResult(
+                source_id=source_id,
+                status=IngestionStatus.FAILED,
+                atoms_created=0,
+                compositions_created=0,
+                relations_created=0,
+                error=f"No parser found for {file_path.suffix}",
+                metadata=metadata
+            )            # Parse file
             atoms_created = 0
-            landmarks_created = 0
-            associations_created = 0
+            compositions_created = 0
+            relations_created = 0
             
-            for record in parser.parse(file_path):
-                atom = record['atom']
-                landmark = record['landmark']
-                
-                # Store atom
-                await self.db.store_atom(atom)
+            for atom in parser.parse(file_path):
+                # Store atom (atomize_value handles deduplication)
+                atom_id = await self.db.store_atom(atom)
                 atoms_created += 1
                 
-                # Store landmark
-                await self.db.store_landmark(landmark)
-                landmarks_created += 1
-                
-                # Create association
-                await self.db.create_association(atom.atom_id, landmark.landmark_id)
-                associations_created += 1
+                # Compute and set spatial position
+                # SQL function handles modality-aware positioning
+                async with self.db.pool.connection() as conn:
+                    async with conn.cursor() as cur:
+                        await cur.execute("""
+                            UPDATE atom 
+                            SET spatial_key = compute_spatial_position(atom_id)
+                            WHERE atom_id = %s AND spatial_key IS NULL
+                        """, (atom_id,))
                 
                 # Log progress periodically
                 if atoms_created % 1000 == 0:
-                    logger.info(f"Progress: {atoms_created} atoms, {landmarks_created} landmarks")
+                    logger.info(f"Progress: {atoms_created} atoms")
             
-            logger.info(f"Completed ingestion of {file_path}: "
-                       f"{atoms_created} atoms, {landmarks_created} landmarks")
+            logger.info(f"Completed ingestion of {file_path}: {atoms_created} atoms")
             
             return IngestionResult(
                 source_id=source_id,
                 status=IngestionStatus.COMPLETED,
                 atoms_created=atoms_created,
-                landmarks_created=landmarks_created,
-                associations_created=associations_created,
+                compositions_created=compositions_created,
+                relations_created=relations_created,
                 metadata=metadata
             )
         
@@ -159,16 +155,16 @@ class IngestionCoordinator:
             logger.error(f"Failed to ingest {file_path}: {e}", exc_info=True)
             return IngestionResult(
                 source_id=source_id,
+            logger.error(f"Failed to ingest {file_path}: {e}", exc_info=True)
+            return IngestionResult(
+                source_id=source_id,
                 status=IngestionStatus.FAILED,
                 atoms_created=0,
-                landmarks_created=0,
-                associations_created=0,
+                compositions_created=0,
+                relations_created=0,
                 error=str(e),
                 metadata=metadata
             )
-    
-    async def ingest_directory(
-        self,
         directory: Path,
         recursive: bool = True,
         file_pattern: str = "*"

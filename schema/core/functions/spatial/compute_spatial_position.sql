@@ -18,8 +18,9 @@ LANGUAGE plpgsql
 AS $$
 DECLARE
     v_atom RECORD;
-    v_centroid GEOMETRY;
+    v_position GEOMETRY;
     v_modality TEXT;
+    v_hilbert_index BIGINT;
 BEGIN
     -- Validate inputs
     IF p_neighbor_count < 1 THEN
@@ -42,7 +43,7 @@ BEGIN
     v_modality := COALESCE(v_atom.modality, 'unknown');
     
     -- Compute position based on modality-specific similarity
-    v_centroid := compute_position_by_modality(
+    v_position := compute_position_by_modality(
         p_atom_id,
         v_modality,
         v_atom.canonical_text,
@@ -51,11 +52,27 @@ BEGIN
     );
     
     -- If no neighbors found, initialize in bounded random position
-    IF v_centroid IS NULL THEN
-        v_centroid := initialize_random_position();
+    IF v_position IS NULL THEN
+        v_position := initialize_random_position();
     END IF;
     
-    RETURN v_centroid;
+    -- Compute Hilbert index from (X,Y,Z) coordinates and embed in M
+    v_hilbert_index := hilbert_index_3d(
+        ST_X(v_position),
+        ST_Y(v_position),
+        ST_Z(v_position),
+        10  -- Default order=10 gives 2^10=1024 resolution per dimension
+    );
+    
+    -- Convert POINTZ to POINTZM with M = Hilbert index
+    v_position := ST_MakePoint(
+        ST_X(v_position),
+        ST_Y(v_position),
+        ST_Z(v_position),
+        v_hilbert_index::DOUBLE PRECISION
+    );
+    
+    RETURN v_position;
     
 EXCEPTION
     WHEN OTHERS THEN
@@ -69,21 +86,23 @@ $$;
 -- ============================================================================
 
 COMMENT ON FUNCTION compute_spatial_position(BIGINT, INTEGER) IS 
-'Compute 3D spatial position via weighted neighbor averaging.
+'Compute 4D spatial position (POINTZM) via weighted neighbor averaging + Hilbert encoding.
 Position in semantic space represents meaning - close in space = similar in meaning.
+M coordinate stores Hilbert curve index for fast approximate NN queries.
 
 Parameters:
   p_atom_id - Atom to position
   p_neighbor_count - Number of neighbors to consider (default: 100)
 
 Returns:
-  GEOMETRY(POINTZ) - 3D position in semantic space
+  GEOMETRY(POINTZM) - 4D position: (X,Y,Z) = semantic coordinates, M = Hilbert index
 
 Algorithm:
   1. Identify modality of atom
   2. Find K semantically similar atoms with positions
-  3. Compute weighted centroid of neighbor positions
-  4. Return centroid as new position
+  3. Compute weighted centroid of neighbor positions → (X,Y,Z)
+  4. Compute Hilbert curve index from (X,Y,Z) → M
+  5. Return POINTZM(X,Y,Z,M) for dual indexing
 
 Example:
   UPDATE atom SET spatial_key = compute_spatial_position(atom_id) 

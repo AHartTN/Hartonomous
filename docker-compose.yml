@@ -18,7 +18,10 @@
 services:
   # PostgreSQL with PostGIS + PL/Python + PG-Strom (GPU)
   postgres:
-    image: postgis/postgis:16-3.4
+    build:
+      context: ./docker
+      dockerfile: Dockerfile.postgres
+    image: hartonomous-postgres:latest
     container_name: hartonomous-postgres
     restart: unless-stopped
     

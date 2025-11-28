@@ -10,7 +10,7 @@ CREATE OR REPLACE FUNCTION reconstruct_audio_sparse(
     p_sample_atom_ids BIGINT[],
     p_sample_rate INTEGER
 )
-RETURNS TABLE(sample_index INTEGER, time REAL, amplitude REAL)
+RETURNS TABLE(sample_index INTEGER, time_val REAL, amplitude REAL)
 LANGUAGE plpgsql
 AS $$
 BEGIN
@@ -36,7 +36,7 @@ BEGIN
     )
     SELECT 
         f.idx,
-        f.idx::REAL / p_sample_rate AS time,
+        f.idx::REAL / p_sample_rate AS time_val,
         COALESCE(s.amp, 0.0) AS amplitude  -- Fill gaps with silence
     FROM full_sequence f
     LEFT JOIN stored_samples s ON s.idx = f.idx

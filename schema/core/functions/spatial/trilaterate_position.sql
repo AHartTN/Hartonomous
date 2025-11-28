@@ -74,7 +74,7 @@ BEGIN
     v_ey_y := v_ey_y / v_norm;
     v_ey_z := v_ey_z / v_norm;
     
-    -- Cross product: ez = ex × ey
+    -- Cross product: ez = ex ï¿½ ey
     v_ez_x := v_ex_y * v_ey_z - v_ex_z * v_ey_y;
     v_ez_y := v_ex_z * v_ey_x - v_ex_x * v_ey_z;
     v_ez_z := v_ex_x * v_ey_y - v_ex_y * v_ey_x;
@@ -90,6 +90,7 @@ BEGIN
     v_z := SQRT(GREATEST(0, v_d1 * v_d1 - v_x * v_x - v_y * v_y));  -- Positive z solution
     
     -- Transform back to original coordinate system
+    -- Note: Returns POINTZ; trigger will compute M coordinate (Hilbert index)
     RETURN ST_MakePoint(
         ST_X(v_p1) + v_x * v_ex_x + v_y * v_ey_x + v_z * v_ez_x,
         ST_Y(v_p1) + v_x * v_ex_y + v_y * v_ey_y + v_z * v_ez_y,
@@ -100,4 +101,5 @@ $$;
 
 COMMENT ON FUNCTION trilaterate_position(BIGINT[], REAL[]) IS 
 'Trilateration: compute 3D position from distances to 3+ reference points.
+Returns POINTZ; trigger automatically adds M coordinate (Hilbert index) â†’ POINTZM.
 Use for: inferring unknown atom positions from semantic distances.';

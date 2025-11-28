@@ -47,7 +47,7 @@ BEGIN
         
         -- Subtract projections onto all previous orthogonal vectors
         FOR j IN 1..i-1 LOOP
-            -- Projection coefficient: (v · u_j) / (u_j · u_j) using helper
+            -- Projection coefficient: (v ï¿½ u_j) / (u_j ï¿½ u_j) using helper
             v_proj_coef := dot_product_3d(v_current, v_ortho_vectors[j]) / 
                           NULLIF(dot_product_3d(v_ortho_vectors[j], v_ortho_vectors[j]), 0);
             
@@ -65,6 +65,7 @@ BEGIN
             v_sum_z := v_sum_z / v_mag;
         END IF;
         
+        -- Note: ST_MakePoint returns POINTZ; trigger will add M if stored in spatial_key
         v_ortho_vectors := ARRAY_APPEND(v_ortho_vectors, ST_MakePoint(v_sum_x, v_sum_y, v_sum_z));
     END LOOP;
     

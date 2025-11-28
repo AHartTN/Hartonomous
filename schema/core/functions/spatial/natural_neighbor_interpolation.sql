@@ -38,7 +38,7 @@ BEGIN
                 RETURN v_neighbor_pos;
             END IF;
             
-            -- Inverse distance weighting: w = 1/d²
+            -- Inverse distance weighting: w = 1/dï¿½
             v_weight := 1.0 / (v_distance * v_distance);
             v_weights := ARRAY_APPEND(v_weights, v_weight);
             v_total_weight := v_total_weight + v_weight;
@@ -63,6 +63,7 @@ BEGIN
         END IF;
     END LOOP;
     
+    -- Note: Returns POINTZ; trigger will compute M coordinate (Hilbert index)
     RETURN ST_MakePoint(v_result_x, v_result_y, v_result_z);
 END;
 $$;

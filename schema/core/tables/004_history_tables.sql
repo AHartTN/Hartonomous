@@ -5,21 +5,59 @@
 
 -- Atom history (temporal versioning)
 CREATE TABLE IF NOT EXISTS atom_history (
-    LIKE atom INCLUDING ALL
+    history_id BIGSERIAL PRIMARY KEY,
+    atom_id BIGINT NOT NULL,
+    content_hash BYTEA NOT NULL,
+    atomic_value BYTEA CHECK (length(atomic_value) <= 64),
+    canonical_text TEXT,
+    spatial_key GEOMETRY(POINTZM, 0),
+    reference_count BIGINT NOT NULL DEFAULT 1,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    valid_from TIMESTAMPTZ NOT NULL DEFAULT now(),
+    valid_to TIMESTAMPTZ NOT NULL DEFAULT 'infinity'::TIMESTAMPTZ
 );
+
+CREATE INDEX IF NOT EXISTS idx_atom_history_atom_id ON atom_history(atom_id);
+CREATE INDEX IF NOT EXISTS idx_atom_history_valid_range ON atom_history(atom_id, valid_from, valid_to);
 
 COMMENT ON TABLE atom_history IS 'Historical versions of atoms for temporal queries and audit trail';
 
 -- AtomComposition history
 CREATE TABLE IF NOT EXISTS atom_composition_history (
-    LIKE atom_composition INCLUDING ALL
+    history_id BIGSERIAL PRIMARY KEY,
+    composition_id BIGINT NOT NULL,
+    parent_atom_id BIGINT NOT NULL,
+    child_atom_id BIGINT NOT NULL,
+    position_index INTEGER,
+    spatial_key GEOMETRY(POINTZM, 0),
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    valid_from TIMESTAMPTZ NOT NULL DEFAULT now(),
+    valid_to TIMESTAMPTZ NOT NULL DEFAULT 'infinity'::TIMESTAMPTZ
 );
+
+CREATE INDEX IF NOT EXISTS idx_atom_composition_history_composition_id ON atom_composition_history(composition_id);
+CREATE INDEX IF NOT EXISTS idx_atom_composition_history_valid_range ON atom_composition_history(composition_id, valid_from, valid_to);
 
 COMMENT ON TABLE atom_composition_history IS 'Historical versions of compositions for temporal queries';
 
 -- AtomRelation history
 CREATE TABLE IF NOT EXISTS atom_relation_history (
-    LIKE atom_relation INCLUDING ALL
+    history_id BIGSERIAL PRIMARY KEY,
+    relation_id BIGINT NOT NULL,
+    source_atom_id BIGINT NOT NULL,
+    target_atom_id BIGINT NOT NULL,
+    relation_type TEXT NOT NULL,
+    strength REAL NOT NULL DEFAULT 1.0,
+    spatial_expression GEOMETRY(LINESTRINGZ, 0),
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    valid_from TIMESTAMPTZ NOT NULL DEFAULT now(),
+    valid_to TIMESTAMPTZ NOT NULL DEFAULT 'infinity'::TIMESTAMPTZ
 );
+
+CREATE INDEX IF NOT EXISTS idx_atom_relation_history_relation_id ON atom_relation_history(relation_id);
+CREATE INDEX IF NOT EXISTS idx_atom_relation_history_valid_range ON atom_relation_history(relation_id, valid_from, valid_to);
 
 COMMENT ON TABLE atom_relation_history IS 'Historical versions of relations for temporal queries';

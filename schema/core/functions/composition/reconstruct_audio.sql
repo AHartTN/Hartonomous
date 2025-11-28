@@ -7,7 +7,7 @@
 -- ============================================================================
 
 CREATE OR REPLACE FUNCTION reconstruct_audio(p_sample_atom_ids BIGINT[])
-RETURNS TABLE(time REAL, amplitude REAL, channel INTEGER)
+RETURNS TABLE(time_val REAL, amplitude REAL, channel INTEGER)
 LANGUAGE plpgsql
 AS $$
 BEGIN

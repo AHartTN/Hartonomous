@@ -32,7 +32,7 @@ BEGIN
         p_x::REAL,
         p_y::REAL,
         p_z::REAL,
-        10  -- 1024³ resolution
+        10  -- 1024^3 resolution
     );
     
     v_position := ST_MakePoint(p_x, p_y, p_z);

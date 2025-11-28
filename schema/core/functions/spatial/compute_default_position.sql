@@ -18,14 +18,17 @@ DECLARE
     v_centroid GEOMETRY;
 BEGIN
     -- Find atoms of same modality, weighted by importance (reference_count)
-    SELECT ST_Centroid(ST_Collect(a.spatial_key))
+    SELECT ST_Centroid(ST_Collect(spatial_key))
     INTO v_centroid
-    FROM atom a
-    WHERE a.metadata->>'modality' = p_modality
-      AND a.spatial_key IS NOT NULL
-      AND a.atom_id != p_atom_id
-    ORDER BY a.reference_count DESC
-    LIMIT p_neighbor_count;
+    FROM (
+        SELECT a.spatial_key
+        FROM atom a
+        WHERE a.metadata->>'modality' = p_modality
+          AND a.spatial_key IS NOT NULL
+          AND a.atom_id != p_atom_id
+        ORDER BY a.reference_count DESC
+        LIMIT p_neighbor_count
+    ) subq;
     
     RETURN v_centroid;
 END;

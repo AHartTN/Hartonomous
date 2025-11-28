@@ -18,19 +18,22 @@ DECLARE
     v_centroid GEOMETRY;
 BEGIN
     -- Find similar text atoms with spatial positions
-    SELECT ST_Centroid(ST_Collect(a.spatial_key))
+    SELECT ST_Centroid(ST_Collect(spatial_key))
     INTO v_centroid
-    FROM atom a
-    WHERE a.metadata->>'modality' IN ('text', 'character', 'word', 'sentence', 'concept')
-      AND a.spatial_key IS NOT NULL
-      AND a.atom_id != p_atom_id
-      AND a.canonical_text IS NOT NULL
-      AND p_canonical_text IS NOT NULL
-    ORDER BY levenshtein(
-        LEFT(a.canonical_text, 255), 
-        LEFT(p_canonical_text, 255)
-    ) ASC
-    LIMIT p_neighbor_count;
+    FROM (
+        SELECT a.spatial_key
+        FROM atom a
+        WHERE a.metadata->>'modality' IN ('text', 'character', 'word', 'sentence', 'concept')
+          AND a.spatial_key IS NOT NULL
+          AND a.atom_id != p_atom_id
+          AND a.canonical_text IS NOT NULL
+          AND p_canonical_text IS NOT NULL
+        ORDER BY levenshtein(
+            LEFT(a.canonical_text, 255), 
+            LEFT(p_canonical_text, 255)
+        ) ASC
+        LIMIT p_neighbor_count
+    ) subq;
     
     RETURN v_centroid;
 END;

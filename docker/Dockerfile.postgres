@@ -1,0 +1,32 @@
+# ============================================================================
+# Hartonomous PostgreSQL - PostGIS + PL/Python3u + NumPy + GPU Support
+# 
+# Base: PostGIS 16-3.4
+# Adds: PL/Python3u, NumPy, SciPy for SIMD vectorization
+# Future: PG-Strom for GPU acceleration
+# ============================================================================
+
+FROM postgis/postgis:16-3.4
+
+# Install Python 3 and plpython3u
+RUN apt-get update && apt-get install -y \
+    postgresql-plpython3-16 \
+    python3-pip \
+    python3-numpy \
+    python3-scipy \
+    && rm -rf /var/lib/apt/lists/*
+
+# Verify plpython3u library exists
+RUN ls -la /usr/lib/postgresql/16/lib/plpython3.so
+
+# Install additional Python packages for ML/AI
+RUN pip3 install --no-cache-dir \
+    numpy \
+    scipy \
+    scikit-learn \
+    || true
+
+# Set Python to use system packages
+ENV PYTHONPATH=/usr/lib/python3/dist-packages
+
+# Inherit entrypoint from base image

@@ -55,10 +55,12 @@ BEGIN
     v_y := GREATEST(-10.0, LEAST(10.0, v_y));
     v_z := GREATEST(-10.0, LEAST(10.0, v_z));
     
+    -- Note: Returns POINTZ; trigger will compute M coordinate (Hilbert index)
     RETURN ST_MakePoint(v_x, v_y, v_z);
 END;
 $$;
 
 COMMENT ON FUNCTION project_vector_to_3d(REAL[], TEXT) IS 
-'Project high-dimensional vector to 3D POINTZ for spatial indexing.
+'Project high-dimensional vector to 3D point for spatial indexing.
+Returns POINTZ; trigger automatically adds M coordinate (Hilbert index) → POINTZM.
 Methods: simple (first 3), sum_projection (weighted), pca (requires batch).';

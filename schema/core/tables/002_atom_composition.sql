@@ -14,8 +14,8 @@ CREATE TABLE IF NOT EXISTS atom_composition (
     -- Order matters - sequence within parent
     sequence_index BIGINT NOT NULL,
     
-    -- Local coordinate frame (position relative to parent)
-    spatial_key GEOMETRY(POINTZ, 0),
+    -- Local coordinate frame (position relative to parent) with Hilbert index
+    spatial_key GEOMETRY(POINTZM, 0),
     
     -- Flexible metadata
     metadata JSONB NOT NULL DEFAULT '{}'::jsonb,

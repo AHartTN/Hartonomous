@@ -14,7 +14,7 @@ class IngestionResult:
     source_id: str
     status: IngestionStatus
     atoms_created: int
-    landmarks_created: int
-    associations_created: int
+    compositions_created: int
+    relations_created: int
     error: Optional[str] = None
     metadata: Dict[str, Any] = None

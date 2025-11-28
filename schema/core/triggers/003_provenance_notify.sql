@@ -57,7 +57,7 @@ BEGIN
     v_payload := jsonb_build_object(
         'parent_atom_id', NEW.parent_atom_id,
         'child_atom_id', NEW.component_atom_id,
-        'position', NEW.position_index,
+        'position', NEW.sequence_index,
         'created_at', NEW.created_at
     );
 

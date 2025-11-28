@@ -75,57 +75,6 @@ class IngestionDB:
                 logger.info(f"Stored {len(atom_ids)} atoms in batch")
                 return atom_ids
     
-    async def store_landmark(self, landmark: Landmark) -> int:
-        """
-        Store landmark with spatial geometry using SQL function.
-        Returns landmark_id.
-        """
-        async with self.pool.connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute("""
-                    SELECT store_landmark(
-                        %s::text,
-                        %s::double precision,
-                        %s::double precision,
-                        %s::double precision,
-                        %s::real,
-                        %s::jsonb
-                    )
-                """, (
-                    landmark.name,
-                    landmark.position[0],
-                    landmark.position[1],
-                    landmark.position[2],
-                    landmark.weight,
-                    json.dumps(landmark.metadata)
-                ))
-                
-                result = await cur.fetchone()
-                landmark_id = result[0]
-                
-                logger.debug(f"Stored landmark {landmark_id}")
-                return landmark_id
-    
-    async def create_association(self, atom_id: int, landmark_id: int) -> int:
-        """
-        Create association between atom and landmark using SQL function.
-        Returns association_id.
-        """
-        async with self.pool.connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute("""
-                    SELECT create_association(
-                        %s::bigint,
-                        %s::bigint,
-                        '{}'::jsonb
-                    )
-                """, (atom_id, landmark_id))
-                
-                result = await cur.fetchone()
-                association_id = result[0]
-                
-                return association_id
-    
     async def create_composition(
         self,
         parent_atom_id: int,

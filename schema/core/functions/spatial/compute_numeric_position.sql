@@ -27,15 +27,18 @@ BEGIN
     END;
     
     -- Find numerically similar atoms
-    SELECT ST_Centroid(ST_Collect(a.spatial_key))
+    SELECT ST_Centroid(ST_Collect(spatial_key))
     INTO v_centroid
-    FROM atom a
-    WHERE a.metadata->>'modality' = 'numeric'
-      AND a.spatial_key IS NOT NULL
-      AND a.atom_id != p_atom_id
-      AND a.canonical_text IS NOT NULL
-    ORDER BY ABS((a.canonical_text::NUMERIC) - v_value) ASC
-    LIMIT p_neighbor_count;
+    FROM (
+        SELECT a.spatial_key
+        FROM atom a
+        WHERE a.metadata->>'modality' = 'numeric'
+          AND a.spatial_key IS NOT NULL
+          AND a.atom_id != p_atom_id
+          AND a.canonical_text IS NOT NULL
+        ORDER BY ABS((a.canonical_text::NUMERIC) - v_value) ASC
+        LIMIT p_neighbor_count
+    ) subq;
     
     RETURN v_centroid;
 END;

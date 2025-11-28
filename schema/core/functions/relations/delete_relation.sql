@@ -16,8 +16,8 @@ BEGIN
     DELETE FROM atom_relation
     WHERE relation_id = p_relation_id;
     
-    GET DIAGNOSTICS v_deleted = FOUND;
-    RETURN v_deleted;
+    GET DIAGNOSTICS v_deleted = ROW_COUNT;
+    RETURN v_deleted > 0;
 END;
 $$;
 
