@@ -1,96 +1,79 @@
 """
-Atomizer - delegates to SQL atomize_value() for proper content-addressing.
+Atomizer - properly delegates to SQL atomize_value() for content-addressing.
+Follows BaseAtomizer pattern for all atomization operations.
 """
 
 import hashlib
 import numpy as np
-from typing import Any, Dict, List, Tuple, Optional
+from typing import Any, Dict, Optional
 
-from .atom import Atom
-from .modality_type import ModalityType
+from .base_atomizer import BaseAtomizer
+from psycopg import AsyncConnection
 
 
-class Atomizer:
+class Atomizer(BaseAtomizer):
     """
-    Atomizer that properly delegates to SQL functions.
-    Should be used with database connection to call atomize_value().
+    Generic atomizer for arrays and binary data.
+    Delegates to SQL functions for proper content-addressing.
     """
     
-    def __init__(self, db_connection=None, sparse_threshold: float = 1e-6):
-        self.conn = db_connection
-        self.sparse_threshold = sparse_threshold
-        self.atom_cache: Dict[bytes, int] = {}
-    
-    async def atomize_array_to_db(
+    async def atomize_array(
         self,
+        conn: AsyncConnection,
         data: np.ndarray,
         modality: str,
-        parent_metadata: Dict[str, Any]
+        parent_metadata: Optional[Dict[str, Any]] = None
     ) -> int:
         """
-        Atomize array by calling SQL functions.
+        Atomize numpy array by calling SQL functions.
         Returns parent atom_id.
         """
-        if self.conn is None:
-            raise RuntimeError("Database connection required for atomization")
+        if parent_metadata is None:
+            parent_metadata = {}
         
         # Create parent atom
         parent_hash = hashlib.sha256(data.tobytes()).digest()
-        
-        async with self.conn.cursor() as cur:
-            await cur.execute(
-                """
-                SELECT atomize_value(
-                    %s::bytea,
-                    NULL,
-                    %s::jsonb
-                )
-                """,
-                (parent_hash, {
-                    **parent_metadata,
-                    'modality': modality,
-                    'shape': list(data.shape),
-                    'dtype': str(data.dtype)
-                })
-            )
-            parent_atom_id = (await cur.fetchone())[0]
+        parent_atom_id = await self.create_atom(
+            conn,
+            parent_hash,
+            None,
+            {
+                **parent_metadata,
+                'modality': modality,
+                'shape': list(data.shape),
+                'dtype': str(data.dtype)
+            }
+        )
         
         # Chunk and atomize components
         flat_data = data.flatten()
         chunk_size = max(1, 48 // data.dtype.itemsize)
         
+        sequence_idx = 0
         for i in range(0, len(flat_data), chunk_size):
             chunk = flat_data[i:i+chunk_size]
             
+            self.stats["total_processed"] += 1
+            
             # Skip near-zero chunks (sparse)
-            if np.abs(chunk).max() < self.sparse_threshold:
+            if np.abs(chunk).max() < self.threshold:
+                self.stats["sparse_skipped"] += 1
                 continue
             
             chunk_bytes = chunk.tobytes()
             
             # Atomize chunk
-            async with self.conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    SELECT atomize_value(
-                        %s::bytea,
-                        NULL,
-                        %s::jsonb
-                    )
-                    """,
-                    (chunk_bytes, {'dtype': str(chunk.dtype)})
-                )
-                component_atom_id = (await cur.fetchone())[0]
+            component_atom_id = await self.create_atom(
+                conn,
+                chunk_bytes,
+                None,
+                {'dtype': str(chunk.dtype)}
+            )
             
             # Create composition
-            async with self.conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    INSERT INTO atom_composition (parent_atom_id, component_atom_id, sequence_index)
-                    VALUES (%s, %s, %s)
-                    ON CONFLICT DO NOTHING
-                    """,
-                    (parent_atom_id, component_atom_id, i // chunk_size)
-                )
+            await self.create_composition(conn, parent_atom_id, component_atom_id, sequence_idx)
+            sequence_idx += 1
+            
+            self.stats["atoms_created"] += 1
         
         return parent_atom_id
