@@ -72,17 +72,18 @@ async def test_gguf_atomization():
         async with conn.cursor() as cur:
             await cur.execute(
                 """
-                SELECT canonical_text, atom_type, subtype, 
+                SELECT canonical_text, 
+                       metadata->>'modality' as modality,
+                       metadata->>'subtype' as subtype,
                        metadata->>'value' as weight_value
                 FROM atom
-                WHERE atom_type = 'ml-model'
-                  AND subtype = 'weight'
+                WHERE metadata->>'modality' = 'weight'
                 LIMIT 5
             """
             )
 
             async for row in cur:
-                print(f"   - {row[0]} (subtype={row[2]}, value={row[3]})")
+                print(f"   - {row[0][:50] if row[0] else 'N/A'} (modality={row[1]}, value={row[3]})")
 
     finally:
         await conn.close()
