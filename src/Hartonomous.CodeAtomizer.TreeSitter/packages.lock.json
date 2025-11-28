@@ -1,6 +1,13 @@
 {
   "version": 1,
   "dependencies": {
-    "net10.0": {}
+    "net10.0": {
+      "TreeSitter.DotNet": {
+        "type": "Direct",
+        "requested": "[1.0.0, )",
+        "resolved": "1.0.0",
+        "contentHash": "31oQKP122flrDbV/5yAzODInmR2X7N7KMdM0y2xWG8prQDHkgfuJa0SMH4QfrPJr9fXNOBRcNndqePhqU6ilOQ=="
+      }
+    }
   }
 }

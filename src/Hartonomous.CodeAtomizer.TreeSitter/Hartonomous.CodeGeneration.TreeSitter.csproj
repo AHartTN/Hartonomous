@@ -19,11 +19,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Hartonomous.CodeGeneration.Core\Hartonomous.CodeGeneration.Core.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="TreeSitter.DotNet" />
+    <PackageReference Include="TreeSitter.DotNet" Version="1.0.0" />
   </ItemGroup>
 
 </Project>

@@ -1,4 +1,4 @@
-using Hartonomous.CodeGeneration.Core;
+using Hartonomous.CodeAtomizer.TreeSitter.Core;
 
 namespace Hartonomous.CodeGeneration.TreeSitter;
 

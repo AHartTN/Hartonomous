@@ -19,4 +19,9 @@
     <PackageReference Include="Npgsql" Version="9.0.2" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- TreeSitter project reference -->
+    <ProjectReference Include="..\Hartonomous.CodeAtomizer.TreeSitter\Hartonomous.CodeGeneration.TreeSitter.csproj" />
+  </ItemGroup>
+
 </Project>
