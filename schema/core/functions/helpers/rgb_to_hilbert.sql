@@ -15,7 +15,7 @@ BEGIN
         (p_r - 128)::REAL / 12.8,  -- Normalize to [-10, 10]
         (p_g - 128)::REAL / 12.8,
         (p_b - 128)::REAL / 12.8,
-        8  -- 256³ resolution
+        8  -- 256^3 resolution
     );
 END;
 $$;

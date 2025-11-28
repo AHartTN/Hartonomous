@@ -39,7 +39,7 @@ class GGUFAtomizer(BaseAtomizer):
         
         logger.info(f"Model atom created: {model_atom_id}")
 
-        await self._atomize_sample_layers(conn, model_atom_id, model_name, max_tensors)
+        await self._atomize_gguf_file(conn, file_path, model_atom_id, max_tensors)
 
         dedup_ratio = (
             self.stats["total_processed"] / self.stats["atoms_created"]
@@ -61,11 +61,11 @@ class GGUFAtomizer(BaseAtomizer):
             "model_hash": model_hash.hex()[:16],
         }
 
-    async def _atomize_sample_layers(
+    async def _atomize_gguf_file(
         self,
         conn: AsyncConnection,
+        file_path: Path,
         model_atom_id: int,
-        model_name: str,
         max_tensors: Optional[int],
     ):
         """Parse GGUF file and atomize actual tensor weights."""
@@ -73,37 +73,60 @@ class GGUFAtomizer(BaseAtomizer):
             import gguf
             import numpy as np
         except ImportError:
-            logger.warning("gguf library not available, using sample data")
-            return await self._atomize_demo_layers(conn, model_atom_id, model_name, max_tensors)
+            logger.error("gguf library not installed. Run: pip install gguf")
+            raise ImportError("Install gguf: pip install gguf")
         
-        # TODO: Read actual GGUF file
-        # reader = gguf.GGUFReader(file_path)
-        # for tensor_idx, tensor in enumerate(reader.tensors):
-        #     if max_tensors and tensor_idx >= max_tensors:
-        #         break
-        #     
-        #     tensor_hash = hashlib.sha256(tensor.name.encode()).digest()
-        #     tensor_atom_id = await self.create_atom(
-        #         conn, tensor_hash, tensor.name,
-        #         {"modality": "tensor", "shape": list(tensor.shape), "dtype": str(tensor.dtype)}
-        #     )
-        #     
-        #     await self.create_composition(conn, model_atom_id, tensor_atom_id, tensor_idx)
-        #     
-        #     # Flatten tensor and atomize weights
-        #     weights = tensor.data.flatten()
-        #     for weight_idx, weight in enumerate(weights):
-        #         if abs(weight) < self.threshold:
-        #             self.stats["sparse_skipped"] += 1
-        #             continue
-        #         
-        #         weight_atom_id = await self._atomize_weight(conn, float(weight))
-        #         await self.create_composition(conn, tensor_atom_id, weight_atom_id, weight_idx)
-        #     
-        #     self.stats["tensors_processed"] = self.stats.get("tensors_processed", 0) + 1
+        logger.info(f"Reading GGUF file: {file_path}")
+        reader = gguf.GGUFReader(str(file_path))
         
-        # Fallback to demo for now
-        return await self._atomize_demo_layers(conn, model_atom_id, model_name, max_tensors)
+        logger.info(f"GGUF metadata: {len(reader.tensors)} tensors")
+        
+        for tensor_idx, tensor in enumerate(reader.tensors):
+            if max_tensors and tensor_idx >= max_tensors:
+                logger.info(f"Stopping at max_tensors={max_tensors}")
+                break
+            
+            logger.info(f"Processing tensor {tensor_idx+1}/{len(reader.tensors)}: {tensor.name} {tensor.shape}")
+            
+            # Create tensor metadata atom
+            tensor_hash = hashlib.sha256(tensor.name.encode()).digest()
+            tensor_atom_id = await self.create_atom(
+                conn, 
+                tensor_hash, 
+                tensor.name,
+                {
+                    "modality": "tensor",
+                    "shape": [int(s) for s in tensor.shape],  # Convert numpy int types to Python int
+                    "dtype": str(tensor.tensor_type),
+                    "sparse_threshold": self.threshold,
+                    "n_elements": int(np.prod(tensor.shape))
+                }
+            )
+            
+            await self.create_composition(conn, model_atom_id, tensor_atom_id, tensor_idx)
+            self.stats["tensors_processed"] = self.stats.get("tensors_processed", 0) + 1
+            
+            # Flatten tensor and atomize weights
+            weights = tensor.data.flatten()
+            logger.info(f"  Atomizing {len(weights)} weights (threshold={self.threshold})")
+            
+            for weight_idx, weight in enumerate(weights):
+                self.stats["total_processed"] += 1
+                
+                # Sparse encoding: skip near-zero weights
+                if abs(float(weight)) < self.threshold:
+                    self.stats["sparse_skipped"] = self.stats.get("sparse_skipped", 0) + 1
+                    continue
+                
+                # Atomize weight and create composition
+                weight_atom_id = await self._atomize_weight(conn, float(weight))
+                await self.create_composition(conn, tensor_atom_id, weight_atom_id, weight_idx)
+            
+            unique_so_far = len(self.cache)
+            dedup_ratio = self.stats["total_processed"] / max(unique_so_far, 1)
+            logger.info(f"  Progress: {self.stats['total_processed']:,} weights, {unique_so_far:,} unique atoms, {dedup_ratio:.1f}x dedup")
+        
+        logger.info(f"GGUF atomization complete: {self.stats['tensors_processed']} tensors")
     
     async def _atomize_demo_layers(
         self,
