@@ -5,57 +5,23 @@ Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 """
 
 import logging
-from typing import Optional
-
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from psycopg import AsyncConnection
-from pydantic import BaseModel, Field
 
 from api.dependencies import get_db_connection
 from api.services.code_atomization import CodeAtomizationService
+from .code_ingest_request import CodeIngestRequest
+from .code_ingest_response import CodeIngestResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-
-class CodeIngestRequest(BaseModel):
-    """Request model for code ingestion."""
-
-    code: str = Field(..., description="Source code to atomize")
-    filename: str = Field(
-        default="code.txt", description="Filename (determines language)"
-    )
-    language: str = Field(default="csharp", description="Programming language")
-    metadata: Optional[dict] = Field(
-        default=None, description="Optional metadata (JSON)"
-    )
-
-
-class CodeIngestResponse(BaseModel):
-    """Response model for code ingestion."""
-
-    success: bool
-    total_atoms: int
-    unique_atoms: int
-    compositions: int
-    relations: int
-    message: str
 
 
 @router.post("/code", response_model=CodeIngestResponse)
 async def ingest_code(
     request: CodeIngestRequest, conn: AsyncConnection = Depends(get_db_connection)
 ):
-    """
-    Ingest source code via Roslyn/Tree-sitter microservice.
-
-    Delegates AST parsing to C# microservice, then bulk inserts atoms/compositions/relations.
-
-    **Supported Languages:**
-    - C# (Roslyn semantic analysis)
-    - Python (Tree-sitter) [Coming soon]
-    - JavaScript/TypeScript (Tree-sitter) [Coming soon]
-    """
+    """Ingest source code via Roslyn/Tree-sitter microservice."""
     try:
         service = CodeAtomizationService()
 
@@ -87,13 +53,8 @@ async def ingest_code_file(
     language: str = Form(default="csharp", description="Programming language"),
     conn: AsyncConnection = Depends(get_db_connection),
 ):
-    """
-    Ingest code file via Roslyn/Tree-sitter microservice.
-
-    Upload a code file (.cs, .py, .js, etc.) for deep AST atomization.
-    """
+    """Ingest code file via Roslyn/Tree-sitter microservice."""
     try:
-        # Read file content
         content = await file.read()
         code = content.decode("utf-8")
 
@@ -125,9 +86,7 @@ async def ingest_code_file(
 
 @router.get("/code/health")
 async def check_code_atomizer_health():
-    """
-    Check if code atomizer microservice is healthy.
-    """
+    """Check if code atomizer microservice is healthy."""
     from api.services.code_atomization import CodeAtomizerClient
 
     client = CodeAtomizerClient()

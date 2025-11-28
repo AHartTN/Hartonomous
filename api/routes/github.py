@@ -7,89 +7,41 @@ Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 import logging
 import os
 import tempfile
-from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from psycopg import AsyncConnection
-from pydantic import BaseModel, Field
 
 from api.dependencies import get_db_connection
 from api.services.code_atomization import CodeAtomizationService
+from .github_ingest_request import GitHubIngestRequest
+from .github_ingest_response import GitHubIngestResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-
-class GitHubIngestRequest(BaseModel):
-    """Request model for GitHub repository ingestion."""
-
-    repo_url: str = Field(..., description="GitHub repository URL")
-    branch: str = Field(default="main", description="Branch to clone")
-    max_files: int = Field(default=1000, description="Maximum files to process")
-    metadata: Optional[dict] = Field(
-        default=None, description="Optional metadata (JSON)"
-    )
-
-
-class GitHubIngestResponse(BaseModel):
-    """Response model for GitHub ingestion."""
-
-    success: bool
-    repo_url: str
-    branch: str
-    total_files: int
-    code_files: int
-    text_files: int
-    image_files: int
-    total_atoms: int
-    unique_atoms: int
-    message: str
 
 
 @router.post("/github", response_model=GitHubIngestResponse)
 async def ingest_github_repo(
     request: GitHubIngestRequest, conn: AsyncConnection = Depends(get_db_connection)
 ):
-    """
-    Ingest entire GitHub repository into cognitive substrate.
-
-    Process:
-    1. Shallow clone repository
-    2. Detect file types
-    3. Route to appropriate atomizers:
-       - .cs, .py, .js, etc. ? Code atomizer (Roslyn/Tree-sitter)
-       - .md, .txt, .json ? Text atomizer
-       - .png, .jpg ? Image atomizer
-       - etc.
-    4. All atoms feed same substrate (no differentiation)
-    5. Truth convergence finds patterns
-    6. Hebbian learning strengthens connections
-
-    **The substrate doesn't care about file type.**
-    **Everything becomes atoms with spatial positions.**
-    """
+    """Ingest entire GitHub repository into cognitive substrate."""
     try:
         logger.info(f"Ingesting GitHub repo: {request.repo_url}")
 
-        # Parse GitHub URL
         parsed = urlparse(request.repo_url)
         if "github.com" not in parsed.netloc:
             raise ValueError("Only GitHub URLs supported")
 
-        # Extract owner/repo
         path_parts = parsed.path.strip("/").split("/")
         if len(path_parts) < 2:
             raise ValueError("Invalid GitHub URL format")
 
         owner, repo = path_parts[0], path_parts[1]
 
-        # Clone repository (shallow)
         with tempfile.TemporaryDirectory() as tmpdir:
             clone_dir = os.path.join(tmpdir, repo)
 
-            # Use GitHub CLI or git command
             import subprocess
 
             result = subprocess.run(
@@ -109,7 +61,6 @@ async def ingest_github_repo(
             if result.returncode != 0:
                 raise RuntimeError(f"Git clone failed: {result.stderr}")
 
-            # Walk directory tree
             total_files = 0
             code_files = 0
             text_files = 0
@@ -120,7 +71,6 @@ async def ingest_github_repo(
             code_service = CodeAtomizationService()
 
             for root, dirs, files in os.walk(clone_dir):
-                # Skip .git directory
                 if ".git" in root:
                     continue
 
@@ -132,10 +82,8 @@ async def ingest_github_repo(
                     total_files += 1
 
                     try:
-                        # Detect file type
                         ext = os.path.splitext(filename)[1].lower()
 
-                        # Route to appropriate atomizer
                         if ext in [
                             ".cs",
                             ".py",
@@ -149,7 +97,6 @@ async def ingest_github_repo(
                             ".rb",
                             ".php",
                         ]:
-                            # Code atomization
                             with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
                                 code = f.read()
 
@@ -167,11 +114,9 @@ async def ingest_github_repo(
                             unique_atoms += result["unique_atoms"]
 
                         elif ext in [".md", ".txt", ".json", ".yaml", ".yml", ".toml"]:
-                            # Text atomization (TODO: implement text atomizer)
                             text_files += 1
 
                         elif ext in [".png", ".jpg", ".jpeg", ".gif", ".bmp"]:
-                            # Image atomization (TODO: implement image atomizer)
                             image_files += 1
 
                     except Exception as e:

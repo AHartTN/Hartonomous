@@ -6,79 +6,31 @@ Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 
 import logging
 from pathlib import Path
-from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException
 from psycopg import AsyncConnection
-from pydantic import BaseModel, Field
 
 from api.dependencies import get_db_connection
 from api.services.model_atomization import GGUFAtomizer
+from .model_ingest_request import ModelIngestRequest
+from .model_ingest_response import ModelIngestResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-
-class ModelIngestRequest(BaseModel):
-    """Request model for AI model ingestion."""
-
-    model_path: str = Field(..., description="Path to model file on server")
-    model_name: str = Field(..., description="Human-readable model name")
-    model_format: str = Field(..., description="Model format: gguf, safetensors, pytorch, onnx")
-    threshold: float = Field(default=0.01, description="Sparse encoding threshold")
-    max_tensors: Optional[int] = Field(default=None, description="Max tensors (for testing)")
-
-
-class ModelIngestResponse(BaseModel):
-    """Response model for model ingestion."""
-
-    success: bool
-    model_name: str
-    model_format: str
-    file_size_gb: float
-    tensors_processed: int
-    total_weights: int
-    total_atoms: int
-    unique_atoms: int
-    deduplication_ratio: float
-    message: str
 
 
 @router.post("/model", response_model=ModelIngestResponse)
 async def ingest_model(
     request: ModelIngestRequest, conn: AsyncConnection = Depends(get_db_connection)
 ):
-    """
-    Ingest AI model into cognitive substrate.
-    
-    Supported formats:
-    - **GGUF**: Llama, Qwen, Mistral (quantized models from Ollama)
-    - **SafeTensors**: Hugging Face models [Coming soon]
-    - **PyTorch**: .pt, .pth files [Coming soon]
-    - **ONNX**: .onnx files [Coming soon]
-    
-    Process:
-    1. Parse model file (extract tensors/layers)
-    2. Deduplicate weights via content addressing (SHA-256)
-    3. Apply sparse encoding (ignore weights below threshold)
-    4. Assign Hilbert indices (spatial positioning)
-    5. Bulk insert atoms into PostgreSQL
-    6. Create hierarchical compositions (model ? layers ? weights)
-    
-    Result:
-    - Model knowledge becomes queryable in same space as code
-    - Truth convergence detects patterns across models
-    - Hebbian learning strengthens useful weight patterns
-    """
+    """Ingest AI model into cognitive substrate."""
     try:
         logger.info(f"Ingesting {request.model_format} model: {request.model_name}")
 
-        # Validate file exists
         model_path = Path(request.model_path)
         if not model_path.exists():
             raise HTTPException(status_code=404, detail=f"Model file not found: {request.model_path}")
 
-        # Route to appropriate atomizer
         if request.model_format.lower() == "gguf":
             atomizer = GGUFAtomizer(threshold=request.threshold)
             result = await atomizer.atomize_model(
@@ -134,9 +86,7 @@ async def ingest_model(
 
 @router.get("/model/formats")
 async def get_supported_formats():
-    """
-    Get list of supported model formats.
-    """
+    """Get list of supported model formats."""
     return {
         "formats": {
             "gguf": {
