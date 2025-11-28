@@ -25,7 +25,7 @@ from typing import Dict, Any
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.ingestion.coordinator import IngestionCoordinator, IngestionStatus
-from src.db.ingestion import IngestionDB
+from src.db.ingestion_db import IngestionDB
 
 logging.basicConfig(
     level=logging.INFO,

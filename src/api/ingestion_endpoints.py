@@ -5,7 +5,7 @@ from pathlib import Path
 import tempfile
 
 from ..ingestion.parsers import ModelParser, ImageParser
-from ..db.ingestion import IngestionWriter
+from ..db.ingestion_writer import IngestionWriter
 
 router = APIRouter(prefix="/api/v1/ingest", tags=["ingestion"])
 

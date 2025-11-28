@@ -299,8 +299,3 @@ class IngestionDB:
             except Exception as e:
                 self.conn.rollback()
                 raise
-
-
-class IngestionWriter(IngestionDB):
-    """Alias for backwards compatibility."""
-    pass

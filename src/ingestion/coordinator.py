@@ -10,7 +10,7 @@ from pathlib import Path
 
 from ..core.atomization import Atom
 from ..core.landmark_projection import Landmark
-from ..db.ingestion import IngestionDB
+from ..db.ingestion_db import IngestionDB
 from .ingestion_status import IngestionStatus
 from .ingestion_result import IngestionResult
 from .parsers import (
