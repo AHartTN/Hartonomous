@@ -184,19 +184,24 @@ class GGUFAtomizer(BaseAtomizer):
         max_workers = 4  # Conservative for database connections
         semaphore = asyncio.Semaphore(max_workers)
         
+        # Get connection pool from parent connection
+        pool = conn._pool
+        
         async def process_one_tensor(tensor_idx: int, tensor):
             """Process single tensor with semaphore control."""
             async with semaphore:
-                logger.info(
-                    f"Processing tensor {tensor_idx+1}/{len(reader.tensors)}: {tensor.name} {tensor.shape}"
-                )
+                # Get own connection from pool for this worker
+                async with pool.connection() as worker_conn:
+                    logger.info(
+                        f"Processing tensor {tensor_idx+1}/{len(reader.tensors)}: {tensor.name} {tensor.shape}"
+                    )
 
-                # Create tensor metadata atom
-                tensor_hash = hashlib.sha256(tensor.name.encode()).digest()
-                tensor_atom_id = await self.create_atom(
-                    conn,
-                    tensor_hash,
-                    tensor.name,
+                    # Create tensor metadata atom
+                    tensor_hash = hashlib.sha256(tensor.name.encode()).digest()
+                    tensor_atom_id = await self.create_atom(
+                        worker_conn,
+                        tensor_hash,
+                        tensor.name,
                     {
                         "modality": "tensor",
                         "shape": [
@@ -206,12 +211,12 @@ class GGUFAtomizer(BaseAtomizer):
                         "sparse_threshold": self.threshold,
                         "n_elements": int(np.prod(tensor.shape)),
                     },
-                )
+                    )
 
-                await self.create_composition(
-                    conn, model_atom_id, tensor_atom_id, tensor_idx
-                )
-                self.stats["tensors_processed"] = self.stats.get("tensors_processed", 0) + 1
+                    await self.create_composition(
+                        worker_conn, model_atom_id, tensor_atom_id, tensor_idx
+                    )
+                    self.stats["tensors_processed"] = self.stats.get("tensors_processed", 0) + 1
 
                 # Flatten tensor and atomize weights with BATCHING + SIMD/GPU
                 weights = tensor.data.flatten()
@@ -286,7 +291,7 @@ class GGUFAtomizer(BaseAtomizer):
                 )
 
                 # Batch atomize all non-sparse weights
-                weight_to_atom = await self._atomize_weight_batch(conn, non_sparse_weights)
+                weight_to_atom = await self._atomize_weight_batch(worker_conn, non_sparse_weights)
 
                 # Build compositions (vectorized preparation)
                 compositions = [
@@ -298,7 +303,7 @@ class GGUFAtomizer(BaseAtomizer):
                 if compositions:
                     total_comps = len(compositions)
                     logger.info(f"  Batch inserting {total_comps:,} compositions...")
-                    await self._create_composition_batch(conn, tensor_atom_id, compositions)
+                    await self._create_composition_batch(worker_conn, tensor_atom_id, compositions)
                     logger.info(f"  ✓ Inserted {total_comps:,} compositions")
 
                 unique_so_far = len(self.cache)
