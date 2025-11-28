@@ -31,9 +31,11 @@ def decompress_atom(
     if metadata.get('compression') == 'sparse':
         if data_bytes[:2] == COMPRESSION_MAGIC['sparse']:
             data_bytes = data_bytes[2:]
-            data = decode_sparse_format(data_bytes, metadata['shape'])
+            shape = metadata.get('shape') or metadata.get('original_shape')
+            data = decode_sparse_format(data_bytes, shape)
     else:
         dtype = np.dtype(metadata['dtype'])
-        data = np.frombuffer(data_bytes, dtype=dtype).reshape(metadata['shape'])
+        shape = metadata.get('shape') or metadata.get('original_shape')
+        data = np.frombuffer(data_bytes, dtype=dtype).reshape(shape)
     
     return data

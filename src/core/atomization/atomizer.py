@@ -78,6 +78,7 @@ class Atomizer:
                 data=compressed.data,
                 compression_type=compressed.compression_type,
                 metadata={
+                    **compressed.metadata,
                     'dtype': str(data.dtype),
                     'original_shape': chunk.shape,
                     'compression_ratio': compressed.ratio,
