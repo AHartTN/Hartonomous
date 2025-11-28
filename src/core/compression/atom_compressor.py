@@ -4,26 +4,9 @@ Atom compressor wrapper - provides unified interface for atomization.
 
 import numpy as np
 from typing import Optional
-from dataclasses import dataclass
 
+from .compression_result import CompressionResult
 from .multi_layer import compress_atom, decompress_atom
-
-
-@dataclass
-class CompressionResult:
-    """Result of compression operation."""
-    data: bytes
-    compression_type: int
-    metadata: dict
-    original_size: int
-    compressed_size: int
-    
-    @property
-    def ratio(self) -> float:
-        """Compression ratio."""
-        if self.compressed_size == 0:
-            return 0.0
-        return self.original_size / self.compressed_size
 
 
 class AtomCompressor:
@@ -40,19 +23,9 @@ class AtomCompressor:
         data: np.ndarray,
         sparse_threshold: float = 1e-6
     ) -> CompressionResult:
-        """
-        Compress data array.
-        
-        Args:
-            data: NumPy array to compress
-            sparse_threshold: Threshold for sparse encoding
-        
-        Returns:
-            CompressionResult with compressed data and metadata
-        """
+        """Compress data array."""
         original_size = data.nbytes
         
-        # Use multi-layer compression
         compressed_bytes, metadata = compress_atom(
             data,
             dtype=data.dtype,
@@ -63,7 +36,6 @@ class AtomCompressor:
         
         compressed_size = len(compressed_bytes)
         
-        # Determine compression type from metadata
         compression_type = self._get_compression_type(metadata.get('method', 'raw'))
         
         return CompressionResult(
@@ -75,16 +47,7 @@ class AtomCompressor:
         )
     
     def decompress(self, result: CompressionResult) -> np.ndarray:
-        """
-        Decompress data.
-        
-        Args:
-            result: CompressionResult to decompress
-        
-        Returns:
-            Decompressed NumPy array
-        """
-        # Use multi-layer decompression
+        """Decompress data."""
         data = decompress_atom(result.data, result.metadata)
         return data
     
