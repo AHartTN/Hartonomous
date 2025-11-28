@@ -10,6 +10,7 @@ Every level becomes an atom with metadata and hierarchical composition.
 Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 """
 
+import hashlib
 import io
 import json
 import logging
@@ -169,10 +170,48 @@ class DocumentParserService:
                         # Extract and atomize images
                         if extract_images and page.images:
                             for img_idx, img in enumerate(page.images):
-                                # TODO: Implement image extraction and atomization
-                                logger.info(f"Found image on page {page_num}: {img}")
-                                # image_atom_id = await atomize_image(...)
-                                # total_atoms += image_pixel_count
+                                logger.info(
+                                    f"Image on page {page_num}: "
+                                    f"{img.get('width', 'unknown')}x{img.get('height', 'unknown')}"
+                                )
+                                
+                                # Create image atom with metadata
+                                # In future: extract pixels, vectorize, create spatial atoms
+                                img_metadata = {
+                                    "modality": "image",
+                                    "format": img.get("ext", "unknown"),
+                                    "page": page_num,
+                                    "index": img_idx,
+                                    "width": img.get("width"),
+                                    "height": img.get("height"),
+                                }
+                                
+                                img_ref = f"image_{page_num}_{img_idx}"
+                                await cur.execute(
+                                    """
+                                    SELECT atomize_value(
+                                        digest(%s, 'sha256'),
+                                        %s,
+                                        %s::jsonb
+                                    )
+                                    """,
+                                    (img_ref.encode("utf-8"), img_ref, json.dumps(img_metadata)),
+                                )
+                                img_atom_id = (await cur.fetchone())[0]
+                                total_atoms += 1
+                                
+                                # Link image to page
+                                await cur.execute(
+                                    """
+                                    SELECT create_composition(
+                                        %s::bigint,
+                                        %s::bigint,
+                                        %s::bigint,
+                                        jsonb_build_object('type', 'contains_image')
+                                    )
+                                    """,
+                                    (page_atom_id, img_atom_id, img_idx),
+                                )
 
                     logger.info(
                         f"PDF atomization complete: {len(page_ids)} pages, "
@@ -315,9 +354,85 @@ class DocumentParserService:
 
                 # Process tables
                 for table_idx, table in enumerate(doc.tables):
-                    # TODO: Implement table atomization
-                    # Each cell becomes an atom with row/col metadata
-                    logger.info(f"Found table with {len(table.rows)} rows")
+                    logger.info(f"Table {table_idx}: {len(table.rows)} rows x {len(table.columns)} columns")
+                    
+                    # Create table atom
+                    table_ref = f"table_{table_idx}"
+                    table_metadata = {
+                        "modality": "table",
+                        "rows": len(table.rows),
+                        "columns": len(table.columns),
+                        "index": table_idx,
+                    }
+                    
+                    await cur.execute(
+                        """
+                        SELECT atomize_value(
+                            digest(%s, 'sha256'),
+                            %s,
+                            %s::jsonb
+                        )
+                        """,
+                        (table_ref.encode("utf-8"), table_ref, json.dumps(table_metadata)),
+                    )
+                    table_atom_id = (await cur.fetchone())[0]
+                    total_atoms += 1
+                    
+                    # Link table to document
+                    await cur.execute(
+                        """
+                        SELECT create_composition(
+                            %s::bigint,
+                            %s::bigint,
+                            %s::bigint,
+                            jsonb_build_object('type', 'contains_table')
+                        )
+                        """,
+                        (doc_atom_id, table_atom_id, table_idx),
+                    )
+                    
+                    # Atomize each cell
+                    for row_idx, row in enumerate(table.rows):
+                        for col_idx, cell in enumerate(row.cells):
+                            cell_text = cell.text.strip()
+                            if cell_text:
+                                cell_metadata = {
+                                    "modality": "table_cell",
+                                    "row": row_idx,
+                                    "column": col_idx,
+                                    "table_index": table_idx,
+                                }
+                                
+                                await cur.execute(
+                                    "SELECT atomize_text(%s, %s::jsonb)",
+                                    (cell_text, json.dumps(cell_metadata)),
+                                )
+                                cell_char_atoms = (await cur.fetchone())[0]
+                                
+                                # Create cell atom and link to table
+                                cell_hash = hashlib.sha256(cell_text.encode()).digest()
+                                await cur.execute(
+                                    """
+                                    SELECT atomize_value(%s, %s, %s::jsonb)
+                                    """,
+                                    (cell_hash, cell_text, json.dumps(cell_metadata)),
+                                )
+                                cell_atom_id = (await cur.fetchone())[0]
+                                total_atoms += len(cell_char_atoms) + 1
+                                
+                                # Link cell to table with position
+                                cell_position = row_idx * len(table.columns) + col_idx
+                                await cur.execute(
+                                    """
+                                    SELECT create_composition(
+                                        %s::bigint,
+                                        %s::bigint,
+                                        %s::bigint,
+                                        jsonb_build_object('row', %s, 'col', %s)
+                                    )
+                                    """,
+                                    (table_atom_id, cell_atom_id, cell_position, row_idx, col_idx),
+                                )
 
                 logger.info(
                     f"DOCX atomization complete: {len(para_ids)} paragraphs, "
@@ -356,10 +471,17 @@ class DocumentParserService:
 
             metadata.update({"modality": "document", "format": "markdown"})
 
+            # Extract title from first h1 heading
+            title = "Markdown Document"  # default
+            for i, token in enumerate(tokens):
+                if token.type == "heading_open" and token.tag == "h1":
+                    # Next token should be inline with the heading text
+                    if i + 1 < len(tokens) and tokens[i + 1].type == "inline":
+                        title = tokens[i + 1].content.strip()
+                        break
+
             async with conn.cursor() as cur:
                 # Create document atom
-                title = "Markdown Document"  # TODO: Extract from first h1
-
                 await cur.execute(
                     """
                     SELECT atomize_value(
@@ -383,10 +505,26 @@ class DocumentParserService:
                         # Create paragraph atom
                         pass
                     elif token.type == "code_block" or token.type == "fence":
-                        # Create code block atom (special handling)
+                        # Create code block atom
                         code = token.content
-                        # TODO: Optionally send to C# code atomizer
-                        pass
+                        lang = token.info if hasattr(token, "info") else "plaintext"
+                        
+                        code_metadata = metadata.copy()
+                        code_metadata.update({
+                            "modality": "code",
+                            "language": lang,
+                        })
+                        
+                        # For C# code: could integrate with C# atomizer for AST-level parsing
+                        # Integration point: api.services.csharp_atomizer (future enhancement)
+                        # For now: atomize as text with language metadata
+                        
+                        await cur.execute(
+                            "SELECT atomize_text(%s, %s::jsonb)",
+                            (code, json.dumps(code_metadata)),
+                        )
+                        code_atoms = (await cur.fetchone())[0]
+                        total_atoms += len(code_atoms)
                     elif token.type == "inline":
                         # Atomize inline text
                         if token.content:
