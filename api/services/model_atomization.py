@@ -35,6 +35,18 @@ except ImportError:
 class GGUFAtomizer(BaseAtomizer):
     """GGUF model atomizer with hierarchical decomposition and sparse encoding."""
 
+    def __init__(self, threshold: float = 1e-6):
+        """Initialize atomizer with sparsity threshold."""
+        super().__init__()
+        self.threshold = threshold
+        self.cache: Dict[Any, Any] = {}  # Weight value -> atom_id cache
+        self.stats: Dict[str, int] = {
+            "total_processed": 0,
+            "atoms_created": 0,
+            "atoms_deduped": 0,
+        }
+        self.encoder = MultiLayerEncoder(sparse_threshold=threshold)
+
     async def atomize_model(
         self,
         file_path: Path,
@@ -234,13 +246,16 @@ class GGUFAtomizer(BaseAtomizer):
             # Flatten tensor and atomize weights with RLE + BATCHING + SIMD/GPU
             weights = tensor.data.flatten()
             total_weights = len(weights)
+            
+            # Initialize variables that will be set by either GPU or CPU path
+            sparse_count = 0
+            non_sparse_indices = []
+            non_sparse_weights = []
+            rle_applied = False
 
             if GPU_AVAILABLE:
                 # GPU: Transfer to GPU for vectorized operations
                 try:
-                    import numpy as np
-                    from decimal import Decimal
-                    
                     # Apply RLE + sparse encoding
                     weights_np = np.array(weights, dtype=np.float32)
                     encoded_bytes, encoding_metadata = self.encoder.encode(weights_np)
@@ -282,9 +297,6 @@ class GGUFAtomizer(BaseAtomizer):
 
             if not GPU_AVAILABLE:
                 # CPU SIMD: Vectorized with NumPy + RLE encoding
-                import numpy as np
-                from decimal import Decimal
-                
                 # Apply RLE + sparse encoding
                 weights_np = np.array(weights, dtype=np.float32)
                 encoded_bytes, encoding_metadata = self.encoder.encode(weights_np)

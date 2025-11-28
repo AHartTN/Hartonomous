@@ -61,20 +61,21 @@ async def test_gguf_atomization():
         print("\n? Atomization complete!")
         print(f"   Model: {result['model_name']}")
         print(f"   Tensors processed: {result['tensors_processed']}")
-        print(f"   Total weights: {result['total_weights']:,}")
-        print(f"   Total atoms: {result['total_atoms']:,}")
-        print(f"   Unique atoms: {result['unique_atoms']:,}")
+        print(f"   Total weights: {result['total_processed']:,}")
+        print(f"   Total atoms: {result['atoms_created']:,}")
+        print(f"   Sparse skipped: {result['sparse_skipped']:,}")
         print(f"   Deduplication: {result['deduplication_ratio']:.1f}x")
+        print(f"   Sparse: {result['sparse_percentage']:.1f}%")
 
         # Query some atoms
         print("\n?? Sample atoms:")
         async with conn.cursor() as cur:
             await cur.execute(
                 """
-                SELECT canonical_text, modality, subtype, 
+                SELECT canonical_text, atom_type, subtype, 
                        metadata->>'value' as weight_value
                 FROM atom
-                WHERE modality = 'ml-model'
+                WHERE atom_type = 'ml-model'
                   AND subtype = 'weight'
                 LIMIT 5
             """
