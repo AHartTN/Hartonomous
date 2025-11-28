@@ -23,6 +23,13 @@ def decode_sparse_format(
     nnz = int.from_bytes(data[offset:offset+4], 'little')
     offset += 4
     
+    # Read dtype
+    dtype_len = data[offset]
+    offset += 1
+    dtype_str = data[offset:offset+dtype_len].decode('utf-8')
+    offset += dtype_len
+    dtype = np.dtype(dtype_str)
+    
     indices_bytes = nnz * 4
     indices = np.frombuffer(
         data[offset:offset+indices_bytes],
@@ -30,9 +37,9 @@ def decode_sparse_format(
     )
     offset += indices_bytes
     
-    values = np.frombuffer(data[offset:], dtype=np.float64)
+    values = np.frombuffer(data[offset:], dtype=dtype)
     
-    result = np.zeros(shape, dtype=np.float64)
+    result = np.zeros(shape, dtype=dtype)
     flat_result = result.ravel()
     flat_result[indices] = values
     

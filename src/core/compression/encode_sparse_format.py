@@ -19,6 +19,12 @@ def encode_sparse_format(
     nnz = len(values)
     result += nnz.to_bytes(4, 'little')
     
+    # Store dtype info
+    dtype_str = str(values.dtype)
+    dtype_bytes = dtype_str.encode('utf-8')
+    result += len(dtype_bytes).to_bytes(1, 'little')
+    result += dtype_bytes
+    
     result += indices.astype(np.uint32).tobytes()
     result += values.tobytes()
     
