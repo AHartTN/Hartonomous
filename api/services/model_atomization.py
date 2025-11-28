@@ -15,6 +15,7 @@ from api.services.spatial_encoding import (calculate_architecture_spatial_key,
                                            calculate_weight_spatial_key,
                                            spatial_key_to_wkt)
 from src.core.atomization.base_atomizer import BaseAtomizer
+from src.core.compression.encoding import MultiLayerEncoder
 
 logger = logging.getLogger(__name__)
 
@@ -218,20 +219,31 @@ class GGUFAtomizer(BaseAtomizer):
                     )
                     self.stats["tensors_processed"] = self.stats.get("tensors_processed", 0) + 1
 
-                # Flatten tensor and atomize weights with BATCHING + SIMD/GPU
+                # Flatten tensor and atomize weights with RLE + BATCHING + SIMD/GPU
                 weights = tensor.data.flatten()
                 total_weights = len(weights)
 
                 if GPU_AVAILABLE:
                     # GPU: Transfer to GPU for vectorized operations
                     try:
-                        weights_gpu = cp.array(weights, dtype=cp.float32)
+                        import numpy as np
+                        from decimal import Decimal
+                        
+                        # Apply RLE + sparse encoding
+                        weights_np = np.array(weights, dtype=np.float32)
+                        encoded_bytes, encoding_metadata = self.encoder.encode(weights_np)
+                        
+                        # Decode to get compressed representation
+                        compressed_weights = np.frombuffer(encoded_bytes, dtype=np.float32)
+                        
+                        # Transfer compressed weights to GPU
+                        weights_gpu = cp.array(compressed_weights, dtype=cp.float32)
 
-                        # Vectorized unique on GPU
+                        # Vectorized unique on GPU (on compressed data)
                         unique_values_gpu = cp.unique(weights_gpu)
                         unique_values = len(unique_values_gpu)
 
-                        # Vectorized sparse filtering on GPU
+                        # Vectorized sparse filtering on GPU (already done by encoder, but check)
                         abs_weights_gpu = cp.abs(weights_gpu)
                         sparse_mask_gpu = abs_weights_gpu < self.threshold
                         sparse_count = int(cp.sum(sparse_mask_gpu))
@@ -241,41 +253,52 @@ class GGUFAtomizer(BaseAtomizer):
                         non_sparse_weights_gpu = weights_gpu[~sparse_mask_gpu]
 
                         # Transfer back to CPU, preserve precision as Decimal
-                        from decimal import Decimal
-
                         non_sparse_indices = non_sparse_indices_gpu.get().tolist()
                         non_sparse_weights = [
                             Decimal(str(float(w)))
                             for w in non_sparse_weights_gpu.get().tolist()
                         ]
 
+                        rle_applied = encoding_metadata.rle_applied
+                        rle_note = " (RLE applied)" if rle_applied else ""
                         logger.info(
-                            f"  [GPU] Processed {total_weights:,} weights | {unique_values:,} unique"
+                            f"  [GPU] Processed {total_weights:,} weights | {len(compressed_weights):,} after compression | {unique_values:,} unique{rle_note}"
                         )
                     except Exception as e:
                         logger.warning(f"GPU processing failed: {e}, falling back to CPU")
                         GPU_AVAILABLE_NOW = False
 
                 if not GPU_AVAILABLE:
-                    # CPU SIMD: Vectorized with NumPy
-                    unique_values_set = np.unique(weights)
+                    # CPU SIMD: Vectorized with NumPy + RLE encoding
+                    import numpy as np
+                    from decimal import Decimal
+                    
+                    # Apply RLE + sparse encoding
+                    weights_np = np.array(weights, dtype=np.float32)
+                    encoded_bytes, encoding_metadata = self.encoder.encode(weights_np)
+                    
+                    # Decode to get compressed representation
+                    compressed_weights = np.frombuffer(encoded_bytes, dtype=np.float32)
+                    
+                    # Vectorized unique on compressed data
+                    unique_values_set = np.unique(compressed_weights)
                     unique_values = len(unique_values_set)
 
-                    # Vectorized sparse filtering
-                    abs_weights = np.abs(weights)
+                    # Vectorized sparse filtering (already done by encoder, but check)
+                    abs_weights = np.abs(compressed_weights)
                     sparse_mask = abs_weights < self.threshold
                     sparse_count = int(np.sum(sparse_mask))
 
                     # Get non-sparse weights and their indices (vectorized)
-                    from decimal import Decimal
-
                     non_sparse_indices = np.where(~sparse_mask)[0].tolist()
                     non_sparse_weights = [
-                        Decimal(str(float(w))) for w in weights[~sparse_mask].tolist()
+                        Decimal(str(float(w))) for w in compressed_weights[~sparse_mask].tolist()
                     ]
 
+                    rle_applied = encoding_metadata.rle_applied
+                    rle_note = " (RLE applied)" if rle_applied else ""
                     logger.info(
-                        f"  [CPU SIMD] Processed {total_weights:,} weights | {unique_values:,} unique"
+                        f"  [CPU SIMD] Processed {total_weights:,} weights | {len(compressed_weights):,} after compression | {unique_values:,} unique{rle_note}"
                     )
 
                 self.stats["sparse_skipped"] = (
