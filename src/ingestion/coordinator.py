@@ -5,14 +5,14 @@ Main entry point for ingesting data into the system.
 
 import asyncio
 import logging
-from typing import Dict, Any, List, Optional, Iterator
+from typing import Dict, Any, List, Optional
 from pathlib import Path
-from dataclasses import dataclass
-from enum import Enum
 
 from ..core.atomization import Atom
 from ..core.landmark_projection import Landmark
 from ..db.ingestion import IngestionDB
+from .ingestion_status import IngestionStatus
+from .ingestion_result import IngestionResult
 from .parsers import (
     TextParser, ImageParser, AudioParser, VideoParser,
     CodeParser, ModelParser, StructuredParser
@@ -20,26 +20,6 @@ from .parsers import (
 
 
 logger = logging.getLogger(__name__)
-
-
-class IngestionStatus(Enum):
-    """Status of ingestion operation."""
-    PENDING = "pending"
-    PROCESSING = "processing"
-    COMPLETED = "completed"
-    FAILED = "failed"
-
-
-@dataclass
-class IngestionResult:
-    """Result of ingestion operation."""
-    source_id: str
-    status: IngestionStatus
-    atoms_created: int
-    landmarks_created: int
-    associations_created: int
-    error: Optional[str] = None
-    metadata: Dict[str, Any] = None
 
 
 class IngestionCoordinator:
