@@ -1,55 +1,77 @@
 """Image parser - handles images with pixel-level atomization."""
 
+import hashlib
 import numpy as np
-from typing import Dict, Any, Iterator
+from typing import Dict, Any
 from pathlib import Path
 from PIL import Image
 
-from ...core.atomization import BaseAtomizer, ModalityType
-from ...core.landmark import LandmarkProjector
+from ...core.atomization import BaseAtomizer
 
 
 class ImageParser(BaseAtomizer):
-    """Parse and atomize images."""
-    
-    def __init__(self):
-        super().__init__()
-        self.landmark_projector = LandmarkProjector()
+    """Parse and atomize images via SQL functions."""
     
     async def parse(self, image_path: Path, conn) -> int:
-        """Parse image file into atoms. Returns parent atom_id."""
+        """
+        Parse image file into atoms.
+        
+        Process:
+        1. Load image via PIL
+        2. Convert to numpy array (RGB float32)
+        3. Create parent atom for image
+        4. Chunk pixels and atomize via SQL
+        5. Build composition with sequence_index
+        
+        Returns parent atom_id.
+        """
+        # Load and normalize image
         img = Image.open(image_path)
-        img_array = np.array(img)
+        if img.mode != 'RGB':
+            img = img.convert('RGB')
         
-        if img_array.dtype != np.float64:
-            img_array = img_array.astype(np.float64) / 255.0
+        img_array = np.array(img, dtype=np.float32) / 255.0
         
-        # Create parent atom for image
-        import hashlib
+        # Create parent atom for full image
         image_hash = hashlib.sha256(img_array.tobytes()).digest()
         parent_atom_id = await self.create_atom(
             conn,
             image_hash,
-            str(image_path),
+            str(image_path.name),
             {
                 'modality': 'image',
-                'shape': list(img_array.shape),
-                'image_path': str(image_path)
+                'width': img_array.shape[1],
+                'height': img_array.shape[0],
+                'channels': img_array.shape[2],
+                'file_path': str(image_path)
             }
         )
         
-        # Atomize pixels as components
-        flat_pixels = img_array.flatten()
-        chunk_size = 12  # 48 bytes / 4 bytes per float32
+        # Flatten to RGB triples
+        pixels = img_array.reshape(-1, 3)
         
-        for idx in range(0, len(flat_pixels), chunk_size):
-            chunk = flat_pixels[idx:idx+chunk_size]
+        # Chunk pixels (12 bytes per pixel RGB float32 = 4 chunks/atom at 48 byte limit)
+        chunk_size = 4  # 4 pixels = 48 bytes
+        
+        self.stats["total_processed"] = len(pixels)
+        
+        for idx in range(0, len(pixels), chunk_size):
+            chunk = pixels[idx:idx+chunk_size].flatten()
             
+            # Sparse: skip near-black pixels
             if np.abs(chunk).max() < self.threshold:
+                self.stats["sparse_skipped"] += 1
                 continue
             
             chunk_bytes = chunk.astype(np.float32).tobytes()
-            component_id = await self.create_atom(conn, chunk_bytes, None, {'dtype': 'float32'})
+            
+            # Check size constraint
+            if len(chunk_bytes) > 64:
+                raise ValueError(f"Chunk exceeds 64 bytes: {len(chunk_bytes)}")
+            
+            component_id = await self.create_atom(conn, chunk_bytes, None, {'dtype': 'float32', 'channels': 3})
             await self.create_composition(conn, parent_atom_id, component_id, idx // chunk_size)
+            
+            self.stats["atoms_created"] += 1
         
         return parent_atom_id

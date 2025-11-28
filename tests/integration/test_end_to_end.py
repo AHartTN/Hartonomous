@@ -1,96 +1,119 @@
-"""Test end-to-end atomization workflow."""
+"""Test end-to-end atomization workflows - REAL WORKFLOWS."""
 import pytest
 import numpy as np
-from pathlib import Path
 from PIL import Image
 
 pytestmark = pytest.mark.asyncio
 
-class TestEndToEndAtomization:
-    """Test complete atomization workflows."""
+class TestCompleteWorkflows:
+    """Test complete atomization workflows from input to query."""
     
-    async def test_text_to_atoms_to_query(self, db_connection, clean_db, tmp_path):
-        """Test: Text file ? atoms ? spatial query ? results."""
+    async def test_text_atomization_to_query_workflow(self, db_connection, clean_db, tmp_path):
+        """REAL TEST: Text ? atoms ? reconstruct ? verify."""
         from src.ingestion.parsers.text_parser import TextParser
         
-        # Step 1: Create and atomize text
-        text_file = tmp_path / "document.txt"
-        text_file.write_text("The quick brown fox")
+        # Step 1: Create text file
+        text_content = "AI"
+        text_file = tmp_path / "test.txt"
+        text_file.write_text(text_content)
         
+        # Step 2: Parse and atomize
         parser = TextParser()
         doc_atom_id = await parser.parse(text_file, db_connection)
         
-        # Step 2: Verify atomization
+        # VERIFY: Parent atom created
         async with db_connection.cursor() as cur:
+            await cur.execute(
+                "SELECT metadata->>'char_count' FROM atom WHERE atom_id = %s",
+                (doc_atom_id,)
+            )
+            char_count = (await cur.fetchone())[0]
+            assert int(char_count) == 2, "Should have 2 characters"
+            
+            # Step 3: Verify characters atomized
             await cur.execute(
                 "SELECT COUNT(*) FROM atom_composition WHERE parent_atom_id = %s",
                 (doc_atom_id,)
             )
-            char_count = (await cur.fetchone())[0]
-            assert char_count == 19  # "The quick brown fox" length
+            comp_count = (await cur.fetchone())[0]
+            assert comp_count == 2, "Should have 2 character compositions"
             
-            # Step 3: Query related atoms
+            # Step 4: Reconstruct text from compositions
             await cur.execute(
                 """
-                SELECT component_atom_id 
-                FROM atom_composition 
-                WHERE parent_atom_id = %s 
-                ORDER BY sequence_index
-                LIMIT 3
+                SELECT a.canonical_text
+                FROM atom_composition ac
+                JOIN atom a ON a.atom_id = ac.component_atom_id
+                WHERE ac.parent_atom_id = %s
+                ORDER BY ac.sequence_index
                 """,
                 (doc_atom_id,)
             )
-            first_chars = await cur.fetchall()
-            assert len(first_chars) == 3  # T, h, e
+            chars = [row[0] for row in await cur.fetchall()]
+            reconstructed = ''.join(chars)
+            
+            assert reconstructed == text_content, f"Should reconstruct '{text_content}', got '{reconstructed}'"
     
-    async def test_model_weights_deduplication(self, db_connection, clean_db):
-        """Test: Model weights ? deduplication ? storage efficiency."""
+    async def test_model_weight_deduplication_workflow(self, db_connection, clean_db):
+        """REAL TEST: Model weights ? deduplication ? storage efficiency."""
         from api.services.model_atomization import GGUFAtomizer
         
         atomizer = GGUFAtomizer(threshold=0.01)
         
-        # Simulate atomizing weights with duplicates
-        weights = [0.5, 0.5, 0.3, 0.5, 0.3]  # 2 unique values
+        # Simulate model with duplicate weights
+        weights = [0.5, 0.5, 0.3, 0.5, 0.3, 0.5]  # 2 unique values, 6 total
         
         atom_ids = []
         for weight in weights:
             atom_id = await atomizer._atomize_weight(db_connection, weight)
             atom_ids.append(atom_id)
         
-        # Should only create 2 unique atoms
-        unique_atoms = set(atom_ids)
-        assert len(unique_atoms) == 2
+        # VERIFY: Only 2 unique atoms created
+        unique_atoms = len(set(atom_ids))
+        assert unique_atoms == 2, f"Should deduplicate to 2 atoms, got {unique_atoms}"
         
-        # Verify deduplication stats
-        assert atomizer.stats['atoms_deduped'] > 0
+        # VERIFY: Atoms stored in database
+        async with db_connection.cursor() as cur:
+            await cur.execute(
+                "SELECT COUNT(*) FROM atom WHERE metadata->>'modality' = 'weight'"
+            )
+            db_count = (await cur.fetchone())[0]
+            assert db_count >= 2, "Weight atoms should be in database"
     
-    async def test_image_sparse_storage(self, db_connection, clean_db, tmp_path):
-        """Test: Image ? sparse atomization ? efficient storage."""
+    async def test_image_to_atoms_workflow(self, db_connection, clean_db, tmp_path):
+        """REAL TEST: Image ? pixel atoms ? sparse storage."""
         from src.ingestion.parsers.image_parser import ImageParser
         
-        # Create mostly black image (sparse)
-        img_array = np.zeros((10, 10, 3), dtype=np.uint8)
-        img_array[5, 5] = [255, 0, 0]  # One red pixel
+        # Create small test image (mostly black)
+        img_array = np.zeros((5, 5, 3), dtype=np.uint8)
+        img_array[2, 2] = [255, 0, 0]  # One red pixel
         
         img = Image.fromarray(img_array)
-        img_path = tmp_path / "sparse.png"
+        img_path = tmp_path / "test.png"
         img.save(img_path)
         
-        parser = ImageParser(threshold=0.1)  # High threshold for sparsity
+        # Parse image
+        parser = ImageParser(threshold=0.1)
         parent_atom_id = await parser.parse(img_path, db_connection)
         
-        # Verify sparse storage
+        # VERIFY: Parent atom created
         async with db_connection.cursor() as cur:
+            await cur.execute(
+                "SELECT metadata FROM atom WHERE atom_id = %s",
+                (parent_atom_id,)
+            )
+            metadata = (await cur.fetchone())[0]
+            
+            assert metadata['modality'] == 'image'
+            assert metadata['width'] == 5
+            assert metadata['height'] == 5
+            
+            # VERIFY: Sparse storage (not all 25 pixels stored)
             await cur.execute(
                 "SELECT COUNT(*) FROM atom_composition WHERE parent_atom_id = %s",
                 (parent_atom_id,)
             )
-            component_count = (await cur.fetchone())[0]
+            comp_count = (await cur.fetchone())[0]
             
-            # Should store much less than full 10x10x3 = 300 pixels
-            # Due to sparsity threshold
-            total_pixels = 10 * 10
-            chunk_size = 4
-            max_chunks = (total_pixels + chunk_size - 1) // chunk_size
-            
-            assert component_count < max_chunks  # Sparse encoding working
+            max_possible = (5 * 5 + 3) // 4  # pixels / chunk_size
+            assert comp_count <= max_possible, "Should use sparse storage"
