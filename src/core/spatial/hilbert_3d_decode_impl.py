@@ -20,8 +20,8 @@ def hilbert_3d_decode(index: int, order: int) -> Tuple[int, int, int]:
 
         # Inverse Gray code
         octant = gray
-        octant ^= (octant >> 2)
-        octant ^= (octant >> 1)
+        octant ^= octant >> 2
+        octant ^= octant >> 1
         octant &= 0x7
 
         # Extract coordinate bits

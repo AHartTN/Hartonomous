@@ -1,12 +1,14 @@
 """Authentication dependencies and utilities."""
 
 from typing import Any, Dict, Optional
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from api.config import settings
-from .entra_id_auth import EntraIDAuth
+
 from .b2c_auth import B2CAuth
+from .entra_id_auth import EntraIDAuth
 
 security = HTTPBearer()
 

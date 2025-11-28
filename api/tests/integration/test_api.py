@@ -9,7 +9,7 @@ Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 import os
 
 import pytest
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
 
 pytestmark = pytest.mark.integration
 

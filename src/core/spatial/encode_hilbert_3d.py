@@ -11,5 +11,5 @@ def encode_hilbert_3d(x: float, y: float, z: float, order: int = 21) -> int:
     ix = int(np.clip(x * max_coord, 0, max_coord))
     iy = int(np.clip(y * max_coord, 0, max_coord))
     iz = int(np.clip(z * max_coord, 0, max_coord))
-    
+
     return hilbert_3d_encode(ix, iy, iz, order)

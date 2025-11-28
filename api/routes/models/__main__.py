@@ -12,6 +12,7 @@ from psycopg import AsyncConnection
 
 from api.dependencies import get_db_connection
 from api.services.model_atomization import GGUFAtomizer
+
 from .model_ingest_request import ModelIngestRequest
 from .model_ingest_response import ModelIngestResponse
 
@@ -29,7 +30,9 @@ async def ingest_model(
 
         model_path = Path(request.model_path)
         if not model_path.exists():
-            raise HTTPException(status_code=404, detail=f"Model file not found: {request.model_path}")
+            raise HTTPException(
+                status_code=404, detail=f"Model file not found: {request.model_path}"
+            )
 
         if request.model_format.lower() == "gguf":
             atomizer = GGUFAtomizer(threshold=request.threshold)
@@ -51,32 +54,32 @@ async def ingest_model(
                 unique_atoms=result["unique_atoms"],
                 deduplication_ratio=result["deduplication_ratio"],
                 message=f"Successfully atomized {request.model_name} "
-                        f"({result['deduplication_ratio']:.1f}x deduplication)",
+                f"({result['deduplication_ratio']:.1f}x deduplication)",
             )
 
         elif request.model_format.lower() == "safetensors":
             raise HTTPException(
                 status_code=501,
-                detail="SafeTensors atomization not yet implemented. Coming soon!"
+                detail="SafeTensors atomization not yet implemented. Coming soon!",
             )
 
         elif request.model_format.lower() in ["pytorch", "pt", "pth"]:
             raise HTTPException(
                 status_code=501,
-                detail="PyTorch atomization not yet implemented. Coming soon!"
+                detail="PyTorch atomization not yet implemented. Coming soon!",
             )
 
         elif request.model_format.lower() == "onnx":
             raise HTTPException(
                 status_code=501,
-                detail="ONNX atomization not yet implemented. Coming soon!"
+                detail="ONNX atomization not yet implemented. Coming soon!",
             )
 
         else:
             raise HTTPException(
                 status_code=400,
                 detail=f"Unsupported model format: {request.model_format}. "
-                       f"Supported: gguf, safetensors, pytorch, onnx"
+                f"Supported: gguf, safetensors, pytorch, onnx",
             )
 
     except Exception as e:

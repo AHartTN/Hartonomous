@@ -4,14 +4,14 @@ Atomization package.
 Exports all atomization-related classes.
 """
 
-from .modality_type import ModalityType
 from .atom import Atom
-from .base_atomizer import BaseAtomizer
 from .atomizer import Atomizer
+from .base_atomizer import BaseAtomizer
+from .modality_type import ModalityType
 
 __all__ = [
-    'Atom',
-    'ModalityType',
-    'BaseAtomizer',
-    'Atomizer',
+    "Atom",
+    "ModalityType",
+    "BaseAtomizer",
+    "Atomizer",
 ]

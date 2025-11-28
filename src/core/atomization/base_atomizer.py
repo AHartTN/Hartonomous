@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 from typing import Any, Dict, Optional
+
 from psycopg import AsyncConnection
 
 logger = logging.getLogger(__name__)
@@ -11,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 class BaseAtomizer:
     """Base class for all atomizers - handles SQL atomize_value calls."""
-    
+
     def __init__(self, threshold: float = 0.01):
         self.threshold = threshold
         self.cache: Dict[Any, int] = {}
@@ -21,28 +22,51 @@ class BaseAtomizer:
             "atoms_deduped": 0,
             "sparse_skipped": 0,
         }
-    
+
     async def create_atom(
         self,
         conn: AsyncConnection,
         value: bytes,
         canonical_text: Optional[str],
-        metadata: Dict[str, Any]
+        metadata: Dict[str, Any],
+        spatial_key: Optional[str] = None,
     ) -> int:
-        """Create or retrieve atom via SQL atomize_value()."""
-        async with conn.cursor() as cur:
-            await cur.execute(
-                "SELECT atomize_value(%s::bytea, %s, %s::jsonb)",
-                (value, canonical_text, json.dumps(metadata))
-            )
-            return (await cur.fetchone())[0]
-    
+        """
+        Create or retrieve atom via SQL atomize_value().
+
+        Args:
+            conn: Database connection
+            value: Hash bytes for content addressing
+            canonical_text: Human-readable text representation
+            metadata: JSONB metadata dictionary
+            spatial_key: Optional WKT string for spatial geometry (e.g., "POINT ZM (0.5 0.3 0.8 12345)")
+
+        Returns:
+            Atom ID
+        """
+        if spatial_key:
+            # Use atomize_value_spatial() for geometric atoms
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT atomize_value_spatial(%s::bytea, %s, %s::jsonb, ST_GeomFromText(%s))",
+                    (value, canonical_text, json.dumps(metadata), spatial_key),
+                )
+                return (await cur.fetchone())[0]
+        else:
+            # Standard atomize_value() for non-spatial atoms
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT atomize_value(%s::bytea, %s, %s::jsonb)",
+                    (value, canonical_text, json.dumps(metadata)),
+                )
+                return (await cur.fetchone())[0]
+
     async def create_composition(
         self,
         conn: AsyncConnection,
         parent_id: int,
         component_id: int,
-        sequence_idx: int
+        sequence_idx: int,
     ):
         """Link component to parent via SQL create_composition() function."""
         async with conn.cursor() as cur:
@@ -55,6 +79,5 @@ class BaseAtomizer:
                     '{}'::jsonb
                 )
                 """,
-                (parent_id, component_id, sequence_idx)
+                (parent_id, component_id, sequence_idx),
             )
-

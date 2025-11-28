@@ -11,7 +11,7 @@ def hilbert_box_query(
     z_min: float,
     z_max: float,
     order: int = 21,
-    max_ranges: int = 64
+    max_ranges: int = 64,
 ) -> List[Tuple[int, int]]:
     """
     Compute Hilbert index ranges for 3D bounding box using octree subdivision.
@@ -36,13 +36,18 @@ def hilbert_box_query(
     stack = [(0, 0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0)]
 
     while stack and len(ranges) < max_ranges:
-        level, hilbert_base, ox_min, ox_max, oy_min, oy_max, oz_min, oz_max = stack.pop()
+        level, hilbert_base, ox_min, ox_max, oy_min, oy_max, oz_min, oz_max = (
+            stack.pop()
+        )
 
         # Check intersection with query box
         intersects = (
-            ox_min <= x_max and ox_max >= x_min and
-            oy_min <= y_max and oy_max >= y_min and
-            oz_min <= z_max and oz_max >= z_min
+            ox_min <= x_max
+            and ox_max >= x_min
+            and oy_min <= y_max
+            and oy_max >= y_min
+            and oz_min <= z_max
+            and oz_max >= z_min
         )
 
         if not intersects:
@@ -50,9 +55,12 @@ def hilbert_box_query(
 
         # Check if query box completely contains octant
         contained = (
-            x_min <= ox_min and x_max >= ox_max and
-            y_min <= oy_min and y_max >= oy_max and
-            z_min <= oz_min and z_max >= oz_max
+            x_min <= ox_min
+            and x_max >= ox_max
+            and y_min <= oy_min
+            and y_max >= oy_max
+            and z_min <= oz_min
+            and z_max >= oz_max
         )
 
         if contained or level >= order:
@@ -76,13 +84,18 @@ def hilbert_box_query(
                 child_z_min = oz_min if (octant & 1) == 0 else z_mid
                 child_z_max = z_mid if (octant & 1) == 0 else oz_max
 
-                stack.append((
-                    level + 1,
-                    child_base,
-                    child_x_min, child_x_max,
-                    child_y_min, child_y_max,
-                    child_z_min, child_z_max
-                ))
+                stack.append(
+                    (
+                        level + 1,
+                        child_base,
+                        child_x_min,
+                        child_x_max,
+                        child_y_min,
+                        child_y_max,
+                        child_z_min,
+                        child_z_max,
+                    )
+                )
 
     # Merge adjacent ranges for efficiency
     if ranges:

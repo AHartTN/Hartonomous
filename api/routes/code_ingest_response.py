@@ -21,6 +21,6 @@ class CodeIngestResponse(BaseModel):
                 "unique_atoms": 45,
                 "compositions": 120,
                 "relations": 30,
-                "message": "Successfully atomized Example.cs (1234 bytes)"
+                "message": "Successfully atomized Example.cs (1234 bytes)",
             }
         }

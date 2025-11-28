@@ -47,10 +47,11 @@ def test_imports():
     """Test that core modules can be imported."""
     try:
         # pylint: disable=import-outside-toplevel,unused-import
-        import config
         import main
         from models import ingest
         from services import atomization, query
+
+        import config
     except ImportError as e:
         pytest.skip(f"Failed to import modules (expected in CI): {e}")
 

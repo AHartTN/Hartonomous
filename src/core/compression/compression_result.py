@@ -6,12 +6,13 @@ from dataclasses import dataclass
 @dataclass
 class CompressionResult:
     """Result of compression operation."""
+
     data: bytes
     compression_type: int
     metadata: dict
     original_size: int
     compressed_size: int
-    
+
     @property
     def ratio(self) -> float:
         """Compression ratio."""

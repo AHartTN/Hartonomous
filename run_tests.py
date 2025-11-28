@@ -1,6 +1,8 @@
 """Run all tests with coverage."""
+
 import subprocess
 import sys
+
 
 def run_tests():
     """Run pytest with coverage."""
@@ -14,11 +16,12 @@ def run_tests():
         "--cov=api",
         "--cov-report=html",
         "--cov-report=term-missing",
-        "--tb=short"
+        "--tb=short",
     ]
-    
+
     result = subprocess.run(cmd)
     return result.returncode
+
 
 if __name__ == "__main__":
     sys.exit(run_tests())

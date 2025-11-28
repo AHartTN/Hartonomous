@@ -4,9 +4,9 @@ import logging
 from functools import lru_cache
 from typing import Optional
 
-from .azure_settings import AzureSettings
-from .azure_key_vault_client import AzureKeyVaultClient
 from .azure_app_config_client import AzureAppConfigClient
+from .azure_key_vault_client import AzureKeyVaultClient
+from .azure_settings import AzureSettings
 
 logger = logging.getLogger(__name__)
 

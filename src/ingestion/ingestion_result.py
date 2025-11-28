@@ -2,8 +2,8 @@
 Ingestion result dataclass.
 """
 
-from typing import Dict, Any, Optional
 from dataclasses import dataclass
+from typing import Any, Dict, Optional
 
 from .ingestion_status import IngestionStatus
 
@@ -11,6 +11,7 @@ from .ingestion_status import IngestionStatus
 @dataclass
 class IngestionResult:
     """Result of ingestion operation."""
+
     source_id: str
     status: IngestionStatus
     atoms_created: int

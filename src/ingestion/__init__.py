@@ -1,5 +1,5 @@
 """Ingestion pipeline - handles all data ingestion."""
 
-from .parsers import ModelParser, ImageParser
+from .parsers import ImageParser, ModelParser
 
-__all__ = ['ModelParser', 'ImageParser']
+__all__ = ["ModelParser", "ImageParser"]

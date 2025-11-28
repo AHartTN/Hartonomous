@@ -6,7 +6,8 @@ import hashlib
 import json
 import os
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
 import httpx
 
 from ...core.atomization import BaseAtomizer
@@ -14,20 +15,19 @@ from ...core.atomization import BaseAtomizer
 
 class CodeParser(BaseAtomizer):
     """Parse and atomize source code via C# atomizer service."""
-    
+
     def __init__(self, atomizer_service_url: Optional[str] = None):
         super().__init__()
         self.service_url = atomizer_service_url or os.getenv(
-            "CODE_ATOMIZER_URL",
-            "http://localhost:8001"  # Local development default
+            "CODE_ATOMIZER_URL", "http://localhost:8001"  # Local development default
         )
         self._health_checked = False
-    
+
     async def _check_health(self) -> bool:
         """Check if C# CodeAtomizer service is available."""
         if self._health_checked:
             return True
-        
+
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 response = await client.get(f"{self.service_url}/api/v1/atomize/health")
@@ -35,18 +35,18 @@ class CodeParser(BaseAtomizer):
                 return self._health_checked
         except Exception:
             return False
-    
+
     async def parse(self, code_path: Path, conn) -> int:
         """
         Parse code file into atoms via C# CodeAtomizer service.
-        
+
         Process:
         1. Check C# service health
         2. Read code file
         3. Call C# service for AST decomposition
         4. Insert atoms with proper spatial coordinates
         5. Insert compositions and relations
-        
+
         Returns parent atom_id (root file atom).
         """
         # Check service health
@@ -55,58 +55,60 @@ class CodeParser(BaseAtomizer):
                 f"Code Atomizer service unavailable at {self.service_url}. "
                 f"Ensure the C# service is running (dotnet run or docker-compose up code-atomizer)."
             )
-        
+
         # Read code file
-        with open(code_path, 'r', encoding='utf-8') as f:
+        with open(code_path, "r", encoding="utf-8") as f:
             code = f.read()
-        
+
         language = self._detect_language(code_path.suffix)
-        
+
         # Call C# atomizer service
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
                 f"{self.service_url}/api/v1/atomize/{language}",
-                json={
-                    "code": code,
-                    "fileName": str(code_path.name)
-                }
+                json={"code": code, "fileName": str(code_path.name)},
             )
             response.raise_for_status()
             result = response.json()
-        
+
         if not result.get("success"):
-            raise RuntimeError(f"Atomization failed: {result.get('error', 'Unknown error')}")
-        
+            raise RuntimeError(
+                f"Atomization failed: {result.get('error', 'Unknown error')}"
+            )
+
         # Parse response
         atoms = result["atoms"]
         compositions = result["compositions"]
         relations = result["relations"]
-        
+
         self.stats["total_processed"] = len(atoms)
-        
+
         # Insert atoms with proper base64 decoding and spatial coordinates
         hash_to_id = {}
-        
+
         async with conn.cursor() as cur:
             for atom in atoms:
                 # Decode content hash from base64 (not hex!)
                 content_hash = base64.b64decode(atom["contentHash"])
-                
+
                 # Check if atom already exists (deduplication)
                 await cur.execute(
-                    "SELECT atom_id FROM atom WHERE content_hash = %s",
-                    (content_hash,)
+                    "SELECT atom_id FROM atom WHERE content_hash = %s", (content_hash,)
                 )
                 existing = await cur.fetchone()
-                
+
                 if existing:
                     hash_to_id[atom["contentHash"]] = existing[0]
                     continue
-                
+
                 # Parse metadata to extract Hilbert index
-                metadata = json.loads(atom["metadata"]) if isinstance(atom["metadata"], str) else atom["metadata"]
+                metadata = (
+                    json.loads(atom["metadata"])
+                    if isinstance(atom["metadata"], str)
+                    else atom["metadata"]
+                )
                 hilbert_index = metadata.get("hilbertIndex", 0)
-                
+
                 # Build POINTZM geometry with Hilbert M coordinate
                 spatial_wkt = (
                     f"SRID=0;POINTZM("
@@ -115,7 +117,7 @@ class CodeParser(BaseAtomizer):
                     f"{atom['spatialKey']['z']} "
                     f"{hilbert_index})"
                 )
-                
+
                 # Insert atom with spatial coordinates
                 await cur.execute(
                     """
@@ -135,73 +137,79 @@ class CodeParser(BaseAtomizer):
                     """,
                     (
                         content_hash,
-                        b'',  # atomic_value is empty for AST nodes
+                        b"",  # atomic_value is empty for AST nodes
                         atom["canonicalText"],
                         spatial_wkt,
                         atom["modality"],
                         atom.get("subtype"),
-                        json.dumps(metadata) if not isinstance(atom["metadata"], str) else atom["metadata"]
-                    )
+                        (
+                            json.dumps(metadata)
+                            if not isinstance(atom["metadata"], str)
+                            else atom["metadata"]
+                        ),
+                    ),
                 )
-                
+
                 result_row = await cur.fetchone()
                 atom_id = result_row[0]
                 hash_to_id[atom["contentHash"]] = atom_id
                 self.stats["atoms_created"] += 1
-        
+
         # Insert compositions using SQL function
         for comp in compositions:
             parent_id = hash_to_id.get(comp["parentHash"])
             component_id = hash_to_id.get(comp["componentHash"])
-            
+
             if parent_id and component_id:
                 async with conn.cursor() as cur:
                     await cur.execute(
                         "SELECT create_composition(%s, %s, %s, '{}'::jsonb)",
-                        (parent_id, component_id, comp["sequenceIndex"])
+                        (parent_id, component_id, comp["sequenceIndex"]),
                     )
                     self.stats["compositions_created"] += 1
-        
+
         # Insert relations using SQL function
         for rel in relations:
             source_id = hash_to_id.get(rel["sourceHash"])
             target_id = hash_to_id.get(rel["targetHash"])
-            
+
             if source_id and target_id:
                 async with conn.cursor() as cur:
                     await cur.execute(
                         "SELECT create_relation(%s, %s, %s, %s, '{}'::jsonb)",
-                        (
-                            source_id,
-                            target_id,
-                            rel["relationType"],
-                            rel["weight"]
-                        )
+                        (source_id, target_id, rel["relationType"], rel["weight"]),
                     )
                     self.stats["relations_created"] += 1
-        
+
         # Return root file atom ID
         file_atom_hash = next(
-            (hash_key for hash_key, atom in zip(hash_to_id.keys(), atoms)
-             if json.loads(atom["metadata"]).get("nodeType") == "file"),
-            None
+            (
+                hash_key
+                for hash_key, atom in zip(hash_to_id.keys(), atoms)
+                if json.loads(atom["metadata"]).get("nodeType") == "file"
+            ),
+            None,
         )
-        
-        return hash_to_id.get(file_atom_hash) if file_atom_hash else list(hash_to_id.values())[0]
-    
+
+        return (
+            hash_to_id.get(file_atom_hash)
+            if file_atom_hash
+            else list(hash_to_id.values())[0]
+        )
+
     def _detect_language(self, extension: str) -> str:
         """Detect programming language from file extension."""
         ext_map = {
-            '.py': 'python',
-            '.cs': 'csharp',
-            '.js': 'javascript',
-            '.ts': 'typescript',
-            '.java': 'java',
-            '.cpp': 'cpp',
-            '.c': 'c',
-            '.go': 'go',
-            '.rs': 'rust',
-            '.rb': 'ruby',
-            '.php': 'php',
+            ".py": "python",
+            ".cs": "csharp",
+            ".js": "javascript",
+            ".ts": "typescript",
+            ".java": "java",
+            ".cpp": "cpp",
+            ".c": "c",
+            ".go": "go",
+            ".rs": "rust",
+            ".rb": "ruby",
+            ".php": "php",
         }
-        return ext_map.get(extension.lower(), 'text')
+        return ext_map.get(extension.lower(), "text")

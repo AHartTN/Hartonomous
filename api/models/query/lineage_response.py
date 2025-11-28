@@ -1,6 +1,7 @@
 """Lineage response model."""
 
 from typing import List
+
 from pydantic import BaseModel, Field
 
 from .lineage_node import LineageNode

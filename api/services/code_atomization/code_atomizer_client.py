@@ -52,9 +52,7 @@ class CodeAtomizerClient:
     async def health_check(self) -> bool:
         """Check if code atomizer service is healthy."""
         try:
-            response = await self.client.get(
-                f"{self.base_url}/api/v1/atomize/health"
-            )
+            response = await self.client.get(f"{self.base_url}/api/v1/atomize/health")
             return response.status_code == 200
         except httpx.HTTPError:
             return False
@@ -64,7 +62,11 @@ class CodeAtomizerClient:
         await self.client.aclose()
 
     async def atomize_any_language(
-        self, code: str, language: str, filename: str = "code.txt", metadata: Optional[str] = None
+        self,
+        code: str,
+        language: str,
+        filename: str = "code.txt",
+        metadata: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Atomize code in any supported language."""
         try:

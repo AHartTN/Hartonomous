@@ -14,6 +14,7 @@ from psycopg import AsyncConnection
 
 from api.dependencies import get_db_connection
 from api.services.code_atomization import CodeAtomizationService
+
 from .github_ingest_request import GitHubIngestRequest
 from .github_ingest_response import GitHubIngestResponse
 
@@ -97,7 +98,9 @@ async def ingest_github_repo(
                             ".rb",
                             ".php",
                         ]:
-                            with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                            with open(
+                                filepath, "r", encoding="utf-8", errors="ignore"
+                            ) as f:
                                 code = f.read()
 
                             language = detect_language(ext)
@@ -106,7 +109,10 @@ async def ingest_github_repo(
                                 code=code,
                                 filename=filename,
                                 language=language,
-                                metadata={"repo": request.repo_url, "branch": request.branch},
+                                metadata={
+                                    "repo": request.repo_url,
+                                    "branch": request.branch,
+                                },
                             )
 
                             code_files += 1

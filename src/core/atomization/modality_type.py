@@ -9,6 +9,7 @@ from enum import IntEnum
 
 class ModalityType(IntEnum):
     """Data modality types."""
+
     UNKNOWN = 0
     MODEL_WEIGHT = 1
     MODEL_BIAS = 2

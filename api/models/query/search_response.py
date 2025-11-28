@@ -1,6 +1,7 @@
 """Search response model."""
 
 from typing import List
+
 from pydantic import BaseModel, Field
 
 from .search_result import SearchResult

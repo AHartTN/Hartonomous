@@ -2,6 +2,7 @@
 """Comprehensive import test - verify everything works."""
 
 import sys
+
 sys.path.insert(0, ".")
 
 print("Testing all imports...")
