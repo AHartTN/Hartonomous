@@ -132,6 +132,12 @@ class Settings(BaseSettings):
         description="URL for the Code Atomizer microservice",
     )
 
+    # GPU Acceleration (Opportunistic)
+    use_gpu: bool = Field(
+        default=True,
+        description="Use GPU acceleration when available (CuPy). Falls back to CPU if GPU not detected.",
+    )
+
     # Model configuration
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore"
