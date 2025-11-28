@@ -186,8 +186,6 @@ class GGUFAtomizer(BaseAtomizer):
         
         async def process_one_tensor(tensor_idx: int, tensor):
             """Process single tensor with semaphore control."""
-        async def process_one_tensor(tensor_idx: int, tensor):
-            """Process single tensor with semaphore control."""
             async with semaphore:
                 logger.info(
                     f"Processing tensor {tensor_idx+1}/{len(reader.tensors)}: {tensor.name} {tensor.shape}"
@@ -219,99 +217,99 @@ class GGUFAtomizer(BaseAtomizer):
                 weights = tensor.data.flatten()
                 total_weights = len(weights)
 
-            if GPU_AVAILABLE:
-                # GPU: Transfer to GPU for vectorized operations
-                try:
-                    weights_gpu = cp.array(weights, dtype=cp.float32)
+                if GPU_AVAILABLE:
+                    # GPU: Transfer to GPU for vectorized operations
+                    try:
+                        weights_gpu = cp.array(weights, dtype=cp.float32)
 
-                    # Vectorized unique on GPU
-                    unique_values_gpu = cp.unique(weights_gpu)
-                    unique_values = len(unique_values_gpu)
+                        # Vectorized unique on GPU
+                        unique_values_gpu = cp.unique(weights_gpu)
+                        unique_values = len(unique_values_gpu)
 
-                    # Vectorized sparse filtering on GPU
-                    abs_weights_gpu = cp.abs(weights_gpu)
-                    sparse_mask_gpu = abs_weights_gpu < self.threshold
-                    sparse_count = int(cp.sum(sparse_mask_gpu))
+                        # Vectorized sparse filtering on GPU
+                        abs_weights_gpu = cp.abs(weights_gpu)
+                        sparse_mask_gpu = abs_weights_gpu < self.threshold
+                        sparse_count = int(cp.sum(sparse_mask_gpu))
 
-                    # Get non-sparse weights and indices on GPU, then transfer
-                    non_sparse_indices_gpu = cp.where(~sparse_mask_gpu)[0]
-                    non_sparse_weights_gpu = weights_gpu[~sparse_mask_gpu]
+                        # Get non-sparse weights and indices on GPU, then transfer
+                        non_sparse_indices_gpu = cp.where(~sparse_mask_gpu)[0]
+                        non_sparse_weights_gpu = weights_gpu[~sparse_mask_gpu]
 
-                    # Transfer back to CPU, preserve precision as Decimal
+                        # Transfer back to CPU, preserve precision as Decimal
+                        from decimal import Decimal
+
+                        non_sparse_indices = non_sparse_indices_gpu.get().tolist()
+                        non_sparse_weights = [
+                            Decimal(str(float(w)))
+                            for w in non_sparse_weights_gpu.get().tolist()
+                        ]
+
+                        logger.info(
+                            f"  [GPU] Processed {total_weights:,} weights | {unique_values:,} unique"
+                        )
+                    except Exception as e:
+                        logger.warning(f"GPU processing failed: {e}, falling back to CPU")
+                        GPU_AVAILABLE_NOW = False
+
+                if not GPU_AVAILABLE:
+                    # CPU SIMD: Vectorized with NumPy
+                    unique_values_set = np.unique(weights)
+                    unique_values = len(unique_values_set)
+
+                    # Vectorized sparse filtering
+                    abs_weights = np.abs(weights)
+                    sparse_mask = abs_weights < self.threshold
+                    sparse_count = int(np.sum(sparse_mask))
+
+                    # Get non-sparse weights and their indices (vectorized)
                     from decimal import Decimal
 
-                    non_sparse_indices = non_sparse_indices_gpu.get().tolist()
+                    non_sparse_indices = np.where(~sparse_mask)[0].tolist()
                     non_sparse_weights = [
-                        Decimal(str(float(w)))
-                        for w in non_sparse_weights_gpu.get().tolist()
+                        Decimal(str(float(w))) for w in weights[~sparse_mask].tolist()
                     ]
 
                     logger.info(
-                        f"  [GPU] Processed {total_weights:,} weights | {unique_values:,} unique"
+                        f"  [CPU SIMD] Processed {total_weights:,} weights | {unique_values:,} unique"
                     )
-                except Exception as e:
-                    logger.warning(f"GPU processing failed: {e}, falling back to CPU")
-                    GPU_AVAILABLE_NOW = False
 
-            if not GPU_AVAILABLE:
-                # CPU SIMD: Vectorized with NumPy
-                unique_values_set = np.unique(weights)
-                unique_values = len(unique_values_set)
-
-                # Vectorized sparse filtering
-                abs_weights = np.abs(weights)
-                sparse_mask = abs_weights < self.threshold
-                sparse_count = int(np.sum(sparse_mask))
-
-                # Get non-sparse weights and their indices (vectorized)
-                from decimal import Decimal
-
-                non_sparse_indices = np.where(~sparse_mask)[0].tolist()
-                non_sparse_weights = [
-                    Decimal(str(float(w))) for w in weights[~sparse_mask].tolist()
-                ]
+                self.stats["sparse_skipped"] = (
+                    self.stats.get("sparse_skipped", 0) + sparse_count
+                )
+                self.stats["total_processed"] += total_weights
 
                 logger.info(
-                    f"  [CPU SIMD] Processed {total_weights:,} weights | {unique_values:,} unique"
+                    f"  Sparse filter: {sparse_count:,} skipped ({sparse_count/total_weights*100:.1f}%)"
+                )
+                logger.info(
+                    f"  Processing {len(non_sparse_weights):,} non-sparse weights..."
                 )
 
-            self.stats["sparse_skipped"] = (
-                self.stats.get("sparse_skipped", 0) + sparse_count
-            )
-            self.stats["total_processed"] += total_weights
+                # Batch atomize all non-sparse weights
+                weight_to_atom = await self._atomize_weight_batch(conn, non_sparse_weights)
 
-            logger.info(
-                f"  Sparse filter: {sparse_count:,} skipped ({sparse_count/total_weights*100:.1f}%)"
-            )
-            logger.info(
-                f"  Processing {len(non_sparse_weights):,} non-sparse weights..."
-            )
+                # Build compositions (vectorized preparation)
+                compositions = [
+                    {"component_id": weight_to_atom[weight], "sequence_idx": int(idx)}
+                    for idx, weight in zip(non_sparse_indices, non_sparse_weights)
+                ]
 
-            # Batch atomize all non-sparse weights
-            weight_to_atom = await self._atomize_weight_batch(conn, non_sparse_weights)
+                # Batch insert all compositions
+                if compositions:
+                    total_comps = len(compositions)
+                    logger.info(f"  Batch inserting {total_comps:,} compositions...")
+                    await self._create_composition_batch(conn, tensor_atom_id, compositions)
+                    logger.info(f"  ✓ Inserted {total_comps:,} compositions")
 
-            # Build compositions (vectorized preparation)
-            compositions = [
-                {"component_id": weight_to_atom[weight], "sequence_idx": int(idx)}
-                for idx, weight in zip(non_sparse_indices, non_sparse_weights)
-            ]
-
-            # Batch insert all compositions
-            if compositions:
-                total_comps = len(compositions)
-                logger.info(f"  Batch inserting {total_comps:,} compositions...")
-                await self._create_composition_batch(conn, tensor_atom_id, compositions)
-                logger.info(f"  ✓ Inserted {total_comps:,} compositions")
-
-            unique_so_far = len(self.cache)
-            dedup_ratio = self.stats["total_processed"] / max(unique_so_far, 1)
-            sparse_pct = (
-                self.stats.get("sparse_skipped", 0) / self.stats["total_processed"]
-            ) * 100
-            logger.info(
-                f"  ✓ Tensor complete: {self.stats['total_processed']:,} weights processed, "
-                f"{unique_so_far:,} unique atoms, {dedup_ratio:.1f}x dedup, {sparse_pct:.1f}% sparse"
-            )
+                unique_so_far = len(self.cache)
+                dedup_ratio = self.stats["total_processed"] / max(unique_so_far, 1)
+                sparse_pct = (
+                    self.stats.get("sparse_skipped", 0) / self.stats["total_processed"]
+                ) * 100
+                logger.info(
+                    f"  ✓ Tensor complete: {self.stats['total_processed']:,} weights processed, "
+                    f"{unique_so_far:,} unique atoms, {dedup_ratio:.1f}x dedup, {sparse_pct:.1f}% sparse"
+                )
         
         # Process all tensors concurrently with semaphore limiting
         tasks = [process_one_tensor(idx, tensor) for idx, tensor in enumerate(tensors_to_process)]
