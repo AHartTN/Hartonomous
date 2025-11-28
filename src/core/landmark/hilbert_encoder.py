@@ -22,14 +22,14 @@ class HilbertEncoder:
         
         Args:
             order: Hilbert curve order (resolution = 2^order per dimension)
-                   order=16 gives 65536³ = 281 trillion unique positions
+                   order=16 gives 65536 cubed = 281 trillion unique positions
         """
         self.order = order
         self.max_val = (1 << order) - 1
     
     def encode(self, x: float, y: float, z: float) -> int:
         """
-        Encode normalized [0,1]³ position to Hilbert index.
+        Encode normalized [0,1] cubed position to Hilbert index.
         
         Args:
             x, y, z: Coordinates in [0, 1] range
