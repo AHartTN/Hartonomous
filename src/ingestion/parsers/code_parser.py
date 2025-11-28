@@ -79,13 +79,35 @@ class CodeParser(BaseAtomizer):
             
             self.stats["atoms_created"] += 1
         
-        # Process compositions
+        # Build hash-to-id mapping from created atoms
+        hash_to_id = {}
+        async with conn.cursor() as cur:
+            for atom in result.get("atoms", []):
+                atom_hash = bytes.fromhex(atom["contentHash"])
+                await cur.execute(
+                    "SELECT atom_id FROM atom WHERE content_hash = %s",
+                    (atom_hash,)
+                )
+                row = await cur.fetchone()
+                if row:
+                    hash_to_id[atom["contentHash"]] = row[0]
+
+        # Process compositions with proper hash-to-id mapping
         for comp in result.get("compositions", []):
-            parent_hash = bytes.fromhex(comp["parentHash"])
-            component_hash = bytes.fromhex(comp["componentHash"])
-            
-            # TODO: Map hashes to atom_ids and create compositions
-            
+            parent_hash_hex = comp["parentHash"]
+            component_hash_hex = comp["componentHash"]
+
+            parent_id = hash_to_id.get(parent_hash_hex)
+            component_id = hash_to_id.get(component_hash_hex)
+
+            if parent_id and component_id:
+                await self.create_composition(
+                    conn,
+                    parent_id,
+                    component_id,
+                    comp.get("sequenceIndex", 0)
+                )
+
             self.stats["total_processed"] += 1
         
         return parent_atom_id

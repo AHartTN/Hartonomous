@@ -33,14 +33,14 @@ BEGIN
         RAISE EXCEPTION 'Region atom % not found', p_region_atom_id;
     END IF;
     
-    -- Generate all Hilbert indexes in range
-    -- TODO: Implement inverse Hilbert transform (Hilbert ? x,y)
-    -- For now, return Hilbert indexes only
+    -- Generate all Hilbert indexes in range and decode to x,y coordinates
+    -- PROPER INVERSE HILBERT TRANSFORM using hilbert_decode_3d
     RETURN QUERY
-    SELECT 
+    SELECT
         h_idx AS hilbert_index,
-        0 AS x,  -- Placeholder - needs inverse Hilbert
-        0 AS y,  -- Placeholder - needs inverse Hilbert  
+        -- Decode Hilbert index to normalized coordinates, then scale to image dimensions
+        FLOOR((SELECT x FROM hilbert_decode_3d(h_idx, 10)) * v_width)::INTEGER AS x,
+        FLOOR((SELECT y FROM hilbert_decode_3d(h_idx, 10)) * v_width)::INTEGER AS y,
         v_r AS r,
         v_g AS g,
         v_b AS b
@@ -48,6 +48,6 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION expand_hilbert_region(BIGINT) IS 
+COMMENT ON FUNCTION expand_hilbert_region(BIGINT) IS
 'Expand RLE-compressed Hilbert region back to individual pixels.
-TODO: Implement inverse Hilbert curve transform for x,y coordinates.';
+Uses hilbert_decode_3d() to convert Hilbert indexes back to (x,y) pixel coordinates.';

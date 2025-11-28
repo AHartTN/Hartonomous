@@ -148,7 +148,11 @@ END;
 $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE;
 
 -- ============================================================================
--- hilbert_range_query: Get Hilbert index range for spatial bounding box
+-- hilbert_range_query: Get Hilbert index ranges for spatial bounding box
+-- ============================================================================
+-- PROPER IMPLEMENTATION using octree subdivision
+-- A 3D box maps to MULTIPLE disjoint Hilbert ranges, not a single range
+-- This function returns all ranges that intersect the bounding box
 -- ============================================================================
 CREATE OR REPLACE FUNCTION hilbert_range_query(
     p_x_min FLOAT8,
@@ -157,20 +161,101 @@ CREATE OR REPLACE FUNCTION hilbert_range_query(
     p_y_max FLOAT8,
     p_z_min FLOAT8,
     p_z_max FLOAT8,
-    p_bits INT DEFAULT 21
-) RETURNS TABLE(hilbert_min BIGINT, hilbert_max BIGINT) AS $$
+    p_bits INT DEFAULT 21,
+    p_max_ranges INT DEFAULT 64  -- Limit number of ranges for performance
+) RETURNS TABLE(range_start BIGINT, range_end BIGINT) AS $$
+DECLARE
+    v_stack RECORD[];
+    v_node RECORD;
+    v_level INT;
+    v_octant INT;
+    v_hilbert_base BIGINT;
+    v_octant_size FLOAT8;
+    v_x_mid FLOAT8;
+    v_y_mid FLOAT8;
+    v_z_mid FLOAT8;
+    v_intersects BOOLEAN;
+    v_contained BOOLEAN;
+    v_range_count INT := 0;
 BEGIN
-    -- Simplified bounding approach
-    -- Full implementation would recursively subdivide octree
-    RETURN QUERY SELECT
-        hilbert_encode_3d(p_x_min, p_y_min, p_z_min, p_bits),
-        hilbert_encode_3d(p_x_max, p_y_max, p_z_max, p_bits);
+    -- Start with root octant at level 0
+    v_stack := ARRAY[
+        ROW(0, 0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0)::RECORD
+    ];
+
+    WHILE array_length(v_stack, 1) > 0 AND v_range_count < p_max_ranges LOOP
+        -- Pop from stack
+        v_node := v_stack[array_length(v_stack, 1)];
+        v_stack := v_stack[1:array_length(v_stack, 1)-1];
+
+        v_level := (v_node).f1;
+        v_hilbert_base := (v_node).f2;
+
+        -- Get octant bounds
+        DECLARE
+            v_ox_min FLOAT8 := (v_node).f3;
+            v_ox_max FLOAT8 := (v_node).f4;
+            v_oy_min FLOAT8 := (v_node).f5;
+            v_oy_max FLOAT8 := (v_node).f6;
+            v_oz_min FLOAT8 := (v_node).f7;
+            v_oz_max FLOAT8 := (v_node).f8;
+        BEGIN
+            -- Check intersection with query box
+            v_intersects := (
+                v_ox_min <= p_x_max AND v_ox_max >= p_x_min AND
+                v_oy_min <= p_y_max AND v_oy_max >= p_y_min AND
+                v_oz_min <= p_z_max AND v_oz_max >= p_z_min
+            );
+
+            IF NOT v_intersects THEN
+                CONTINUE;  -- Skip non-intersecting octants
+            END IF;
+
+            -- Check if query box completely contains octant
+            v_contained := (
+                p_x_min <= v_ox_min AND p_x_max >= v_ox_max AND
+                p_y_min <= v_oy_min AND p_y_max >= v_oy_max AND
+                p_z_min <= v_oz_min AND p_z_max >= v_oz_max
+            );
+
+            IF v_contained OR v_level >= p_bits THEN
+                -- Emit range for this octant
+                RETURN QUERY SELECT
+                    v_hilbert_base,
+                    v_hilbert_base + (1::BIGINT << (3 * (p_bits - v_level))) - 1;
+                v_range_count := v_range_count + 1;
+            ELSE
+                -- Subdivide octant into 8 children
+                v_octant_size := (v_ox_max - v_ox_min) / 2.0;
+                v_x_mid := (v_ox_min + v_ox_max) / 2.0;
+                v_y_mid := (v_oy_min + v_oy_max) / 2.0;
+                v_z_mid := (v_oz_min + v_oz_max) / 2.0;
+
+                -- Add children to stack in Hilbert curve order
+                FOR v_octant IN 0..7 LOOP
+                    v_stack := array_append(v_stack, ROW(
+                        v_level + 1,
+                        (v_hilbert_base << 3) | v_octant,
+                        CASE WHEN (v_octant & 4) = 0 THEN v_ox_min ELSE v_x_mid END,
+                        CASE WHEN (v_octant & 4) = 0 THEN v_x_mid ELSE v_ox_max END,
+                        CASE WHEN (v_octant & 2) = 0 THEN v_oy_min ELSE v_y_mid END,
+                        CASE WHEN (v_octant & 2) = 0 THEN v_y_mid ELSE v_oy_max END,
+                        CASE WHEN (v_octant & 1) = 0 THEN v_oz_min ELSE v_z_mid END,
+                        CASE WHEN (v_octant & 1) = 0 THEN v_z_mid ELSE v_oz_max END
+                    )::RECORD);
+                END LOOP;
+            END IF;
+        END;
+    END LOOP;
+
+    RETURN;
 END;
 $$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE;
 
 COMMENT ON FUNCTION hilbert_range_query IS
-'Calculate Hilbert index range for spatial bounding box query.
-Allows efficient B-tree range scan instead of full spatial index scan.';
+'Calculate Hilbert index ranges for spatial bounding box query using octree subdivision.
+Returns multiple disjoint ranges that together cover all points within the box.
+This enables efficient B-tree range scans while maintaining spatial accuracy.';
 
 -- ============================================================================
 -- Grants

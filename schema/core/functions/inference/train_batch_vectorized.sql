@@ -44,15 +44,29 @@ BEGIN
                 (SELECT spatial_key FROM atom WHERE atom_id = p.target_atom)
             ) AS loss
         FROM predictions p
+    ),
+    -- Bulk weight updates - single SET-BASED UPDATE operation
+    weight_updates AS (
+        UPDATE atom_relation ar
+        SET weight = CASE
+            WHEN l.loss < 0.5 THEN
+                -- Low loss: reinforce (increase weight)
+                ar.weight + (p_learning_rate * (1.0 - l.loss))
+            ELSE
+                -- High loss: weaken (decrease weight)
+                GREATEST(0.0, ar.weight - (p_learning_rate * l.loss))
+        END
+        FROM losses l
+        JOIN predictions p ON p.idx = l.idx
+        WHERE (ar.from_atom_id = ANY(p.input_atoms) AND ar.to_atom_id = l.target_atom)
+           OR (ar.from_atom_id = ANY(p.input_atoms) AND ar.to_atom_id = l.predicted_atom)
+        RETURNING ar.relation_id
     )
-    -- Bulk weight updates (no loop)
-    SELECT 
+    -- Return losses for monitoring
+    SELECT
         idx::INTEGER,
         loss::REAL
     FROM losses;
-    
-    -- Bulk reinforce/weaken (set-based)
-    -- TODO: Implement batch weight updates via single UPDATE statement
 END;
 $$;
 
