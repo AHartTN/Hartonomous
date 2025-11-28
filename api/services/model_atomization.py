@@ -161,12 +161,19 @@ class GGUFAtomizer(BaseAtomizer):
         # Phase 2: Atomize architecture hyperparameters
         await self._atomize_architecture(conn, reader, model_atom_id)
 
-        # Phase 3: Atomize tensor weights
-        for tensor_idx, tensor in enumerate(reader.tensors):
-            if max_tensors and tensor_idx >= max_tensors:
-                logger.info(f"Stopping at max_tensors={max_tensors}")
-                break
-
+        # Phase 3: Atomize tensor weights (with parallelization)
+        tensors_to_process = reader.tensors
+        if max_tensors:
+            tensors_to_process = reader.tensors[:max_tensors]
+            logger.info(f"Processing first {max_tensors} tensors")
+        
+        # Process tensors in parallel batches for multi-core utilization
+        import asyncio
+        import numpy as np
+        batch_size = 24  # Process 24 tensors concurrently (optimized for 32-core CPUs)
+        
+        async def process_tensor(tensor_idx: int, tensor):
+            """Process a single tensor with all its weights."""
             logger.info(
                 f"Processing tensor {tensor_idx+1}/{len(reader.tensors)}: {tensor.name} {tensor.shape}"
             )
@@ -194,8 +201,6 @@ class GGUFAtomizer(BaseAtomizer):
             self.stats["tensors_processed"] = self.stats.get("tensors_processed", 0) + 1
 
             # Flatten tensor and atomize weights with BATCHING + SIMD/GPU
-            import numpy as np
-
             weights = tensor.data.flatten()
             total_weights = len(weights)
 
@@ -292,6 +297,21 @@ class GGUFAtomizer(BaseAtomizer):
                 f"  ✓ Tensor complete: {self.stats['total_processed']:,} weights processed, "
                 f"{unique_so_far:,} unique atoms, {dedup_ratio:.1f}x dedup, {sparse_pct:.1f}% sparse"
             )
+        
+        # Execute tensor processing in parallel batches
+        for batch_start in range(0, len(tensors_to_process), batch_size):
+            batch_end = min(batch_start + batch_size, len(tensors_to_process))
+            batch = [
+                (batch_start + i, tensors_to_process[batch_start + i])
+                for i in range(batch_end - batch_start)
+            ]
+            
+            logger.info(f"Processing tensor batch {batch_start+1}-{batch_end} of {len(tensors_to_process)} (parallel)")
+            
+            # Process batch in parallel
+            await asyncio.gather(*[process_tensor(idx, tensor) for idx, tensor in batch])
+            
+            logger.info(f"  ✓ Batch {batch_start+1}-{batch_end} complete")
 
         logger.info(
             f"GGUF atomization complete: {self.stats['tensors_processed']} tensors"
@@ -421,6 +441,7 @@ class GGUFAtomizer(BaseAtomizer):
         """Batch atomize multiple weights - 100-200x faster than individual calls.
         Uses GPU acceleration when available and enabled."""
         import time
+        from decimal import Decimal
         
         # Determine device
         use_gpu = settings.use_gpu and GPU_AVAILABLE
@@ -428,9 +449,12 @@ class GGUFAtomizer(BaseAtomizer):
         start_time = time.time()
         
         # Deduplicate input weights using GPU if available
+        # Note: GPU returns float, CPU preserves Decimal - normalize to Decimal
         if use_gpu:
             import numpy as np
-            unique_weights = self._deduplicate_weights_gpu(weights)
+            unique_floats = self._deduplicate_weights_gpu(weights)
+            # Convert back to Decimal for consistent cache keys
+            unique_weights = [Decimal(str(f)) for f in unique_floats]
             device_used = "GPU"
         else:
             unique_weights = list(set(weights))
@@ -497,7 +521,7 @@ class GGUFAtomizer(BaseAtomizer):
         self, conn: AsyncConnection, parent_id: int, compositions: List[Dict[str, int]]
     ):
         """Batch create compositions - much faster than individual inserts."""
-        batch_size = 5000
+        batch_size = 50000  # Increased for better throughput (~400KB per batch)
         total_batches = (len(compositions) + batch_size - 1) // batch_size
 
         for batch_idx, i in enumerate(range(0, len(compositions), batch_size)):
