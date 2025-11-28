@@ -188,14 +188,16 @@ class GGUFAtomizer(BaseAtomizer):
             
             # Batch insert all compositions
             if compositions:
-                logger.info(f"  Inserting {len(compositions):,} compositions...")
+                total_comps = len(compositions)
+                logger.info(f"  Batch inserting {total_comps:,} compositions...")
                 await self._create_composition_batch(conn, tensor_atom_id, compositions)
+                logger.info(f"  ✓ Inserted {total_comps:,} compositions")
             
             unique_so_far = len(self.cache)
             dedup_ratio = self.stats["total_processed"] / max(unique_so_far, 1)
             sparse_pct = (self.stats.get("sparse_skipped", 0) / self.stats["total_processed"]) * 100
             logger.info(
-                f"  ✓ Tensor complete: {self.stats['total_processed']:,} weights, "
+                f"  ✓ Tensor complete: {self.stats['total_processed']:,} weights processed, "
                 f"{unique_so_far:,} unique atoms, {dedup_ratio:.1f}x dedup, {sparse_pct:.1f}% sparse"
             )
         
@@ -344,13 +346,26 @@ class GGUFAtomizer(BaseAtomizer):
     ):
         """Batch create compositions - much faster than individual inserts."""
         batch_size = 5000
-        for i in range(0, len(compositions), batch_size):
+        total_batches = (len(compositions) + batch_size - 1) // batch_size
+        
+        for batch_idx, i in enumerate(range(0, len(compositions), batch_size)):
             batch = compositions[i:i+batch_size]
+            batch_num = batch_idx + 1
+            batch_start = i
+            batch_end = min(i + batch_size, len(compositions))
+            
             async with conn.cursor() as cur:
                 await cur.execute(
                     "SELECT create_composition_batch(%s::bigint, %s::jsonb[])",
                     (parent_id, [json.dumps(c) for c in batch])
                 )
+            
+            # Progress reporting every batch
+            progress_pct = (batch_end / len(compositions)) * 100
+            logger.info(
+                f"    [{progress_pct:5.1f}%] Batch {batch_num}/{total_batches}: "
+                f"Inserted {batch_end:,}/{len(compositions):,} compositions"
+            )
 
     def _generate_sample_weights(self, count: int) -> List[float]:
         """Generate sample weight distribution for demonstration."""
