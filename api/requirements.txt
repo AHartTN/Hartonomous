@@ -45,6 +45,13 @@ pillow>=10.2.0
 # Audio processing  
 # wave (stdlib, no install needed)
 
+# Compression (required by src/core/compression/multi_layer.py)
+lz4>=4.3.2
+
+# Parser dependencies (required by src/ingestion/parsers/)
+pandas>=2.0.0  # structured_parser.py
+tree-sitter>=0.20.0  # code_parser.py (optional but imported)
+
 # Azure SDKs (production)
 azure-identity>=1.15.0
 azure-keyvault-secrets>=4.8.0
