@@ -1,141 +1,15 @@
-"""
-Code Atomization Service Client
-
-Calls the C# Roslyn/Tree-sitter microservice for deep code AST atomization.
-
-Copyright (c) 2025 Anthony Hart. All Rights Reserved.
-"""
+"""Code atomization service for database insertion."""
 
 import logging
+import json
+import base64
 from typing import Any, Dict, List, Optional
 
-import httpx
 from psycopg import AsyncConnection
 
-from api.config import settings
+from .code_atomizer_client import CodeAtomizerClient
 
 logger = logging.getLogger(__name__)
-
-
-class CodeAtomizerClient:
-    """Client for Hartonomous Code Atomizer microservice (C# + Roslyn)."""
-
-    def __init__(self, base_url: str = settings.code_atomizer_url):
-        self.base_url = base_url.rstrip("/")
-        self.client = httpx.AsyncClient(timeout=30.0)
-
-    async def atomize_csharp(
-        self, code: str, filename: str = "code.cs", metadata: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """
-        Atomize C# code using Roslyn semantic analysis.
-
-        Args:
-            code: C# source code
-            filename: Filename for metadata
-            metadata: Optional JSON metadata
-
-        Returns:
-            Atomization result with atoms, compositions, relations
-        """
-        try:
-            response = await self.client.post(
-                f"{self.base_url}/api/v1/atomize/csharp",
-                json={"code": code, "fileName": filename, "metadata": metadata},
-            )
-            response.raise_for_status()
-            return response.json()
-        except httpx.HTTPError as e:
-            logger.error(f"Code atomization failed: {e}")
-            raise
-
-    async def atomize_file(
-        self, file_path: str, language: str = "csharp"
-    ) -> Dict[str, Any]:
-        """
-        Atomize code file via microservice.
-
-        Args:
-            file_path: Path to code file
-            language: Language (csharp, python, etc.)
-
-        Returns:
-            Atomization result
-        """
-        with open(file_path, "rb") as f:
-            files = {"file": (file_path, f, "text/plain")}
-
-            try:
-                response = await self.client.post(
-                    f"{self.base_url}/api/v1/atomize/{language}/file", files=files
-                )
-                response.raise_for_status()
-                return response.json()
-            except httpx.HTTPError as e:
-                logger.error(f"File atomization failed: {e}")
-                raise
-
-    async def health_check(self) -> bool:
-        """
-        Check if code atomizer service is healthy.
-
-        Returns:
-            True if healthy
-        """
-        try:
-            response = await self.client.get(
-                f"{self.base_url}/api/v1/atomize/health"
-            )
-            return response.status_code == 200
-        except httpx.HTTPError:
-            return False
-
-    async def close(self):
-        """Close HTTP client."""
-        await self.client.aclose()
-
-    async def atomize_any_language(
-        self, code: str, language: str, filename: str = "code.txt", metadata: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """
-        Atomize code in any supported language (Python, JS, Go, Rust, Java, etc.)
-
-        Args:
-            code: Source code
-            language: Language (python, javascript, go, rust, etc.)
-            filename: Filename for metadata
-            metadata: Optional JSON metadata
-
-        Returns:
-            Atomization result with atoms, compositions, relations
-        """
-        try:
-            response = await self.client.post(
-                f"{self.base_url}/api/v1/atomize/{language}",
-                json={"code": code, "fileName": filename, "metadata": metadata},
-            )
-            response.raise_for_status()
-            return response.json()
-        except httpx.HTTPError as e:
-            logger.error(f"Code atomization failed for {language}: {e}")
-            raise
-
-    async def get_supported_languages(self) -> Dict[str, Any]:
-        """
-        Get list of supported languages.
-
-        Returns:
-            Dictionary of supported languages by parser
-        """
-        try:
-            response = await self.client.get(
-                f"{self.base_url}/api/v1/atomize/languages"
-            )
-            response.raise_for_status()
-            return response.json()
-        except httpx.HTTPError as e:
-            logger.error(f"Failed to get supported languages: {e}")
-            raise
 
 
 class CodeAtomizationService:
@@ -155,20 +29,7 @@ class CodeAtomizationService:
         language: str = "csharp",
         metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """
-        Atomize code via microservice, then insert into database.
-
-        Args:
-            conn: Database connection
-            code: Source code
-            filename: Filename
-            language: Programming language
-            metadata: Optional metadata
-
-        Returns:
-            Insertion result
-        """
-        # Call microservice
+        """Atomize code via microservice, then insert into database."""
         logger.info(
             f"Atomizing {language} code via microservice: {filename} ({len(code)} bytes)"
         )
@@ -178,7 +39,6 @@ class CodeAtomizationService:
         if not result.get("success"):
             raise ValueError("Atomization failed")
 
-        # Extract atoms, compositions, relations
         atoms = result["atoms"]
         compositions = result["compositions"]
         relations = result["relations"]
@@ -188,13 +48,8 @@ class CodeAtomizationService:
             f"{len(compositions)} compositions, {len(relations)} relations"
         )
 
-        # Bulk insert atoms
         atom_id_map = await self._bulk_insert_atoms(conn, atoms)
-
-        # Bulk insert compositions
         await self._bulk_insert_compositions(conn, compositions, atom_id_map)
-
-        # Bulk insert relations
         await self._bulk_insert_relations(conn, relations, atom_id_map)
 
         return {
@@ -207,23 +62,13 @@ class CodeAtomizationService:
     async def _bulk_insert_atoms(
         self, conn: AsyncConnection, atoms: List[Dict[str, Any]]
     ) -> Dict[str, int]:
-        """
-        Bulk insert atoms into database.
-        Stores spatial_key as POINTZM(x, y, z, hilbert_index) for efficient spatial queries.
-
-        Returns:
-            Mapping of content_hash (base64) to atom_id
-        """
-        import base64
-
+        """Bulk insert atoms into database."""
         atom_id_map = {}
 
         async with conn.cursor() as cur:
             for atom in atoms:
-                # Decode base64 hash
                 content_hash = base64.b64decode(atom["contentHash"])
 
-                # Check if atom exists (deduplication)
                 await cur.execute(
                     "SELECT atom_id FROM atom WHERE content_hash = %s", (content_hash,)
                 )
@@ -233,14 +78,9 @@ class CodeAtomizationService:
                     atom_id_map[atom["contentHash"]] = existing[0]
                     continue
 
-                # Extract Hilbert index from metadata
-                import json
-
                 metadata = json.loads(atom["metadata"])
                 hilbert_index = metadata.get("hilbertIndex", 0)
 
-                # Store as POINTZM (x, y, z, hilbert_index)
-                # M dimension holds the Hilbert curve index for O(log n) spatial queries
                 spatial_key = (
                     f"SRID=0;POINTZM("
                     f"{atom['spatialKey']['x']} "
@@ -265,7 +105,7 @@ class CodeAtomizationService:
                     """,
                     (
                         content_hash,
-                        b"",  # AtomicValue not sent back from microservice (optimization)
+                        b"",
                         atom["canonicalText"],
                         spatial_key,
                         atom["modality"],
@@ -347,6 +187,3 @@ class CodeAtomizationService:
                 )
 
         logger.info(f"Inserted {len(relations)} relations")
-
-
-__all__ = ["CodeAtomizerClient", "CodeAtomizationService"]
