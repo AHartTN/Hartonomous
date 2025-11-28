@@ -117,17 +117,7 @@ class Settings(BaseSettings):
     b2c_client_id: Optional[str] = Field(default=None, description="B2C client ID")
     b2c_policy_name: Optional[str] = Field(default=None, description="B2C policy name")
 
-    # AGE Worker Settings (EXPERIMENTAL - Not recommended for production)
-    # Apache AGE development paused after Oct 2024 team dismissal
-    # Use Neo4j for production provenance tracking instead
-    age_worker_enabled: bool = Field(
-        default=False, description="Enable AGE sync worker (experimental)"
-    )
-    age_worker_poll_interval: int = Field(
-        default=5, description="Worker poll interval (seconds)"
-    )
-
-    # Neo4j Settings (RECOMMENDED - Production-ready provenance graph)
+    # Neo4j Settings (Production-ready provenance graph)
     neo4j_enabled: bool = Field(
         default=True, description="Enable Neo4j provenance sync"
     )
@@ -201,23 +191,12 @@ class Settings(BaseSettings):
                             self.pool_min_size = int(pool_min)
 
                         pool_max = app_config_client.get_setting(
-                            "Hartonomous:Api:PoolMaxSize"
+                            "Hartonomous:Database:PoolMaxSize"
                         )
                         if pool_max:
                             self.pool_max_size = int(pool_max)
 
-                        # AGE worker settings
-                        age_enabled_str = app_config_client.get_setting(
-                            "Hartonomous:AgeWorker:Enabled"
-                        )
-                        if age_enabled_str:
-                            self.age_worker_enabled = age_enabled_str.lower() == "true"
-
-                        age_interval = app_config_client.get_setting(
-                            "Hartonomous:AgeWorker:PollInterval"
-                        )
-                        if age_interval:
-                            self.age_worker_poll_interval = int(age_interval)
+                        # AGE worker removed - Neo4j is the chosen graph database
 
                         # PostgreSQL connection string (choose based on environment)
                         # For now, use HART-DESKTOP (current machine)

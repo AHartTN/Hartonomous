@@ -25,25 +25,7 @@
 
 ---
 
-### 2. AGE Graph Sync Worker
-**File**: `api/workers/age_sync.py`
-**Status**: Stub implementation, marked experimental
-
-**TODOs Found**:
-- Line 169: Actual AGE sync logic
-- Line 231: AGE relation sync implementation
-
-**Current State**: Neo4j is production alternative, AGE is optional
-**Decision Needed**: 
-- Option A: Complete AGE implementation
-- Option B: Remove AGE worker entirely (Neo4j works)
-- Option C: Leave as stub for future
-
-**Priority**: **MEDIUM-LOW** (Neo4j already working)
-
----
-
-### 3. API Route Completion
+### 2. API Route Completion
 **Files**: `api/routes/ingest.py`, `api/routes/query.py`
 
 **Current State**:

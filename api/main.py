@@ -87,16 +87,6 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("Shutting down Hartonomous API...")
 
-    # Stop AGE worker
-    if age_worker_task:
-        logger.info("Stopping AGE sync worker...")
-        age_worker_task.cancel()
-        try:
-            await age_worker_task
-        except asyncio.CancelledError:
-            pass
-        logger.info("AGE sync worker stopped")
-
     # Stop Neo4j worker
     if neo4j_worker_task:
         logger.info("Stopping Neo4j provenance worker...")
