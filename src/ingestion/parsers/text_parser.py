@@ -9,7 +9,7 @@ from pathlib import Path
 import re
 
 from ...core.atomization import Atomizer, ModalityType
-from ...core.landmark_projection import LandmarkProjector
+from ...core.landmark import LandmarkProjector
 
 
 class TextParser:

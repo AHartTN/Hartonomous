@@ -9,7 +9,7 @@ from typing import Dict, Any, List, Optional
 from pathlib import Path
 
 from ..core.atomization import Atom
-from ..core.landmark_projection import Landmark
+from ..core.landmark import LandmarkPosition as Landmark
 from ..db.ingestion_db import IngestionDB
 from .ingestion_status import IngestionStatus
 from .ingestion_result import IngestionResult

@@ -9,7 +9,7 @@ from typing import Dict, Any, Iterator, List, Optional
 from pathlib import Path
 
 from ...core.atomization import Atomizer, ModalityType
-from ...core.landmark_projection import LandmarkProjector
+from ...core.landmark import LandmarkProjector
 
 
 class StructuredParser:

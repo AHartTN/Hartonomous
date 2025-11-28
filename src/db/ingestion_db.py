@@ -5,7 +5,7 @@ from psycopg2.extras import execute_values, execute_batch
 import numpy as np
 from typing import Dict, List, Any, Optional
 from ..core.atomization import Atom
-from ..core.landmark_projection import Landmark
+from ..core.landmark import LandmarkPosition as Landmark
 import logging
 
 logger = logging.getLogger(__name__)

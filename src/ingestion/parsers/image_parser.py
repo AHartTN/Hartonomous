@@ -6,7 +6,7 @@ from pathlib import Path
 from PIL import Image
 
 from ...core.atomization import Atomizer, ModalityType
-from ...core.landmark_projection import LandmarkProjector
+from ...core.landmark import LandmarkProjector
 
 
 class ImageParser:

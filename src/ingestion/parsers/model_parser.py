@@ -8,7 +8,7 @@ from typing import Dict, List, Any, Optional, Iterator
 from pathlib import Path
 
 from ...core.atomization import Atomizer, ModalityType
-from ...core.landmark_projection import LandmarkProjector
+from ...core.landmark import LandmarkProjector
 
 
 class ModelParser:

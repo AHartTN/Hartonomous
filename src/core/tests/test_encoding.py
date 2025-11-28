@@ -2,7 +2,7 @@
 
 import pytest
 import numpy as np
-from src.core.encoding import (
+from src.core.compression.encoding import (
     SparseEncoder, RLEEncoder, DeltaEncoder,
     MultiLayerEncoder, AtomEncoder, EncodingType
 )
