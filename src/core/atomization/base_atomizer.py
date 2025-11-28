@@ -1,10 +1,10 @@
 """Base atomizer for SQL-based atomization."""
 
 import hashlib
+import json
 import logging
 from typing import Any, Dict, Optional
 from psycopg import AsyncConnection
-from psycopg.types.json import Json
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ class BaseAtomizer:
         async with conn.cursor() as cur:
             await cur.execute(
                 "SELECT atomize_value(%s::bytea, %s, %s::jsonb)",
-                (value, canonical_text, Json(metadata))
+                (value, canonical_text, json.dumps(metadata))
             )
             return (await cur.fetchone())[0]
     
@@ -44,13 +44,17 @@ class BaseAtomizer:
         component_id: int,
         sequence_idx: int
     ):
-        """Link component to parent via atom_composition."""
+        """Link component to parent via SQL create_composition() function."""
         async with conn.cursor() as cur:
             await cur.execute(
                 """
-                INSERT INTO atom_composition (parent_atom_id, component_atom_id, sequence_index)
-                VALUES (%s, %s, %s)
-                ON CONFLICT DO NOTHING
+                SELECT create_composition(
+                    %s::bigint,
+                    %s::bigint,
+                    %s::bigint,
+                    '{}'::jsonb
+                )
                 """,
                 (parent_id, component_id, sequence_idx)
             )
+

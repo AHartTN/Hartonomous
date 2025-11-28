@@ -105,31 +105,21 @@ class IngestionDB:
     
     async def store_landmark(self, landmark: Landmark) -> int:
         """
-        Store landmark with spatial geometry.
+        Store landmark with spatial geometry using SQL function.
         Returns landmark_id.
         """
         with self.conn.cursor() as cur:
             try:
+                # Use SQL function
                 cur.execute("""
-                    INSERT INTO landmark (
-                        landmark_name,
-                        spatial_position,
-                        weight,
-                        metadata,
-                        created_at
+                    SELECT store_landmark(
+                        %s::text,
+                        %s::double precision,
+                        %s::double precision,
+                        %s::double precision,
+                        %s::real,
+                        %s::jsonb
                     )
-                    VALUES (
-                        %s,
-                        ST_MakePoint(%s, %s, %s),
-                        %s,
-                        %s,
-                        now()
-                    )
-                    ON CONFLICT (landmark_name)
-                    DO UPDATE SET
-                        weight = EXCLUDED.weight,
-                        metadata = landmark.metadata || EXCLUDED.metadata
-                    RETURNING landmark_id
                 """, (
                     landmark.name,
                     landmark.position[0],
@@ -152,32 +142,19 @@ class IngestionDB:
     
     async def create_association(self, atom_id: int, landmark_id: int) -> int:
         """
-        Create association between atom and landmark.
+        Create association between atom and landmark using SQL function.
         Returns association_id.
         """
         with self.conn.cursor() as cur:
             try:
+                # Use SQL function
                 cur.execute("""
-                    INSERT INTO atom_landmark_association (
-                        atom_id,
-                        landmark_id,
-                        distance,
-                        created_at
+                    SELECT create_association(
+                        %s::bigint,
+                        %s::bigint,
+                        '{}'::jsonb
                     )
-                    VALUES (
-                        %s,
-                        %s,
-                        ST_3DDistance(
-                            (SELECT spatial_key FROM atom WHERE atom_id = %s),
-                            (SELECT spatial_position FROM landmark WHERE landmark_id = %s)
-                        ),
-                        now()
-                    )
-                    ON CONFLICT (atom_id, landmark_id)
-                    DO UPDATE SET
-                        distance = EXCLUDED.distance
-                    RETURNING association_id
-                """, (atom_id, landmark_id, atom_id, landmark_id))
+                """, (atom_id, landmark_id))
                 
                 association_id = cur.fetchone()[0]
                 self.conn.commit()
@@ -196,7 +173,7 @@ class IngestionDB:
         metadata: Optional[Dict] = None
     ) -> List[int]:
         """
-        Create hierarchical composition.
+        Create hierarchical composition using SQL function.
         Returns list of composition_ids.
         """
         composition_ids = []
@@ -204,18 +181,14 @@ class IngestionDB:
         with self.conn.cursor() as cur:
             try:
                 for seq_idx, comp_id in enumerate(component_atom_ids):
+                    # Use SQL function instead of direct INSERT
                     cur.execute("""
-                        INSERT INTO atom_composition (
-                            parent_atom_id,
-                            component_atom_id,
-                            sequence_index,
-                            metadata,
-                            created_at
+                        SELECT create_composition(
+                            %s::bigint,
+                            %s::bigint,
+                            %s::bigint,
+                            %s::jsonb
                         )
-                        VALUES (%s, %s, %s, %s, now())
-                        ON CONFLICT (parent_atom_id, component_atom_id, sequence_index)
-                        DO NOTHING
-                        RETURNING composition_id
                     """, (
                         parent_atom_id,
                         comp_id,

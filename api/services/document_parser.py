@@ -11,12 +11,12 @@ Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 """
 
 import io
+import json
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from psycopg import AsyncConnection
-from psycopg.types.json import Json
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +84,7 @@ class DocumentParserService:
                             %s::jsonb
                         )
                         """,
-                        (doc_title.encode('utf-8'), doc_title, Json(metadata))
+                        (doc_title.encode('utf-8'), doc_title, json.dumps(metadata))
                     )
                     doc_atom_id = (await cur.fetchone())[0]
                     
@@ -118,18 +118,21 @@ class DocumentParserService:
                             """,
                             (f"page_{page_num}".encode('utf-8'), 
                              f"Page {page_num}", 
-                             Json(page_metadata))
+                             json.dumps(page_metadata))
                         )
                         page_atom_id = (await cur.fetchone())[0]
                         page_ids.append(page_atom_id)
                         total_atoms += 1
                         
-                        # Link page to document
+                        # Link page to document using SQL function
                         await cur.execute(
                             """
-                            INSERT INTO atom_composition 
-                                (parent_atom_id, component_atom_id, sequence_index)
-                            VALUES (%s, %s, %s)
+                            SELECT create_composition(
+                                %s::bigint,
+                                %s::bigint,
+                                %s::bigint,
+                                '{}'::jsonb
+                            )
                             """,
                             (doc_atom_id, page_atom_id, page_num - 1)
                         )
@@ -138,21 +141,21 @@ class DocumentParserService:
                         if text.strip():
                             await cur.execute(
                                 "SELECT atomize_text(%s, %s::jsonb)",
-                                (text, Json({"page": page_num}))
+                                (text, json.dumps({"page": page_num}))
                             )
                             char_atoms = (await cur.fetchone())[0]
                             total_atoms += len(char_atoms)
                             
-                            # Link text atoms to page
-                            # TODO: Consider paragraph/sentence level composition
-                            # For now, link all characters to page
+                            # Link text atoms to page using SQL function
                             for idx, char_atom_id in enumerate(char_atoms):
                                 await cur.execute(
                                     """
-                                    INSERT INTO atom_composition 
-                                        (parent_atom_id, component_atom_id, sequence_index)
-                                    VALUES (%s, %s, %s)
-                                    ON CONFLICT DO NOTHING
+                                    SELECT create_composition(
+                                        %s::bigint,
+                                        %s::bigint,
+                                        %s::bigint,
+                                        '{}'::jsonb
+                                    )
                                     """,
                                     (page_atom_id, char_atom_id, idx)
                                 )
@@ -229,7 +232,7 @@ class DocumentParserService:
                         %s::jsonb
                     )
                     """,
-                    (doc_title.encode('utf-8'), doc_title, Json(metadata))
+                    (doc_title.encode('utf-8'), doc_title, json.dumps(metadata))
                 )
                 doc_atom_id = (await cur.fetchone())[0]
                 
@@ -258,18 +261,21 @@ class DocumentParserService:
                         """,
                         (para.text[:64].encode('utf-8'), 
                          para.text[:100], 
-                         Json(para_metadata))
+                         json.dumps(para_metadata))
                     )
                     para_atom_id = (await cur.fetchone())[0]
                     para_ids.append(para_atom_id)
                     total_atoms += 1
                     
-                    # Link paragraph to document
+                    # Link paragraph to document using SQL function
                     await cur.execute(
                         """
-                        INSERT INTO atom_composition 
-                            (parent_atom_id, component_atom_id, sequence_index)
-                        VALUES (%s, %s, %s)
+                        SELECT create_composition(
+                            %s::bigint,
+                            %s::bigint,
+                            %s::bigint,
+                            '{}'::jsonb
+                        )
                         """,
                         (doc_atom_id, para_atom_id, para_idx)
                     )
@@ -277,19 +283,21 @@ class DocumentParserService:
                     # Atomize paragraph text
                     await cur.execute(
                         "SELECT atomize_text(%s, %s::jsonb)",
-                        (para.text, Json({"paragraph": para_idx}))
+                        (para.text, json.dumps({"paragraph": para_idx}))
                     )
                     char_atoms = (await cur.fetchone())[0]
                     total_atoms += len(char_atoms)
                     
-                    # Link text atoms to paragraph
+                    # Link text atoms to paragraph using SQL function
                     for idx, char_atom_id in enumerate(char_atoms):
                         await cur.execute(
                             """
-                            INSERT INTO atom_composition 
-                                (parent_atom_id, component_atom_id, sequence_index)
-                            VALUES (%s, %s, %s)
-                            ON CONFLICT DO NOTHING
+                            SELECT create_composition(
+                                %s::bigint,
+                                %s::bigint,
+                                %s::bigint,
+                                '{}'::jsonb
+                            )
                             """,
                             (para_atom_id, char_atom_id, idx)
                         )
@@ -352,7 +360,7 @@ class DocumentParserService:
                         %s::jsonb
                     )
                     """,
-                    (title.encode('utf-8'), title, Json(metadata))
+                    (title.encode('utf-8'), title, json.dumps(metadata))
                 )
                 doc_atom_id = (await cur.fetchone())[0]
                 
@@ -376,7 +384,7 @@ class DocumentParserService:
                         if token.content:
                             await cur.execute(
                                 "SELECT atomize_text(%s, %s::jsonb)",
-                                (token.content, Json(metadata))
+                                (token.content, json.dumps(metadata))
                             )
                             char_atoms = (await cur.fetchone())[0]
                             total_atoms += len(char_atoms)
@@ -415,3 +423,4 @@ class DocumentParserService:
 
 
 __all__ = ["DocumentParserService"]
+

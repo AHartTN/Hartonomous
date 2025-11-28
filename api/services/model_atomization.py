@@ -1,12 +1,12 @@
 """GGUF Model Atomization Service."""
 
 import hashlib
+import json
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from psycopg import AsyncConnection
-from psycopg.types.json import Json
 
 from src.core.atomization.base_atomizer import BaseAtomizer
 
@@ -152,7 +152,7 @@ class GGUFAtomizer(BaseAtomizer):
         async with conn.cursor() as cur:
             await cur.execute(
                 "SELECT atomize_numeric(%s::numeric, %s::jsonb)",
-                (weight, Json({"modality": "weight", "value": float(weight)}))
+                (weight, json.dumps({"modality": "weight", "value": float(weight)}))
             )
             weight_atom_id = (await cur.fetchone())[0]
 
@@ -178,4 +178,5 @@ class GGUFAtomizer(BaseAtomizer):
 
 
 __all__ = ["GGUFAtomizer"]
+
 

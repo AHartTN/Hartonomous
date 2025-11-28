@@ -126,7 +126,7 @@ class CodeAtomizationService:
         compositions: List[Dict[str, Any]],
         atom_id_map: Dict[str, int],
     ):
-        """Bulk insert compositions."""
+        """Bulk insert compositions using SQL function."""
         async with conn.cursor() as cur:
             for comp in compositions:
                 parent_id = atom_id_map.get(comp["parentHash"])
@@ -136,14 +136,15 @@ class CodeAtomizationService:
                     logger.warning("Skipping composition with missing atom IDs")
                     continue
 
+                # Use SQL function instead of direct INSERT
                 await cur.execute(
                     """
-                    INSERT INTO atom_composition (
-                        parent_atom_id,
-                        component_atom_id,
-                        sequence_index
-                    ) VALUES (%s, %s, %s)
-                    ON CONFLICT DO NOTHING
+                    SELECT create_composition(
+                        %s::bigint,
+                        %s::bigint,
+                        %s::bigint,
+                        '{}'::jsonb
+                    )
                     """,
                     (parent_id, component_id, comp["sequenceIndex"]),
                 )
@@ -156,7 +157,7 @@ class CodeAtomizationService:
         relations: List[Dict[str, Any]],
         atom_id_map: Dict[str, int],
     ):
-        """Bulk insert relations."""
+        """Bulk insert relations using SQL function."""
         async with conn.cursor() as cur:
             for rel in relations:
                 source_id = atom_id_map.get(rel["sourceHash"])
@@ -166,23 +167,23 @@ class CodeAtomizationService:
                     logger.warning("Skipping relation with missing atom IDs")
                     continue
 
+                # Use SQL function instead of direct INSERT
                 await cur.execute(
                     """
-                    INSERT INTO atom_relation (
-                        source_atom_id,
-                        target_atom_id,
-                        relation_type,
-                        weight,
-                        metadata
-                    ) VALUES (%s, %s, %s, %s, %s::jsonb)
-                    ON CONFLICT DO NOTHING
+                    SELECT create_relation(
+                        %s::bigint,
+                        %s::bigint,
+                        %s::text,
+                        %s::real,
+                        %s::jsonb
+                    )
                     """,
                     (
                         source_id,
                         target_id,
                         rel["relationType"],
                         rel["weight"],
-                        rel.get("metadata"),
+                        json.dumps(rel.get("metadata", {})),
                     ),
                 )
 

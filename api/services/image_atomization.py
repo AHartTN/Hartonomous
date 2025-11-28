@@ -1,35 +1,21 @@
 """
-Image Atomization Service - Enterprise Implementation
-Atomizes images into hierarchical patch → pixel atoms.
-
-Hierarchical Pattern:
-  image → patches (16x16) → pixels (RGB/RGBA channels)
-
-Every pixel becomes an atom with:
-- Content-addressing (SHA-256 deduplication)
-- Spatial position (x, y coordinates)
-- Color channels (R, G, B, A)
-- Patch membership (hierarchical composition)
-
-Optimizations:
-- Common pixel deduplication (e.g., white backgrounds, black text)
-- Patch-level compression (uniform patches)
-- Sparse encoding (transparency, repeated colors)
-- Format-aware parsing (PNG, JPEG, GIF, BMP, WebP, TIFF, SVG)
+Image Atomization Service
+Hierarchical atomization: image → patches → pixels
 
 Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 """
 
 import hashlib
 import io
+import json
 import logging
 import struct
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import numpy as np
 from PIL import Image
 from psycopg import AsyncConnection
-from psycopg.types.json import Json
 
 logger = logging.getLogger(__name__)
 
@@ -142,7 +128,7 @@ class ImageAtomizer:
                     %s::jsonb
                 )
                 """,
-                (image_hash, image_name, Json(metadata))
+                (image_hash, image_name, json.dumps(metadata))
             )
             image_atom_id = (await cur.fetchone())[0]
             logger.info(f"✓ Image atom created: {image_atom_id}")
@@ -237,7 +223,7 @@ class ImageAtomizer:
                         (
                             patch_hash,
                             f"patch_{patch_x}_{patch_y}",
-                            Json(patch_metadata)
+                            json.dumps(patch_metadata)
                         )
                     )
                     patch_atom_id = (await cur.fetchone())[0]
@@ -368,7 +354,7 @@ class ImageAtomizer:
                 (
                     color_hash,
                     f"rgba_{r}_{g}_{b}_{a}",
-                    Json(pixel_metadata)
+                    json.dumps(pixel_metadata)
                 )
             )
             pixel_atom_id = (await cur.fetchone())[0]
@@ -386,14 +372,16 @@ class ImageAtomizer:
         component_id: int,
         sequence_idx: int,
     ):
-        """Link component to parent via atom_composition."""
+        """Link component to parent via SQL create_composition() function."""
         async with conn.cursor() as cur:
             await cur.execute(
                 """
-                INSERT INTO atom_composition 
-                    (parent_atom_id, component_atom_id, sequence_index)
-                VALUES (%s, %s, %s)
-                ON CONFLICT DO NOTHING
+                SELECT create_composition(
+                    %s::bigint,
+                    %s::bigint,
+                    %s::bigint,
+                    '{}'::jsonb
+                )
                 """,
                 (parent_id, component_id, sequence_idx)
             )
@@ -428,3 +416,4 @@ class ImageAtomizer:
 
 
 __all__ = ["ImageAtomizer"]
+
