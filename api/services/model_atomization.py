@@ -50,6 +50,34 @@ class GGUFAtomizer(BaseAtomizer):
                 file_hash.update(chunk)
         model_content_hash = file_hash.digest()
 
+        # Check if model atom already exists
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "SELECT atom_id FROM atom WHERE content_hash = %s",
+                (model_content_hash,),
+            )
+            existing = await cur.fetchone()
+            
+            if existing:
+                model_atom_id = existing[0]
+                logger.info(f"Model atom already exists: {model_atom_id} (skipping re-atomization)")
+                
+                # Return early with existing model stats
+                return {
+                    "model_name": model_name,
+                    "model_atom_id": model_atom_id,
+                    "file_size_gb": file_path.stat().st_size / 1e9,
+                    "layers_processed": 0,
+                    "tensors_processed": 0,
+                    "total_processed": 0,
+                    "atoms_created": 0,
+                    "sparse_skipped": 0,
+                    "deduplication_ratio": 0.0,
+                    "sparse_percentage": 0.0,
+                    "model_hash": model_content_hash.hex()[:16],
+                    "status": "already_atomized",
+                }
+
         model_metadata = {
             "modality": "model",
             "format": "gguf",
@@ -64,7 +92,7 @@ class GGUFAtomizer(BaseAtomizer):
             conn, model_content_hash, model_name, model_metadata
         )
 
-        logger.info(f"Model atom created: {model_atom_id}")
+        logger.info(f"Model atom created (new): {model_atom_id}")
 
         await self._atomize_gguf_file(conn, file_path, model_atom_id, max_tensors)
 
@@ -91,7 +119,7 @@ class GGUFAtomizer(BaseAtomizer):
             "sparse_skipped": self.stats.get("sparse_skipped", 0),
             "deduplication_ratio": dedup_ratio,
             "sparse_percentage": sparse_pct,
-            "model_hash": model_hash.hex()[:16],
+            "model_hash": model_content_hash.hex()[:16],
         }
 
     async def _atomize_gguf_file(
@@ -393,8 +421,11 @@ class GGUFAtomizer(BaseAtomizer):
                         self.cache[orig_weight] = result_map[orig_weight]
                     else:
                         # Fallback: find by minimum distance (for floating-point precision)
+                        # Convert to Decimal for comparison
+                        from decimal import Decimal
+                        orig_dec = Decimal(str(float(orig_weight))) if not isinstance(orig_weight, Decimal) else orig_weight
                         closest = min(
-                            result_map.keys(), key=lambda x: abs(x - orig_weight)
+                            result_map.keys(), key=lambda x: abs(Decimal(str(float(x))) - orig_dec)
                         )
                         self.cache[orig_weight] = result_map[closest]
                     self.stats["atoms_created"] += 1
@@ -517,18 +548,14 @@ class GGUFAtomizer(BaseAtomizer):
 
         async with conn.cursor() as cur:
             # Simple INSERT with ON CONFLICT DO NOTHING (graceful failover)
+            # Characters don't have spatial keys, so we omit that column
             await cur.execute(
                 """
-                INSERT INTO atom (content_hash, canonical_text, metadata, spatial_key)
-                SELECT * FROM unnest(%s::bytea[], %s::text[], %s::jsonb[], %s::geometry[])
+                INSERT INTO atom (content_hash, canonical_text, metadata)
+                SELECT * FROM unnest(%s::bytea[], %s::text[], %s::jsonb[])
                 ON CONFLICT (content_hash) DO NOTHING
             """,
-                (
-                    unique_hashes,
-                    unique_chars,
-                    char_metadatas,
-                    [None] * len(unique_chars),
-                ),
+                (unique_hashes, unique_chars, char_metadatas),
             )
 
             # Query back all atom IDs (newly inserted + pre-existing)
@@ -578,10 +605,17 @@ class GGUFAtomizer(BaseAtomizer):
 
         async with conn.cursor() as cur:
             # Simple INSERT with ON CONFLICT DO NOTHING
+            # Convert WKT strings to geometries using ST_GeomFromText
             await cur.execute(
                 """
                 INSERT INTO atom (content_hash, canonical_text, metadata, spatial_key)
-                SELECT * FROM unnest(%s::bytea[], %s::text[], %s::jsonb[], %s::geometry[])
+                SELECT 
+                    hash,
+                    text,
+                    meta,
+                    ST_GeomFromText(wkt)
+                FROM unnest(%s::bytea[], %s::text[], %s::jsonb[], %s::text[]) 
+                AS t(hash, text, meta, wkt)
                 ON CONFLICT (content_hash) DO NOTHING
                 RETURNING atom_id
             """,
