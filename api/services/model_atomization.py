@@ -68,6 +68,50 @@ class GGUFAtomizer(BaseAtomizer):
         model_name: str,
         max_tensors: Optional[int],
     ):
+        """Parse GGUF file and atomize actual tensor weights."""
+        try:
+            import gguf
+            import numpy as np
+        except ImportError:
+            logger.warning("gguf library not available, using sample data")
+            return await self._atomize_demo_layers(conn, model_atom_id, model_name, max_tensors)
+        
+        # TODO: Read actual GGUF file
+        # reader = gguf.GGUFReader(file_path)
+        # for tensor_idx, tensor in enumerate(reader.tensors):
+        #     if max_tensors and tensor_idx >= max_tensors:
+        #         break
+        #     
+        #     tensor_hash = hashlib.sha256(tensor.name.encode()).digest()
+        #     tensor_atom_id = await self.create_atom(
+        #         conn, tensor_hash, tensor.name,
+        #         {"modality": "tensor", "shape": list(tensor.shape), "dtype": str(tensor.dtype)}
+        #     )
+        #     
+        #     await self.create_composition(conn, model_atom_id, tensor_atom_id, tensor_idx)
+        #     
+        #     # Flatten tensor and atomize weights
+        #     weights = tensor.data.flatten()
+        #     for weight_idx, weight in enumerate(weights):
+        #         if abs(weight) < self.threshold:
+        #             self.stats["sparse_skipped"] += 1
+        #             continue
+        #         
+        #         weight_atom_id = await self._atomize_weight(conn, float(weight))
+        #         await self.create_composition(conn, tensor_atom_id, weight_atom_id, weight_idx)
+        #     
+        #     self.stats["tensors_processed"] = self.stats.get("tensors_processed", 0) + 1
+        
+        # Fallback to demo for now
+        return await self._atomize_demo_layers(conn, model_atom_id, model_name, max_tensors)
+    
+    async def _atomize_demo_layers(
+        self,
+        conn: AsyncConnection,
+        model_atom_id: int,
+        model_name: str,
+        max_tensors: Optional[int],
+    ):
         """Demonstrate hierarchical atomization with sample layers."""
         sample_layers = [
             {

@@ -63,10 +63,11 @@ cryptography>=42.0.4
 
 # ML/AI model parsing
 gguf>=0.17.0
+safetensors>=0.4.0
 
-# Optional: Deep learning frameworks
-# torch>=2.1.0
-# onnx>=1.15.0
+# Optional: Deep learning frameworks (for full model atomization)
+# torch>=2.1.0  # PyTorch models (.pt, .pth)
+# onnx>=1.15.0  # ONNX models (.onnx)
 
 # Optional: GPU acceleration
 # cupy-cuda12x>=12.0.0

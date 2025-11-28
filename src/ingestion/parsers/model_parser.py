@@ -3,6 +3,7 @@ Model parser - handles AI models with tensor-level atomization.
 """
 
 import hashlib
+import json
 from pathlib import Path
 from typing import Dict, Any
 
@@ -62,17 +63,18 @@ class ModelParser(BaseAtomizer):
         return parent_atom_id
     
     async def _parse_safetensors(self, model_path: Path, parent_atom_id: int, conn):
-        """Parse SafeTensors format."""
+        """Parse SafeTensors format with full weight atomization."""
         try:
             from safetensors import safe_open
+            import numpy as np
         except ImportError:
             raise ImportError("Install safetensors: pip install safetensors")
         
         with safe_open(model_path, framework="numpy") as f:
-            for key in f.keys():
+            for tensor_idx, key in enumerate(f.keys()):
                 tensor = f.get_tensor(key)
                 
-                # Atomize tensor similar to GGUF
+                # Create tensor metadata atom
                 tensor_hash = hashlib.sha256(key.encode()).digest()
                 tensor_atom_id = await self.create_atom(
                     conn,
@@ -81,17 +83,35 @@ class ModelParser(BaseAtomizer):
                     {
                         'modality': 'tensor',
                         'shape': list(tensor.shape),
-                        'dtype': str(tensor.dtype)
+                        'dtype': str(tensor.dtype),
+                        'sparse_threshold': self.threshold
                     }
                 )
                 
-                await self.create_composition(conn, parent_atom_id, tensor_atom_id, len(self.cache))
+                await self.create_composition(conn, parent_atom_id, tensor_atom_id, tensor_idx)
                 self.stats["atoms_created"] += 1
+                
+                # Atomize individual weights
+                weights = tensor.flatten()
+                for weight_idx, weight in enumerate(weights):
+                    self.stats["total_processed"] = self.stats.get("total_processed", 0) + 1
+                    
+                    # Sparse encoding: skip near-zero weights
+                    if abs(float(weight)) < self.threshold:
+                        self.stats["sparse_skipped"] = self.stats.get("sparse_skipped", 0) + 1
+                        continue
+                    
+                    # Atomize weight and create composition
+                    weight_atom_id = await self._atomize_weight(conn, float(weight))
+                    await self.create_composition(conn, tensor_atom_id, weight_atom_id, weight_idx)
+                
+                self.stats["tensors_processed"] = self.stats.get("tensors_processed", 0) + 1
     
     async def _parse_pytorch(self, model_path: Path, parent_atom_id: int, conn):
-        """Parse PyTorch checkpoint."""
+        """Parse PyTorch checkpoint with full weight atomization."""
         try:
             import torch
+            import numpy as np
         except ImportError:
             raise ImportError("Install pytorch: pip install torch")
         
@@ -102,7 +122,8 @@ class ModelParser(BaseAtomizer):
         else:
             state_dict = checkpoint
         
-        for key, tensor in state_dict.items():
+        for tensor_idx, (key, tensor) in enumerate(state_dict.items()):
+            # Create tensor metadata atom
             tensor_hash = hashlib.sha256(key.encode()).digest()
             tensor_atom_id = await self.create_atom(
                 conn,
@@ -111,23 +132,46 @@ class ModelParser(BaseAtomizer):
                 {
                     'modality': 'tensor',
                     'shape': list(tensor.shape),
-                    'dtype': str(tensor.dtype)
+                    'dtype': str(tensor.dtype),
+                    'sparse_threshold': self.threshold
                 }
             )
             
-            await self.create_composition(conn, parent_atom_id, tensor_atom_id, len(self.cache))
+            await self.create_composition(conn, parent_atom_id, tensor_atom_id, tensor_idx)
             self.stats["atoms_created"] += 1
+            
+            # Atomize individual weights
+            weights = tensor.flatten().numpy()
+            for weight_idx, weight in enumerate(weights):
+                self.stats["total_processed"] = self.stats.get("total_processed", 0) + 1
+                
+                # Sparse encoding: skip near-zero weights
+                if abs(float(weight)) < self.threshold:
+                    self.stats["sparse_skipped"] = self.stats.get("sparse_skipped", 0) + 1
+                    continue
+                
+                # Atomize weight and create composition
+                weight_atom_id = await self._atomize_weight(conn, float(weight))
+                await self.create_composition(conn, tensor_atom_id, weight_atom_id, weight_idx)
+            
+            self.stats["tensors_processed"] = self.stats.get("tensors_processed", 0) + 1
     
     async def _parse_onnx(self, model_path: Path, parent_atom_id: int, conn):
-        """Parse ONNX model."""
+        """Parse ONNX model with full weight atomization."""
         try:
             import onnx
+            import numpy as np
+            from onnx import numpy_helper
         except ImportError:
             raise ImportError("Install onnx: pip install onnx")
         
         model = onnx.load(str(model_path))
         
-        for initializer in model.graph.initializer:
+        for tensor_idx, initializer in enumerate(model.graph.initializer):
+            # Convert ONNX tensor to numpy
+            tensor = numpy_helper.to_array(initializer)
+            
+            # Create tensor metadata atom
             tensor_hash = hashlib.sha256(initializer.name.encode()).digest()
             tensor_atom_id = await self.create_atom(
                 conn,
@@ -135,12 +179,48 @@ class ModelParser(BaseAtomizer):
                 initializer.name,
                 {
                     'modality': 'tensor',
-                    'onnx_type': initializer.data_type
+                    'onnx_type': initializer.data_type,
+                    'shape': list(tensor.shape),
+                    'dtype': str(tensor.dtype),
+                    'sparse_threshold': self.threshold
                 }
             )
             
-            await self.create_composition(conn, parent_atom_id, tensor_atom_id, len(self.cache))
+            await self.create_composition(conn, parent_atom_id, tensor_atom_id, tensor_idx)
             self.stats["atoms_created"] += 1
+            
+            # Atomize individual weights
+            weights = tensor.flatten()
+            for weight_idx, weight in enumerate(weights):
+                self.stats["total_processed"] = self.stats.get("total_processed", 0) + 1
+                
+                # Sparse encoding: skip near-zero weights
+                if abs(float(weight)) < self.threshold:
+                    self.stats["sparse_skipped"] = self.stats.get("sparse_skipped", 0) + 1
+                    continue
+                
+                # Atomize weight and create composition
+                weight_atom_id = await self._atomize_weight(conn, float(weight))
+                await self.create_composition(conn, tensor_atom_id, weight_atom_id, weight_idx)
+            
+            self.stats["tensors_processed"] = self.stats.get("tensors_processed", 0) + 1
+    
+    async def _atomize_weight(self, conn, weight: float) -> int:
+        """Atomize single weight value with deduplication cache."""
+        if weight in self.cache:
+            self.stats["atoms_deduped"] = self.stats.get("atoms_deduped", 0) + 1
+            return self.cache[weight]
+        
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "SELECT atomize_numeric(%s::numeric, %s::jsonb)",
+                (weight, json.dumps({"modality": "weight", "value": float(weight)}))
+            )
+            weight_atom_id = (await cur.fetchone())[0]
+        
+        self.cache[weight] = weight_atom_id
+        self.stats["atoms_created"] = self.stats.get("atoms_created", 0) + 1
+        return weight_atom_id
     
     def _detect_format(self, extension: str) -> str:
         """Detect model format from extension."""
