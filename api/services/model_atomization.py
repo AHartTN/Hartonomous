@@ -169,44 +169,55 @@ class GGUFAtomizer(BaseAtomizer):
         # Phase 2: Atomize architecture hyperparameters
         await self._atomize_architecture(conn, reader, model_atom_id)
 
-        # Phase 3: Atomize tensor weights
+        # Phase 3: Atomize tensor weights (with concurrent processing)
         tensors_to_process = reader.tensors
         if max_tensors:
             tensors_to_process = reader.tensors[:max_tensors]
             logger.info(f"Processing first {max_tensors} tensors")
         
         import numpy as np
+        from concurrent.futures import ThreadPoolExecutor
+        import asyncio
         
-        for tensor_idx, tensor in enumerate(tensors_to_process):
-            logger.info(
-                f"Processing tensor {tensor_idx+1}/{len(reader.tensors)}: {tensor.name} {tensor.shape}"
-            )
+        # Process tensors with controlled concurrency (I/O bound: SQL calls)
+        # Use threads for SQL I/O, not CPU processing (GPU/NumPy already handle that)
+        max_workers = 4  # Conservative for database connections
+        semaphore = asyncio.Semaphore(max_workers)
+        
+        async def process_one_tensor(tensor_idx: int, tensor):
+            """Process single tensor with semaphore control."""
+        async def process_one_tensor(tensor_idx: int, tensor):
+            """Process single tensor with semaphore control."""
+            async with semaphore:
+                logger.info(
+                    f"Processing tensor {tensor_idx+1}/{len(reader.tensors)}: {tensor.name} {tensor.shape}"
+                )
 
-            # Create tensor metadata atom
-            tensor_hash = hashlib.sha256(tensor.name.encode()).digest()
-            tensor_atom_id = await self.create_atom(
-                conn,
-                tensor_hash,
-                tensor.name,
-                {
-                    "modality": "tensor",
-                    "shape": [
-                        int(s) for s in tensor.shape
-                    ],  # Convert numpy int types to Python int
-                    "dtype": str(tensor.tensor_type),
-                    "sparse_threshold": self.threshold,
-                    "n_elements": int(np.prod(tensor.shape)),
-                },
-            )
+                # Create tensor metadata atom
+                tensor_hash = hashlib.sha256(tensor.name.encode()).digest()
+                tensor_atom_id = await self.create_atom(
+                    conn,
+                    tensor_hash,
+                    tensor.name,
+                    {
+                        "modality": "tensor",
+                        "shape": [
+                            int(s) for s in tensor.shape
+                        ],  # Convert numpy int types to Python int
+                        "dtype": str(tensor.tensor_type),
+                        "sparse_threshold": self.threshold,
+                        "n_elements": int(np.prod(tensor.shape)),
+                    },
+                )
 
-            await self.create_composition(
-                conn, model_atom_id, tensor_atom_id, tensor_idx
-            )
-            self.stats["tensors_processed"] = self.stats.get("tensors_processed", 0) + 1
+                await self.create_composition(
+                    conn, model_atom_id, tensor_atom_id, tensor_idx
+                )
+                self.stats["tensors_processed"] = self.stats.get("tensors_processed", 0) + 1
 
-            # Flatten tensor and atomize weights with BATCHING + SIMD/GPU
-            weights = tensor.data.flatten()
-            total_weights = len(weights)
+                # Flatten tensor and atomize weights with BATCHING + SIMD/GPU
+                weights = tensor.data.flatten()
+                total_weights = len(weights)
 
             if GPU_AVAILABLE:
                 # GPU: Transfer to GPU for vectorized operations
@@ -301,6 +312,10 @@ class GGUFAtomizer(BaseAtomizer):
                 f"  ✓ Tensor complete: {self.stats['total_processed']:,} weights processed, "
                 f"{unique_so_far:,} unique atoms, {dedup_ratio:.1f}x dedup, {sparse_pct:.1f}% sparse"
             )
+        
+        # Process all tensors concurrently with semaphore limiting
+        tasks = [process_one_tensor(idx, tensor) for idx, tensor in enumerate(tensors_to_process)]
+        await asyncio.gather(*tasks)
 
         logger.info(
             f"GGUF atomization complete: {self.stats['tensors_processed']} tensors"
