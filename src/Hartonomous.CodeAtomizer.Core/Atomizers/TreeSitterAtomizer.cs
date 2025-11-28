@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Hartonomous.CodeAtomizer.Core.Models;
 using Hartonomous.CodeAtomizer.Core.Spatial;
+using Hartonomous.CodeAtomizer.Core.Services;
 using Hartonomous.CodeAtomizer.TreeSitter.Core;
 using Hartonomous.CodeGeneration.TreeSitter;
 
@@ -11,7 +12,8 @@ namespace Hartonomous.CodeAtomizer.Core.Atomizers;
 /// <summary>
 /// Tree-sitter based multi-language atomizer with full native AST traversal.
 /// Supports 50+ languages: Python, JavaScript, TypeScript, Go, Rust, Java, C++, etc.
-/// Now uses native TreeSitter bindings instead of regex patterns for accurate semantic analysis.
+/// Now uses native TreeSitter bindings AND language profiles for semantic interpretation.
+/// The profile system enables zero-code language additions and universal grammar support.
 /// </summary>
 public sealed class TreeSitterAtomizer
 {
@@ -20,8 +22,18 @@ public sealed class TreeSitterAtomizer
     private readonly List<AtomRelation> _relations = new();
     private readonly Dictionary<string, byte[]> _hashCache = new();
     private readonly TreeSitterParser _parser = new();
+    private readonly LanguageProfileLoader _profileLoader;
+    
+    // Current language profile (cached during atomization)
+    private LanguageSemanticProfile? _currentProfile;
+
+    public TreeSitterAtomizer(LanguageProfileLoader profileLoader)
+    {
+        _profileLoader = profileLoader;
+    }
     
     // Node types we want to atomize (language-agnostic where possible)
+    // NOTE: This is now a FALLBACK - profiles should override these
     private static readonly HashSet<string> SemanticNodeTypes = new()
     {
         // Functions/Methods
@@ -65,6 +77,7 @@ public sealed class TreeSitterAtomizer
         ["python"] = new[] { "py", "pyw", "pyi" },
         ["javascript"] = new[] { "js", "mjs", "cjs" },
         ["typescript"] = new[] { "ts", "tsx" },
+        ["csharp"] = new[] { "cs" },
         ["go"] = new[] { "go" },
         ["rust"] = new[] { "rs" },
         ["java"] = new[] { "java" },
@@ -106,6 +119,9 @@ public sealed class TreeSitterAtomizer
         _hashCache.Clear();
 
         var language = DetectLanguage(fileName) ?? "unknown";
+        
+        // Load language profile for semantic interpretation
+        _currentProfile = _profileLoader.GetProfileByExtension(Path.GetExtension(fileName));
 
         // Create file-level atom
         var fileHash = CreateFileAtom(code, fileName, language, metadata);
@@ -135,16 +151,42 @@ public sealed class TreeSitterAtomizer
     
     private int AtomizeAstNode(IAstNode node, string sourceCode, string fileName, string language, byte[] parentHash, int sequenceIndex)
     {
-        var nodeType = node.NodeType;
+        // Defensive: TreeSitter native calls can crash, protect access to NodeType
+        string? nodeType;
+        try
+        {
+            nodeType = node.NodeType;
+            if (string.IsNullOrEmpty(nodeType)) return sequenceIndex;
+        }
+        catch
+        {
+            // TreeSitter native interop crashed, skip this node
+            return sequenceIndex;
+        }
         
-        // Check if this node should be atomized
-        if (SemanticNodeTypes.Contains(nodeType))
+        // Check if this node should be atomized based on profile or fallback
+        bool shouldAtomize = false;
+        SemanticNodeMapping? mapping = null;
+        
+        if (_currentProfile != null && _currentProfile.SemanticMappings.TryGetValue(nodeType, out mapping))
+        {
+            // Use profile's semantic mapping
+            shouldAtomize = mapping.Atomize;
+        }
+        else
+        {
+            // Fallback to hardcoded semantic node types
+            shouldAtomize = SemanticNodeTypes.Contains(nodeType);
+        }
+        
+        if (shouldAtomize)
         {
             var nodeText = GetNodeText(node, sourceCode);
-            var nodeName = ExtractNodeName(node, sourceCode) ?? nodeText;
+            var nodeName = ExtractNodeName(node, sourceCode, mapping?.NamePath) ?? nodeText;
             
             // Create atom for this semantic node
-            var atomHash = CreateSemanticAtom(nodeType, nodeName, nodeText, language, fileName, node);
+            var category = mapping?.Category ?? MapNodeTypeToCategory(nodeType);
+            var atomHash = CreateSemanticAtom(nodeType, nodeName, nodeText, language, fileName, node, category, mapping);
             
             // Create composition linking to parent
             _compositions.Add(new AtomComposition
@@ -155,17 +197,21 @@ public sealed class TreeSitterAtomizer
                 Position = null
             });
             
-            // Check for relations (calls, imports, etc.)
-            if (RelationNodeTypes.Contains(nodeType))
-            {
-                ExtractRelations(node, sourceCode, atomHash, language);
-            }
+            // Check for relations using profile rules
+            ExtractRelationsFromProfile(node, sourceCode, atomHash, language, nodeType);
             
             // Recursively process children with this node as parent
             int childIndex = 0;
-            foreach (var child in node.Children)
+            try
             {
-                childIndex = AtomizeAstNode(child, sourceCode, fileName, language, atomHash, childIndex);
+                foreach (var child in node.Children ?? Enumerable.Empty<IAstNode>())
+                {
+                    childIndex = AtomizeAstNode(child, sourceCode, fileName, language, atomHash, childIndex);
+                }
+            }
+            catch
+            {
+                // TreeSitter can crash on node access, continue processing
             }
             
             return sequenceIndex;
@@ -173,16 +219,23 @@ public sealed class TreeSitterAtomizer
         else
         {
             // Not a semantic node we care about - just traverse children
-            foreach (var child in node.Children)
+            try
             {
-                sequenceIndex = AtomizeAstNode(child, sourceCode, fileName, language, parentHash, sequenceIndex);
+                foreach (var child in node.Children ?? Enumerable.Empty<IAstNode>())
+                {
+                    sequenceIndex = AtomizeAstNode(child, sourceCode, fileName, language, parentHash, sequenceIndex);
+                }
+            }
+            catch
+            {
+                // TreeSitter can crash on node access, continue processing
             }
             
             return sequenceIndex;
         }
     }
     
-    private byte[] CreateSemanticAtom(string nodeType, string nodeName, string nodeText, string language, string fileName, IAstNode node)
+    private byte[] CreateSemanticAtom(string nodeType, string nodeName, string nodeText, string language, string fileName, IAstNode node, string category, SemanticNodeMapping? mapping)
     {
         var atomicValue = Encoding.UTF8.GetBytes($"{language}:{nodeType}:{nodeName}");
         var hash = ComputeHash(atomicValue);
@@ -196,8 +249,8 @@ public sealed class TreeSitterAtomizer
 
         var (x, y, z, hilbertIndex) = LandmarkProjection.ComputePositionWithHilbert(
             modality: "code",
-            category: MapNodeTypeToCategory(nodeType),
-            specificity: "concrete",
+            category: category,
+            specificity: mapping?.Specificity ?? "concrete",
             identifier: $"{language}:{nodeType}:{nodeName}"
         );
 
@@ -209,18 +262,23 @@ public sealed class TreeSitterAtomizer
             SpatialKey = new SpatialPosition(x, y, z),
             HilbertIndex = hilbertIndex,
             Modality = "code",
-            Subtype = MapNodeTypeToCategory(nodeType),
+            Subtype = category,
             Metadata = JsonSerializer.Serialize(new
             {
                 language,
                 nodeType,
                 name = nodeName,
+                category,
+                specificity = mapping?.Specificity ?? "concrete",
+                tags = mapping?.Tags ?? Array.Empty<string>(),
+                weight = mapping?.Weight ?? 1.0,
                 startPosition = node.StartPosition,
                 endPosition = node.EndPosition,
-                startLine = node.Metadata.ContainsKey("StartLine") ? (int)node.Metadata["StartLine"] : 0,
-                endLine = node.Metadata.ContainsKey("EndLine") ? (int)node.Metadata["EndLine"] : 0,
+                startLine = node.Metadata.ContainsKey("StartLine") ? Convert.ToInt32(node.Metadata["StartLine"]) : 0,
+                endLine = node.Metadata.ContainsKey("EndLine") ? Convert.ToInt32(node.Metadata["EndLine"]) : 0,
                 text = nodeText.Length > 200 ? nodeText.Substring(0, 200) + "..." : nodeText,
                 parsingEngine = "Tree-sitter-native",
+                profileBased = mapping != null,
                 hilbertIndex
             })
         });
@@ -259,15 +317,41 @@ public sealed class TreeSitterAtomizer
         return sourceCode.Substring(startPos, endPos - startPos);
     }
     
-    private string? ExtractNodeName(IAstNode node, string sourceCode)
+    private string? ExtractNodeName(IAstNode node, string sourceCode, string? namePath = null)
     {
-        // Look for name/identifier child nodes
-        foreach (var child in node.Children)
+        // If profile specifies name_path, use it
+        if (!string.IsNullOrEmpty(namePath))
         {
-            if (child.NodeType == "identifier" || child.NodeType == "name")
+            try
             {
-                return GetNodeText(child, sourceCode);
+                foreach (var child in node.Children ?? Enumerable.Empty<IAstNode>())
+                {
+                    if (child.NodeType == namePath)
+                    {
+                        return GetNodeText(child, sourceCode);
+                    }
+                }
             }
+            catch
+            {
+                // TreeSitter node access can crash, fall through to other methods
+            }
+        }
+        
+        // Look for name/identifier child nodes
+        try
+        {
+            foreach (var child in node.Children ?? Enumerable.Empty<IAstNode>())
+            {
+                if (child.NodeType == "identifier" || child.NodeType == "name")
+                {
+                    return GetNodeText(child, sourceCode);
+                }
+            }
+        }
+        catch
+        {
+            // TreeSitter node access can crash, fall through to regex
         }
         
         // Some languages put the name directly
@@ -285,6 +369,110 @@ public sealed class TreeSitterAtomizer
             // class Foo -> Foo
             var match = System.Text.RegularExpressions.Regex.Match(nodeText, @"class\s+(\w+)");
             if (match.Success) return match.Groups[1].Value;
+        }
+        
+        return null;
+    }
+    
+    
+    private void ExtractRelationsFromProfile(IAstNode node, string sourceCode, byte[] sourceAtomHash, string language, string nodeType)
+    {
+        // Use profile-based relation rules if available
+        if (_currentProfile != null)
+        {
+            foreach (var rule in _currentProfile.RelationRules)
+            {
+                if (rule.SourcePattern == nodeType || rule.SourcePattern.Contains(nodeType))
+                {
+                    // Extract target based on rule's target_path
+                    var targetName = ExtractTargetFromPath(node, sourceCode, rule.TargetPath);
+                    if (!string.IsNullOrEmpty(targetName))
+                    {
+                        var targetHash = ComputeHash(Encoding.UTF8.GetBytes($"{language}:{rule.RelationType}:{targetName}"));
+                        
+                        _relations.Add(new AtomRelation
+                        {
+                            SourceAtomHash = sourceAtomHash,
+                            TargetAtomHash = targetHash,
+                            RelationType = rule.RelationType,
+                            Weight = rule.Weight,
+                            Metadata = JsonSerializer.Serialize(new 
+                            { 
+                                targetName, 
+                                ruleId = rule.Id,
+                                bidirectional = rule.Bidirectional 
+                            })
+                        });
+                        
+                        // Add inverse relation if bidirectional
+                        if (rule.Bidirectional && !string.IsNullOrEmpty(rule.InverseRelationType))
+                        {
+                            _relations.Add(new AtomRelation
+                            {
+                                SourceAtomHash = targetHash,
+                                TargetAtomHash = sourceAtomHash,
+                                RelationType = rule.InverseRelationType,
+                                Weight = rule.Weight,
+                                Metadata = JsonSerializer.Serialize(new { sourceName = targetName, ruleId = rule.Id })
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        else
+        {
+            // Fallback to hardcoded relation extraction
+            ExtractRelations(node, sourceCode, sourceAtomHash, language);
+        }
+    }
+    
+    private string? ExtractTargetFromPath(IAstNode node, string sourceCode, string? targetPath)
+    {
+        if (string.IsNullOrEmpty(targetPath))
+            return null;
+            
+        try
+        {
+            // Navigate to child by path (e.g., "function" or "name")
+            foreach (var child in node.Children ?? Enumerable.Empty<IAstNode>())
+            {
+                if (child.NodeType == targetPath)
+                {
+                    return GetNodeText(child, sourceCode);
+                }
+                
+                // Try recursive search
+                var result = FindChildByType(child, targetPath, sourceCode);
+                if (result != null)
+                    return result;
+            }
+        }
+        catch
+        {
+            // TreeSitter can crash on node access
+        }
+        
+        return null;
+    }
+    
+    private string? FindChildByType(IAstNode node, string targetType, string sourceCode)
+    {
+        try
+        {
+            if (node.NodeType == targetType)
+                return GetNodeText(node, sourceCode);
+                
+            foreach (var child in node.Children ?? Enumerable.Empty<IAstNode>())
+            {
+                var result = FindChildByType(child, targetType, sourceCode);
+                if (result != null)
+                    return result;
+            }
+        }
+        catch
+        {
+            // TreeSitter can crash on node access
         }
         
         return null;

@@ -81,7 +81,7 @@ public sealed class TreeSitterParser : ICodeParser
         if (!parser.SetLanguage(treeSitterLang))
             throw new InvalidOperationException($"Failed to set language: {language}");
 
-        using var tree = parser.Parse(sourceCode);
+        var tree = parser.Parse(sourceCode); // Keep tree alive - TreeSitterNode holds reference
         var rootNode = tree.RootNode;
 
         return new TreeSitterAstNode(rootNode);
@@ -102,7 +102,7 @@ public sealed class TreeSitterParser : ICodeParser
         if (!parser.SetLanguage(treeSitterLang))
             throw new InvalidOperationException($"Failed to set language: {language}");
 
-        using var tree = await parser.ParseAsync(sourceCode, null, cancellationToken);
+        var tree = await parser.ParseAsync(sourceCode, null, cancellationToken); // Keep tree alive - TreeSitterNode holds reference
         var rootNode = tree.RootNode;
 
         return new TreeSitterAstNode(rootNode);

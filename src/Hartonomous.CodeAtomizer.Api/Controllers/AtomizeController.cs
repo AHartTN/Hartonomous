@@ -1,4 +1,6 @@
 using Hartonomous.CodeAtomizer.Core.Atomizers;
+using Hartonomous.CodeAtomizer.Core.Models;
+using Hartonomous.CodeAtomizer.Core.Services;
 using Microsoft.AspNetCore.Mvc;
 using System.Text;
 
@@ -14,11 +16,18 @@ public class AtomizeController : ControllerBase
 {
     private readonly ILogger<AtomizeController> _logger;
     private readonly RoslynCSharpAtomizer _roslynAtomizer;
+    private readonly LanguageProfileLoader _profileLoader;
+    private readonly AtomMemoryService _memoryService;
 
-    public AtomizeController(ILogger<AtomizeController> logger)
+    public AtomizeController(
+        ILogger<AtomizeController> logger,
+        LanguageProfileLoader profileLoader,
+        AtomMemoryService memoryService)
     {
         _logger = logger;
         _roslynAtomizer = new RoslynCSharpAtomizer();
+        _profileLoader = profileLoader;
+        _memoryService = memoryService;
     }
 
     /// <summary>
@@ -45,6 +54,9 @@ public class AtomizeController : ControllerBase
                 request.Code,
                 request.FileName ?? "code.cs",
                 request.Metadata);
+
+            // Store in memory for code generation context
+            _memoryService.Store(result);
 
             return Ok(BuildResponse(result, "Roslyn"));
         }
@@ -84,11 +96,14 @@ public class AtomizeController : ControllerBase
                 request.FileName ?? $"unnamed.{language}",
                 request.Code.Length);
 
-            var atomizer = new TreeSitterAtomizer();
+            var atomizer = new TreeSitterAtomizer(_profileLoader);
             var result = atomizer.Atomize(
                 request.Code,
                 request.FileName ?? $"code.{language}",
                 request.Metadata);
+
+            // Store in memory for code generation context
+            _memoryService.Store(result);
 
             return Ok(BuildResponse(result, "Tree-sitter"));
         }
@@ -128,7 +143,7 @@ public class AtomizeController : ControllerBase
             }
             else if (TreeSitterAtomizer.CanHandle(ext))
             {
-                var atomizer = new TreeSitterAtomizer();
+                var atomizer = new TreeSitterAtomizer(_profileLoader);
                 var result = atomizer.Atomize(code, file.FileName, metadata);
                 return Ok(BuildResponse(result, "Tree-sitter"));
             }

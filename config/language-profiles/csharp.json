@@ -1,0 +1,171 @@
+{
+  "language": "csharp",
+  "display_name": "C#",
+  "version": "12.0",
+  "file_extensions": ["cs", "csx"],
+  "tree_sitter_grammar": "c_sharp",
+  "paradigms": ["object-oriented", "functional", "imperative", "compiled"],
+  
+  "semantic_mappings": {
+    "class_declaration": {
+      "category": "class",
+      "specificity": "concrete",
+      "atomize": true,
+      "name_path": "identifier",
+      "weight": 1.0,
+      "tags": ["type", "definition"]
+    },
+    "interface_declaration": {
+      "category": "interface",
+      "specificity": "abstract",
+      "atomize": true,
+      "name_path": "identifier",
+      "weight": 1.0,
+      "tags": ["type", "contract", "definition"]
+    },
+    "method_declaration": {
+      "category": "method",
+      "specificity": "concrete",
+      "atomize": true,
+      "name_path": "identifier",
+      "weight": 1.0,
+      "tags": ["callable", "definition"]
+    },
+    "property_declaration": {
+      "category": "property",
+      "specificity": "concrete",
+      "atomize": true,
+      "name_path": "identifier",
+      "weight": 0.8,
+      "tags": ["accessor"]
+    },
+    "field_declaration": {
+      "category": "field",
+      "specificity": "concrete",
+      "atomize": true,
+      "name_path": "variable_declaration.variable_declarator.identifier",
+      "weight": 0.6,
+      "tags": ["state"]
+    },
+    "namespace_declaration": {
+      "category": "namespace",
+      "specificity": "generic",
+      "atomize": true,
+      "name_path": "name",
+      "weight": 0.9,
+      "tags": ["organization"]
+    },
+    "using_directive": {
+      "category": "import",
+      "specificity": "concrete",
+      "atomize": true,
+      "name_path": "name",
+      "weight": 0.8,
+      "tags": ["dependency"]
+    },
+    "invocation_expression": {
+      "category": "call",
+      "specificity": "concrete",
+      "atomize": true,
+      "name_path": "expression",
+      "weight": 0.6,
+      "tags": ["invocation"]
+    }
+  },
+  
+  "relation_rules": [
+    {
+      "id": "csharp_method_call",
+      "relation_type": "calls",
+      "source_pattern": "invocation_expression",
+      "target_path": "expression",
+      "weight": 0.9,
+      "bidirectional": false
+    },
+    {
+      "id": "csharp_using",
+      "relation_type": "imports",
+      "source_pattern": "using_directive",
+      "target_path": "name",
+      "weight": 0.95,
+      "bidirectional": false
+    },
+    {
+      "id": "csharp_class_inheritance",
+      "relation_type": "inherits",
+      "source_pattern": "class_declaration",
+      "target_path": "base_list",
+      "weight": 1.0,
+      "bidirectional": false
+    },
+    {
+      "id": "csharp_interface_implementation",
+      "relation_type": "implements",
+      "source_pattern": "class_declaration",
+      "target_path": "base_list",
+      "weight": 1.0,
+      "bidirectional": false
+    },
+    {
+      "id": "csharp_namespace_contains",
+      "relation_type": "contains",
+      "source_pattern": "namespace_declaration",
+      "target_pattern": "class_declaration|interface_declaration",
+      "weight": 1.0,
+      "bidirectional": false
+    }
+  ],
+  
+  "metadata_extractors": {
+    "attributes": {
+      "id": "csharp_attributes",
+      "applies_to": ["class_declaration", "method_declaration", "property_declaration"],
+      "strategy": "child_nodes",
+      "path": "attribute_list",
+      "output_key": "attributes",
+      "multiple": true
+    },
+    "modifiers": {
+      "id": "csharp_modifiers",
+      "applies_to": ["class_declaration", "method_declaration", "property_declaration", "field_declaration"],
+      "strategy": "child_nodes",
+      "path": "modifiers",
+      "output_key": "modifiers",
+      "multiple": true
+    },
+    "generic_parameters": {
+      "id": "csharp_generic_parameters",
+      "applies_to": ["class_declaration", "method_declaration"],
+      "strategy": "child_nodes",
+      "path": "type_parameter_list",
+      "output_key": "generic_parameters",
+      "multiple": true
+    },
+    "parameters": {
+      "id": "csharp_parameters",
+      "applies_to": ["method_declaration"],
+      "strategy": "child_nodes",
+      "path": "parameter_list",
+      "output_key": "parameters",
+      "multiple": true
+    },
+    "return_type": {
+      "id": "csharp_return_type",
+      "applies_to": ["method_declaration"],
+      "strategy": "attribute",
+      "path": "type",
+      "output_key": "return_type",
+      "multiple": false
+    }
+  },
+  
+  "metadata": {
+    "documentation_url": "https://learn.microsoft.com/en-us/dotnet/csharp/",
+    "tree_sitter_repo": "https://github.com/tree-sitter/tree-sitter-c-sharp",
+    "type_system": "static",
+    "supports_async": true,
+    "supports_generics": true,
+    "supports_linq": true,
+    "comment_styles": ["//", "/* */", "///"]
+  }
+}

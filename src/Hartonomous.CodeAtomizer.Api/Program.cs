@@ -1,3 +1,4 @@
+using Hartonomous.CodeAtomizer.Core.Services;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -17,6 +18,18 @@ builder.Services.AddEndpointsApiExplorer();
 
 // .NET 10 built-in OpenAPI support (replaces Swashbuckle)
 builder.Services.AddOpenApi();
+
+// Register Language Profile Loader as singleton
+builder.Services.AddSingleton(sp =>
+{
+    var profilePath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "config", "language-profiles");
+    var loader = new LanguageProfileLoader(profilePath);
+    loader.LoadProfilesAsync().GetAwaiter().GetResult(); // Load profiles at startup
+    return loader;
+});
+
+// Register Atom Memory Service as singleton
+builder.Services.AddSingleton<AtomMemoryService>();
 
 // CORS for development
 builder.Services.AddCors(options =>

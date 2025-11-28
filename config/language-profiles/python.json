@@ -1,0 +1,169 @@
+{
+  "language": "python",
+  "display_name": "Python",
+  "version": "3.12",
+  "file_extensions": ["py", "pyw", "pyi"],
+  "tree_sitter_grammar": "python",
+  "paradigms": ["object-oriented", "functional", "imperative", "scripting", "interpreted"],
+  
+  "semantic_mappings": {
+    "function_definition": {
+      "category": "function",
+      "specificity": "concrete",
+      "atomize": true,
+      "name_path": "name",
+      "weight": 1.0,
+      "tags": ["callable", "definition"]
+    },
+    "async_function_definition": {
+      "category": "async-function",
+      "specificity": "concrete",
+      "atomize": true,
+      "name_path": "name",
+      "weight": 1.0,
+      "tags": ["callable", "async", "definition"]
+    },
+    "class_definition": {
+      "category": "class",
+      "specificity": "concrete",
+      "atomize": true,
+      "name_path": "name",
+      "weight": 1.0,
+      "tags": ["type", "definition"]
+    },
+    "import_statement": {
+      "category": "import",
+      "specificity": "concrete",
+      "atomize": true,
+      "name_path": "name",
+      "weight": 0.8,
+      "tags": ["dependency"]
+    },
+    "import_from_statement": {
+      "category": "import",
+      "specificity": "concrete",
+      "atomize": true,
+      "name_path": "module_name",
+      "weight": 0.8,
+      "tags": ["dependency"]
+    },
+    "call": {
+      "category": "call",
+      "specificity": "concrete",
+      "atomize": true,
+      "name_path": "function",
+      "weight": 0.6,
+      "tags": ["invocation"]
+    },
+    "decorator": {
+      "category": "decorator",
+      "specificity": "concrete",
+      "atomize": true,
+      "name_path": "name",
+      "weight": 0.7,
+      "tags": ["metadata", "annotation"]
+    },
+    "assignment": {
+      "category": "variable",
+      "specificity": "concrete",
+      "atomize": false,
+      "weight": 0.3
+    }
+  },
+  
+  "relation_rules": [
+    {
+      "id": "python_function_call",
+      "relation_type": "calls",
+      "source_pattern": "call",
+      "target_path": "function",
+      "weight": 0.9,
+      "bidirectional": false
+    },
+    {
+      "id": "python_import",
+      "relation_type": "imports",
+      "source_pattern": "import_statement|import_from_statement",
+      "target_path": "name",
+      "weight": 0.95,
+      "bidirectional": false
+    },
+    {
+      "id": "python_class_inheritance",
+      "relation_type": "inherits",
+      "source_pattern": "class_definition",
+      "target_path": "bases",
+      "weight": 1.0,
+      "bidirectional": false
+    },
+    {
+      "id": "python_decorator_application",
+      "relation_type": "decorated_by",
+      "source_pattern": "function_definition|class_definition",
+      "target_path": "decorator_list",
+      "weight": 0.8,
+      "bidirectional": false
+    },
+    {
+      "id": "python_class_method",
+      "relation_type": "contains",
+      "source_pattern": "class_definition",
+      "target_pattern": "function_definition",
+      "weight": 1.0,
+      "bidirectional": false
+    }
+  ],
+  
+  "metadata_extractors": {
+    "decorators": {
+      "id": "python_decorators",
+      "applies_to": ["function_definition", "class_definition", "async_function_definition"],
+      "strategy": "child_nodes",
+      "path": "decorator_list",
+      "output_key": "decorators",
+      "multiple": true
+    },
+    "docstring": {
+      "id": "python_docstring",
+      "applies_to": ["function_definition", "class_definition", "module"],
+      "strategy": "first_string_literal",
+      "path": "body",
+      "output_key": "docstring",
+      "multiple": false
+    },
+    "type_hints": {
+      "id": "python_type_hints",
+      "applies_to": ["function_definition", "async_function_definition"],
+      "strategy": "child_nodes",
+      "path": "parameters.type|return_type",
+      "output_key": "type_hints",
+      "multiple": true
+    },
+    "parameters": {
+      "id": "python_parameters",
+      "applies_to": ["function_definition", "async_function_definition"],
+      "strategy": "child_nodes",
+      "path": "parameters",
+      "output_key": "parameters",
+      "multiple": true
+    },
+    "base_classes": {
+      "id": "python_base_classes",
+      "applies_to": ["class_definition"],
+      "strategy": "child_nodes",
+      "path": "bases",
+      "output_key": "bases",
+      "multiple": true
+    }
+  },
+  
+  "metadata": {
+    "documentation_url": "https://docs.python.org/3/",
+    "tree_sitter_repo": "https://github.com/tree-sitter/tree-sitter-python",
+    "type_system": "dynamic",
+    "supports_async": true,
+    "supports_decorators": true,
+    "supports_type_hints": true,
+    "comment_styles": ["#"]
+  }
+}

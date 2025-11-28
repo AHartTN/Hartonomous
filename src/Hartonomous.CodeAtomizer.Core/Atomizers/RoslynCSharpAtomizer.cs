@@ -341,15 +341,3 @@ public sealed class RoslynCSharpAtomizer
         }
     }
 }
-
-/// <summary>
-/// Result of atomization process
-/// </summary>
-public sealed record AtomizationResult
-{
-    public required Atom[] Atoms { get; init; }
-    public required AtomComposition[] Compositions { get; init; }
-    public required AtomRelation[] Relations { get; init; }
-    public required int TotalAtoms { get; init; }
-    public required int UniqueAtoms { get; init; }
-}
