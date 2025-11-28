@@ -21,7 +21,7 @@ def compress_atom(
     """Apply multi-layer compression to atom data."""
     metadata = {
         'shape': data.shape,
-        'dtype': str(dtype),
+        'dtype': str(dtype) if hasattr(dtype, 'name') else str(np.dtype(dtype)),
         'original_size': data.nbytes,
     }
     
