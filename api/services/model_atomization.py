@@ -101,11 +101,19 @@ class GGUFAtomizer(BaseAtomizer):
             "threshold": self.threshold,
         }
 
+        # Check atom count before creation to detect if it's deduplicated
+        async with conn.cursor() as cur:
+            await cur.execute("SELECT COUNT(*) FROM atom WHERE content_hash = %s", (model_content_hash,))
+            existed_before = (await cur.fetchone())[0] > 0
+
         model_atom_id = await self.create_atom(
             conn, model_content_hash, model_name, model_metadata
         )
 
-        logger.info(f"Model atom created (new): {model_atom_id}")
+        if existed_before:
+            logger.info(f"Model atom found (deduplicated): {model_atom_id}")
+        else:
+            logger.info(f"Model atom created (new): {model_atom_id}")
 
         await self._atomize_gguf_file(conn, file_path, model_atom_id, max_tensors)
 
