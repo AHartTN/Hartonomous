@@ -92,4 +92,9 @@ if __name__ == "__main__":
     print("GGUF Model Atomization Test")
     print("=" * 60)
 
+    # Fix for Windows ProactorEventLoop issue with psycopg
+    import sys
+    if sys.platform == 'win32':
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
     asyncio.run(test_gguf_atomization())

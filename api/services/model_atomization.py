@@ -3,6 +3,8 @@
 import hashlib
 import json
 import logging
+import numpy as np
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -185,91 +187,57 @@ class GGUFAtomizer(BaseAtomizer):
         max_workers = 4  # Conservative for database connections
         semaphore = asyncio.Semaphore(max_workers)
         
-        # Get connection pool from parent connection
-        pool = conn._pool
+        # Get connection pool from parent connection if available
+        # If no pool, we'll use sequential processing with the single connection
+        pool = getattr(conn, '_pool', None)
+        use_pool = pool is not None
         
         async def process_one_tensor(tensor_idx: int, tensor):
             """Process single tensor with semaphore control."""
             async with semaphore:
-                # Get own connection from pool for this worker
-                async with pool.connection() as worker_conn:
-                    logger.info(
-                        f"Processing tensor {tensor_idx+1}/{len(reader.tensors)}: {tensor.name} {tensor.shape}"
-                    )
+                # Get own connection from pool for this worker, or use passed conn
+                if use_pool:
+                    async with pool.connection() as worker_conn:
+                        await _process_tensor(worker_conn, tensor_idx, tensor)
+                else:
+                    # Sequential processing with single connection
+                    await _process_tensor(conn, tensor_idx, tensor)
+        
+        async def _process_tensor(worker_conn, tensor_idx: int, tensor):
+            """Inner function to process a single tensor."""
+            logger.info(
+                f"Processing tensor {tensor_idx+1}/{len(reader.tensors)}: {tensor.name} {tensor.shape}"
+            )
 
-                    # Create tensor metadata atom
-                    tensor_hash = hashlib.sha256(tensor.name.encode()).digest()
-                    tensor_atom_id = await self.create_atom(
-                        worker_conn,
-                        tensor_hash,
-                        tensor.name,
-                    {
-                        "modality": "tensor",
-                        "shape": [
-                            int(s) for s in tensor.shape
-                        ],  # Convert numpy int types to Python int
-                        "dtype": str(tensor.tensor_type),
-                        "sparse_threshold": self.threshold,
-                        "n_elements": int(np.prod(tensor.shape)),
-                    },
-                    )
+            # Create tensor metadata atom
+            tensor_hash = hashlib.sha256(tensor.name.encode()).digest()
+            tensor_atom_id = await self.create_atom(
+                worker_conn,
+                tensor_hash,
+                tensor.name,
+                {
+                    "modality": "tensor",
+                    "shape": [
+                        int(s) for s in tensor.shape
+                    ],  # Convert numpy int types to Python int
+                    "dtype": str(tensor.tensor_type),
+                    "sparse_threshold": self.threshold,
+                    "n_elements": int(np.prod(tensor.shape)),
+                },
+            )
 
-                    await self.create_composition(
-                        worker_conn, model_atom_id, tensor_atom_id, tensor_idx
-                    )
-                    self.stats["tensors_processed"] = self.stats.get("tensors_processed", 0) + 1
+            await self.create_composition(
+                worker_conn, model_atom_id, tensor_atom_id, tensor_idx
+            )
+            self.stats["tensors_processed"] = self.stats.get("tensors_processed", 0) + 1
 
-                # Flatten tensor and atomize weights with RLE + BATCHING + SIMD/GPU
-                weights = tensor.data.flatten()
-                total_weights = len(weights)
+            # Flatten tensor and atomize weights with RLE + BATCHING + SIMD/GPU
+            weights = tensor.data.flatten()
+            total_weights = len(weights)
 
-                if GPU_AVAILABLE:
-                    # GPU: Transfer to GPU for vectorized operations
-                    try:
-                        import numpy as np
-                        from decimal import Decimal
-                        
-                        # Apply RLE + sparse encoding
-                        weights_np = np.array(weights, dtype=np.float32)
-                        encoded_bytes, encoding_metadata = self.encoder.encode(weights_np)
-                        
-                        # Decode to get compressed representation
-                        compressed_weights = np.frombuffer(encoded_bytes, dtype=np.float32)
-                        
-                        # Transfer compressed weights to GPU
-                        weights_gpu = cp.array(compressed_weights, dtype=cp.float32)
-
-                        # Vectorized unique on GPU (on compressed data)
-                        unique_values_gpu = cp.unique(weights_gpu)
-                        unique_values = len(unique_values_gpu)
-
-                        # Vectorized sparse filtering on GPU (already done by encoder, but check)
-                        abs_weights_gpu = cp.abs(weights_gpu)
-                        sparse_mask_gpu = abs_weights_gpu < self.threshold
-                        sparse_count = int(cp.sum(sparse_mask_gpu))
-
-                        # Get non-sparse weights and indices on GPU, then transfer
-                        non_sparse_indices_gpu = cp.where(~sparse_mask_gpu)[0]
-                        non_sparse_weights_gpu = weights_gpu[~sparse_mask_gpu]
-
-                        # Transfer back to CPU, preserve precision as Decimal
-                        non_sparse_indices = non_sparse_indices_gpu.get().tolist()
-                        non_sparse_weights = [
-                            Decimal(str(float(w)))
-                            for w in non_sparse_weights_gpu.get().tolist()
-                        ]
-
-                        rle_applied = encoding_metadata.rle_applied
-                        rle_note = " (RLE applied)" if rle_applied else ""
-                        logger.info(
-                            f"  [GPU] Processed {total_weights:,} weights | {len(compressed_weights):,} after compression | {unique_values:,} unique{rle_note}"
-                        )
-                    except Exception as e:
-                        logger.warning(f"GPU processing failed: {e}, falling back to CPU")
-                        GPU_AVAILABLE_NOW = False
-
-                if not GPU_AVAILABLE:
-                    # CPU SIMD: Vectorized with NumPy + RLE encoding
+            if GPU_AVAILABLE:
+                # GPU: Transfer to GPU for vectorized operations
+                try:
                     import numpy as np
                     from decimal import Decimal
                     
@@ -280,64 +248,108 @@ class GGUFAtomizer(BaseAtomizer):
                     # Decode to get compressed representation
                     compressed_weights = np.frombuffer(encoded_bytes, dtype=np.float32)
                     
-                    # Vectorized unique on compressed data
-                    unique_values_set = np.unique(compressed_weights)
-                    unique_values = len(unique_values_set)
+                    # Transfer compressed weights to GPU
+                    weights_gpu = cp.array(compressed_weights, dtype=cp.float32)
 
-                    # Vectorized sparse filtering (already done by encoder, but check)
-                    abs_weights = np.abs(compressed_weights)
-                    sparse_mask = abs_weights < self.threshold
-                    sparse_count = int(np.sum(sparse_mask))
+                    # Vectorized unique on GPU (on compressed data)
+                    unique_values_gpu = cp.unique(weights_gpu)
+                    unique_values = len(unique_values_gpu)
 
-                    # Get non-sparse weights and their indices (vectorized)
-                    non_sparse_indices = np.where(~sparse_mask)[0].tolist()
+                    # Vectorized sparse filtering on GPU (already done by encoder, but check)
+                    abs_weights_gpu = cp.abs(weights_gpu)
+                    sparse_mask_gpu = abs_weights_gpu < self.threshold
+                    sparse_count = int(cp.sum(sparse_mask_gpu))
+
+                    # Get non-sparse weights and indices on GPU, then transfer
+                    non_sparse_indices_gpu = cp.where(~sparse_mask_gpu)[0]
+                    non_sparse_weights_gpu = weights_gpu[~sparse_mask_gpu]
+
+                    # Transfer back to CPU, preserve precision as Decimal
+                    non_sparse_indices = non_sparse_indices_gpu.get().tolist()
                     non_sparse_weights = [
-                        Decimal(str(float(w))) for w in compressed_weights[~sparse_mask].tolist()
+                        Decimal(str(float(w)))
+                        for w in non_sparse_weights_gpu.get().tolist()
                     ]
 
                     rle_applied = encoding_metadata.rle_applied
                     rle_note = " (RLE applied)" if rle_applied else ""
                     logger.info(
-                        f"  [CPU SIMD] Processed {total_weights:,} weights | {len(compressed_weights):,} after compression | {unique_values:,} unique{rle_note}"
+                        f"  [GPU] Processed {total_weights:,} weights | {len(compressed_weights):,} after compression | {unique_values:,} unique{rle_note}"
                     )
+                except Exception as e:
+                    logger.warning(f"GPU processing failed: {e}, falling back to CPU")
+                    GPU_AVAILABLE_NOW = False
 
-                self.stats["sparse_skipped"] = (
-                    self.stats.get("sparse_skipped", 0) + sparse_count
-                )
-                self.stats["total_processed"] += total_weights
+            if not GPU_AVAILABLE:
+                # CPU SIMD: Vectorized with NumPy + RLE encoding
+                import numpy as np
+                from decimal import Decimal
+                
+                # Apply RLE + sparse encoding
+                weights_np = np.array(weights, dtype=np.float32)
+                encoded_bytes, encoding_metadata = self.encoder.encode(weights_np)
+                
+                # Decode to get compressed representation
+                compressed_weights = np.frombuffer(encoded_bytes, dtype=np.float32)
+                
+                # Vectorized unique on compressed data
+                unique_values_set = np.unique(compressed_weights)
+                unique_values = len(unique_values_set)
 
-                logger.info(
-                    f"  Sparse filter: {sparse_count:,} skipped ({sparse_count/total_weights*100:.1f}%)"
-                )
-                logger.info(
-                    f"  Processing {len(non_sparse_weights):,} non-sparse weights..."
-                )
+                # Vectorized sparse filtering (already done by encoder, but check)
+                abs_weights = np.abs(compressed_weights)
+                sparse_mask = abs_weights < self.threshold
+                sparse_count = int(np.sum(sparse_mask))
 
-                # Batch atomize all non-sparse weights
-                weight_to_atom = await self._atomize_weight_batch(worker_conn, non_sparse_weights)
-
-                # Build compositions (vectorized preparation)
-                compositions = [
-                    {"component_id": weight_to_atom[weight], "sequence_idx": int(idx)}
-                    for idx, weight in zip(non_sparse_indices, non_sparse_weights)
+                # Get non-sparse weights and their indices (vectorized)
+                non_sparse_indices = np.where(~sparse_mask)[0].tolist()
+                non_sparse_weights = [
+                    Decimal(str(float(w))) for w in compressed_weights[~sparse_mask].tolist()
                 ]
 
-                # Batch insert all compositions
-                if compositions:
-                    total_comps = len(compositions)
-                    logger.info(f"  Batch inserting {total_comps:,} compositions...")
-                    await self._create_composition_batch(worker_conn, tensor_atom_id, compositions)
-                    logger.info(f"  ✓ Inserted {total_comps:,} compositions")
-
-                unique_so_far = len(self.cache)
-                dedup_ratio = self.stats["total_processed"] / max(unique_so_far, 1)
-                sparse_pct = (
-                    self.stats.get("sparse_skipped", 0) / self.stats["total_processed"]
-                ) * 100
+                rle_applied = encoding_metadata.rle_applied
+                rle_note = " (RLE applied)" if rle_applied else ""
                 logger.info(
-                    f"  ✓ Tensor complete: {self.stats['total_processed']:,} weights processed, "
-                    f"{unique_so_far:,} unique atoms, {dedup_ratio:.1f}x dedup, {sparse_pct:.1f}% sparse"
+                    f"  [CPU SIMD] Processed {total_weights:,} weights | {len(compressed_weights):,} after compression | {unique_values:,} unique{rle_note}"
                 )
+
+            self.stats["sparse_skipped"] = (
+                self.stats.get("sparse_skipped", 0) + sparse_count
+            )
+            self.stats["total_processed"] += total_weights
+
+            logger.info(
+                f"  Sparse filter: {sparse_count:,} skipped ({sparse_count/total_weights*100:.1f}%)"
+            )
+            logger.info(
+                f"  Processing {len(non_sparse_weights):,} non-sparse weights..."
+            )
+
+            # Batch atomize all non-sparse weights
+            weight_to_atom = await self._atomize_weight_batch(worker_conn, non_sparse_weights)
+
+            # Build compositions (vectorized preparation)
+            compositions = [
+                {"component_id": weight_to_atom[weight], "sequence_idx": int(idx)}
+                for idx, weight in zip(non_sparse_indices, non_sparse_weights)
+            ]
+
+            # Batch insert all compositions
+            if compositions:
+                total_comps = len(compositions)
+                logger.info(f"  Batch inserting {total_comps:,} compositions...")
+                await self._create_composition_batch(worker_conn, tensor_atom_id, compositions)
+                logger.info(f"  ✓ Inserted {total_comps:,} compositions")
+
+            unique_so_far = len(self.cache)
+            dedup_ratio = self.stats["total_processed"] / max(unique_so_far, 1)
+            sparse_pct = (
+                self.stats.get("sparse_skipped", 0) / self.stats["total_processed"]
+            ) * 100
+            logger.info(
+                f"  ✓ Tensor complete: {self.stats['total_processed']:,} weights processed, "
+                f"{unique_so_far:,} unique atoms, {dedup_ratio:.1f}x dedup, {sparse_pct:.1f}% sparse"
+            )
         
         # Process all tensors concurrently with semaphore limiting
         tasks = [process_one_tensor(idx, tensor) for idx, tensor in enumerate(tensors_to_process)]
