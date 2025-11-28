@@ -161,19 +161,15 @@ class GGUFAtomizer(BaseAtomizer):
         # Phase 2: Atomize architecture hyperparameters
         await self._atomize_architecture(conn, reader, model_atom_id)
 
-        # Phase 3: Atomize tensor weights (with parallelization)
+        # Phase 3: Atomize tensor weights
         tensors_to_process = reader.tensors
         if max_tensors:
             tensors_to_process = reader.tensors[:max_tensors]
             logger.info(f"Processing first {max_tensors} tensors")
         
-        # Process tensors in parallel batches for multi-core utilization
-        import asyncio
         import numpy as np
-        batch_size = 24  # Process 24 tensors concurrently (optimized for 32-core CPUs)
         
-        async def process_tensor(tensor_idx: int, tensor):
-            """Process a single tensor with all its weights."""
+        for tensor_idx, tensor in enumerate(tensors_to_process):
             logger.info(
                 f"Processing tensor {tensor_idx+1}/{len(reader.tensors)}: {tensor.name} {tensor.shape}"
             )
@@ -297,21 +293,6 @@ class GGUFAtomizer(BaseAtomizer):
                 f"  ✓ Tensor complete: {self.stats['total_processed']:,} weights processed, "
                 f"{unique_so_far:,} unique atoms, {dedup_ratio:.1f}x dedup, {sparse_pct:.1f}% sparse"
             )
-        
-        # Execute tensor processing in parallel batches
-        for batch_start in range(0, len(tensors_to_process), batch_size):
-            batch_end = min(batch_start + batch_size, len(tensors_to_process))
-            batch = [
-                (batch_start + i, tensors_to_process[batch_start + i])
-                for i in range(batch_end - batch_start)
-            ]
-            
-            logger.info(f"Processing tensor batch {batch_start+1}-{batch_end} of {len(tensors_to_process)} (parallel)")
-            
-            # Process batch in parallel
-            await asyncio.gather(*[process_tensor(idx, tensor) for idx, tensor in batch])
-            
-            logger.info(f"  ✓ Batch {batch_start+1}-{batch_end} complete")
 
         logger.info(
             f"GGUF atomization complete: {self.stats['tensors_processed']} tensors"
