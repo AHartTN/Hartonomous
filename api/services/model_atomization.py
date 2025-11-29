@@ -505,6 +505,7 @@ class GGUFAtomizer(BaseAtomizer):
         
         # Deduplicate input weights using GPU if available
         # Note: GPU returns float, CPU preserves Decimal - normalize to Decimal
+        logger.info(f"    Deduplicating {len(weights):,} weights...")
         if use_gpu:
             import numpy as np
             unique_floats = self._deduplicate_weights_gpu(weights)
@@ -516,12 +517,20 @@ class GGUFAtomizer(BaseAtomizer):
             device_used = "CPU"
         
         dedup_time = time.time() - start_time
+        logger.info(f"    → {len(unique_weights):,} unique weights [{device_used}] ({dedup_time:.2f}s)")
 
         # Check cache first
+        logger.info(f"    Checking cache for {len(unique_weights):,} unique weights...")
+        cache_start = time.time()
         uncached_weights = [w for w in unique_weights if w not in self.cache]
+        cache_time = time.time() - cache_start
+        cache_hits = len(unique_weights) - len(uncached_weights)
+        logger.info(f"    → {cache_hits:,} cache hits, {len(uncached_weights):,} need atomization ({cache_time:.2f}s)")
 
         if uncached_weights:
             # Batch atomize uncached weights
+            logger.info(f"    Atomizing {len(uncached_weights):,} new weights in database...")
+            db_start = time.time()
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -534,6 +543,11 @@ class GGUFAtomizer(BaseAtomizer):
                     (uncached_weights,),
                 )
                 results = await cur.fetchall()
+            db_time = time.time() - db_start
+            logger.info(f"    → Database atomization complete ({db_time:.2f}s, {len(uncached_weights)/db_time:.0f} weights/s)")
+
+            logger.info(f"    Building cache mappings for {len(results):,} results...")
+            cache_build_start = time.time()
 
                 # Build mapping from returned numeric to atom_id
                 result_map = {
@@ -556,18 +570,19 @@ class GGUFAtomizer(BaseAtomizer):
                         )
                         self.cache[orig_weight] = result_map[closest]
                     self.stats["atoms_created"] += 1
+            
+            cache_build_time = time.time() - cache_build_start
+            logger.info(f"    → Cache updated with {len(uncached_weights):,} new entries ({cache_build_time:.2f}s)")
 
         # Count cache hits
         self.stats["atoms_deduped"] += len(weights) - len(uncached_weights)
         
-        # Log performance
-        if len(uncached_weights) > 0:
-            total_time = time.time() - start_time
-            logger.debug(
-                f"    Weight batch: {len(weights):,} weights → {len(unique_weights):,} unique "
-                f"({len(uncached_weights):,} new) [{device_used}] "
-                f"(dedup: {dedup_time*1000:.1f}ms, total: {total_time*1000:.1f}ms)"
-            )
+        # Log final performance summary
+        total_time = time.time() - start_time
+        logger.info(
+            f"    ✓ Batch complete: {len(weights):,} weights → {len(unique_weights):,} unique "
+            f"({len(uncached_weights):,} new) [{device_used}] (total: {total_time:.2f}s)"
+        )
 
         # Return mapping for all weights
         return {w: self.cache[w] for w in weights}
@@ -576,6 +591,11 @@ class GGUFAtomizer(BaseAtomizer):
         self, conn: AsyncConnection, parent_id: int, compositions: List[Dict[str, int]]
     ):
         """Batch create compositions - much faster than individual inserts."""
+        import time
+        
+        logger.info(f"    Creating {len(compositions):,} compositions in batches...")
+        total_start = time.time()
+        
         batch_size = 50000  # Increased for better throughput (~400KB per batch)
         total_batches = (len(compositions) + batch_size - 1) // batch_size
 
@@ -585,18 +605,27 @@ class GGUFAtomizer(BaseAtomizer):
             batch_start = i
             batch_end = min(i + batch_size, len(compositions))
 
+            batch_insert_start = time.time()
             async with conn.cursor() as cur:
                 await cur.execute(
                     "SELECT create_composition_batch(%s::bigint, %s::jsonb[])",
                     (parent_id, [json.dumps(c) for c in batch]),
                 )
+            batch_insert_time = time.time() - batch_insert_start
 
             # Progress reporting every batch
             progress_pct = (batch_end / len(compositions)) * 100
+            elapsed = time.time() - total_start
+            rate = batch_end / elapsed if elapsed > 0 else 0
+            eta = (len(compositions) - batch_end) / rate if rate > 0 else 0
             logger.info(
                 f"    [{progress_pct:5.1f}%] Batch {batch_num}/{total_batches}: "
-                f"Inserted {batch_end:,}/{len(compositions):,} compositions"
+                f"Inserted {batch_end:,}/{len(compositions):,} ({batch_insert_time:.2f}s, "
+                f"{rate:.0f} comps/s, ETA: {eta:.0f}s)"
             )
+        
+        total_time = time.time() - total_start
+        logger.info(f"    ✓ All compositions created ({total_time:.2f}s, {len(compositions)/total_time:.0f} comps/s)")
 
     async def _atomize_vocabulary(
         self, conn: AsyncConnection, reader: Any, model_atom_id: int  # gguf.GGUFReader
