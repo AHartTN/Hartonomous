@@ -247,6 +247,7 @@ class GGUFAtomizer(BaseAtomizer):
             # Flatten tensor and atomize weights with RLE + BATCHING + SIMD/GPU
             weights = tensor.data.flatten()
             total_weights = len(weights)
+            logger.info(f"  Flattened tensor: {total_weights:,} weights to process")
             
             # Initialize variables that will be set by either GPU or CPU path
             sparse_count = 0
@@ -258,8 +259,18 @@ class GGUFAtomizer(BaseAtomizer):
                 # GPU: Transfer to GPU for vectorized operations
                 try:
                     # Apply RLE + sparse encoding
+                    logger.info(f"  Converting {total_weights:,} weights to numpy array...")
+                    import time
+                    convert_start = time.time()
                     weights_np = np.array(weights, dtype=np.float32)
+                    convert_time = time.time() - convert_start
+                    logger.info(f"  → Converted in {convert_time:.2f}s ({total_weights/convert_time:,.0f} weights/s)")
+                    
+                    logger.info(f"  Encoding {total_weights:,} weights with RLE + sparse...")
+                    encode_start = time.time()
                     encoded_bytes, encoding_metadata = self.encoder.encode(weights_np)
+                    encode_time = time.time() - encode_start
+                    logger.info(f"  → Encoded in {encode_time:.2f}s ({total_weights/encode_time:,.0f} weights/s)")
                     
                     # Decode to get compressed representation
                     compressed_weights = np.frombuffer(encoded_bytes, dtype=np.float32)

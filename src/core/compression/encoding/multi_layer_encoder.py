@@ -55,41 +55,36 @@ class MultiLayerEncoder:
         return data.reshape(metadata.original_shape)
 
     def _apply_rle(self, data: np.ndarray) -> Tuple[np.ndarray, bool]:
-        """Apply run-length encoding if beneficial."""
+        """Apply run-length encoding if beneficial (vectorized)."""
         if len(data) < 2:
             return data, False
 
-        runs = []
-        current_val = data[0]
-        count = 1
-
-        for val in data[1:]:
-            if val == current_val:
-                count += 1
-            else:
-                runs.append((current_val, count))
-                current_val = val
-                count = 1
-        runs.append((current_val, count))
-
-        rle_size = len(runs) * 2
+        # Vectorized approach: find where values change
+        changes = np.concatenate(([True], data[1:] != data[:-1], [True]))
+        change_indices = np.where(changes)[0]
+        
+        # Values and their run lengths
+        values = data[change_indices[:-1]]
+        counts = np.diff(change_indices)
+        
+        # Only use RLE if it saves space (at least 20% reduction)
+        rle_size = len(values) * 2
         if rle_size < len(data) * 0.8:
-            encoded = np.empty(len(runs) * 2, dtype=data.dtype)
-            for i, (val, cnt) in enumerate(runs):
-                encoded[i * 2] = val
-                encoded[i * 2 + 1] = cnt
+            # Interleave values and counts
+            encoded = np.empty(len(values) * 2, dtype=data.dtype)
+            encoded[0::2] = values
+            encoded[1::2] = counts
             return encoded, True
 
         return data, False
 
     def _reverse_rle(self, encoded: np.ndarray) -> np.ndarray:
-        """Reverse RLE encoding."""
-        result = []
-        for i in range(0, len(encoded), 2):
-            value = encoded[i]
-            count = int(encoded[i + 1])
-            result.extend([value] * count)
-        return np.array(result, dtype=encoded.dtype)
+        """Reverse RLE encoding (vectorized)."""
+        values = encoded[0::2]
+        counts = encoded[1::2].astype(int)
+        
+        # Use np.repeat for vectorized expansion
+        return np.repeat(values, counts)
 
     def _apply_sparse(
         self, data: np.ndarray, threshold: Optional[float] = None
