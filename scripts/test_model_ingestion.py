@@ -23,34 +23,40 @@ async def test_gguf_atomization():
     conn = await AsyncConnection.connect(settings.get_connection_string())
 
     try:
-        # Find Qwen3-Coder model
+        # Find GGUF models in Ollama directory
         models_dir = Path("D:/Models/blobs")
 
-        # List available models
+        # List available models, sorted by size (smallest first)
         print("Available models in D:/Models/blobs:")
-        gguf_files = list(models_dir.glob("sha256-*"))
-
-        for i, model_file in enumerate(gguf_files[:5], 1):
-            size_gb = model_file.stat().st_size / 1e9
-            print(f"{i}. {model_file.name[:20]}... ({size_gb:.2f} GB)")
-
-        # Use Qwen3-Coder (18GB file)
-        qwen_file = Path(
-            "D:/Models/blobs/sha256-1194192cf2a187eb02722edcc3f77b11d21f537048ce04b67ccf8ba78863006a"
-        )
-
-        if not qwen_file.exists():
-            print(f"\nModel file not found: {qwen_file}")
-            print("Please update the path to point to a valid GGUF model.")
+        gguf_files = []
+        
+        for model_file in models_dir.glob("sha256-*"):
+            # Filter out incomplete downloads (files with only partial hashes or 0 bytes)
+            if model_file.stat().st_size > 1_000_000:  # At least 1MB
+                gguf_files.append(model_file)
+        
+        # Sort by size (smallest to largest)
+        gguf_files.sort(key=lambda f: f.stat().st_size)
+        
+        if not gguf_files:
+            print("No valid GGUF models found in D:/Models/blobs")
+            print("Please ensure you have Ollama models downloaded.")
             return
 
-        print(f"\n?? Atomizing: {qwen_file.name}")
-        print(f"   Size: {qwen_file.stat().st_size / 1e9:.2f} GB")
+        for i, model_file in enumerate(gguf_files[:10], 1):
+            size_gb = model_file.stat().st_size / 1e9
+            print(f"{i}. {model_file.name[:20]}... ({size_gb:.2f} GB)")
 
         # Create atomizer (with higher threshold for testing)
         atomizer = GGUFAtomizer(threshold=0.1)
 
         # Atomize (limit to 5 tensors for testing)
+        result = await atomizer.atomize_model(
+            file_path=test_file,
+            model_name=f"test-model-{test_file.name[:16]}",
+            conn=conn,
+            max_tensors=5,  # Test with just 5 tensors
+        ) Atomize (limit to 5 tensors for testing)
         result = await atomizer.atomize_model(
             file_path=qwen_file,
             model_name="Qwen3-Coder-30B",
