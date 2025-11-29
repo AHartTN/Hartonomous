@@ -742,19 +742,24 @@ class GGUFAtomizer(BaseAtomizer):
             sys.stdout.flush()
             copy_start = time.time()
             async with conn.cursor() as cur:
-                # Insert atoms via COPY - batch write_row calls
+                # Insert atoms via COPY - format as CSV and write in large chunks
                 async with cur.copy(
                     "COPY atom (content_hash, canonical_text, metadata) FROM STDIN"
                 ) as copy:
-                    # Write rows in chunks to reduce event loop overhead
+                    # Write in 5k row chunks to reduce await overhead (50k awaits → 10 awaits)
                     CHUNK_SIZE = 5000
                     for i in range(0, len(rows), CHUNK_SIZE):
                         chunk = rows[i:i+CHUNK_SIZE]
+                        # Format chunk as tab-delimited CSV
+                        csv_lines = []
                         for row in chunk:
-                            await copy.write_row(row)
-                        # Yield to event loop after each chunk
-                        if i + CHUNK_SIZE < len(rows):
-                            await asyncio.sleep(0)
+                            # Escape special characters and format as TSV
+                            hash_val = row[0].replace('\\', '\\\\').replace('\t', '\\t').replace('\n', '\\n')
+                            text_val = row[1].replace('\\', '\\\\').replace('\t', '\\t').replace('\n', '\\n')
+                            meta_val = row[2].replace('\\', '\\\\').replace('\t', '\\t').replace('\n', '\\n') if row[2] else '\\N'
+                            csv_lines.append(f"{hash_val}\t{text_val}\t{meta_val}")
+                        # Single write per 5k rows instead of 5k individual writes
+                        await copy.write("\n".join(csv_lines) + "\n")
                 
                 copy_time = time.time() - copy_start
                 logger.info(f"    → Wrote {len(rows):,} rows via COPY ({copy_time:.2f}s, {len(rows)/copy_time:,.0f} rows/s)")
@@ -834,19 +839,17 @@ class GGUFAtomizer(BaseAtomizer):
                 async with cur.copy(
                     "COPY atom_composition (parent_atom_id, component_atom_id, sequence_index) FROM STDIN"
                 ) as copy:
-                    # Write rows in chunks to reduce event loop overhead
+                    # Write in 5k row chunks to reduce await overhead (50k awaits → 10 awaits)
                     CHUNK_SIZE = 5000
                     for i in range(0, len(batch_component_ids), CHUNK_SIZE):
                         end_idx = min(i + CHUNK_SIZE, len(batch_component_ids))
-                        for j in range(i, end_idx):
-                            await copy.write_row((
-                                int(parent_id),
-                                int(batch_component_ids[j]),
-                                int(batch_sequence_indices[j])
-                            ))
-                        # Yield to event loop after each chunk
-                        if end_idx < len(batch_component_ids):
-                            await asyncio.sleep(0)
+                        # Format chunk as tab-delimited CSV
+                        csv_lines = [
+                            f"{int(parent_id)}\t{int(batch_component_ids[j])}\t{int(batch_sequence_indices[j])}"
+                            for j in range(i, end_idx)
+                        ]
+                        # Single write per 5k rows instead of 5k individual writes
+                        await copy.write("\n".join(csv_lines) + "\n")
             batch_insert_time = time.time() - batch_insert_start
 
             # Progress reporting every batch
@@ -887,20 +890,17 @@ class GGUFAtomizer(BaseAtomizer):
                 async with cur.copy(
                     "COPY atom_composition (parent_atom_id, component_atom_id, sequence_index) FROM STDIN"
                 ) as copy:
-                    # Write rows in chunks to reduce event loop overhead
+                    # Write in 5k row chunks to reduce await overhead (50k awaits → 10 awaits)
                     CHUNK_SIZE = 5000
                     for i in range(0, len(batch), CHUNK_SIZE):
                         end_idx = min(i + CHUNK_SIZE, len(batch))
-                        for j in range(i, end_idx):
-                            comp = batch[j]
-                            await copy.write_row((
-                                int(parent_id),
-                                int(comp["component_id"]),
-                                int(comp["sequence_idx"])
-                            ))
-                        # Yield to event loop after each chunk
-                        if end_idx < len(batch):
-                            await asyncio.sleep(0)
+                        # Format chunk as tab-delimited CSV
+                        csv_lines = [
+                            f"{int(parent_id)}\t{int(batch[j]['component_id'])}\t{int(batch[j]['sequence_idx'])}"
+                            for j in range(i, end_idx)
+                        ]
+                        # Single write per 5k rows instead of 5k individual writes
+                        await copy.write("\n".join(csv_lines) + "\n")
             batch_insert_time = time.time() - batch_insert_start
 
             # Progress reporting every batch
