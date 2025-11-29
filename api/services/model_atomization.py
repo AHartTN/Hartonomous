@@ -809,47 +809,57 @@ class GGUFAtomizer(BaseAtomizer):
     async def _create_composition_batch_arrays(
         self, conn: AsyncConnection, parent_id: int, component_ids: List[int], sequence_indices: List[int], pool: AsyncConnectionPool
     ):
-        """Batch create compositions using COPY with bulk TSV buffer - 10-20x faster than write_row() loop.
+        """Batch create compositions using COPY with chunked TSV writes.
         
-        Strategy: Build entire TSV buffer in memory, send in one shot.
-        For 53M rows: write_row() loop = 5000 rows/s = 3 hours, TSV buffer = 500k rows/s = 2 minutes.
+        Strategy: Stream TSV in 1M row chunks to avoid memory issues with 53M rows.
         """
         import time
         
-        logger.info(f"    Creating {len(component_ids):,} compositions via bulk COPY...")
+        logger.info(f"    Creating {len(component_ids):,} compositions via chunked bulk COPY...")
         total_start = time.time()
         
-        # Build TSV buffer in memory (parent_id\tcomponent_id\tsequence\n format)
-        logger.info(f"    → Building TSV buffer for {len(component_ids):,} rows...")
-        buffer_start = time.time()
-        
-        # Pre-allocate list for speed
-        lines = []
-        parent_str = str(parent_id)  # Convert once
-        for i in range(len(component_ids)):
-            lines.append(f"{parent_str}\t{component_ids[i]}\t{sequence_indices[i]}\n")
-        
-        tsv_buffer = "".join(lines)
-        buffer_time = time.time() - buffer_start
-        logger.info(f"    → TSV buffer built ({buffer_time:.2f}s, {len(component_ids)/buffer_time:,.0f} rows/s)")
-        
-        # Single COPY operation with entire buffer
-        logger.info(f"    → Writing {len(component_ids):,} rows via bulk COPY...")
-        copy_start = time.time()
+        chunk_size = 1_000_000  # 1M rows per chunk (~50MB TSV)
+        total_rows = len(component_ids)
+        parent_str = str(parent_id)
         
         async with conn.cursor() as cur:
             async with cur.copy(
                 "COPY atom_composition (parent_atom_id, component_atom_id, sequence_index) FROM STDIN"
             ) as copy:
-                # Single write of entire TSV buffer
-                await copy.write(tsv_buffer)
+                # Write in chunks
+                for chunk_start in range(0, total_rows, chunk_size):
+                    chunk_end = min(chunk_start + chunk_size, total_rows)
+                    chunk_num = chunk_start // chunk_size + 1
+                    total_chunks = (total_rows + chunk_size - 1) // chunk_size
+                    
+                    logger.info(f"      → Chunk {chunk_num}/{total_chunks}: building TSV for rows {chunk_start:,}-{chunk_end:,}...")
+                    chunk_buffer_start = time.time()
+                    
+                    # Build chunk TSV
+                    lines = []
+                    for i in range(chunk_start, chunk_end):
+                        lines.append(f"{parent_str}\t{component_ids[i]}\t{sequence_indices[i]}\n")
+                    
+                    chunk_tsv = "".join(lines)
+                    buffer_time = time.time() - chunk_buffer_start
+                    
+                    # Write chunk
+                    logger.info(f"      → Chunk {chunk_num}/{total_chunks}: writing {len(lines):,} rows...")
+                    write_start = time.time()
+                    await copy.write(chunk_tsv)
+                    write_time = time.time() - write_start
+                    
+                    chunk_rate = len(lines) / (buffer_time + write_time)
+                    logger.info(
+                        f"      ✓ Chunk {chunk_num}/{total_chunks} complete: {len(lines):,} rows in {buffer_time+write_time:.2f}s "
+                        f"({chunk_rate:,.0f} rows/s)"
+                    )
         
-        copy_time = time.time() - copy_start
         total_time = time.time() - total_start
+        overall_rate = total_rows / total_time
         
         logger.info(
-            f"    ✓ Bulk COPY complete: {len(component_ids):,} rows in {total_time:.2f}s "
-            f"({len(component_ids)/total_time:,.0f} rows/s, buffer={buffer_time:.2f}s, copy={copy_time:.2f}s)"
+            f"    ✓ Bulk COPY complete: {total_rows:,} rows in {total_time:.2f}s ({overall_rate:,.0f} rows/s)"
         )
 
     async def _create_composition_batch(
