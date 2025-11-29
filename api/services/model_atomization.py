@@ -747,7 +747,7 @@ class GGUFAtomizer(BaseAtomizer):
                     "COPY atom (content_hash, canonical_text, metadata) FROM STDIN"
                 ) as copy:
                     # Use write() with the rows directly - fastest approach, no loop overhead
-                    copy.write(iter(rows))
+                    await copy.write(iter(rows))
                 
                 copy_time = time.time() - copy_start
                 logger.info(f"    → Wrote {len(rows):,} rows via COPY ({copy_time:.2f}s, {len(rows)/copy_time:,.0f} rows/s)")
@@ -828,7 +828,7 @@ class GGUFAtomizer(BaseAtomizer):
                     "COPY atom_composition (parent_atom_id, component_atom_id, sequence_index) FROM STDIN"
                 ) as copy:
                     # Use write() with generator - fastest approach, no list building or loop overhead
-                    copy.write(
+                    await copy.write(
                         (int(parent_id), int(batch_component_ids[j]), int(batch_sequence_indices[j]))
                         for j in range(len(batch_component_ids))
                     )
@@ -873,7 +873,7 @@ class GGUFAtomizer(BaseAtomizer):
                     "COPY atom_composition (parent_atom_id, component_atom_id, sequence_index) FROM STDIN"
                 ) as copy:
                     # Use write() with generator - fastest approach, no await overhead
-                    copy.write(
+                    await copy.write(
                         (int(parent_id), int(comp["component_id"]), int(comp["sequence_idx"]))
                         for comp in batch
                     )
