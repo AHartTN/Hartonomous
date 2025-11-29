@@ -728,7 +728,7 @@ class GGUFAtomizer(BaseAtomizer):
                 
                 # Progress every 50 weights
                 if (idx + 1) % 50 == 0 or (idx + 1) == len(uncached_weights):
-                    print(f"    → Hashed {idx+1}/{len(uncached_weights)} weights\", end='\\r', flush=True)
+                    print(f"    → Hashed {idx+1}/{len(uncached_weights)} weights", end='\r', flush=True)
             print()  # New line after progress
             
             # Bulk insert with COPY - bypasses stored procedure overhead
