@@ -742,12 +742,13 @@ class GGUFAtomizer(BaseAtomizer):
             sys.stdout.flush()
             copy_start = time.time()
             async with conn.cursor() as cur:
-                # Insert atoms via COPY - use write() with iterable for maximum performance
+                # Insert atoms via COPY - synchronous write_row for maximum performance
                 async with cur.copy(
                     "COPY atom (content_hash, canonical_text, metadata) FROM STDIN"
                 ) as copy:
-                    # Use write() with the rows directly - fastest approach, no loop overhead
-                    await copy.write(iter(rows))
+                    # Write rows synchronously in tight loop - much faster than await per row
+                    for row in rows:
+                        copy.write_row(row)
                 
                 copy_time = time.time() - copy_start
                 logger.info(f"    → Wrote {len(rows):,} rows via COPY ({copy_time:.2f}s, {len(rows)/copy_time:,.0f} rows/s)")
@@ -827,11 +828,13 @@ class GGUFAtomizer(BaseAtomizer):
                 async with cur.copy(
                     "COPY atom_composition (parent_atom_id, component_atom_id, sequence_index) FROM STDIN"
                 ) as copy:
-                    # Use write() with generator - fastest approach, no list building or loop overhead
-                    await copy.write(
-                        (int(parent_id), int(batch_component_ids[j]), int(batch_sequence_indices[j]))
-                        for j in range(len(batch_component_ids))
-                    )
+                    # Write rows synchronously in tight loop - fastest approach
+                    for j in range(len(batch_component_ids)):
+                        copy.write_row((
+                            int(parent_id),
+                            int(batch_component_ids[j]),
+                            int(batch_sequence_indices[j])
+                        ))
             batch_insert_time = time.time() - batch_insert_start
 
             # Progress reporting every batch
@@ -872,11 +875,13 @@ class GGUFAtomizer(BaseAtomizer):
                 async with cur.copy(
                     "COPY atom_composition (parent_atom_id, component_atom_id, sequence_index) FROM STDIN"
                 ) as copy:
-                    # Use write() with generator - fastest approach, no await overhead
-                    await copy.write(
-                        (int(parent_id), int(comp["component_id"]), int(comp["sequence_idx"]))
-                        for comp in batch
-                    )
+                    # Write rows synchronously in tight loop - fastest approach
+                    for comp in batch:
+                        copy.write_row((
+                            int(parent_id),
+                            int(comp["component_id"]),
+                            int(comp["sequence_idx"])
+                        ))
             batch_insert_time = time.time() - batch_insert_start
 
             # Progress reporting every batch
