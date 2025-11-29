@@ -383,20 +383,26 @@ class GGUFAtomizer(BaseAtomizer):
                     logger.info(f"  → Deduplicated in {dedup_time:.2f}s: {len(compressed_weights):,} → {unique_values:,} unique ({len(compressed_weights)/unique_values:.1f}x compression)")
 
                     # Vectorized sparse filtering on GPU (already done by encoder, but check)
+                    print(f"  → Applying sparse filter (threshold={self.threshold})...", flush=True)
                     abs_weights_gpu = cp.abs(weights_gpu)
                     sparse_mask_gpu = abs_weights_gpu < self.threshold
                     sparse_count = int(cp.sum(sparse_mask_gpu))
+                    print(f"  → Found {sparse_count:,} sparse values to skip", flush=True)
 
                     # Get non-sparse weights and indices on GPU, then transfer
+                    print(f"  → Extracting {len(compressed_weights) - sparse_count:,} non-sparse weights on GPU...", flush=True)
                     non_sparse_indices_gpu = cp.where(~sparse_mask_gpu)[0]
                     non_sparse_weights_gpu = weights_gpu[~sparse_mask_gpu]
 
                     # Transfer back to CPU, preserve precision as Decimal
+                    print(f"  → Transferring {len(non_sparse_weights_gpu):,} weights from GPU to CPU...", flush=True)
                     non_sparse_indices = non_sparse_indices_gpu.get().tolist()
+                    print(f"  → Converting {len(non_sparse_weights_gpu):,} weights to Decimal precision...", flush=True)
                     non_sparse_weights = [
                         Decimal(str(float(w)))
                         for w in non_sparse_weights_gpu.get().tolist()
                     ]
+                    print(f"  → Transfer and conversion complete", flush=True)
 
                     rle_applied = encoding_metadata.rle_applied
                     rle_note = " (RLE applied)" if rle_applied else ""
@@ -451,15 +457,19 @@ class GGUFAtomizer(BaseAtomizer):
             )
 
             # Batch atomize all non-sparse weights
+            print(f"  → Starting weight atomization batch for {len(non_sparse_weights):,} weights...", flush=True)
             logger.debug(f"  Task {tensor_idx}: Starting weight atomization batch...")
             weight_to_atom = await self._atomize_weight_batch(worker_conn, non_sparse_weights)
+            print(f"  → Weight atomization complete, got {len(weight_to_atom):,} atom IDs", flush=True)
             logger.debug(f"  Task {tensor_idx}: Weight atomization complete, got {len(weight_to_atom):,} atom IDs")
 
             # Build compositions (vectorized preparation)
+            print(f"  → Building {len(non_sparse_weights):,} composition records...", flush=True)
             compositions = [
                 {"component_id": int(weight_to_atom[weight]), "sequence_idx": int(idx)}
                 for idx, weight in zip(non_sparse_indices, non_sparse_weights)
             ]
+            print(f"  → Composition records built", flush=True)
 
             # Batch insert all compositions
             if compositions:
