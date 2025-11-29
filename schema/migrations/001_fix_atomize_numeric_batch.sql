@@ -1,8 +1,18 @@
 -- ============================================================================
--- Batch atomization for numeric values
--- Processes 1000+ weights in a SINGLE SQL statement using set-based operations
--- Expected speedup: 100-200x for quantized models
+-- Migration 001: Fix atomize_numeric_batch for true set-based batching
+-- 
+-- PROBLEM: Old implementation used FOR LOOP calling atomize_value() 255 times
+--          Result: 1 weight/second (178s for 255 weights)
+--
+-- SOLUTION: Use single INSERT with array unnesting and ON CONFLICT
+--           Expected: 100-200 weights/second (1-2s for 255 weights)
+--
+-- Apply with: psql -U hartonomous -d hartonomous -f 001_fix_atomize_numeric_batch.sql
 -- ============================================================================
+
+BEGIN;
+
+DROP FUNCTION IF EXISTS atomize_numeric_batch(numeric[], jsonb);
 
 CREATE OR REPLACE FUNCTION atomize_numeric_batch(
     weights numeric[],
@@ -53,5 +63,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-COMMENT ON FUNCTION atomize_numeric_batch IS
-'Batch atomization for numeric weight values - processes array of weights and returns atom_id for each unique value. Dramatically faster than per-weight atomization.';
+COMMIT;
+
+-- Verification
+SELECT 'Migration 001 applied successfully' AS status;

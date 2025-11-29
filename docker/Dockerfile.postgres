@@ -1,15 +1,18 @@
 # ============================================================================
-# Hartonomous PostgreSQL - PostGIS + PL/Python3u + NumPy + GPU Support
+# Hartonomous PostgreSQL - Citus + PostGIS + PL/Python3u + NumPy + GPU Support
 # 
-# Base: PostGIS 16-3.4
-# Adds: PL/Python3u, NumPy, SciPy for SIMD vectorization
+# Base: Citus 13.2.0 (PostgreSQL 16)
+# Adds: PostGIS, PL/Python3u, NumPy, SciPy for SIMD vectorization, Columnar storage
 # Future: PG-Strom for GPU acceleration
 # ============================================================================
 
-FROM postgis/postgis:16-3.4
+FROM citusdata/citus:13.2.0-pg16
 
-# Install Python 3 and plpython3u
+# Install PostGIS and Python dependencies
 RUN apt-get update && apt-get install -y \
+    postgresql-16-postgis-3 \
+    postgresql-16-postgis-3-scripts \
+    postgis \
     postgresql-plpython3-16 \
     python3-pip \
     python3-numpy \

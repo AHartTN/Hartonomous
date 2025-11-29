@@ -27,13 +27,11 @@ CREATE TABLE IF NOT EXISTS atom (
     -- Flexible metadata (modality, tenant, model_name, etc.)
     metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
     
-    -- Temporal versioning
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    valid_from TIMESTAMPTZ NOT NULL DEFAULT now(),
-    valid_to TIMESTAMPTZ NOT NULL DEFAULT 'infinity'::timestamptz
-);
-
--- ============================================================================
+        -- Temporal versioning
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        valid_from TIMESTAMPTZ NOT NULL DEFAULT now(),
+        valid_to TIMESTAMPTZ NOT NULL DEFAULT 'infinity'::timestamptz
+    );-- ============================================================================
 -- COMMENTS
 -- ============================================================================
 

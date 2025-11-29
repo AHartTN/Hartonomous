@@ -1,16 +1,19 @@
 # ============================================================================
-# Hartonomous PostgreSQL + PostGIS + PL/Python
-# Three tables, universal atoms, spatial semantics
+# Hartonomous PostgreSQL + Citus + PostGIS + PL/Python
+# Three tables, universal atoms, spatial semantics, columnar storage
 # ============================================================================
 
-FROM postgis/postgis:15-3.4
+FROM citusdata/citus:12.1.5-pg16
 
 LABEL maintainer="aharttn@gmail.com"
-LABEL description="Hartonomous: Self-organizing intelligence substrate on PostgreSQL"
+LABEL description="Hartonomous: Self-organizing intelligence substrate on PostgreSQL with Citus columnar storage"
 
-# Install additional dependencies
+# Install PostGIS and additional dependencies
 RUN apt-get update && apt-get install -y \
-    postgresql-plpython3-15 \
+    postgresql-16-postgis-3 \
+    postgresql-16-postgis-3-scripts \
+    postgis \
+    postgresql-plpython3-16 \
     python3-pip \
     python3-dev \
     build-essential \

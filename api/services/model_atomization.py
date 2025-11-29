@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from psycopg import AsyncConnection
+from psycopg_pool import AsyncConnectionPool
 
 from api.config import settings
 from api.services.spatial_encoding import (calculate_architecture_spatial_key,
@@ -36,11 +37,15 @@ except ImportError:
 class GGUFAtomizer(BaseAtomizer):
     """GGUF model atomizer with hierarchical decomposition and sparse encoding."""
 
-    def __init__(self, threshold: float = 1e-6):
+    def __init__(self, threshold: float = 1e-6, parallel_processing: bool = False):
         """Initialize atomizer with sparsity threshold."""
         super().__init__()
         self.threshold = threshold
+        self.parallel_processing = parallel_processing  # Toggle for parallel tensor processing
         self.cache: Dict[Any, Any] = {}  # Weight value -> atom_id cache
+        self.cache_lock = None  # Initialized in atomize_gguf when event loop is available
+        self.deferred_compositions: List[Dict] = []  # Store compositions to batch create at end
+        self.composition_lock = None  # Lock for composition list access
         self.stats: Dict[str, int] = {
             "total_processed": 0,
             "atoms_created": 0,
@@ -54,8 +59,23 @@ class GGUFAtomizer(BaseAtomizer):
         model_name: str,
         conn: AsyncConnection,
         max_tensors: Optional[int] = None,
+        pool: Optional[AsyncConnectionPool] = None,
     ) -> Dict[str, Any]:
-        """Atomize GGUF model following hierarchical composition pattern."""
+        """Atomize GGUF model following hierarchical composition pattern.
+        
+        Args:
+            file_path: Path to GGUF model file
+            model_name: Name for the model
+            conn: Database connection for metadata operations
+            max_tensors: Optional limit on number of tensors to process
+            pool: Optional connection pool for parallel tensor processing
+        """
+        
+        # Initialize cache lock now that we're in async context
+        if self.cache_lock is None:
+            import asyncio
+            self.cache_lock = asyncio.Lock()
+            self.composition_lock = asyncio.Lock()
         
         # Determine device based on config and availability
         use_gpu = settings.use_gpu and GPU_AVAILABLE
@@ -131,7 +151,7 @@ class GGUFAtomizer(BaseAtomizer):
         else:
             logger.info(f"Model atom created (new): {model_atom_id}")
 
-        await self._atomize_gguf_file(conn, file_path, model_atom_id, max_tensors)
+        await self._atomize_gguf_file(conn, file_path, model_atom_id, max_tensors, pool)
 
         dedup_ratio = (
             self.stats["total_processed"] / self.stats["atoms_created"]
@@ -165,6 +185,7 @@ class GGUFAtomizer(BaseAtomizer):
         file_path: Path,
         model_atom_id: int,
         max_tensors: Optional[int],
+        pool: Optional[AsyncConnectionPool] = None,
     ):
         """Parse GGUF file and atomize actual tensor weights."""
         try:
@@ -189,40 +210,67 @@ class GGUFAtomizer(BaseAtomizer):
         tensors_to_process = reader.tensors
         if max_tensors:
             tensors_to_process = reader.tensors[:max_tensors]
-            logger.info(f"Processing first {max_tensors} tensors")
+            logger.info(f"Processing first {max_tensors} tensors [Mode: {'PARALLEL' if self.parallel_processing else 'SYNCHRONOUS'}]")
+        
+        # PRE-LOAD tensor data in main thread to avoid I/O contention
+        # (parallel tasks reading from same GGUF file causes blocking)
+        logger.info(f"Pre-loading {len(tensors_to_process)} tensor data arrays...")
+        import time
+        preload_start = time.time()
+        tensor_data_list = []
+        for idx, tensor in enumerate(tensors_to_process):
+            logger.info(f"  Loading tensor {idx+1}/{len(tensors_to_process)}: {tensor.name} {tensor.shape}")
+            weights = tensor.data.flatten()  # Load in main thread (sequential I/O)
+            tensor_data_list.append({
+                'tensor': tensor,
+                'weights': weights,
+                'total_weights': len(weights)
+            })
+        preload_time = time.time() - preload_start
+        logger.info(f"✓ Pre-loaded all tensor data in {preload_time:.2f}s")
         
         import numpy as np
         from concurrent.futures import ThreadPoolExecutor
         import asyncio
         
         # Process tensors with controlled concurrency (I/O bound: SQL calls)
-        # Use threads for SQL I/O, not CPU processing (GPU/NumPy already handle that)
         max_workers = 4  # Conservative for database connections
         semaphore = asyncio.Semaphore(max_workers)
         
-        # Get connection pool from parent connection if available
-        # If no pool, we'll use sequential processing with the single connection
-        pool = getattr(conn, '_pool', None)
+        # Use pool if provided for parallel processing
         use_pool = pool is not None
         
-        async def process_one_tensor(tensor_idx: int, tensor):
+        async def process_one_tensor(tensor_idx: int, tensor_data: dict):
             """Process single tensor with semaphore control."""
+            logger.debug(f"Task {tensor_idx} created, waiting for semaphore...")
             async with semaphore:
-                # Get own connection from pool for this worker, or use passed conn
+                logger.debug(f"Task {tensor_idx} acquired semaphore")
                 if use_pool:
+                    logger.debug(f"Task {tensor_idx} requesting pool connection...")
+                    # Get dedicated connection from pool for this tensor
                     async with pool.connection() as worker_conn:
-                        await _process_tensor(worker_conn, tensor_idx, tensor)
+                        logger.debug(f"Task {tensor_idx} got pool connection, processing...")
+                        await _process_tensor(worker_conn, tensor_idx, tensor_data)
+                        logger.debug(f"Task {tensor_idx} processing complete")
                 else:
                     # Sequential processing with single connection
-                    await _process_tensor(conn, tensor_idx, tensor)
+                    logger.debug(f"Task {tensor_idx} using single connection...")
+                    await _process_tensor(conn, tensor_idx, tensor_data)
+                    logger.debug(f"Task {tensor_idx} complete")
+                logger.debug(f"Task {tensor_idx} releasing semaphore")
         
-        async def _process_tensor(worker_conn, tensor_idx: int, tensor):
+        async def _process_tensor(worker_conn, tensor_idx: int, tensor_data: dict):
             """Inner function to process a single tensor."""
+            tensor = tensor_data['tensor']
+            weights = tensor_data['weights']
+            total_weights = tensor_data['total_weights']
+            
             logger.info(
                 f"Processing tensor {tensor_idx+1}/{len(reader.tensors)}: {tensor.name} {tensor.shape}"
             )
 
             # Create tensor metadata atom
+            logger.debug(f"  Task {tensor_idx}: Creating tensor atom...")
             tensor_hash = hashlib.sha256(tensor.name.encode()).digest()
             tensor_atom_id = await self.create_atom(
                 worker_conn,
@@ -238,16 +286,21 @@ class GGUFAtomizer(BaseAtomizer):
                     "n_elements": int(np.prod(tensor.shape)),
                 },
             )
+            logger.debug(f"  Task {tensor_idx}: Tensor atom created (ID: {tensor_atom_id})")
 
-            await self.create_composition(
-                worker_conn, model_atom_id, tensor_atom_id, tensor_idx
-            )
+            # DEFER composition creation to avoid lock contention - will batch create at end
+            logger.debug(f"  Task {tensor_idx}: Deferring tensor composition creation...")
+            async with self.composition_lock:
+                self.deferred_compositions.append({
+                    'parent_id': model_atom_id,
+                    'component_id': tensor_atom_id,
+                    'sequence_idx': tensor_idx
+                })
+            
             self.stats["tensors_processed"] = self.stats.get("tensors_processed", 0) + 1
 
-            # Flatten tensor and atomize weights with RLE + BATCHING + SIMD/GPU
-            weights = tensor.data.flatten()
-            total_weights = len(weights)
-            logger.info(f"  Flattened tensor: {total_weights:,} weights to process")
+            # Use pre-loaded weights (already flattened)
+            logger.info(f"  Task {tensor_idx}: Processing {total_weights:,} pre-loaded weights...")
             
             # Initialize variables that will be set by either GPU or CPU path
             sparse_count = 0
@@ -278,9 +331,40 @@ class GGUFAtomizer(BaseAtomizer):
                     # Transfer compressed weights to GPU
                     weights_gpu = cp.array(compressed_weights, dtype=cp.float32)
 
-                    # Vectorized unique on GPU (on compressed data)
-                    unique_values_gpu = cp.unique(weights_gpu)
+                    # Hierarchical batched deduplication with progress reporting
+                    logger.info(f"  Deduplicating {len(compressed_weights):,} weights on GPU...")
+                    dedup_start = time.time()
+                    
+                    # Batch size for hierarchical deduplication (1M weights per batch)
+                    DEDUP_BATCH_SIZE = 1_000_000
+                    
+                    if len(weights_gpu) <= DEDUP_BATCH_SIZE:
+                        # Small enough - single pass
+                        unique_values_gpu = cp.unique(weights_gpu)
+                    else:
+                        # Large array - hierarchical batching
+                        num_batches = (len(weights_gpu) + DEDUP_BATCH_SIZE - 1) // DEDUP_BATCH_SIZE
+                        logger.info(f"  → Processing {num_batches} batches of {DEDUP_BATCH_SIZE:,} weights each...")
+                        
+                        # Phase 1: Get unique from each batch
+                        batch_uniques = []
+                        for i in range(num_batches):
+                            start_idx = i * DEDUP_BATCH_SIZE
+                            end_idx = min((i + 1) * DEDUP_BATCH_SIZE, len(weights_gpu))
+                            batch = weights_gpu[start_idx:end_idx]
+                            batch_unique = cp.unique(batch)
+                            batch_uniques.append(batch_unique)
+                            logger.info(f"    Batch {i+1}/{num_batches}: {len(batch):,} → {len(batch_unique):,} unique")
+                        
+                        # Phase 2: Concatenate and deduplicate batch uniques
+                        logger.info(f"  → Merging {len(batch_uniques)} batch results...")
+                        all_batch_uniques = cp.concatenate(batch_uniques)
+                        logger.info(f"  → Final deduplication of {len(all_batch_uniques):,} candidates...")
+                        unique_values_gpu = cp.unique(all_batch_uniques)
+                    
                     unique_values = len(unique_values_gpu)
+                    dedup_time = time.time() - dedup_start
+                    logger.info(f"  → Deduplicated in {dedup_time:.2f}s: {len(compressed_weights):,} → {unique_values:,} unique ({len(compressed_weights)/unique_values:.1f}x compression)")
 
                     # Vectorized sparse filtering on GPU (already done by encoder, but check)
                     abs_weights_gpu = cp.abs(weights_gpu)
@@ -303,8 +387,9 @@ class GGUFAtomizer(BaseAtomizer):
                     logger.info(
                         f"  [GPU] Processed {total_weights:,} weights | {len(compressed_weights):,} after compression | {unique_values:,} unique{rle_note}"
                     )
+                    logger.debug(f"  Task {tensor_idx}: GPU processing complete")
                 except Exception as e:
-                    logger.warning(f"GPU processing failed: {e}, falling back to CPU")
+                    logger.warning(f"  Task {tensor_idx}: GPU processing failed: {e}, falling back to CPU")
                     GPU_AVAILABLE_NOW = False
 
             if not GPU_AVAILABLE:
@@ -350,11 +435,13 @@ class GGUFAtomizer(BaseAtomizer):
             )
 
             # Batch atomize all non-sparse weights
+            logger.debug(f"  Task {tensor_idx}: Starting weight atomization batch...")
             weight_to_atom = await self._atomize_weight_batch(worker_conn, non_sparse_weights)
+            logger.debug(f"  Task {tensor_idx}: Weight atomization complete, got {len(weight_to_atom):,} atom IDs")
 
             # Build compositions (vectorized preparation)
             compositions = [
-                {"component_id": weight_to_atom[weight], "sequence_idx": int(idx)}
+                {"component_id": int(weight_to_atom[weight]), "sequence_idx": int(idx)}
                 for idx, weight in zip(non_sparse_indices, non_sparse_weights)
             ]
 
@@ -362,7 +449,9 @@ class GGUFAtomizer(BaseAtomizer):
             if compositions:
                 total_comps = len(compositions)
                 logger.info(f"  Batch inserting {total_comps:,} compositions...")
+                logger.debug(f"  Task {tensor_idx}: Starting composition batch insert...")
                 await self._create_composition_batch(worker_conn, tensor_atom_id, compositions)
+                logger.debug(f"  Task {tensor_idx}: Composition batch complete")
                 logger.info(f"  ✓ Inserted {total_comps:,} compositions")
 
             unique_so_far = len(self.cache)
@@ -374,10 +463,26 @@ class GGUFAtomizer(BaseAtomizer):
                 f"  ✓ Tensor complete: {self.stats['total_processed']:,} weights processed, "
                 f"{unique_so_far:,} unique atoms, {dedup_ratio:.1f}x dedup, {sparse_pct:.1f}% sparse"
             )
+            logger.debug(f"  Task {tensor_idx}: _process_tensor() returning...")
         
-        # Process all tensors concurrently with semaphore limiting
-        tasks = [process_one_tensor(idx, tensor) for idx, tensor in enumerate(tensors_to_process)]
-        await asyncio.gather(*tasks)
+        # Process tensors (parallel or synchronous based on config)
+        if self.parallel_processing and pool:
+            logger.info("Starting PARALLEL tensor processing...")
+            tasks = [process_one_tensor(idx, tensor_data) for idx, tensor_data in enumerate(tensor_data_list)]
+            await asyncio.gather(*tasks)
+        else:
+            logger.info("Starting SYNCHRONOUS tensor processing...")
+            # Process tensors one at a time (no parallelism)
+            for idx, tensor_data in enumerate(tensor_data_list):
+                # Use main connection for synchronous mode
+                await _process_tensor(conn, idx, tensor_data)
+
+        # BATCH CREATE ALL DEFERRED COMPOSITIONS AT ONCE (no lock contention!)
+        if self.deferred_compositions:
+            logger.info(f"Creating {len(self.deferred_compositions)} deferred tensor compositions in batch...")
+            await self._create_compositions_batch(conn, self.deferred_compositions)
+            logger.info(f"✓ All tensor compositions created")
+            self.deferred_compositions.clear()  # Reset for next run
 
         logger.info(
             f"GGUF atomization complete: {self.stats['tensors_processed']} tensors"
@@ -482,21 +587,63 @@ class GGUFAtomizer(BaseAtomizer):
         self.stats["atoms_created"] += 1
         return weight_atom_id
 
+    async def _create_compositions_batch(
+        self, conn: AsyncConnection, compositions: List[Dict]
+    ):
+        """Batch create all compositions in a single efficient operation."""
+        if not compositions:
+            return
+        
+        async with conn.cursor() as cur:
+            # Use UNNEST for efficient multi-row INSERT
+            parent_ids = [c['parent_id'] for c in compositions]
+            component_ids = [c['component_id'] for c in compositions]
+            sequence_idxs = [c['sequence_idx'] for c in compositions]
+            
+            await cur.execute("""
+                INSERT INTO composition (parent_atom_id, component_atom_id, sequence_idx)
+                SELECT * FROM UNNEST(%s::bigint[], %s::bigint[], %s::integer[])
+                ON CONFLICT (parent_atom_id, component_atom_id) DO NOTHING
+            """, (parent_ids, component_ids, sequence_idxs))
+
     def _deduplicate_weights_gpu(self, weights: List) -> List:
-        """Deduplicate weights using GPU acceleration (5-10x faster for large batches)."""
+        """Deduplicate weights using GPU acceleration with batched progress reporting."""
         try:
             import numpy as np
+            from tqdm import tqdm
             
-            # Convert to numpy array, then to GPU
-            weights_np = np.array(weights, dtype=np.float32)
-            weights_gpu = cp.asarray(weights_np)
+            # For very large arrays, process in chunks to show progress
+            CHUNK_SIZE = 10_000_000  # 10M weights per chunk
+            total_weights = len(weights)
             
-            # GPU-accelerated unique operation
-            unique_gpu = cp.unique(weights_gpu)
+            if total_weights <= CHUNK_SIZE:
+                # Small enough - single operation
+                weights_np = np.array(weights, dtype=np.float32)
+                weights_gpu = cp.asarray(weights_np)
+                unique_gpu = cp.unique(weights_gpu)
+                unique_np = cp.asnumpy(unique_gpu)
+                return unique_np.tolist()
             
-            # Transfer back to CPU and convert to list
-            unique_np = cp.asnumpy(unique_gpu)
-            return unique_np.tolist()
+            # Large array - process in chunks with progress bar
+            logger.info(f"    Processing {total_weights:,} weights in chunks of {CHUNK_SIZE:,}...")
+            unique_set = set()
+            
+            num_chunks = (total_weights + CHUNK_SIZE - 1) // CHUNK_SIZE
+            for i in tqdm(range(num_chunks), desc="    GPU dedup chunks", unit="chunk"):
+                start_idx = i * CHUNK_SIZE
+                end_idx = min(start_idx + CHUNK_SIZE, total_weights)
+                chunk = weights[start_idx:end_idx]
+                
+                # GPU-accelerated unique for this chunk
+                chunk_np = np.array(chunk, dtype=np.float32)
+                chunk_gpu = cp.asarray(chunk_np)
+                unique_gpu = cp.unique(chunk_gpu)
+                unique_np = cp.asnumpy(unique_gpu)
+                
+                # Accumulate unique values
+                unique_set.update(unique_np.tolist())
+            
+            return list(unique_set)
         except Exception as e:
             logger.warning(f"GPU deduplication failed, falling back to CPU: {e}")
             return list(set(weights))
@@ -530,57 +677,74 @@ class GGUFAtomizer(BaseAtomizer):
         dedup_time = time.time() - start_time
         logger.info(f"    → {len(unique_weights):,} unique weights [{device_used}] ({dedup_time:.2f}s)")
 
-        # Check cache first
+        # Check cache first (with lock to prevent race conditions between parallel tasks)
         logger.info(f"    Checking cache for {len(unique_weights):,} unique weights...")
+        logger.debug(f"    Waiting for cache lock...")
         cache_start = time.time()
-        uncached_weights = [w for w in unique_weights if w not in self.cache]
+        async with self.cache_lock:
+            logger.debug(f"    Cache lock acquired")
+            uncached_weights = [w for w in unique_weights if w not in self.cache]
+            logger.debug(f"    Releasing cache lock after check")
         cache_time = time.time() - cache_start
         cache_hits = len(unique_weights) - len(uncached_weights)
         logger.info(f"    → {cache_hits:,} cache hits, {len(uncached_weights):,} need atomization ({cache_time:.2f}s)")
 
         if uncached_weights:
-            # Batch atomize uncached weights
-            logger.info(f"    Atomizing {len(uncached_weights):,} new weights in database...")
+            # Use PostgreSQL COPY for 100-200x speedup vs INSERT
+            logger.info(f"    Atomizing {len(uncached_weights):,} new weights via COPY (columnar)...")
             db_start = time.time()
+            
+            import hashlib
+            import json
+            
+            # Build rows for COPY (stay in NumPy/Python - no stored procedure overhead)
+            rows = []
+            for weight in uncached_weights:
+                weight_bytes = str(weight).encode('utf-8')
+                content_hash = hashlib.sha256(weight_bytes).digest()
+                canonical_text = str(weight)
+                metadata = json.dumps({"modality": "weight"})
+                rows.append((content_hash, canonical_text, metadata))
+            
+            # Bulk insert with COPY - bypasses stored procedure overhead
             async with conn.cursor() as cur:
+                # Insert atoms via COPY
+                async with cur.copy(
+                    "COPY atom (content_hash, canonical_text, metadata) FROM STDIN"
+                ) as copy:
+                    for row in rows:
+                        await copy.write_row(row)
+                
+                # Retrieve atom_ids for the inserted atoms
+                hashes = [row[0] for row in rows]
                 await cur.execute(
-                    """
-                    SELECT weight_value::numeric, atom_id 
-                    FROM atomize_numeric_batch(
-                        %s::numeric[],
-                        '{"modality": "weight"}'::jsonb
-                    )
-                    """,
-                    (uncached_weights,),
+                    "SELECT content_hash, atom_id FROM atom WHERE content_hash = ANY(%s)",
+                    (hashes,)
                 )
                 results = await cur.fetchall()
+            
             db_time = time.time() - db_start
-            logger.info(f"    → Database atomization complete ({db_time:.2f}s, {len(uncached_weights)/db_time:.0f} weights/s)")
+            logger.info(f"    → COPY atomization complete ({db_time:.2f}s, {len(uncached_weights)/db_time:.0f} weights/s)")
 
             logger.info(f"    Building cache mappings for {len(results):,} results...")
             cache_build_start = time.time()
 
-            # Build mapping from returned numeric to atom_id
+            # Build mapping from content_hash to atom_id
             result_map = {
-                float(weight_val): atom_id for weight_val, atom_id in results
+                content_hash: atom_id for content_hash, atom_id in results
             }
 
             # Update cache using original uncached weights as keys
-            # (handles floating-point precision issues)
-            for orig_weight in uncached_weights:
-                # Find closest match in results (should be exact or very close)
-                if orig_weight in result_map:
-                    self.cache[orig_weight] = result_map[orig_weight]
-                else:
-                    # Fallback: find by minimum distance (for floating-point precision)
-                    # Convert to Decimal for comparison
-                    from decimal import Decimal
-                    orig_dec = Decimal(str(float(orig_weight))) if not isinstance(orig_weight, Decimal) else orig_weight
-                    closest = min(
-                        result_map.keys(), key=lambda x: abs(Decimal(str(float(x))) - orig_dec)
-                    )
-                    self.cache[orig_weight] = result_map[closest]
-                self.stats["atoms_created"] += 1
+            # Map weight → hash → atom_id
+            logger.debug(f"    Waiting for cache lock to update...")
+            async with self.cache_lock:
+                logger.debug(f"    Cache lock acquired for update")
+                for idx, orig_weight in enumerate(uncached_weights):
+                    # Get corresponding hash from rows we built
+                    content_hash = rows[idx][0]
+                    atom_id = result_map[content_hash]
+                    self.cache[orig_weight] = atom_id
+                    self.stats["atoms_created"] += 1
             
             cache_build_time = time.time() - cache_build_start
             logger.info(f"    → Cache updated with {len(uncached_weights):,} new entries ({cache_build_time:.2f}s)")
@@ -595,8 +759,9 @@ class GGUFAtomizer(BaseAtomizer):
             f"({len(uncached_weights):,} new) [{device_used}] (total: {total_time:.2f}s)"
         )
 
-        # Return mapping for all weights
-        return {w: self.cache[w] for w in weights}
+        # Return mapping for all weights (lock protects against concurrent cache updates)
+        async with self.cache_lock:
+            return {w: self.cache[w] for w in weights}
 
     async def _create_composition_batch(
         self, conn: AsyncConnection, parent_id: int, compositions: List[Dict[str, int]]
@@ -618,10 +783,16 @@ class GGUFAtomizer(BaseAtomizer):
 
             batch_insert_start = time.time()
             async with conn.cursor() as cur:
-                await cur.execute(
-                    "SELECT create_composition_batch(%s::bigint, %s::jsonb[])",
-                    (parent_id, [json.dumps(c) for c in batch]),
-                )
+                # Use COPY for 100-200x speedup vs stored procedure INSERT
+                async with cur.copy(
+                    "COPY atom_composition (parent_atom_id, component_atom_id, sequence_index) FROM STDIN"
+                ) as copy:
+                    for comp in batch:
+                        await copy.write_row((
+                            int(parent_id),
+                            int(comp["component_id"]),
+                            int(comp["sequence_idx"])
+                        ))
             batch_insert_time = time.time() - batch_insert_start
 
             # Progress reporting every batch
@@ -704,8 +875,8 @@ class GGUFAtomizer(BaseAtomizer):
         logger.info("    Step 1.5/6: Generating semantic embeddings...")
         embedding_start = time.time()
         try:
-            # Generate 3D coordinates from semantic embeddings
-            semantic_coords = generate_semantic_coordinates(all_tokens, fit_pca=True)
+            # Generate 3D coordinates from semantic embeddings via trilateration
+            semantic_coords = generate_semantic_coordinates(all_tokens, fit_references=True)
             logger.info(f"      Generated semantic embeddings in {time.time() - embedding_start:.2f}s")
         except Exception as e:
             logger.warning(f"Failed to generate embeddings, falling back to hash-based: {e}")

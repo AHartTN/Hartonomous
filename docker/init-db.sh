@@ -19,6 +19,11 @@ SCHEMA_DIR="/schema"
 # Extensions
 echo "→ Installing extensions..."
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
+    -- Citus for columnar storage (MUST be first)
+    CREATE EXTENSION IF NOT EXISTS citus;
+    CREATE EXTENSION IF NOT EXISTS citus_columnar;
+    
+    -- PostGIS and utilities
     CREATE EXTENSION IF NOT EXISTS postgis;
     CREATE EXTENSION IF NOT EXISTS pg_trgm;
     CREATE EXTENSION IF NOT EXISTS btree_gin;
@@ -140,7 +145,7 @@ echo "============================================"
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
     \echo 'Extensions:'
     SELECT extname, extversion FROM pg_extension 
-    WHERE extname IN ('postgis', 'pg_trgm', 'btree_gin', 'btree_gist', 'pgcrypto')
+    WHERE extname IN ('citus', 'citus_columnar', 'postgis', 'pg_trgm', 'btree_gin', 'btree_gist', 'pgcrypto')
     ORDER BY extname;
     
     \echo ''
