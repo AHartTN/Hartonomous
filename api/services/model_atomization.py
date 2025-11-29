@@ -252,16 +252,16 @@ class GGUFAtomizer(BaseAtomizer):
                     # Get dedicated connection from pool for this tensor
                     async with pool.connection() as worker_conn:
                         logger.debug(f"Task {tensor_idx} got pool connection, processing...")
-                        await _process_tensor(worker_conn, tensor_idx, tensor_data)
+                        await _process_tensor(worker_conn, tensor_idx, tensor_data, pool)
                         logger.debug(f"Task {tensor_idx} processing complete")
                 else:
                     # Sequential processing with single connection
                     logger.debug(f"Task {tensor_idx} using single connection...")
-                    await _process_tensor(conn, tensor_idx, tensor_data)
+                    await _process_tensor(conn, tensor_idx, tensor_data, pool)
                     logger.debug(f"Task {tensor_idx} complete")
                 logger.debug(f"Task {tensor_idx} releasing semaphore")
         
-        async def _process_tensor(worker_conn, tensor_idx: int, tensor_data: dict):
+        async def _process_tensor(worker_conn, tensor_idx: int, tensor_data: dict, pool: Optional[AsyncConnectionPool]):
             """Inner function to process a single tensor."""
             tensor = tensor_data['tensor']
             weights = tensor_data['weights']
@@ -474,7 +474,7 @@ class GGUFAtomizer(BaseAtomizer):
                 logger.debug(f"  Task {tensor_idx}: Starting composition batch insert...")
                 # Pass arrays directly instead of dict list
                 await self._create_composition_batch_arrays(
-                    worker_conn, tensor_atom_id, component_ids, non_sparse_indices
+                    worker_conn, tensor_atom_id, component_ids, non_sparse_indices, pool
                 )
                 logger.debug(f"  Task {tensor_idx}: Composition batch complete")
                 logger.info(f"  ✓ Inserted {total_comps:,} compositions")
@@ -806,7 +806,7 @@ class GGUFAtomizer(BaseAtomizer):
         return {w: self.cache[w] for w in weights}
 
     async def _create_composition_batch_arrays(
-        self, conn: AsyncConnection, parent_id: int, component_ids: List[int], sequence_indices: List[int]
+        self, conn: AsyncConnection, parent_id: int, component_ids: List[int], sequence_indices: List[int], pool: AsyncConnectionPool
     ):
         """Batch create compositions using arrays directly - faster than dict list."""
         import time
@@ -818,7 +818,7 @@ class GGUFAtomizer(BaseAtomizer):
         total_batches = (len(component_ids) + batch_size - 1) // batch_size
         
         # Parallel batch insertion - use connection pool for concurrency
-        async def insert_batch(pool, batch_idx: int, start: int, end: int):
+        async def insert_batch(batch_idx: int, start: int, end: int):
             """Insert a single batch using a pooled connection."""
             batch_component_ids = component_ids[start:end]
             batch_sequence_indices = sequence_indices[start:end]
@@ -838,14 +838,12 @@ class GGUFAtomizer(BaseAtomizer):
             return batch_idx, end - start
         
         # Create batch tasks (process multiple batches concurrently)
-        from api.dependencies import get_pool
-        pool = await get_pool()
         
         CONCURRENT_BATCHES = 4  # Run 4 batches in parallel
         tasks = []
         for batch_idx, i in enumerate(range(0, len(component_ids), batch_size)):
             batch_end = min(i + batch_size, len(component_ids))
-            tasks.append(insert_batch(pool, batch_idx, i, batch_end))
+            tasks.append(insert_batch(batch_idx, i, batch_end))
             
             # Process in groups to avoid overwhelming the pool
             if len(tasks) >= CONCURRENT_BATCHES or batch_end >= len(component_ids):
@@ -869,7 +867,7 @@ class GGUFAtomizer(BaseAtomizer):
         logger.info(f"    ✓ All compositions created ({total_time:.2f}s, {len(component_ids)/total_time:.0f} comps/s)")
 
     async def _create_composition_batch(
-        self, conn: AsyncConnection, parent_id: int, compositions: List[Dict[str, int]]
+        self, conn: AsyncConnection, parent_id: int, compositions: List[Dict[str, int]], pool: AsyncConnectionPool
     ):
         """Batch create compositions - much faster than individual inserts."""
         import time
@@ -881,7 +879,7 @@ class GGUFAtomizer(BaseAtomizer):
         total_batches = (len(compositions) + batch_size - 1) // batch_size
 
         # Parallel batch insertion - use connection pool for concurrency
-        async def insert_batch(pool, batch_idx: int, start: int, end: int):
+        async def insert_batch(batch_idx: int, start: int, end: int):
             """Insert a single batch using a pooled connection."""
             batch = compositions[start:end]
             
@@ -900,14 +898,12 @@ class GGUFAtomizer(BaseAtomizer):
             return batch_idx, end - start
         
         # Create batch tasks (process multiple batches concurrently)
-        from api.dependencies import get_pool
-        pool = await get_pool()
         
         CONCURRENT_BATCHES = 4  # Run 4 batches in parallel
         tasks = []
         for batch_idx, i in enumerate(range(0, len(compositions), batch_size)):
             batch_end = min(i + batch_size, len(compositions))
-            tasks.append(insert_batch(pool, batch_idx, i, batch_end))
+            tasks.append(insert_batch(batch_idx, i, batch_end))
             
             # Process in groups to avoid overwhelming the pool
             if len(tasks) >= CONCURRENT_BATCHES or batch_end >= len(compositions):
