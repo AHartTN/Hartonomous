@@ -671,9 +671,9 @@ class GGUFAtomizer(BaseAtomizer):
             sequence_idxs = [c['sequence_idx'] for c in compositions]
             
             await cur.execute("""
-                INSERT INTO composition (parent_atom_id, component_atom_id, sequence_idx)
+                INSERT INTO atom_composition (parent_atom_id, component_atom_id, sequence_index)
                 SELECT * FROM UNNEST(%s::bigint[], %s::bigint[], %s::integer[])
-                ON CONFLICT (parent_atom_id, component_atom_id) DO NOTHING
+                ON CONFLICT (parent_atom_id, component_atom_id, sequence_index) DO NOTHING
             """, (parent_ids, component_ids, sequence_idxs))
 
     def _deduplicate_weights_gpu(self, weights: List) -> List:
