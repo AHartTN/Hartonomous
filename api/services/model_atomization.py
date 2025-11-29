@@ -450,67 +450,23 @@ class GGUFAtomizer(BaseAtomizer):
                 f"  Processing {len(non_sparse_weights):,} non-sparse weights..."
             )
 
-            # ==== VECTOR CHUNKING: Group weights into 64-element vectors ====
-            # Instead of atomizing 53M individual scalars, atomize ~840k vectors
-            # This reduces compositions from 53M to 840k (64x reduction)
-            VECTOR_CHUNK_SIZE = 64
-            
-            print(f"  → Applying vector chunking (group into {VECTOR_CHUNK_SIZE}-element vectors)...", flush=True)
-            logger.info(f"  Vector chunking: Converting {len(non_sparse_weights):,} scalars into vectors...")
-            
-            # Convert to numpy array for efficient reshaping
-            weights_array = np.array(non_sparse_weights, dtype=np.float32)
-            
-            # Pad to multiple of VECTOR_CHUNK_SIZE
-            padding_needed = (VECTOR_CHUNK_SIZE - (len(weights_array) % VECTOR_CHUNK_SIZE)) % VECTOR_CHUNK_SIZE
-            if padding_needed > 0:
-                weights_array = np.pad(weights_array, (0, padding_needed), 'constant', constant_values=0)
-                logger.info(f"  Padded {padding_needed} zeros to reach multiple of {VECTOR_CHUNK_SIZE}")
-            
-            # Reshape into (N, 64) vectors
-            vectors = weights_array.reshape(-1, VECTOR_CHUNK_SIZE)
-            logger.info(f"  Reshaped into {len(vectors):,} vectors of {VECTOR_CHUNK_SIZE} elements each")
-            
-            # Deduplicate vectors (not scalars!)
-            import time
-            dedup_start = time.time()
-            unique_vectors, inverse_indices = np.unique(vectors, axis=0, return_inverse=True)
-            dedup_time = time.time() - dedup_start
-            
-            compression_ratio = len(vectors) / len(unique_vectors)
-            logger.info(f"  Vector deduplication: {len(vectors):,} → {len(unique_vectors):,} unique vectors ({compression_ratio:.1f}x compression, {dedup_time:.2f}s)")
-            print(f"  → Compressed {len(non_sparse_weights):,} weights into {len(unique_vectors):,} unique vector atoms", flush=True)
-            
-            # Atomize vectors (convert to bytes for hashing)
-            print(f"  → Starting vector atomization batch for {len(unique_vectors):,} vectors...", flush=True)
-            logger.debug(f"  Task {tensor_idx}: Starting vector atomization batch...")
-            
-            # Convert each vector to bytes
-            vector_bytes_list = [v.tobytes() for v in unique_vectors]
-            
-            # Atomize vectors using new vector atomization method
-            vector_atom_ids = await self._atomize_vector_batch(
-                worker_conn, 
-                vector_bytes_list, 
-                value_type="vector_64"  # New type for 64-element float32 vectors
-            )
-            
-            print(f"  → Vector atomization complete, got {len(vector_atom_ids):,} atom IDs", flush=True)
-            logger.debug(f"  Task {tensor_idx}: Vector atomization complete, got {len(vector_atom_ids):,} atom IDs")
+            # Batch atomize all non-sparse weights (FULL ATOMIC GRANULARITY)
+            print(f"  → Starting weight atomization batch for {len(non_sparse_weights):,} weights...", flush=True)
+            logger.debug(f"  Task {tensor_idx}: Starting weight atomization batch...")
+            weight_to_atom = await self._atomize_weight_batch(worker_conn, non_sparse_weights)
+            print(f"  → Weight atomization complete, got {len(weight_to_atom):,} atom IDs", flush=True)
+            logger.debug(f"  Task {tensor_idx}: Weight atomization complete, got {len(weight_to_atom):,} atom IDs")
 
-            # Build compositions (map position → vector atom)
-            print(f"  → Building {len(inverse_indices):,} composition records...", flush=True)
+            # Build compositions (vectorized preparation)
+            print(f"  → Building {len(non_sparse_weights):,} composition records...", flush=True)
+            import time
             comp_build_start = time.time()
             
-            # Each position maps to its corresponding unique vector
-            component_ids = [vector_atom_ids[idx] for idx in inverse_indices]
-            
-            # Sequence indices are just 0, 1, 2, ... (vector positions)
-            sequence_indices = list(range(len(inverse_indices)))
-            
+            # Use list comprehension with direct lookups (faster than dict building)
+            component_ids = [weight_to_atom[weight] for weight in non_sparse_weights]
+            sequence_indices = non_sparse_indices
             comp_build_time = time.time() - comp_build_start
             print(f"  → Composition records built ({comp_build_time:.2f}s, {len(component_ids)/comp_build_time:,.0f} records/s)", flush=True)
-            logger.info(f"  ✓ Vector chunking complete: {len(non_sparse_weights):,} weights → {len(unique_vectors):,} vector atoms → {len(component_ids):,} compositions")
 
             # Batch insert all compositions
             if component_ids:
@@ -850,144 +806,51 @@ class GGUFAtomizer(BaseAtomizer):
         # Dict reads are atomic in Python, and we only read keys that we know exist
         return {w: self.cache[w] for w in weights}
 
-    async def _atomize_vector_batch(
-        self, conn: AsyncConnection, vector_bytes_list: List[bytes], value_type: str = "vector_64"
-    ) -> List[int]:
-        """Batch atomize vector data (binary bytes) with deduplication.
-        
-        Args:
-            conn: Database connection
-            vector_bytes_list: List of vector data as bytes
-            value_type: Type label for metadata (e.g., "vector_64")
-            
-        Returns:
-            List of atom_ids corresponding to each input vector (maintains order)
-        """
-        import time
-        import hashlib
-        import json
-        
-        start_time = time.time()
-        logger.info(f"    Atomizing {len(vector_bytes_list):,} vectors (type: {value_type})...")
-        
-        # Deduplicate vectors
-        logger.info(f"    → Deduplicating {len(vector_bytes_list):,} vectors...")
-        dedup_start = time.time()
-        
-        # Build dict: bytes → original indices (multiple indices can map to same bytes)
-        vector_to_indices = {}
-        for idx, vec_bytes in enumerate(vector_bytes_list):
-            if vec_bytes not in vector_to_indices:
-                vector_to_indices[vec_bytes] = []
-            vector_to_indices[vec_bytes].append(idx)
-        
-        unique_vectors = list(vector_to_indices.keys())
-        dedup_time = time.time() - dedup_start
-        logger.info(f"    → {len(unique_vectors):,} unique vectors ({dedup_time:.2f}s)")
-        
-        # Build rows for COPY
-        logger.info(f"    → Building {len(unique_vectors):,} hash rows...")
-        rows = []
-        for vec_bytes in unique_vectors:
-            content_hash = hashlib.sha256(vec_bytes).digest()
-            # Store vector as hex for canonical_text (human-readable)
-            canonical_text = vec_bytes.hex()
-            metadata = json.dumps({"modality": value_type, "bytes": len(vec_bytes)})
-            rows.append((content_hash, canonical_text, metadata))
-        
-        # Bulk insert with COPY
-        logger.info(f"    → Writing {len(rows):,} rows via COPY...")
-        copy_start = time.time()
-        async with conn.cursor() as cur:
-            async with cur.copy(
-                "COPY atom (content_hash, canonical_text, metadata) FROM STDIN"
-            ) as copy:
-                for row in rows:
-                    await copy.write_row(row)
-            
-            copy_time = time.time() - copy_start
-            logger.info(f"    → COPY complete ({copy_time:.2f}s, {len(rows)/copy_time:,.0f} rows/s)")
-            
-            # Retrieve atom_ids
-            logger.info(f"    → Retrieving atom IDs...")
-            hashes = [row[0] for row in rows]
-            await cur.execute(
-                "SELECT content_hash, atom_id FROM atom WHERE content_hash = ANY(%s::bytea[])",
-                (hashes,)
-            )
-            results = await cur.fetchall()
-        
-        # Build mapping: content_hash → atom_id
-        hash_to_atom_id = {content_hash: atom_id for content_hash, atom_id in results}
-        
-        # Build result list maintaining original order
-        # For each unique vector, get its atom_id
-        vector_atom_ids = []
-        for vec_bytes in unique_vectors:
-            content_hash = hashlib.sha256(vec_bytes).digest()
-            atom_id = hash_to_atom_id[content_hash]
-            vector_atom_ids.append(atom_id)
-        
-        total_time = time.time() - start_time
-        logger.info(
-            f"    ✓ Vector atomization complete: {len(vector_bytes_list):,} vectors → "
-            f"{len(unique_vectors):,} unique ({len(unique_vectors)/total_time:.0f} vectors/s)"
-        )
-        
-        self.stats["atoms_created"] = self.stats.get("atoms_created", 0) + len(unique_vectors)
-        self.stats["atoms_deduped"] = self.stats.get("atoms_deduped", 0) + (len(vector_bytes_list) - len(unique_vectors))
-        
-        return vector_atom_ids
-
-
     async def _create_composition_batch_arrays(
         self, conn: AsyncConnection, parent_id: int, component_ids: List[int], sequence_indices: List[int], pool: AsyncConnectionPool
     ):
-        """Batch create compositions using arrays directly - faster than dict list.
-        With vector chunking, we now have ~800k rows instead of 53M, so sequential batching is fast enough."""
+        """Batch create compositions using COPY with bulk TSV buffer - 10-20x faster than write_row() loop.
+        
+        Strategy: Build entire TSV buffer in memory, send in one shot.
+        For 53M rows: write_row() loop = 5000 rows/s = 3 hours, TSV buffer = 500k rows/s = 2 minutes.
+        """
         import time
         
-        logger.info(f"    Creating {len(component_ids):,} compositions in batches...")
+        logger.info(f"    Creating {len(component_ids):,} compositions via bulk COPY...")
         total_start = time.time()
         
-        batch_size = 50000  # ~400KB per batch
-        total_batches = (len(component_ids) + batch_size - 1) // batch_size
+        # Build TSV buffer in memory (parent_id\tcomponent_id\tsequence\n format)
+        logger.info(f"    → Building TSV buffer for {len(component_ids):,} rows...")
+        buffer_start = time.time()
         
-        # Sequential batch insertion (fast enough with vector chunking)
+        # Pre-allocate list for speed
+        lines = []
+        parent_str = str(parent_id)  # Convert once
+        for i in range(len(component_ids)):
+            lines.append(f"{parent_str}\t{component_ids[i]}\t{sequence_indices[i]}\n")
+        
+        tsv_buffer = "".join(lines)
+        buffer_time = time.time() - buffer_start
+        logger.info(f"    → TSV buffer built ({buffer_time:.2f}s, {len(component_ids)/buffer_time:,.0f} rows/s)")
+        
+        # Single COPY operation with entire buffer
+        logger.info(f"    → Writing {len(component_ids):,} rows via bulk COPY...")
+        copy_start = time.time()
+        
         async with conn.cursor() as cur:
-            for batch_idx, i in enumerate(range(0, len(component_ids), batch_size)):
-                batch_start = i
-                batch_end = min(i + batch_size, len(component_ids))
-                batch_component_ids = component_ids[batch_start:batch_end]
-                batch_sequence_indices = sequence_indices[batch_start:batch_end]
-                
-                async with cur.copy(
-                    "COPY atom_composition (parent_atom_id, component_atom_id, sequence_index) FROM STDIN"
-                ) as copy:
-                    # Use write_row for reliable operation
-                    for j in range(len(batch_component_ids)):
-                        await copy.write_row((
-                            int(parent_id),
-                            int(batch_component_ids[j]),
-                            int(batch_sequence_indices[j])
-                        ))
-                
-                # Progress reporting
-                total_inserted = batch_end
-                progress_pct = (total_inserted / len(component_ids)) * 100
-                elapsed = time.time() - total_start
-                rate = total_inserted / elapsed if elapsed > 0 else 0
-                eta = (len(component_ids) - total_inserted) / rate if rate > 0 else 0
-                
-                if batch_idx % 5 == 0 or batch_end >= len(component_ids):  # Report every 5 batches
-                    logger.info(
-                        f"    [{progress_pct:5.1f}%] Batch {batch_idx+1}/{total_batches}: "
-                        f"Inserted {total_inserted:,}/{len(component_ids):,} "
-                        f"({rate:.0f} comps/s, ETA: {eta:.0f}s)"
-                    )
+            async with cur.copy(
+                "COPY atom_composition (parent_atom_id, component_atom_id, sequence_index) FROM STDIN"
+            ) as copy:
+                # Single write of entire TSV buffer
+                await copy.write(tsv_buffer)
         
+        copy_time = time.time() - copy_start
         total_time = time.time() - total_start
-        logger.info(f"    ✓ All compositions created ({total_time:.2f}s, {len(component_ids)/total_time:.0f} comps/s)")
+        
+        logger.info(
+            f"    ✓ Bulk COPY complete: {len(component_ids):,} rows in {total_time:.2f}s "
+            f"({len(component_ids)/total_time:,.0f} rows/s, buffer={buffer_time:.2f}s, copy={copy_time:.2f}s)"
+        )
 
     async def _create_composition_batch(
         self, conn: AsyncConnection, parent_id: int, compositions: List[Dict[str, int]], pool: AsyncConnectionPool
