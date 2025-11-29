@@ -832,18 +832,14 @@ class GGUFAtomizer(BaseAtomizer):
                 async with cur.copy(
                     "COPY atom_composition (parent_atom_id, component_atom_id, sequence_index) FROM STDIN"
                 ) as copy:
-                    # Write in batches to reduce await overhead
-                    WRITE_BATCH = 10000
-                    for write_idx in range(0, len(batch_component_ids), WRITE_BATCH):
-                        write_end = min(write_idx + WRITE_BATCH, len(batch_component_ids))
-                        for j in range(write_idx, write_end):
-                            await copy.write_row((
-                                int(parent_id),
-                                int(batch_component_ids[j]),
-                                int(batch_sequence_indices[j])
-                            ))
-                        # Yield to event loop
-                        await asyncio.sleep(0)
+                    # Build all rows as tuples then write in one shot (much faster than individual awaits)
+                    rows = [
+                        (int(parent_id), int(batch_component_ids[j]), int(batch_sequence_indices[j]))
+                        for j in range(len(batch_component_ids))
+                    ]
+                    # Write all rows at once - dramatically faster than looping with await
+                    for row in rows:
+                        copy.write_row(row)  # Synchronous write to buffer
             batch_insert_time = time.time() - batch_insert_start
 
             # Progress reporting every batch
