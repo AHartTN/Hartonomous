@@ -394,15 +394,11 @@ class GGUFAtomizer(BaseAtomizer):
                     non_sparse_indices_gpu = cp.where(~sparse_mask_gpu)[0]
                     non_sparse_weights_gpu = weights_gpu[~sparse_mask_gpu]
 
-                    # Transfer back to CPU, preserve precision as Decimal
+                    # Transfer back to CPU as float32 (no need for Decimal - we hash strings anyway)
                     print(f"  → Transferring {len(non_sparse_weights_gpu):,} weights from GPU to CPU...", flush=True)
                     non_sparse_indices = non_sparse_indices_gpu.get().tolist()
-                    print(f"  → Converting {len(non_sparse_weights_gpu):,} weights to Decimal precision...", flush=True)
-                    non_sparse_weights = [
-                        Decimal(str(float(w)))
-                        for w in non_sparse_weights_gpu.get().tolist()
-                    ]
-                    print(f"  → Transfer and conversion complete", flush=True)
+                    non_sparse_weights = non_sparse_weights_gpu.get().tolist()  # Keep as float32
+                    print(f"  → Transfer complete", flush=True)
 
                     rle_applied = encoding_metadata.rle_applied
                     rle_note = " (RLE applied)" if rle_applied else ""
@@ -434,9 +430,7 @@ class GGUFAtomizer(BaseAtomizer):
 
                 # Get non-sparse weights and their indices (vectorized)
                 non_sparse_indices = np.where(~sparse_mask)[0].tolist()
-                non_sparse_weights = [
-                    Decimal(str(float(w))) for w in compressed_weights[~sparse_mask].tolist()
-                ]
+                non_sparse_weights = compressed_weights[~sparse_mask].tolist()  # Keep as float32
 
                 rle_applied = encoding_metadata.rle_applied
                 rle_note = " (RLE applied)" if rle_applied else ""
@@ -680,21 +674,18 @@ class GGUFAtomizer(BaseAtomizer):
         """Batch atomize multiple weights - 100-200x faster than individual calls.
         Uses GPU acceleration when available and enabled."""
         import time
-        from decimal import Decimal
         
         # Determine device
         use_gpu = settings.use_gpu and GPU_AVAILABLE
         
         start_time = time.time()
         
-        # Deduplicate input weights using GPU if available
-        # Note: GPU returns float, CPU preserves Decimal - normalize to Decimal
+        # Deduplicate input weights using GPU if available (keep as float32)
         logger.info(f"    Deduplicating {len(weights):,} weights...")
         if use_gpu:
             import numpy as np
             unique_floats = self._deduplicate_weights_gpu(weights)
-            # Convert back to Decimal for consistent cache keys
-            unique_weights = [Decimal(str(f)) for f in unique_floats]
+            unique_weights = unique_floats  # Keep as float32, no Decimal conversion
             device_used = "GPU"
         else:
             unique_weights = list(set(weights))
