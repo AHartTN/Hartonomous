@@ -41,12 +41,13 @@ def _get_embedding_model():
             from sentence_transformers import SentenceTransformer
             
             # Check if model already exists in cache
-            model_name = 'all-MiniLM-L6-v2'
-            model_path = CACHE_DIR / model_name
+            model_name = 'sentence-transformers/all-MiniLM-L6-v2'
+            model_path = CACHE_DIR / 'all-MiniLM-L6-v2'
             
             if model_path.exists():
                 logger.info(f"Loading cached embedding model from {model_path}...")
-                _embedding_model = SentenceTransformer(str(model_path))
+                # Use cache_folder so sentence-transformers finds it correctly
+                _embedding_model = SentenceTransformer(model_name, cache_folder=str(CACHE_DIR))
                 logger.info("✓ Cached model loaded successfully")
             else:
                 logger.info(f"Downloading embedding model ({model_name}) to {CACHE_DIR}...")

@@ -23,23 +23,21 @@ async def test_gguf_atomization():
     conn = await AsyncConnection.connect(settings.get_connection_string())
 
     try:
-        # Use smallest GGUF from Ollama directory
-        models_dir = Path("D:/Models/blobs")
+        # Use small test model
+        test_file = Path(".cache/test_models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf")
         
-        gguf_files = []
-        for model_file in models_dir.glob("sha256-*"):
-            if model_file.stat().st_size > 1_000_000:  # At least 1MB
-                gguf_files.append(model_file)
+        if not test_file.exists():
+            print(f"Test model not found: {test_file}")
+            print("Downloading TinyLlama-1.1B (~637MB)...")
+            test_file.parent.mkdir(parents=True, exist_ok=True)
+            import urllib.request
+            urllib.request.urlretrieve(
+                "https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+                test_file
+            )
+            print("✓ Download complete")
         
-        if not gguf_files:
-            print("No GGUF models found in D:/Models/blobs")
-            return
-        
-        # Sort by size and use smallest
-        gguf_files.sort(key=lambda f: f.stat().st_size)
-        test_file = gguf_files[0]
-        
-        print(f"Using smallest GGUF: {test_file.name[:30]}... ({test_file.stat().st_size / 1e9:.2f} GB)")
+        print(f"Using test GGUF: {test_file.name} ({test_file.stat().st_size / 1e6:.0f} MB)")
         print("Note: This is a quick validation test (2 tensors only)")
         print("For full ingestion, use: scripts/ingest_model.py")
 
