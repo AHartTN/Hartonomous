@@ -17,51 +17,41 @@ from api.config import settings
 
 
 async def test_gguf_atomization():
-    """Test atomizing a GGUF model."""
+    """Test atomizing a GGUF model with quick validation."""
 
     # Connect to database
     conn = await AsyncConnection.connect(settings.get_connection_string())
 
     try:
-        # Find GGUF models in Ollama directory
+        # Use smallest GGUF from Ollama directory
         models_dir = Path("D:/Models/blobs")
-
-        # List available models, sorted by size (smallest first)
-        print("Available models in D:/Models/blobs:")
-        gguf_files = []
         
+        gguf_files = []
         for model_file in models_dir.glob("sha256-*"):
-            # Filter out incomplete downloads (files with only partial hashes or 0 bytes)
             if model_file.stat().st_size > 1_000_000:  # At least 1MB
                 gguf_files.append(model_file)
         
-        # Sort by size (smallest to largest)
-        gguf_files.sort(key=lambda f: f.stat().st_size)
-        
         if not gguf_files:
-            print("No valid GGUF models found in D:/Models/blobs")
-            print("Please ensure you have Ollama models downloaded.")
+            print("No GGUF models found in D:/Models/blobs")
             return
-
-        for i, model_file in enumerate(gguf_files[:10], 1):
-            size_gb = model_file.stat().st_size / 1e9
-            print(f"{i}. {model_file.name[:20]}... ({size_gb:.2f} GB)")
+        
+        # Sort by size and use smallest
+        gguf_files.sort(key=lambda f: f.stat().st_size)
+        test_file = gguf_files[0]
+        
+        print(f"Using smallest GGUF: {test_file.name[:30]}... ({test_file.stat().st_size / 1e9:.2f} GB)")
+        print("Note: This is a quick validation test (2 tensors only)")
+        print("For full ingestion, use: scripts/ingest_model.py")
 
         # Create atomizer (with higher threshold for testing)
         atomizer = GGUFAtomizer(threshold=0.1)
 
-        # Atomize (limit to 5 tensors for testing)
+        # Atomize (limit to 2 tensors for quick validation)
         result = await atomizer.atomize_model(
             file_path=test_file,
-            model_name=f"test-model-{test_file.name[:16]}",
+            model_name="test-embedding-model",
             conn=conn,
-            max_tensors=5,  # Test with just 5 tensors
-        ) Atomize (limit to 5 tensors for testing)
-        result = await atomizer.atomize_model(
-            file_path=qwen_file,
-            model_name="Qwen3-Coder-30B",
-            conn=conn,
-            max_tensors=5,  # Test with just 5 tensors
+            max_tensors=2,  # Just validate pipeline works
         )
 
         print("\n? Atomization complete!")
