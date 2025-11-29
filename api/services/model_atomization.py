@@ -549,27 +549,27 @@ class GGUFAtomizer(BaseAtomizer):
             logger.info(f"    Building cache mappings for {len(results):,} results...")
             cache_build_start = time.time()
 
-                # Build mapping from returned numeric to atom_id
-                result_map = {
-                    float(weight_val): atom_id for weight_val, atom_id in results
-                }
+            # Build mapping from returned numeric to atom_id
+            result_map = {
+                float(weight_val): atom_id for weight_val, atom_id in results
+            }
 
-                # Update cache using original uncached weights as keys
-                # (handles floating-point precision issues)
-                for orig_weight in uncached_weights:
-                    # Find closest match in results (should be exact or very close)
-                    if orig_weight in result_map:
-                        self.cache[orig_weight] = result_map[orig_weight]
-                    else:
-                        # Fallback: find by minimum distance (for floating-point precision)
-                        # Convert to Decimal for comparison
-                        from decimal import Decimal
-                        orig_dec = Decimal(str(float(orig_weight))) if not isinstance(orig_weight, Decimal) else orig_weight
-                        closest = min(
-                            result_map.keys(), key=lambda x: abs(Decimal(str(float(x))) - orig_dec)
-                        )
-                        self.cache[orig_weight] = result_map[closest]
-                    self.stats["atoms_created"] += 1
+            # Update cache using original uncached weights as keys
+            # (handles floating-point precision issues)
+            for orig_weight in uncached_weights:
+                # Find closest match in results (should be exact or very close)
+                if orig_weight in result_map:
+                    self.cache[orig_weight] = result_map[orig_weight]
+                else:
+                    # Fallback: find by minimum distance (for floating-point precision)
+                    # Convert to Decimal for comparison
+                    from decimal import Decimal
+                    orig_dec = Decimal(str(float(orig_weight))) if not isinstance(orig_weight, Decimal) else orig_weight
+                    closest = min(
+                        result_map.keys(), key=lambda x: abs(Decimal(str(float(x))) - orig_dec)
+                    )
+                    self.cache[orig_weight] = result_map[closest]
+                self.stats["atoms_created"] += 1
             
             cache_build_time = time.time() - cache_build_start
             logger.info(f"    → Cache updated with {len(uncached_weights):,} new entries ({cache_build_time:.2f}s)")
