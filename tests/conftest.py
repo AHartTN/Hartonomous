@@ -44,3 +44,37 @@ async def clean_db(db_connection):
 def test_data_dir():
     """Test data directory."""
     return Path(__file__).parent / "data"
+
+
+@pytest.fixture(scope="session")
+def project_root():
+    """Return the project root directory."""
+    return Path(__file__).parent.parent
+
+
+@pytest.fixture(scope="session")
+def test_models_dir(project_root):
+    """Return the cached test models directory."""
+    return project_root / ".cache" / "test_models"
+
+
+@pytest.fixture(scope="session")
+def test_gguf_path(test_models_dir):
+    """Return path to the small GGUF test model (TinyLlama ~637MB)."""
+    return test_models_dir / "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
+
+
+@pytest.fixture(scope="session")
+def test_safetensors_dir(project_root):
+    """Return path to the cached SafeTensors embedding model."""
+    snapshot_dir = (
+        project_root / ".cache" / "embedding_models" / "all-MiniLM-L6-v2" 
+        / "snapshots" / "c9745ed1d9f207416be6d2e6f8de32d1f16199bf"
+    )
+    return snapshot_dir
+
+
+@pytest.fixture(scope="session")
+def test_safetensors_path(test_safetensors_dir):
+    """Return path to the SafeTensors model file (~87MB)."""
+    return test_safetensors_dir / "model.safetensors"

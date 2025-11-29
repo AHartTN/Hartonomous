@@ -27,7 +27,9 @@ jobs:
           pip install -r api/requirements.txt
           pip install pytest pytest-asyncio httpx
       - name: Run tests
-        run: pytest api/tests/
+        run: |
+          # Run unit tests only (skip integration tests that require database)
+          pytest api/tests/ -m "not integration" -v --tb=short
 
   test-atomizer:
     name: Test C# Atomizer

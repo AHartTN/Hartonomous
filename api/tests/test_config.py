@@ -66,7 +66,7 @@ class TestConfiguration:
             from config import settings
 
             assert isinstance(settings.neo4j_enabled, bool)
-            assert isinstance(settings.age_worker_enabled, bool)
+            # Using Neo4j exclusively - AGE worker removed
         except ImportError:
             pytest.skip("Config module not available in CI")
 
