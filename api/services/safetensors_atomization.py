@@ -4,7 +4,6 @@ import hashlib
 import json
 import logging
 import numpy as np
-from decimal import Decimal
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -214,12 +213,9 @@ class SafeTensorsAtomizer(BaseAtomizer):
                 sparse_mask = abs_weights < self.threshold
                 sparse_count = int(np.sum(sparse_mask))
                 
-                # Get non-sparse weights
+                # Get non-sparse weights (keep as float32, no Decimal needed)
                 non_sparse_indices = np.where(~sparse_mask)[0].tolist()
-                non_sparse_weights = [
-                    Decimal(str(float(w)))
-                    for w in compressed_weights[~sparse_mask].tolist()
-                ]
+                non_sparse_weights = compressed_weights[~sparse_mask].tolist()  # float32
                 
                 unique_values = len(np.unique(compressed_weights))
                 rle_note = " (RLE applied)" if encoding_metadata.rle_applied else ""
@@ -238,11 +234,17 @@ class SafeTensorsAtomizer(BaseAtomizer):
                 if non_sparse_weights:
                     weight_atom_map = await self._atomize_weight_batch(conn, non_sparse_weights)
                     
-                    # Create compositions
-                    for local_idx, global_idx in enumerate(non_sparse_indices):
-                        weight = non_sparse_weights[local_idx]
-                        weight_atom_id = weight_atom_map[weight]
-                        await self.create_composition(conn, tensor_atom_id, weight_atom_id, global_idx)
+                    # Batch create all compositions using UNNEST
+                    parent_ids = [tensor_atom_id] * len(non_sparse_indices)
+                    component_ids = [weight_atom_map[non_sparse_weights[i]] for i in range(len(non_sparse_indices))]
+                    sequence_idxs = non_sparse_indices
+                    
+                    async with conn.cursor() as cur:
+                        await cur.execute("""
+                            INSERT INTO composition (parent_atom_id, component_atom_id, sequence_idx)
+                            SELECT * FROM UNNEST(%s::bigint[], %s::bigint[], %s::integer[])
+                            ON CONFLICT (parent_atom_id, component_atom_id) DO NOTHING
+                        """, (parent_ids, component_ids, sequence_idxs))
 
     async def _atomize_tokenizer(
         self, conn: AsyncConnection, tokenizer_path: Path, model_atom_id: int
@@ -371,12 +373,11 @@ class SafeTensorsAtomizer(BaseAtomizer):
             f"    Batch atomizing {len(weights):,} weights → {len(unique_weights):,} unique ({dedup_ratio:.1f}x dedup)"
         )
         
-        # Prepare batch data
+        # Prepare batch data (simplified - metadata is just for storage)
         weight_hashes = [hashlib.sha256(str(w).encode()).digest() for w in unique_weights]
         weight_texts = [str(w) for w in unique_weights]
-        weight_metadatas = [
-            json.dumps({"modality": "weight", "value": float(w)}) for w in unique_weights
-        ]
+        # Simplified metadata - just modality field (value is redundant with canonical_text)
+        weight_metadatas = ['{"modality": "weight"}'] * len(unique_weights)  # Constant string, no json.dumps
         weight_spatial_keys = [
             spatial_key_to_wkt(calculate_weight_spatial_key(float(w)))
             for w in unique_weights
