@@ -1,9 +1,11 @@
 """GGUF Model Atomization Service."""
 
+import asyncio
 import hashlib
 import json
 import logging
 import numpy as np
+import sys
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -333,6 +335,8 @@ class GGUFAtomizer(BaseAtomizer):
 
                     # Hierarchical batched deduplication with progress reporting
                     logger.info(f"  Deduplicating {len(compressed_weights):,} weights on GPU...")
+                    import sys
+                    sys.stdout.flush()  # Force output before GPU work
                     dedup_start = time.time()
                     
                     # Batch size for hierarchical deduplication (1M weights per batch)
@@ -340,27 +344,39 @@ class GGUFAtomizer(BaseAtomizer):
                     
                     if len(weights_gpu) <= DEDUP_BATCH_SIZE:
                         # Small enough - single pass
+                        print(f"  → Running GPU unique operation...", flush=True)
                         unique_values_gpu = cp.unique(weights_gpu)
+                        cp.cuda.Stream.null.synchronize()  # Ensure GPU finishes
+                        print(f"  → GPU unique complete", flush=True)
                     else:
                         # Large array - hierarchical batching
                         num_batches = (len(weights_gpu) + DEDUP_BATCH_SIZE - 1) // DEDUP_BATCH_SIZE
                         logger.info(f"  → Processing {num_batches} batches of {DEDUP_BATCH_SIZE:,} weights each...")
+                        sys.stdout.flush()
                         
                         # Phase 1: Get unique from each batch
                         batch_uniques = []
                         for i in range(num_batches):
+                            print(f"    Batch {i+1}/{num_batches}: Starting GPU unique...", end='', flush=True)
                             start_idx = i * DEDUP_BATCH_SIZE
                             end_idx = min((i + 1) * DEDUP_BATCH_SIZE, len(weights_gpu))
                             batch = weights_gpu[start_idx:end_idx]
                             batch_unique = cp.unique(batch)
+                            cp.cuda.Stream.null.synchronize()  # Wait for this batch
                             batch_uniques.append(batch_unique)
-                            logger.info(f"    Batch {i+1}/{num_batches}: {len(batch):,} → {len(batch_unique):,} unique")
+                            print(f" {len(batch):,} → {len(batch_unique):,} unique", flush=True)
+                            
+                            # Yield to event loop every few batches
+                            if i % 2 == 0:
+                                await asyncio.sleep(0)  # Let other tasks run
                         
                         # Phase 2: Concatenate and deduplicate batch uniques
-                        logger.info(f"  → Merging {len(batch_uniques)} batch results...")
+                        print(f"  → Merging {len(batch_uniques)} batch results...", flush=True)
                         all_batch_uniques = cp.concatenate(batch_uniques)
-                        logger.info(f"  → Final deduplication of {len(all_batch_uniques):,} candidates...")
+                        print(f"  → Final deduplication of {len(all_batch_uniques):,} candidates...", flush=True)
                         unique_values_gpu = cp.unique(all_batch_uniques)
+                        cp.cuda.Stream.null.synchronize()  # Final sync
+                        print(f"  → Final deduplication complete", flush=True)
                     
                     unique_values = len(unique_values_gpu)
                     dedup_time = time.time() - dedup_start
@@ -698,23 +714,42 @@ class GGUFAtomizer(BaseAtomizer):
             import json
             
             # Build rows for COPY (stay in NumPy/Python - no stored procedure overhead)
+            logger.info(f"    → Building {len(uncached_weights):,} hash rows...")
+            sys.stdout.flush()
             rows = []
-            for weight in uncached_weights:
+            for idx, weight in enumerate(uncached_weights):
                 weight_bytes = str(weight).encode('utf-8')
                 content_hash = hashlib.sha256(weight_bytes).digest()
                 canonical_text = str(weight)
                 metadata = json.dumps({"modality": "weight"})
                 rows.append((content_hash, canonical_text, metadata))
+                
+                # Progress every 50 weights
+                if (idx + 1) % 50 == 0 or (idx + 1) == len(uncached_weights):
+                    print(f"    → Hashed {idx+1}/{len(uncached_weights)} weights\", end='\\r', flush=True)
+            print()  # New line after progress
             
             # Bulk insert with COPY - bypasses stored procedure overhead
+            logger.info(f"    → Writing {len(rows):,} rows via COPY...")
+            sys.stdout.flush()
             async with conn.cursor() as cur:
-                # Insert atoms via COPY
+                # Insert atoms via COPY with batched writes for better performance
                 async with cur.copy(
                     "COPY atom (content_hash, canonical_text, metadata) FROM STDIN"
                 ) as copy:
-                    for row in rows:
-                        await copy.write_row(row)
+                    # Write in batches to reduce await overhead
+                    WRITE_BATCH = 1000
+                    for i in range(0, len(rows), WRITE_BATCH):
+                        batch = rows[i:i+WRITE_BATCH]
+                        for row in batch:
+                            await copy.write_row(row)
+                        # Progress every 10k rows
+                        if (i + WRITE_BATCH) % 10000 == 0:
+                            print(f"    → Wrote {i+WRITE_BATCH:,}/{len(rows):,} rows", flush=True)
+                            await asyncio.sleep(0)  # Yield to event loop
                 
+                logger.info(f"    → Retrieving atom IDs...")
+                sys.stdout.flush()
                 # Retrieve atom_ids for the inserted atoms
                 hashes = [row[0] for row in rows]
                 await cur.execute(
@@ -787,12 +822,19 @@ class GGUFAtomizer(BaseAtomizer):
                 async with cur.copy(
                     "COPY atom_composition (parent_atom_id, component_atom_id, sequence_index) FROM STDIN"
                 ) as copy:
-                    for comp in batch:
-                        await copy.write_row((
-                            int(parent_id),
-                            int(comp["component_id"]),
-                            int(comp["sequence_idx"])
-                        ))
+                    # Write in batches to reduce await overhead
+                    WRITE_BATCH = 10000
+                    for i in range(0, len(batch), WRITE_BATCH):
+                        write_batch = batch[i:i+WRITE_BATCH]
+                        for comp in write_batch:
+                            await copy.write_row((
+                                int(parent_id),
+                                int(comp["component_id"]),
+                                int(comp["sequence_idx"])
+                            ))
+                        # Yield to event loop every batch
+                        if (i + WRITE_BATCH) % 50000 == 0:
+                            await asyncio.sleep(0)
             batch_insert_time = time.time() - batch_insert_start
 
             # Progress reporting every batch
