@@ -500,7 +500,7 @@ class GGUFAtomizer(BaseAtomizer):
             # Process tensors one at a time (no parallelism)
             for idx, tensor_data in enumerate(tensor_data_list):
                 # Use main connection for synchronous mode
-                await _process_tensor(conn, idx, tensor_data)
+                await _process_tensor(conn, idx, tensor_data, pool)
 
         # BATCH CREATE ALL DEFERRED COMPOSITIONS AT ONCE (no lock contention!)
         if self.deferred_compositions:
