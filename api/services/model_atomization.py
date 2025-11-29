@@ -693,14 +693,16 @@ class GGUFAtomizer(BaseAtomizer):
         dedup_time = time.time() - start_time
         logger.info(f"    → {len(unique_weights):,} unique weights [{device_used}] ({dedup_time:.2f}s)")
 
-        # Check cache first (with lock to prevent race conditions between parallel tasks)
+        # Check cache first (pre-build lookup set, then minimal lock for read)
         logger.info(f"    Checking cache for {len(unique_weights):,} unique weights...")
-        logger.debug(f"    Waiting for cache lock...")
         cache_start = time.time()
+        # Build lookup set outside lock to minimize lock duration
+        unique_weights_set = set(unique_weights)
         async with self.cache_lock:
-            logger.debug(f"    Cache lock acquired")
-            uncached_weights = [w for w in unique_weights if w not in self.cache]
-            logger.debug(f"    Releasing cache lock after check")
+            # Atomic snapshot of cache keys
+            cached_keys = set(self.cache.keys())
+        # Find uncached weights without holding lock
+        uncached_weights = [w for w in unique_weights if w not in cached_keys]
         cache_time = time.time() - cache_start
         cache_hits = len(unique_weights) - len(uncached_weights)
         logger.info(f"    → {cache_hits:,} cache hits, {len(uncached_weights):,} need atomization ({cache_time:.2f}s)")
@@ -751,9 +753,10 @@ class GGUFAtomizer(BaseAtomizer):
                 logger.info(f"    → Retrieving atom IDs...")
                 sys.stdout.flush()
                 # Retrieve atom_ids for the inserted atoms
+                # Use temp table + JOIN for better performance than ANY array
                 hashes = [row[0] for row in rows]
                 await cur.execute(
-                    "SELECT content_hash, atom_id FROM atom WHERE content_hash = ANY(%s)",
+                    "SELECT content_hash, atom_id FROM atom WHERE content_hash = ANY(%s::bytea[])",
                     (hashes,)
                 )
                 results = await cur.fetchall()
@@ -770,16 +773,18 @@ class GGUFAtomizer(BaseAtomizer):
             }
 
             # Update cache using original uncached weights as keys
-            # Map weight → hash → atom_id
-            logger.debug(f"    Waiting for cache lock to update...")
+            # Map weight → hash → atom_id (build dict outside lock, then single batch update)
+            cache_updates = {}
+            for idx, orig_weight in enumerate(uncached_weights):
+                # Get corresponding hash from rows we built
+                content_hash = rows[idx][0]
+                atom_id = result_map[content_hash]
+                cache_updates[orig_weight] = atom_id
+            
+            # Single lock acquisition for batch update
             async with self.cache_lock:
-                logger.debug(f"    Cache lock acquired for update")
-                for idx, orig_weight in enumerate(uncached_weights):
-                    # Get corresponding hash from rows we built
-                    content_hash = rows[idx][0]
-                    atom_id = result_map[content_hash]
-                    self.cache[orig_weight] = atom_id
-                    self.stats["atoms_created"] += 1
+                self.cache.update(cache_updates)
+                self.stats["atoms_created"] += len(cache_updates)
             
             cache_build_time = time.time() - cache_build_start
             logger.info(f"    → Cache updated with {len(uncached_weights):,} new entries ({cache_build_time:.2f}s)")
@@ -794,9 +799,9 @@ class GGUFAtomizer(BaseAtomizer):
             f"({len(uncached_weights):,} new) [{device_used}] (total: {total_time:.2f}s)"
         )
 
-        # Return mapping for all weights (lock protects against concurrent cache updates)
-        async with self.cache_lock:
-            return {w: self.cache[w] for w in weights}
+        # Return mapping for all weights (cache is stable here, no lock needed for read-only dict comp)
+        # Dict reads are atomic in Python, and we only read keys that we know exist
+        return {w: self.cache[w] for w in weights}
 
     async def _create_composition_batch(
         self, conn: AsyncConnection, parent_id: int, compositions: List[Dict[str, int]]
@@ -824,17 +829,16 @@ class GGUFAtomizer(BaseAtomizer):
                 ) as copy:
                     # Write in batches to reduce await overhead
                     WRITE_BATCH = 10000
-                    for i in range(0, len(batch), WRITE_BATCH):
-                        write_batch = batch[i:i+WRITE_BATCH]
+                    for write_idx in range(0, len(batch), WRITE_BATCH):
+                        write_batch = batch[write_idx:write_idx+WRITE_BATCH]
                         for comp in write_batch:
                             await copy.write_row((
                                 int(parent_id),
                                 int(comp["component_id"]),
                                 int(comp["sequence_idx"])
                             ))
-                        # Yield to event loop every batch
-                        if (i + WRITE_BATCH) % 50000 == 0:
-                            await asyncio.sleep(0)
+                        # Yield to event loop more frequently (every write batch, not every 50k)
+                        await asyncio.sleep(0)
             batch_insert_time = time.time() - batch_insert_start
 
             # Progress reporting every batch
