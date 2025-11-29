@@ -52,15 +52,21 @@ class StructuredParser(BaseAtomizer):
         elif format_type == "csv":
             await self._parse_csv(data_bytes, parent_atom_id, conn)
         else:
-            # Fallback: raw bytes
+            # Fallback: raw bytes - collect then batch
             chunk_size = 48
+            component_ids = []
+            sequence_indices = []
             for idx in range(0, len(data_bytes), chunk_size):
                 chunk = data_bytes[idx : idx + chunk_size]
                 component_id = await self.create_atom(
                     conn, chunk, None, {"raw_bytes": True}
                 )
-                await self.create_composition(
-                    conn, parent_atom_id, component_id, idx // chunk_size
+                component_ids.append(component_id)
+                sequence_indices.append(idx // chunk_size)
+            
+            if component_ids:
+                await self.create_compositions_batch(
+                    conn, parent_atom_id, component_ids, sequence_indices
                 )
 
         return parent_atom_id
@@ -86,6 +92,8 @@ class StructuredParser(BaseAtomizer):
 
         items = flatten(data)
 
+        # Collect all value atoms first
+        value_atom_ids = []
         for idx, (key, value) in enumerate(items):
             value_str = str(value)
             value_bytes = value_str.encode("utf-8")[:64]  # Enforce 64 byte limit
@@ -96,9 +104,14 @@ class StructuredParser(BaseAtomizer):
                 value_str[:255],
                 {"json_key": key, "json_value": True},
             )
-
-            await self.create_composition(conn, parent_atom_id, value_atom_id, idx)
+            value_atom_ids.append(value_atom_id)
             self.stats["atoms_created"] += 1
+
+        # Batch create all compositions
+        if value_atom_ids:
+            await self.create_compositions_batch(
+                conn, parent_atom_id, value_atom_ids, list(range(len(value_atom_ids)))
+            )
 
         self.stats["total_processed"] = len(items)
 
@@ -109,6 +122,8 @@ class StructuredParser(BaseAtomizer):
         text = data_bytes.decode("utf-8")
         reader = csv.reader(io.StringIO(text))
 
+        # Collect all cell atoms first
+        cell_atom_ids = []
         composition_idx = 0
         for row in reader:
             for cell in row:
@@ -117,12 +132,15 @@ class StructuredParser(BaseAtomizer):
                 cell_atom_id = await self.create_atom(
                     conn, cell_bytes, cell[:255], {"csv_cell": True}
                 )
-
-                await self.create_composition(
-                    conn, parent_atom_id, cell_atom_id, composition_idx
-                )
+                cell_atom_ids.append(cell_atom_id)
                 composition_idx += 1
                 self.stats["atoms_created"] += 1
+
+        # Batch create all compositions
+        if cell_atom_ids:
+            await self.create_compositions_batch(
+                conn, parent_atom_id, cell_atom_ids, list(range(len(cell_atom_ids)))
+            )
 
         self.stats["total_processed"] = composition_idx
 

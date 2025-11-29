@@ -67,6 +67,10 @@ class AudioParser(BaseAtomizer):
 
         self.stats["total_processed"] = len(audio_data)
 
+        # Collect all non-silent chunks first
+        component_ids = []
+        sequence_indices = []
+        
         for idx in range(0, len(audio_data), chunk_size):
             chunk = audio_data[idx : idx + chunk_size]
 
@@ -80,10 +84,14 @@ class AudioParser(BaseAtomizer):
             component_id = await self.create_atom(
                 conn, chunk_bytes, None, {"dtype": "float32", "audio_chunk": True}
             )
-            await self.create_composition(
-                conn, parent_atom_id, component_id, idx // chunk_size
-            )
-
+            component_ids.append(component_id)
+            sequence_indices.append(idx // chunk_size)
             self.stats["atoms_created"] += 1
+
+        # Batch create all compositions at once
+        if component_ids:
+            await self.create_compositions_batch(
+                conn, parent_atom_id, component_ids, sequence_indices
+            )
 
         return parent_atom_id

@@ -81,3 +81,24 @@ class BaseAtomizer:
                 """,
                 (parent_id, component_id, sequence_idx),
             )
+
+    async def create_compositions_batch(
+        self,
+        conn: AsyncConnection,
+        parent_id: int,
+        component_ids: list,
+        sequence_indices: list,
+    ):
+        """Batch create compositions using UNNEST for massive speedup."""
+        if not component_ids:
+            return
+        
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                INSERT INTO atom_composition (parent_atom_id, component_atom_id, sequence_index)
+                SELECT %s, * FROM UNNEST(%s::bigint[], %s::integer[])
+                ON CONFLICT (parent_atom_id, component_atom_id, sequence_index) DO NOTHING
+                """,
+                (parent_id, component_ids, sequence_indices),
+            )

@@ -44,10 +44,12 @@ class TextParser(BaseAtomizer):
             await cur.execute("SELECT atomize_text(%s)", (text,))
             char_atom_ids = (await cur.fetchone())[0]
 
-        # Link character atoms to document
-        for idx, char_atom_id in enumerate(char_atom_ids):
-            await self.create_composition(conn, parent_atom_id, char_atom_id, idx)
-            self.stats["atoms_created"] += 1
+        # Batch link all character atoms to document
+        if char_atom_ids:
+            await self.create_compositions_batch(
+                conn, parent_atom_id, char_atom_ids, list(range(len(char_atom_ids)))
+            )
+            self.stats["atoms_created"] += len(char_atom_ids)
 
         self.stats["total_processed"] = len(text)
 

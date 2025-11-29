@@ -56,6 +56,10 @@ class ImageParser(BaseAtomizer):
 
         self.stats["total_processed"] = len(pixels)
 
+        # Collect all non-sparse chunks first
+        component_ids = []
+        sequence_indices = []
+        
         for idx in range(0, len(pixels), chunk_size):
             chunk = pixels[idx : idx + chunk_size].flatten()
 
@@ -73,10 +77,14 @@ class ImageParser(BaseAtomizer):
             component_id = await self.create_atom(
                 conn, chunk_bytes, None, {"dtype": "float32", "channels": 3}
             )
-            await self.create_composition(
-                conn, parent_atom_id, component_id, idx // chunk_size
-            )
-
+            component_ids.append(component_id)
+            sequence_indices.append(idx // chunk_size)
             self.stats["atoms_created"] += 1
+
+        # Batch create all compositions at once
+        if component_ids:
+            await self.create_compositions_batch(
+                conn, parent_atom_id, component_ids, sequence_indices
+            )
 
         return parent_atom_id

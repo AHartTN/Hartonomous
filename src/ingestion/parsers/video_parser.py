@@ -86,16 +86,19 @@ class VideoParser(BaseAtomizer):
                     },
                 )
 
-                await self.create_composition(
-                    conn, parent_atom_id, frame_atom_id, composition_idx
-                )
+                frame_atom_ids.append(frame_atom_id)
                 composition_idx += 1
-
                 self.stats["atoms_created"] += 1
 
             frame_idx += 1
             self.stats["total_processed"] += 1
 
         cap.release()
+
+        # Batch create all compositions at once
+        if frame_atom_ids:
+            await self.create_compositions_batch(
+                conn, parent_atom_id, frame_atom_ids, list(range(len(frame_atom_ids)))
+            )
 
         return parent_atom_id

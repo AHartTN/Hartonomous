@@ -155,18 +155,31 @@ class CodeParser(BaseAtomizer):
                 hash_to_id[atom["contentHash"]] = atom_id
                 self.stats["atoms_created"] += 1
 
-        # Insert compositions using SQL function
+        # Batch insert compositions
+        comp_parent_ids = []
+        comp_component_ids = []
+        comp_sequence_indices = []
+        
         for comp in compositions:
             parent_id = hash_to_id.get(comp["parentHash"])
             component_id = hash_to_id.get(comp["componentHash"])
 
             if parent_id and component_id:
-                async with conn.cursor() as cur:
-                    await cur.execute(
-                        "SELECT create_composition(%s, %s, %s, '{}'::jsonb)",
-                        (parent_id, component_id, comp["sequenceIndex"]),
-                    )
-                    self.stats["compositions_created"] += 1
+                comp_parent_ids.append(parent_id)
+                comp_component_ids.append(component_id)
+                comp_sequence_indices.append(comp["sequenceIndex"])
+        
+        if comp_parent_ids:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO atom_composition (parent_atom_id, component_atom_id, sequence_index)
+                    SELECT * FROM UNNEST(%s::bigint[], %s::bigint[], %s::integer[])
+                    ON CONFLICT (parent_atom_id, component_atom_id, sequence_index) DO NOTHING
+                    """,
+                    (comp_parent_ids, comp_component_ids, comp_sequence_indices),
+                )
+                self.stats["compositions_created"] = len(comp_parent_ids)
 
         # Insert relations using SQL function
         for rel in relations:
