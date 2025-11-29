@@ -742,13 +742,19 @@ class GGUFAtomizer(BaseAtomizer):
             sys.stdout.flush()
             copy_start = time.time()
             async with conn.cursor() as cur:
-                # Insert atoms via COPY - synchronous write_row for maximum performance
+                # Insert atoms via COPY - batch write_row calls
                 async with cur.copy(
                     "COPY atom (content_hash, canonical_text, metadata) FROM STDIN"
                 ) as copy:
-                    # Write rows synchronously in tight loop - much faster than await per row
-                    for row in rows:
-                        copy.write_row(row)
+                    # Write rows in chunks to reduce event loop overhead
+                    CHUNK_SIZE = 5000
+                    for i in range(0, len(rows), CHUNK_SIZE):
+                        chunk = rows[i:i+CHUNK_SIZE]
+                        for row in chunk:
+                            await copy.write_row(row)
+                        # Yield to event loop after each chunk
+                        if i + CHUNK_SIZE < len(rows):
+                            await asyncio.sleep(0)
                 
                 copy_time = time.time() - copy_start
                 logger.info(f"    → Wrote {len(rows):,} rows via COPY ({copy_time:.2f}s, {len(rows)/copy_time:,.0f} rows/s)")
@@ -828,13 +834,19 @@ class GGUFAtomizer(BaseAtomizer):
                 async with cur.copy(
                     "COPY atom_composition (parent_atom_id, component_atom_id, sequence_index) FROM STDIN"
                 ) as copy:
-                    # Write rows synchronously in tight loop - fastest approach
-                    for j in range(len(batch_component_ids)):
-                        copy.write_row((
-                            int(parent_id),
-                            int(batch_component_ids[j]),
-                            int(batch_sequence_indices[j])
-                        ))
+                    # Write rows in chunks to reduce event loop overhead
+                    CHUNK_SIZE = 5000
+                    for i in range(0, len(batch_component_ids), CHUNK_SIZE):
+                        end_idx = min(i + CHUNK_SIZE, len(batch_component_ids))
+                        for j in range(i, end_idx):
+                            await copy.write_row((
+                                int(parent_id),
+                                int(batch_component_ids[j]),
+                                int(batch_sequence_indices[j])
+                            ))
+                        # Yield to event loop after each chunk
+                        if end_idx < len(batch_component_ids):
+                            await asyncio.sleep(0)
             batch_insert_time = time.time() - batch_insert_start
 
             # Progress reporting every batch
@@ -875,13 +887,20 @@ class GGUFAtomizer(BaseAtomizer):
                 async with cur.copy(
                     "COPY atom_composition (parent_atom_id, component_atom_id, sequence_index) FROM STDIN"
                 ) as copy:
-                    # Write rows synchronously in tight loop - fastest approach
-                    for comp in batch:
-                        copy.write_row((
-                            int(parent_id),
-                            int(comp["component_id"]),
-                            int(comp["sequence_idx"])
-                        ))
+                    # Write rows in chunks to reduce event loop overhead
+                    CHUNK_SIZE = 5000
+                    for i in range(0, len(batch), CHUNK_SIZE):
+                        end_idx = min(i + CHUNK_SIZE, len(batch))
+                        for j in range(i, end_idx):
+                            comp = batch[j]
+                            await copy.write_row((
+                                int(parent_id),
+                                int(comp["component_id"]),
+                                int(comp["sequence_idx"])
+                            ))
+                        # Yield to event loop after each chunk
+                        if end_idx < len(batch):
+                            await asyncio.sleep(0)
             batch_insert_time = time.time() - batch_insert_start
 
             # Progress reporting every batch
