@@ -740,22 +740,17 @@ class GGUFAtomizer(BaseAtomizer):
             # Bulk insert with COPY - bypasses stored procedure overhead
             logger.info(f"    → Writing {len(rows):,} rows via COPY...")
             sys.stdout.flush()
+            copy_start = time.time()
             async with conn.cursor() as cur:
-                # Insert atoms via COPY with batched writes for better performance
+                # Insert atoms via COPY - use write() with iterable for maximum performance
                 async with cur.copy(
                     "COPY atom (content_hash, canonical_text, metadata) FROM STDIN"
                 ) as copy:
-                    # Write in batches to reduce await overhead
-                    WRITE_BATCH = 1000
-                    for i in range(0, len(rows), WRITE_BATCH):
-                        batch = rows[i:i+WRITE_BATCH]
-                        for row in batch:
-                            await copy.write_row(row)
-                        # Progress every 10k rows
-                        if (i + WRITE_BATCH) % 10000 == 0:
-                            print(f"    → Wrote {i+WRITE_BATCH:,}/{len(rows):,} rows", flush=True)
-                            await asyncio.sleep(0)  # Yield to event loop
+                    # Use write() with the rows directly - fastest approach, no loop overhead
+                    copy.write(iter(rows))
                 
+                copy_time = time.time() - copy_start
+                logger.info(f"    → Wrote {len(rows):,} rows via COPY ({copy_time:.2f}s, {len(rows)/copy_time:,.0f} rows/s)")
                 logger.info(f"    → Retrieving atom IDs...")
                 sys.stdout.flush()
                 # Retrieve atom_ids for the inserted atoms
@@ -832,14 +827,11 @@ class GGUFAtomizer(BaseAtomizer):
                 async with cur.copy(
                     "COPY atom_composition (parent_atom_id, component_atom_id, sequence_index) FROM STDIN"
                 ) as copy:
-                    # Build all rows as tuples then write in one shot (much faster than individual awaits)
-                    rows = [
+                    # Use write() with generator - fastest approach, no list building or loop overhead
+                    copy.write(
                         (int(parent_id), int(batch_component_ids[j]), int(batch_sequence_indices[j]))
                         for j in range(len(batch_component_ids))
-                    ]
-                    # Write all rows at once - dramatically faster than looping with await
-                    for row in rows:
-                        copy.write_row(row)  # Synchronous write to buffer
+                    )
             batch_insert_time = time.time() - batch_insert_start
 
             # Progress reporting every batch
@@ -880,18 +872,11 @@ class GGUFAtomizer(BaseAtomizer):
                 async with cur.copy(
                     "COPY atom_composition (parent_atom_id, component_atom_id, sequence_index) FROM STDIN"
                 ) as copy:
-                    # Write in batches to reduce await overhead
-                    WRITE_BATCH = 10000
-                    for write_idx in range(0, len(batch), WRITE_BATCH):
-                        write_batch = batch[write_idx:write_idx+WRITE_BATCH]
-                        for comp in write_batch:
-                            await copy.write_row((
-                                int(parent_id),
-                                int(comp["component_id"]),
-                                int(comp["sequence_idx"])
-                            ))
-                        # Yield to event loop more frequently (every write batch, not every 50k)
-                        await asyncio.sleep(0)
+                    # Use write() with generator - fastest approach, no await overhead
+                    copy.write(
+                        (int(parent_id), int(comp["component_id"]), int(comp["sequence_idx"]))
+                        for comp in batch
+                    )
             batch_insert_time = time.time() - batch_insert_start
 
             # Progress reporting every batch
