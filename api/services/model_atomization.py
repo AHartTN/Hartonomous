@@ -459,18 +459,23 @@ class GGUFAtomizer(BaseAtomizer):
 
             # Build compositions (vectorized preparation)
             print(f"  → Building {len(non_sparse_weights):,} composition records...", flush=True)
-            compositions = [
-                {"component_id": int(weight_to_atom[weight]), "sequence_idx": int(idx)}
-                for idx, weight in zip(non_sparse_indices, non_sparse_weights)
-            ]
-            print(f"  → Composition records built", flush=True)
+            import time
+            comp_build_start = time.time()
+            
+            # Use list comprehension with direct lookups (faster than dict building)
+            component_ids = [weight_to_atom[weight] for weight in non_sparse_weights]
+            comp_build_time = time.time() - comp_build_start
+            print(f"  → Composition records built ({comp_build_time:.2f}s, {len(component_ids)/comp_build_time:,.0f} records/s)", flush=True)
 
             # Batch insert all compositions
-            if compositions:
-                total_comps = len(compositions)
+            if component_ids:
+                total_comps = len(component_ids)
                 logger.info(f"  Batch inserting {total_comps:,} compositions...")
                 logger.debug(f"  Task {tensor_idx}: Starting composition batch insert...")
-                await self._create_composition_batch(worker_conn, tensor_atom_id, compositions)
+                # Pass arrays directly instead of dict list
+                await self._create_composition_batch_arrays(
+                    worker_conn, tensor_atom_id, component_ids, non_sparse_indices
+                )
                 logger.debug(f"  Task {tensor_idx}: Composition batch complete")
                 logger.info(f"  ✓ Inserted {total_comps:,} compositions")
 
@@ -803,6 +808,57 @@ class GGUFAtomizer(BaseAtomizer):
         # Return mapping for all weights (cache is stable here, no lock needed for read-only dict comp)
         # Dict reads are atomic in Python, and we only read keys that we know exist
         return {w: self.cache[w] for w in weights}
+
+    async def _create_composition_batch_arrays(
+        self, conn: AsyncConnection, parent_id: int, component_ids: List[int], sequence_indices: List[int]
+    ):
+        """Batch create compositions using arrays directly - faster than dict list."""
+        import time
+        
+        logger.info(f"    Creating {len(component_ids):,} compositions in batches...")
+        total_start = time.time()
+        
+        batch_size = 50000  # ~400KB per batch
+        total_batches = (len(component_ids) + batch_size - 1) // batch_size
+
+        for batch_idx, i in enumerate(range(0, len(component_ids), batch_size)):
+            batch_end = min(i + batch_size, len(component_ids))
+            batch_component_ids = component_ids[i:batch_end]
+            batch_sequence_indices = sequence_indices[i:batch_end]
+
+            batch_insert_start = time.time()
+            async with conn.cursor() as cur:
+                # Use COPY for 100-200x speedup vs stored procedure INSERT
+                async with cur.copy(
+                    "COPY atom_composition (parent_atom_id, component_atom_id, sequence_index) FROM STDIN"
+                ) as copy:
+                    # Write in batches to reduce await overhead
+                    WRITE_BATCH = 10000
+                    for write_idx in range(0, len(batch_component_ids), WRITE_BATCH):
+                        write_end = min(write_idx + WRITE_BATCH, len(batch_component_ids))
+                        for j in range(write_idx, write_end):
+                            await copy.write_row((
+                                int(parent_id),
+                                int(batch_component_ids[j]),
+                                int(batch_sequence_indices[j])
+                            ))
+                        # Yield to event loop
+                        await asyncio.sleep(0)
+            batch_insert_time = time.time() - batch_insert_start
+
+            # Progress reporting every batch
+            progress_pct = (batch_end / len(component_ids)) * 100
+            elapsed = time.time() - total_start
+            rate = batch_end / elapsed if elapsed > 0 else 0
+            eta = (len(component_ids) - batch_end) / rate if rate > 0 else 0
+            logger.info(
+                f"    [{progress_pct:5.1f}%] Batch {batch_idx+1}/{total_batches}: "
+                f"Inserted {batch_end:,}/{len(component_ids):,} ({batch_insert_time:.2f}s, "
+                f"{rate:.0f} comps/s, ETA: {eta:.0f}s)"
+            )
+        
+        total_time = time.time() - total_start
+        logger.info(f"    ✓ All compositions created ({total_time:.2f}s, {len(component_ids)/total_time:.0f} comps/s)")
 
     async def _create_composition_batch(
         self, conn: AsyncConnection, parent_id: int, compositions: List[Dict[str, int]]
