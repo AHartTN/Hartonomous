@@ -47,6 +47,9 @@ pillow>=10.2.0
 # Compression (required by src/core/compression/multi_layer.py)
 lz4>=4.3.2
 
+# Semantic embeddings for geometric landmarks
+sentence-transformers>=2.2.2
+
 # Parser dependencies (required by src/ingestion/parsers/)
 pandas>=2.0.0  # structured_parser.py
 tree-sitter>=0.20.0  # code_parser.py (optional but imported)

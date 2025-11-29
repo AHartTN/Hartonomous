@@ -16,6 +16,7 @@ from api.services.spatial_encoding import (calculate_architecture_spatial_key,
                                            calculate_vocabulary_spatial_key,
                                            calculate_weight_spatial_key,
                                            spatial_key_to_wkt)
+from api.services.embedding_service import generate_semantic_coordinates
 from src.core.atomization.base_atomizer import BaseAtomizer
 from src.core.compression.encoding import MultiLayerEncoder
 
@@ -659,8 +660,19 @@ class GGUFAtomizer(BaseAtomizer):
             f"      Decoded {vocab_size:,} tokens in {decode_time:.2f}s ({vocab_size/decode_time:.0f} tok/s)"
         )
 
+        # Step 1.5: Generate semantic embeddings for tokens
+        logger.info("    Step 1.5/6: Generating semantic embeddings...")
+        embedding_start = time.time()
+        try:
+            # Generate 3D coordinates from semantic embeddings
+            semantic_coords = generate_semantic_coordinates(all_tokens, fit_pca=True)
+            logger.info(f"      Generated semantic embeddings in {time.time() - embedding_start:.2f}s")
+        except Exception as e:
+            logger.warning(f"Failed to generate embeddings, falling back to hash-based: {e}")
+            semantic_coords = [None] * vocab_size
+
         # Step 2: Extract unique characters and hash in Python
-        logger.info("    Step 2/5: Extracting unique characters...")
+        logger.info("    Step 2/6: Extracting unique characters...")
         extract_start = time.time()
         char_to_hash = {}
         for token in all_tokens:
@@ -679,7 +691,7 @@ class GGUFAtomizer(BaseAtomizer):
         )
 
         # Step 3: Batch insert character atoms with graceful conflict handling
-        logger.info("    Step 3/5: Inserting character atoms...")
+        logger.info("    Step 3/6: Inserting character atoms...")
         insert_start = time.time()
         char_metadatas = [
             json.dumps({"modality": "character", "char": c}) for c in unique_chars
@@ -711,8 +723,8 @@ class GGUFAtomizer(BaseAtomizer):
         insert_time = time.time() - insert_start
         logger.info(f"      Inserted character atoms in {insert_time:.2f}s")
 
-        # Step 4: Create token atoms with spatial keys
-        logger.info("    Step 4/5: Creating token atoms...")
+        # Step 4: Create token atoms with spatial keys and embeddings
+        logger.info("    Step 4/6: Creating token atoms with semantic embeddings...")
         token_start = time.time()
 
         token_hashes = [
@@ -725,6 +737,8 @@ class GGUFAtomizer(BaseAtomizer):
                     "token_id": i,
                     "char_count": len(all_tokens[i]),
                     "vocab_size": vocab_size,
+                    # Store semantic embedding coordinates for similarity queries
+                    "semantic_coords": list(semantic_coords[i]) if semantic_coords[i] else None,
                 }
             )
             for i in range(vocab_size)
@@ -735,7 +749,7 @@ class GGUFAtomizer(BaseAtomizer):
                     token_id=i,
                     token_text=all_tokens[i],
                     frequency_rank=None,
-                    embedding=None,
+                    embedding=semantic_coords[i],  # Pass semantic coordinates
                     vocab_size=vocab_size,
                 )
             )
@@ -782,7 +796,7 @@ class GGUFAtomizer(BaseAtomizer):
         logger.info(f"      Created {vocab_size:,} token atoms in {token_time:.2f}s")
 
         # Step 5: Build and insert all compositions
-        logger.info("    Step 5/5: Building compositions...")
+        logger.info("    Step 5/6: Building compositions...")
         comp_start = time.time()
 
         # Token->character compositions

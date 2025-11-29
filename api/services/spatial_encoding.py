@@ -48,47 +48,55 @@ def calculate_vocabulary_spatial_key(
     token_id: int,
     token_text: str,
     frequency_rank: Optional[int] = None,
-    embedding: Optional[np.ndarray] = None,
+    embedding: Optional[Tuple[float, float, float]] = None,
     vocab_size: int = 151646,
 ) -> Tuple[float, float, float, float]:
     """
     Calculate spatial coordinates for vocabulary token atoms.
 
-    Encoding strategy:
+    Encoding strategy (with semantic embeddings):
+    - X, Y, Z: Semantic embedding coordinates (PCA-reduced from 384D)
+                Semantically similar tokens cluster together in 3D space
+    - M: Hilbert index of token_id for cache-efficient token lookup
+
+    Fallback strategy (no embeddings):
     - X: Token ID normalized to [0, 1] (lexicographic position in vocab)
     - Y: Frequency rank normalized to [0, 1] (common tokens cluster together)
     - Z: Semantic hash derived from token text (enables text similarity queries)
     - M: Hilbert index of token_id for cache-efficient token lookup
 
-    If embeddings available, could use PCA dimensions for X,Y,Z instead.
-
     Args:
         token_id: Integer token ID from tokenizer
         token_text: String representation of token (e.g., "quantum", " the")
         frequency_rank: Optional frequency rank (0=most common)
-        embedding: Optional token embedding vector for semantic positioning
+        embedding: Optional (X, Y, Z) tuple from semantic embedding model
         vocab_size: Total vocabulary size for normalization
 
     Returns:
         (X, Y, Z, M) coordinates as tuple of floats
     """
-    # X: Normalized token ID [0, 1]
-    x = token_id / vocab_size
-
-    # Y: Frequency rank [0, 1] if available, else hash-based
-    if frequency_rank is not None:
-        y = frequency_rank / vocab_size
+    # Use semantic embeddings if available
+    if embedding is not None:
+        x, y, z = embedding
     else:
-        # Use hash of token text for deterministic Y coordinate
-        hash_val = int.from_bytes(
-            hashlib.sha256(token_text.encode()).digest()[:4], "big"
-        )
-        y = (hash_val % 10000) / 10000.0
+        # Fallback to hash-based coordinates
+        # X: Normalized token ID [0, 1]
+        x = token_id / vocab_size
 
-    # Z: Semantic hash from token text (enables text similarity)
-    # Use first 4 bytes of hash, normalize to [0, 1]
-    text_hash = int.from_bytes(hashlib.sha256(token_text.encode()).digest()[4:8], "big")
-    z = (text_hash % 10000) / 10000.0
+        # Y: Frequency rank [0, 1] if available, else hash-based
+        if frequency_rank is not None:
+            y = frequency_rank / vocab_size
+        else:
+            # Use hash of token text for deterministic Y coordinate
+            hash_val = int.from_bytes(
+                hashlib.sha256(token_text.encode()).digest()[:4], "big"
+            )
+            y = (hash_val % 10000) / 10000.0
+
+        # Z: Semantic hash from token text (enables text similarity)
+        # Use first 4 bytes of hash, normalize to [0, 1]
+        text_hash = int.from_bytes(hashlib.sha256(token_text.encode()).digest()[4:8], "big")
+        z = (text_hash % 10000) / 10000.0
 
     # M: Hilbert index of token_id for efficient sequential access
     m = hilbert_encode_1d([token_id], bits_per_dim=20)
