@@ -235,16 +235,26 @@ class SafeTensorsAtomizer(BaseAtomizer):
                     weight_atom_map = await self._atomize_weight_batch(conn, non_sparse_weights)
                     
                     # Batch create all compositions using UNNEST
-                    parent_ids = [tensor_atom_id] * len(non_sparse_indices)
-                    component_ids = [weight_atom_map[non_sparse_weights[i]] for i in range(len(non_sparse_indices))]
+                    import time
+                    comp_count = len(non_sparse_indices)
+                    print(f"  → Building {comp_count:,} composition records...", flush=True)
+                    comp_start = time.time()
+                    
+                    parent_ids = [tensor_atom_id] * comp_count
+                    component_ids = [weight_atom_map[non_sparse_weights[i]] for i in range(comp_count)]
                     sequence_idxs = non_sparse_indices
                     
+                    print(f"  → Inserting {comp_count:,} compositions...", flush=True)
                     async with conn.cursor() as cur:
                         await cur.execute("""
                             INSERT INTO composition (parent_atom_id, component_atom_id, sequence_idx)
                             SELECT * FROM UNNEST(%s::bigint[], %s::bigint[], %s::integer[])
                             ON CONFLICT (parent_atom_id, component_atom_id) DO NOTHING
                         """, (parent_ids, component_ids, sequence_idxs))
+                    
+                    comp_elapsed = time.time() - comp_start
+                    comp_rate = comp_count / comp_elapsed if comp_elapsed > 0 else 0
+                    print(f"  → Inserted {comp_count:,} compositions ({comp_elapsed:.2f}s, {comp_rate:,.0f} comps/s)", flush=True)
 
     async def _atomize_tokenizer(
         self, conn: AsyncConnection, tokenizer_path: Path, model_atom_id: int

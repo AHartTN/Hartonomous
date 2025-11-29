@@ -93,6 +93,11 @@ class BaseAtomizer:
         if not component_ids:
             return
         
+        import time
+        count = len(component_ids)
+        start = time.time()
+        print(f"  → Inserting {count:,} composition records...", flush=True)
+        
         async with conn.cursor() as cur:
             await cur.execute(
                 """
@@ -102,3 +107,7 @@ class BaseAtomizer:
                 """,
                 (parent_id, component_ids, sequence_indices),
             )
+        
+        elapsed = time.time() - start
+        rate = count / elapsed if elapsed > 0 else 0
+        print(f"  → Inserted {count:,} compositions ({elapsed:.2f}s, {rate:,.0f} comps/s)", flush=True)
