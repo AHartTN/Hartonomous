@@ -816,41 +816,54 @@ class GGUFAtomizer(BaseAtomizer):
         
         batch_size = 50000  # ~400KB per batch
         total_batches = (len(component_ids) + batch_size - 1) // batch_size
-
+        
+        # Parallel batch insertion - use connection pool for concurrency
+        async def insert_batch(pool, batch_idx: int, start: int, end: int):
+            """Insert a single batch using a pooled connection."""
+            batch_component_ids = component_ids[start:end]
+            batch_sequence_indices = sequence_indices[start:end]
+            
+            async with pool.connection() as batch_conn:
+                async with batch_conn.cursor() as cur:
+                    async with cur.copy(
+                        "COPY atom_composition (parent_atom_id, component_atom_id, sequence_index) FROM STDIN"
+                    ) as copy:
+                        # Use write_row for reliable operation
+                        for j in range(len(batch_component_ids)):
+                            await copy.write_row((
+                                int(parent_id),
+                                int(batch_component_ids[j]),
+                                int(batch_sequence_indices[j])
+                            ))
+            return batch_idx, end - start
+        
+        # Create batch tasks (process multiple batches concurrently)
+        from api.dependencies import get_pool
+        pool = await get_pool()
+        
+        CONCURRENT_BATCHES = 4  # Run 4 batches in parallel
+        tasks = []
         for batch_idx, i in enumerate(range(0, len(component_ids), batch_size)):
             batch_end = min(i + batch_size, len(component_ids))
-            batch_component_ids = component_ids[i:batch_end]
-            batch_sequence_indices = sequence_indices[i:batch_end]
-
-            batch_insert_start = time.time()
-            async with conn.cursor() as cur:
-                # Use COPY for 100-200x speedup vs stored procedure INSERT
-                async with cur.copy(
-                    "COPY atom_composition (parent_atom_id, component_atom_id, sequence_index) FROM STDIN"
-                ) as copy:
-                    # Write in 5k row chunks to reduce await overhead (50k awaits → 10 awaits)
-                    CHUNK_SIZE = 5000
-                    for i in range(0, len(batch_component_ids), CHUNK_SIZE):
-                        end_idx = min(i + CHUNK_SIZE, len(batch_component_ids))
-                        # Format chunk as tab-delimited CSV
-                        csv_lines = [
-                            f"{int(parent_id)}\t{int(batch_component_ids[j])}\t{int(batch_sequence_indices[j])}"
-                            for j in range(i, end_idx)
-                        ]
-                        # Single write per 5k rows instead of 5k individual writes
-                        await copy.write("\n".join(csv_lines) + "\n")
-            batch_insert_time = time.time() - batch_insert_start
-
-            # Progress reporting every batch
-            progress_pct = (batch_end / len(component_ids)) * 100
-            elapsed = time.time() - total_start
-            rate = batch_end / elapsed if elapsed > 0 else 0
-            eta = (len(component_ids) - batch_end) / rate if rate > 0 else 0
-            logger.info(
-                f"    [{progress_pct:5.1f}%] Batch {batch_idx+1}/{total_batches}: "
-                f"Inserted {batch_end:,}/{len(component_ids):,} ({batch_insert_time:.2f}s, "
-                f"{rate:.0f} comps/s, ETA: {eta:.0f}s)"
-            )
+            tasks.append(insert_batch(pool, batch_idx, i, batch_end))
+            
+            # Process in groups to avoid overwhelming the pool
+            if len(tasks) >= CONCURRENT_BATCHES or batch_end >= len(component_ids):
+                # Wait for this group to complete
+                results = await asyncio.gather(*tasks)
+                
+                # Progress reporting
+                total_inserted = batch_end
+                progress_pct = (total_inserted / len(component_ids)) * 100
+                elapsed = time.time() - total_start
+                rate = total_inserted / elapsed if elapsed > 0 else 0
+                eta = (len(component_ids) - total_inserted) / rate if rate > 0 else 0
+                logger.info(
+                    f"    [{progress_pct:5.1f}%] Completed {len(results)} batches: "
+                    f"Inserted {total_inserted:,}/{len(component_ids):,} "
+                    f"({rate:.0f} comps/s, ETA: {eta:.0f}s)"
+                )
+                tasks = []
         
         total_time = time.time() - total_start
         logger.info(f"    ✓ All compositions created ({total_time:.2f}s, {len(component_ids)/total_time:.0f} comps/s)")
@@ -864,44 +877,58 @@ class GGUFAtomizer(BaseAtomizer):
         logger.info(f"    Creating {len(compositions):,} compositions in batches...")
         total_start = time.time()
         
-        batch_size = 50000  # Increased for better throughput (~400KB per batch)
+        batch_size = 50000  # ~400KB per batch
         total_batches = (len(compositions) + batch_size - 1) // batch_size
 
+        # Parallel batch insertion - use connection pool for concurrency
+        async def insert_batch(pool, batch_idx: int, start: int, end: int):
+            """Insert a single batch using a pooled connection."""
+            batch = compositions[start:end]
+            
+            async with pool.connection() as batch_conn:
+                async with batch_conn.cursor() as cur:
+                    async with cur.copy(
+                        "COPY atom_composition (parent_atom_id, component_atom_id, sequence_index) FROM STDIN"
+                    ) as copy:
+                        # Use write_row for reliable operation
+                        for comp in batch:
+                            await copy.write_row((
+                                int(parent_id),
+                                int(comp['component_id']),
+                                int(comp['sequence_idx'])
+                            ))
+            return batch_idx, end - start
+        
+        # Create batch tasks (process multiple batches concurrently)
+        from api.dependencies import get_pool
+        pool = await get_pool()
+        
+        CONCURRENT_BATCHES = 4  # Run 4 batches in parallel
+        tasks = []
         for batch_idx, i in enumerate(range(0, len(compositions), batch_size)):
-            batch = compositions[i : i + batch_size]
-            batch_num = batch_idx + 1
-            batch_start = i
             batch_end = min(i + batch_size, len(compositions))
-
-            batch_insert_start = time.time()
-            async with conn.cursor() as cur:
-                # Use COPY for 100-200x speedup vs stored procedure INSERT
-                async with cur.copy(
-                    "COPY atom_composition (parent_atom_id, component_atom_id, sequence_index) FROM STDIN"
-                ) as copy:
-                    # Write in 5k row chunks to reduce await overhead (50k awaits → 10 awaits)
-                    CHUNK_SIZE = 5000
-                    for i in range(0, len(batch), CHUNK_SIZE):
-                        end_idx = min(i + CHUNK_SIZE, len(batch))
-                        # Format chunk as tab-delimited CSV
-                        csv_lines = [
-                            f"{int(parent_id)}\t{int(batch[j]['component_id'])}\t{int(batch[j]['sequence_idx'])}"
-                            for j in range(i, end_idx)
-                        ]
-                        # Single write per 5k rows instead of 5k individual writes
-                        await copy.write("\n".join(csv_lines) + "\n")
-            batch_insert_time = time.time() - batch_insert_start
-
-            # Progress reporting every batch
-            progress_pct = (batch_end / len(compositions)) * 100
-            elapsed = time.time() - total_start
-            rate = batch_end / elapsed if elapsed > 0 else 0
-            eta = (len(compositions) - batch_end) / rate if rate > 0 else 0
-            logger.info(
-                f"    [{progress_pct:5.1f}%] Batch {batch_num}/{total_batches}: "
-                f"Inserted {batch_end:,}/{len(compositions):,} ({batch_insert_time:.2f}s, "
-                f"{rate:.0f} comps/s, ETA: {eta:.0f}s)"
-            )
+            tasks.append(insert_batch(pool, batch_idx, i, batch_end))
+            
+            # Process in groups to avoid overwhelming the pool
+            if len(tasks) >= CONCURRENT_BATCHES or batch_end >= len(compositions):
+                # Wait for this group to complete
+                results = await asyncio.gather(*tasks)
+                
+                # Progress reporting
+                total_inserted = batch_end
+                progress_pct = (total_inserted / len(compositions)) * 100
+                elapsed = time.time() - total_start
+                rate = total_inserted / elapsed if elapsed > 0 else 0
+                eta = (len(compositions) - total_inserted) / rate if rate > 0 else 0
+                logger.info(
+                    f"    [{progress_pct:5.1f}%] Completed {len(results)} batches: "
+                    f"Inserted {total_inserted:,}/{len(compositions):,} "
+                    f"({rate:.0f} comps/s, ETA: {eta:.0f}s)"
+                )
+                tasks = []
+        
+        total_time = time.time() - total_start
+        logger.info(f"    ✓ All compositions created ({total_time:.2f}s, {len(compositions)/total_time:.0f} comps/s)")
         
         total_time = time.time() - total_start
         logger.info(f"    ✓ All compositions created ({total_time:.2f}s, {len(compositions)/total_time:.0f} comps/s)")
