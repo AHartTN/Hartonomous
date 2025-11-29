@@ -19,9 +19,9 @@ jobs:
       postgres:
         image: postgis/postgis:15-3.4
         env:
-          POSTGRES_USER: ${{ secrets.TEST_POSTGRES_USER }}
-          POSTGRES_PASSWORD: ${{ secrets.TEST_POSTGRES_PASSWORD }}
-          POSTGRES_DB: ${{ secrets.TEST_POSTGRES_DB }}
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: test_db
         ports:
           - 5432:5432
         options: >-
@@ -33,7 +33,7 @@ jobs:
       neo4j:
         image: neo4j:5.15
         env:
-          NEO4J_AUTH: ${{ secrets.TEST_NEO4J_USER }}/${{ secrets.TEST_NEO4J_PASSWORD }}
+          NEO4J_AUTH: neo4j/testpassword
           NEO4J_ACCEPT_LICENSE_AGREEMENT: 'yes'
         ports:
           - 7687:7687
@@ -68,9 +68,9 @@ jobs:
         env:
           PGHOST: localhost
           PGPORT: 5432
-          PGUSER: ${{ secrets.TEST_POSTGRES_USER }}
-          PGPASSWORD: ${{ secrets.TEST_POSTGRES_PASSWORD }}
-          PGDATABASE: ${{ secrets.TEST_POSTGRES_DB }}
+          PGUSER: postgres
+          PGPASSWORD: test_password
+          PGDATABASE: test_db
         run: |
           # Install extensions
           psql -c "CREATE EXTENSION IF NOT EXISTS postgis;"
@@ -111,14 +111,14 @@ jobs:
         env:
           PGHOST: localhost
           PGPORT: 5432
-          PGUSER: ${{ secrets.TEST_POSTGRES_USER }}
-          PGPASSWORD: ${{ secrets.TEST_POSTGRES_PASSWORD }}
-          PGDATABASE: ${{ secrets.TEST_POSTGRES_DB }}
+          PGUSER: postgres
+          PGPASSWORD: test_password
+          PGDATABASE: test_db
           PGSSLMODE: prefer
           NEO4J_ENABLED: true
           NEO4J_URI: bolt://localhost:7687
-          NEO4J_USER: ${{ secrets.TEST_NEO4J_USER }}
-          NEO4J_PASSWORD: ${{ secrets.TEST_NEO4J_PASSWORD }}
+          NEO4J_USER: neo4j
+          NEO4J_PASSWORD: testpassword
           NEO4J_DATABASE: neo4j
           USE_AZURE_CONFIG: false
           AUTH_ENABLED: false
