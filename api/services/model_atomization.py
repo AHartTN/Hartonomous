@@ -742,24 +742,13 @@ class GGUFAtomizer(BaseAtomizer):
             sys.stdout.flush()
             copy_start = time.time()
             async with conn.cursor() as cur:
-                # Insert atoms via COPY - format as CSV and write in large chunks
+                # Insert atoms via COPY - write_row handles binary hash conversion
                 async with cur.copy(
                     "COPY atom (content_hash, canonical_text, metadata) FROM STDIN"
                 ) as copy:
-                    # Write in 5k row chunks to reduce await overhead (50k awaits → 10 awaits)
-                    CHUNK_SIZE = 5000
-                    for i in range(0, len(rows), CHUNK_SIZE):
-                        chunk = rows[i:i+CHUNK_SIZE]
-                        # Format chunk as tab-delimited CSV
-                        csv_lines = []
-                        for row in chunk:
-                            # Escape special characters and format as TSV
-                            hash_val = row[0].replace('\\', '\\\\').replace('\t', '\\t').replace('\n', '\\n')
-                            text_val = row[1].replace('\\', '\\\\').replace('\t', '\\t').replace('\n', '\\n')
-                            meta_val = row[2].replace('\\', '\\\\').replace('\t', '\\t').replace('\n', '\\n') if row[2] else '\\N'
-                            csv_lines.append(f"{hash_val}\t{text_val}\t{meta_val}")
-                        # Single write per 5k rows instead of 5k individual writes
-                        await copy.write("\n".join(csv_lines) + "\n")
+                    # write_row() needed for binary hash - cannot use CSV text format
+                    for row in rows:
+                        await copy.write_row(row)
                 
                 copy_time = time.time() - copy_start
                 logger.info(f"    → Wrote {len(rows):,} rows via COPY ({copy_time:.2f}s, {len(rows)/copy_time:,.0f} rows/s)")
