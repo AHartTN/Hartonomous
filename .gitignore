@@ -87,6 +87,12 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# Local model caches
+.cache/
+models/
+*.gguf
+*.safetensors
+
 # Database data
 postgres_data/
 pgdata/

@@ -10,9 +10,12 @@ Key features:
 - Batch embedding generation for efficiency
 - PCA dimensionality reduction to 3D coordinates
 - Caching for repeated tokens
+- Local model cache to avoid re-downloads
 """
 
 import logging
+import os
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -24,18 +27,32 @@ _embedding_model = None
 _pca_model = None
 _embedding_cache: Dict[str, np.ndarray] = {}
 
+# Use local cache directory to avoid filling up user's drive
+CACHE_DIR = Path(__file__).parent.parent.parent / ".cache" / "embedding_models"
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
 
 def _get_embedding_model():
-    """Lazy-load the sentence-transformers model."""
+    """Lazy-load the sentence-transformers model (cached locally)."""
     global _embedding_model
     
     if _embedding_model is None:
         try:
             from sentence_transformers import SentenceTransformer
             
-            logger.info("Loading semantic embedding model (all-MiniLM-L6-v2)...")
-            _embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-            logger.info("✓ Embedding model loaded successfully")
+            # Check if model already exists in cache
+            model_name = 'all-MiniLM-L6-v2'
+            model_path = CACHE_DIR / model_name
+            
+            if model_path.exists():
+                logger.info(f"Loading cached embedding model from {model_path}...")
+                _embedding_model = SentenceTransformer(str(model_path))
+                logger.info("✓ Cached model loaded successfully")
+            else:
+                logger.info(f"Downloading embedding model ({model_name}) to {CACHE_DIR}...")
+                logger.info("  (This is a one-time download, ~90MB)")
+                _embedding_model = SentenceTransformer(model_name, cache_folder=str(CACHE_DIR))
+                logger.info("✓ Model downloaded and cached successfully")
         except ImportError:
             logger.warning(
                 "sentence-transformers not installed. "
