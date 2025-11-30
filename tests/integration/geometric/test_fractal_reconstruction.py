@@ -312,7 +312,6 @@ class TestUnicodeRoundtrips:
         print(f"  Reconstructed length: {len(reconstructed)} chars")
 
 
-@pytest.mark.slow
 class TestFullModelRoundtrips:
     """Test full model ingestion and reconstruction."""
     

@@ -155,34 +155,30 @@ class BaseGeometricParser(ABC):
         chunks: List[bytes]
     ) -> List[int]:
         """
-        Crystallize sequence with fractal deduplication.
+        Crystallize sequence with fractal deduplication and BPE learning.
         
-        This method:
-        1. Atomizes each chunk
-        2. Feeds sequence to BPE Crystallizer for learning
-        3. Returns atom IDs
+        Delegates to FractalAtomizer which:
+        1. Creates primitive atoms for each chunk
+        2. Observes patterns (OBSERVE phase of OODA loop)
+        3. Applies learned merge rules (ACT phase)
+        4. Returns compressed atom ID sequence
         
         Args:
             conn: Database connection
             chunks: List of byte chunks
             
         Returns:
-            List of atom IDs (one per chunk)
+            List of atom IDs (compressed via BPE merges)
         """
-        atom_ids = []
+        # Set database connection on atomizer
+        self.atomizer.db = conn
         
-        for chunk in chunks:
-            atom_id = await self.atomizer.get_or_create_atom(
-                conn=conn,
-                atom_value=chunk,
-                metadata={"source": "geometric_parser"}
-            )
-            atom_ids.append(atom_id)
-        
-        # Feed sequence to BPE Crystallizer (async learning)
-        # This observes patterns like "public static void main" and learns
-        # to treat them as single atoms over time
-        await self.crystallizer.observe_sequence(atom_ids)
+        # Use FractalAtomizer's crystallize_sequence with BPE learning
+        atom_ids = await self.atomizer.crystallize_sequence(
+            chunks,
+            greedy=True,  # Enable BPE compression
+            learn=True    # Enable pattern learning (OODA loop)
+        )
         
         return atom_ids
     
@@ -258,3 +254,19 @@ class BaseGeometricParser(ABC):
     def get_stats(self) -> Dict[str, Any]:
         """Get parsing statistics."""
         return self.stats.copy()
+    
+    async def trigger_learning_cycle(self, conn: AsyncConnection) -> Dict:
+        """
+        Trigger BPE learning cycle (ORIENT + DECIDE + ACT phases).
+        
+        Call this periodically after processing batches of documents
+        to mint new composition atoms for frequently observed patterns.
+        
+        Args:
+            conn: Database connection
+            
+        Returns:
+            Learning statistics
+        """
+        self.atomizer.db = conn
+        return await self.atomizer.learn_patterns(auto_mint=True)

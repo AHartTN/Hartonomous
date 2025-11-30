@@ -80,7 +80,6 @@ class TestBasicSpatialQueries:
         print(f"\n✓ ST_3DLength: {length:.2f}")
 
 
-@pytest.mark.slow
 class TestProximitySearches:
     """Test ST_DWithin proximity searches."""
     
@@ -229,7 +228,6 @@ class TestDistanceCalculations:
         print(f"\n✓ Trajectory-to-trajectory distance: {distance:.2f}")
 
 
-@pytest.mark.slow
 class TestCoordinateLookups:
     """Test coordinate-based atom lookups."""
     
@@ -300,7 +298,6 @@ class TestCoordinateLookups:
             print(f"  {name}: {points} points")
 
 
-@pytest.mark.slow
 class TestQueryOptimization:
     """Test query plan and index usage."""
     

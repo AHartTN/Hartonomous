@@ -132,7 +132,6 @@ class TestEmbeddingAtomization:
         print(f"  Chunks: {len(wkts)}")
 
 
-@pytest.mark.slow
 class TestDatabaseStorage:
     """Test storing embedding tensors in database."""
     
@@ -176,7 +175,6 @@ class TestDatabaseStorage:
         print(f"\n✓ Stored embedding layer → composition {comp_id}")
 
 
-@pytest.mark.slow
 class TestFullModelIngestion:
     """Test ingesting complete SafeTensors model."""
     
@@ -252,7 +250,6 @@ class TestFullModelIngestion:
         print(f"\n✓ Bit-perfect reconstruction of {len(original_state_dict)} layers")
 
 
-@pytest.mark.slow  
 @pytest.mark.safetensors
 class TestRealSafeTensorsIngestion:
     """Test with real all-MiniLM-L6-v2 model (slow)."""

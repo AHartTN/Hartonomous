@@ -102,7 +102,6 @@ class SimpleGGUFReader:
                 for name, (data, dtype) in list(mock_tensors.items())[:max_tensors]}
 
 
-@pytest.mark.slow
 class TestGGUFMetadataExtraction:
     """Test GGUF file parsing without full ingestion."""
     
@@ -166,7 +165,6 @@ class TestBasicTensorIngestion:
         print(f"  Avg WKT size: {sum(len(w) for w in wkts) / len(wkts):.0f} chars")
 
 
-@pytest.mark.slow
 class TestDatabaseIngestion:
     """Test storing and querying trajectories in database."""
     
@@ -242,7 +240,6 @@ class TestDatabaseIngestion:
         print(f"\n✓ Stored {len(wkts)} chunks → {len(comp_ids)} compositions")
 
 
-@pytest.mark.slow
 class TestModelIngestion:
     """Test ingesting model state dict (simulated)."""
     
@@ -321,7 +318,6 @@ class TestModelIngestion:
         print(f"\n✓ Bit-perfect reconstruction of {len(original_state_dict)} layers")
 
 
-@pytest.mark.slow
 @pytest.mark.gguf
 class TestRealGGUFIngestion:
     """Test with real TinyLlama GGUF model (slow, requires .cache)."""

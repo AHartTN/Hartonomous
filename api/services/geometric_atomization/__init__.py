@@ -30,6 +30,8 @@ from .spatial_reconstructor import SpatialReconstructor
 from .geometric_atomizer import GeometricAtomizer
 from .fractal_atomizer import FractalAtomizer
 from .bpe_crystallizer import BPECrystallizer
+from .base_geometric_parser import BaseGeometricParser
+from .gguf_atomizer import GGUFAtomizer
 
 __all__ = [
     "AtomLocator",
@@ -38,5 +40,7 @@ __all__ = [
     "GeometricAtomizer",
     "FractalAtomizer",
     "BPECrystallizer",
+    "BaseGeometricParser",
+    "GGUFAtomizer",
 ]
 

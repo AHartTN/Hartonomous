@@ -20,9 +20,12 @@ Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 
 import hashlib
 import struct
+import logging
 from typing import List, Tuple, Optional, Dict
 import numpy as np
 from . import spatial_utils
+
+logger = logging.getLogger(__name__)
 
 
 class FractalAtomizer:
@@ -32,16 +35,23 @@ class FractalAtomizer:
     "A Composition is just an Atom whose value is a pointer to other Atoms."
     """
     
-    def __init__(self, db_connection=None, coordinate_range: float = 1e6):
+    def __init__(self, db_connection=None, coordinate_range: float = 1e6, bpe_crystallizer=None):
         """
         Initialize FractalAtomizer.
         
         Args:
             db_connection: Database connection for persistence
             coordinate_range: Spatial coordinate range
+            bpe_crystallizer: Optional BPECrystallizer instance for autonomous learning
         """
         self.db = db_connection
         self.coordinate_range = coordinate_range
+        
+        # Import BPECrystallizer here to avoid circular import
+        from .bpe_crystallizer import BPECrystallizer
+        
+        # BPE Crystallizer for autonomous pattern learning (OODA loop)
+        self.bpe = bpe_crystallizer or BPECrystallizer()
         
         # Local cache for O(1) lookups (in-memory deduplication)
         # Maps: (atom_value OR composition_tuple) -> atom_id
@@ -318,25 +328,29 @@ class FractalAtomizer:
     async def crystallize_sequence(
         self,
         sequence: List[bytes],
-        greedy: bool = True
+        greedy: bool = True,
+        learn: bool = True
     ) -> List[int]:
         """
-        Crystallize a sequence with greedy deduplication.
+        Crystallize a sequence with BPE-powered greedy deduplication.
         
-        This implements "Longest Common Subsequence" collapsing.
+        This implements autonomous pattern learning via BPE Crystallizer:
+        - OBSERVE: Count pair frequencies (if learn=True)
+        - ACT: Apply learned merge rules to compress sequence
         
         Example:
             Input: ['L','o','r','e','m',' ','I','p','s','u','m']
             
-            If "Lorem" and "Ipsum" are known compositions:
+            After learning "Lorem" and "Ipsum" are frequent:
             Output: [atom_id_lorem, atom_id_space, atom_id_ipsum]
             
-            If not known:
+            Before learning:
             Output: [atom_L, atom_o, atom_r, atom_e, atom_m, ...]
         
         Args:
             sequence: List of primitive values
-            greedy: Whether to greedily collapse into largest chunks
+            greedy: Whether to apply BPE compression
+            learn: Whether to observe this sequence for learning (OODA loop)
         
         Returns:
             List of atom IDs (potentially much shorter than input)
@@ -349,8 +363,7 @@ class FractalAtomizer:
                 atom_ids.append(atom_id)
             return atom_ids
         
-        # Greedy mode: try to find largest known compositions
-        # This is a sliding window approach
+        # BPE-powered greedy mode: autonomous pattern learning
         
         # First pass: create all primitives
         primitive_ids = []
@@ -358,34 +371,14 @@ class FractalAtomizer:
             atom_id = await self.get_or_create_primitive(value)
             primitive_ids.append(atom_id)
         
-        # Second pass: try to collapse into compositions
-        # For now, implement simple 2-element and 3-element patterns
-        # TODO: Implement full longest-common-subsequence algorithm
+        # OBSERVE phase: Let BPE crystallizer observe this sequence
+        if learn:
+            self.bpe.observe_sequence(primitive_ids)
         
-        collapsed = []
-        i = 0
-        while i < len(primitive_ids):
-            # Try 3-element window
-            if i + 2 < len(primitive_ids):
-                triple = tuple(primitive_ids[i:i+3])
-                if triple in self.composition_cache:
-                    collapsed.append(self.composition_cache[triple])
-                    i += 3
-                    continue
-            
-            # Try 2-element window
-            if i + 1 < len(primitive_ids):
-                pair = tuple(primitive_ids[i:i+2])
-                if pair in self.composition_cache:
-                    collapsed.append(self.composition_cache[pair])
-                    i += 2
-                    continue
-            
-            # No match - use primitive
-            collapsed.append(primitive_ids[i])
-            i += 1
+        # ACT phase: Apply learned merge rules to compress
+        compressed_ids = self.bpe.apply_merges(primitive_ids)
         
-        return collapsed
+        return compressed_ids
     
     def _compute_hilbert(self, x: float, y: float, z: float) -> int:
         """
@@ -394,3 +387,52 @@ class FractalAtomizer:
         Delegates to spatial_utils.compute_hilbert_index().
         """
         return spatial_utils.compute_hilbert_index(x, y, z, self.coordinate_range)
+    
+    async def learn_patterns(self, auto_mint: bool = True, top_k: int = 100) -> Dict:
+        """
+        Execute BPE learning cycle (ORIENT + DECIDE phases).
+        
+        This should be called periodically (e.g., after ingesting N documents)
+        to mint new composition atoms for frequently observed patterns.
+        
+        Process:
+        1. ORIENT: Identify most frequent pairs from observations
+        2. DECIDE: Decide which patterns warrant composition atoms
+        3. ACT: Mint new composition atoms for these patterns
+        
+        Args:
+            auto_mint: If True, automatically mint compositions for frequent pairs
+            top_k: Consider top K most frequent pairs
+        
+        Returns:
+            Dict with learning statistics
+        """
+        logger.info("\\n" + "="*80)
+        logger.info("BPE LEARNING CYCLE")
+        logger.info("="*80)
+        
+        # Get current statistics
+        stats_before = self.bpe.get_stats()
+        logger.info(f"Total pairs observed: {stats_before['total_pairs_observed']:,}")
+        logger.info(f"Unique pairs: {stats_before['unique_pairs']:,}")
+        logger.info(f"Merge rules learned: {stats_before['merge_rules_learned']}")
+        
+        # ORIENT + DECIDE + ACT: Mint new composition atoms
+        minted = await self.bpe.decide_and_mint(self, auto_mint=auto_mint)
+        
+        stats_after = self.bpe.get_stats()
+        logger.info(f"\\nNew compositions minted: {len(minted)}")
+        logger.info(f"Total merge rules: {stats_after['merge_rules_learned']}")
+        
+        if minted:
+            logger.info("\\nTop 10 new patterns:")
+            for i, (pair, comp_id) in enumerate(minted[:10], 1):
+                logger.info(f"  {i}. Pair {pair} -> Composition {comp_id}")
+        
+        logger.info("="*80 + "\\n")
+        
+        return {
+            'minted_count': len(minted),
+            'total_merge_rules': stats_after['merge_rules_learned'],
+            'patterns': [(str(pair), comp_id) for pair, comp_id in minted]
+        }

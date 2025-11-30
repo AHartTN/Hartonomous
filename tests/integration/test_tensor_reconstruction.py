@@ -23,8 +23,8 @@ logger = logging.getLogger(__name__)
 async def test_reconstruction():
     """Test that we can reconstruct tensors from atoms."""
     from api.dependencies import set_connection_pool
-    from api.services.atomization.tensor_atomizer import TensorAtomizer
-    from api.services.atomization.tensor_reconstructor import TensorReconstructor
+    from api.services.geometric_atomization.gguf_atomizer import GGUFAtomizer
+    from api.services.geometric_atomization.spatial_reconstructor import SpatialReconstructor
     from api.config import settings
     from psycopg_pool import AsyncConnectionPool
     
