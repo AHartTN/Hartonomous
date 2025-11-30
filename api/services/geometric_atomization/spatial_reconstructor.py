@@ -111,12 +111,11 @@ class SpatialReconstructor:
             LIMIT 1
         """
         
-        async with self.db.cursor() as cursor:
-            await cursor.execute(query, (*point_params, tolerance, *point_params))
-            row = await cursor.fetchone()
-            
-            if row is None:
-                return None
+        from ..utils import query_one
+        row = await query_one(self.db, query, (*point_params, tolerance, *point_params))
+        
+        if row is None:
+            return None
             
             atom_value, composition_ids, canonical_text = row
             
@@ -146,6 +145,8 @@ class SpatialReconstructor:
         """
         result = b''
         
+        from ..utils import query_many
+        
         # Query to get atoms by IDs
         query = """
             SELECT atom_value, composition_ids, canonical_text
@@ -154,11 +155,9 @@ class SpatialReconstructor:
             ORDER BY array_position(%s, atom_id)
         """
         
-        async with self.db.cursor() as cursor:
-            await cursor.execute(query, (composition_ids, composition_ids))
-            rows = await cursor.fetchall()
-            
-            for atom_value, child_comp_ids, canonical_text in rows:
+        rows = await query_many(self.db, query, (composition_ids, composition_ids))
+        
+        for atom_value, child_comp_ids, canonical_text in rows:
                 # Primitive: use value
                 if atom_value is not None:
                     result += atom_value

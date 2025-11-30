@@ -136,15 +136,20 @@ class TrajectoryBuilder:
         Returns:
             List of WKT strings (one per chunk)
         """
+        from ..utils import chunk_list
+        
         if m_values is None:
             m_values = list(range(len(coordinates)))
         
-        chunks = []
-        for i in range(0, len(coordinates), chunk_size):
-            chunk_coords = coordinates[i:i+chunk_size]
-            chunk_m = m_values[i:i+chunk_size]
-            wkt = self.build_wkt(chunk_coords, chunk_m)
-            chunks.append(wkt)
+        # Chunk coordinates and m_values together
+        coord_chunks = chunk_list(coordinates, chunk_size)
+        m_chunks = chunk_list(m_values, chunk_size)
+        
+        # Build WKT for each chunk
+        chunks = [
+            self.build_wkt(coords, m_vals) 
+            for coords, m_vals in zip(coord_chunks, m_chunks)
+        ]
         
         return chunks
     

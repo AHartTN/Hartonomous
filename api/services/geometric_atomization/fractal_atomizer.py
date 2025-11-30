@@ -156,58 +156,56 @@ class FractalAtomizer:
             self.coord_cache[temp_id] = coord
             return temp_id
         
-        # Check database
-        async with self.db.cursor() as cursor:
-            # Check if exists by content_hash
-            await cursor.execute("""
-                SELECT atom_id FROM atom WHERE content_hash = %s
-            """, (content_hash,))
-            
-            row = await cursor.fetchone()
-            if row:
-                atom_id = row[0]
-                self.atom_cache[value] = atom_id
-                self.coord_cache[atom_id] = coord
-                return atom_id
-            
-            # Create new atom
-            import json
-            x, y, z = coord
-            m = self._compute_hilbert(x, y, z)
-            
-            # Use spatial_utils for safe point creation
-            point_sql, point_params = spatial_utils.make_point_zm(x, y, z, m)
-            
-            await cursor.execute(f"""
-                INSERT INTO atom (
-                    content_hash, 
-                    atom_value, 
-                    spatial_key,
-                    is_stable,
-                    metadata
-                )
-                VALUES (
-                    %s, %s, 
-                    {point_sql},
-                    TRUE,
-                    %s::JSONB
-                )
-                RETURNING atom_id
-            """, (
-                content_hash, 
-                value,
-                *point_params,
-                json.dumps(metadata or {})
-            ))
-            
-            atom_id = (await cursor.fetchone())[0]
-            await self.db.commit()
-            
-            # Cache it
+        from ..utils import query_one, query_one_returning
+        
+        # Check database - Check if exists by content_hash
+        row = await query_one(self.db, """
+            SELECT atom_id FROM atom WHERE content_hash = %s
+        """, (content_hash,))
+        
+        if row:
+            atom_id = row[0]
             self.atom_cache[value] = atom_id
             self.coord_cache[atom_id] = coord
-            
             return atom_id
+        
+        # Create new atom
+        import json
+        x, y, z = coord
+        m = self._compute_hilbert(x, y, z)
+        
+        # Use spatial_utils for safe point creation
+        point_sql, point_params = spatial_utils.make_point_zm(x, y, z, m)
+        
+        atom_id = await query_one_returning(self.db, f"""
+            INSERT INTO atom (
+                content_hash, 
+                atom_value, 
+                spatial_key,
+                is_stable,
+                metadata
+            )
+            VALUES (
+                %s, %s, 
+                {point_sql},
+                TRUE,
+                %s::JSONB
+            )
+            RETURNING atom_id
+        """, (
+            content_hash, 
+            value,
+            *point_params,
+            json.dumps(metadata or {})
+        ))
+        
+        await self.db.commit()
+        
+        # Cache it
+        self.atom_cache[value] = atom_id
+        self.coord_cache[atom_id] = coord
+        
+        return atom_id
     
     async def get_or_create_composition(
         self,
@@ -250,73 +248,72 @@ class FractalAtomizer:
             self.coord_cache[temp_id] = coord
             return temp_id
         
+        from ..utils import query_one, query_one_returning
+        
         # Check database (by coordinate - O(1) collision detection)
-        async with self.db.cursor() as cursor:
-            x, y, z = coord
-            m = self._compute_hilbert(x, y, z)
-            
-            # Use spatial_utils for safe point creation
-            point_sql, point_params = spatial_utils.make_point_zm(x, y, z, m)
-            
-            # Check if composition exists at this coordinate
-            await cursor.execute(f"""
-                SELECT atom_id, composition_ids 
-                FROM atom 
-                WHERE composition_ids IS NOT NULL
-                AND ST_DWithin(spatial_key, {point_sql}, %s)
-                ORDER BY ST_Distance(spatial_key, {point_sql})
-                LIMIT 1
-            """, (*point_params, 1e-6, *point_params))  # Tolerance for float comparison
-            
-            row = await cursor.fetchone()
-            if row:
-                atom_id, db_child_ids = row
-                # Verify it's the same composition
-                if tuple(db_child_ids) == child_tuple:
-                    self.composition_cache[child_tuple] = atom_id
-                    self.coord_cache[atom_id] = coord
-                    return atom_id
-            
-            # Create new composition
-            import json
-            # M already computed above
-            
-            # Use spatial_utils for safe point creation
-            point_sql, point_params = spatial_utils.make_point_zm(x, y, z, m)
-            
-            await cursor.execute(f"""
-                INSERT INTO atom (
-                    content_hash,
-                    composition_ids,
-                    spatial_key,
-                    canonical_text,
-                    is_stable,
-                    metadata
-                )
-                VALUES (
-                    %s, %s,
-                    {point_sql},
-                    %s, %s,
-                    %s::JSONB
-                )
-                RETURNING atom_id
-            """, (
+        x, y, z = coord
+        m = self._compute_hilbert(x, y, z)
+        
+        # Use spatial_utils for safe point creation
+        point_sql, point_params = spatial_utils.make_point_zm(x, y, z, m)
+        
+        # Check if composition exists at this coordinate
+        row = await query_one(self.db, f"""
+            SELECT atom_id, composition_ids 
+            FROM atom 
+            WHERE composition_ids IS NOT NULL
+            AND ST_DWithin(spatial_key, {point_sql}, %s)
+            ORDER BY ST_Distance(spatial_key, {point_sql})
+            LIMIT 1
+        """, (*point_params, 1e-6, *point_params))  # Tolerance for float comparison
+        
+        if row:
+            atom_id, db_child_ids = row
+            # Verify it's the same composition
+            if tuple(db_child_ids) == child_tuple:
+                self.composition_cache[child_tuple] = atom_id
+                self.coord_cache[atom_id] = coord
+                return atom_id
+        
+        # Create new composition
+        import json
+        # M already computed above
+        
+        # Use spatial_utils for safe point creation
+        point_sql, point_params = spatial_utils.make_point_zm(x, y, z, m)
+        
+        atom_id = await query_one_returning(self.db, f"""
+            INSERT INTO atom (
                 content_hash,
-                child_ids,
-                *point_params,
+                composition_ids,
+                spatial_key,
                 canonical_text,
                 is_stable,
-                json.dumps(metadata or {})
-            ))
-            
-            atom_id = (await cursor.fetchone())[0]
-            await self.db.commit()
-            
-            # Cache it
-            self.composition_cache[child_tuple] = atom_id
-            self.coord_cache[atom_id] = coord
-            
-            return atom_id
+                metadata
+            )
+            VALUES (
+                %s, %s,
+                {point_sql},
+                %s, %s,
+                %s::JSONB
+            )
+            RETURNING atom_id
+        """, (
+            content_hash,
+            child_ids,
+            *point_params,
+            canonical_text,
+            is_stable,
+            json.dumps(metadata or {})
+        ))
+        
+        await self.db.commit()
+        
+        # Cache it
+        self.composition_cache[child_tuple] = atom_id
+        self.coord_cache[atom_id] = coord
+        
+        return atom_id
     
     async def crystallize_sequence(
         self,

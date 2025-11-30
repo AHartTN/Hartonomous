@@ -56,15 +56,13 @@ class GeometricAtomizer:
         Returns:
             LINESTRING ZM WKT string
         """
-        import asyncio
+        from ..utils import run_cpu_bound
         
         # Convert text to bytes (one byte per character)
         atom_values = [char.encode('utf-8') for char in text]
         
         # Use trajectory builder to create WKT (run in executor for CPU-intensive hashing)
-        loop = asyncio.get_event_loop()
-        wkt = await loop.run_in_executor(
-            None,  # Use default ThreadPoolExecutor
+        wkt = await run_cpu_bound(
             self.builder.build_from_atoms,
             atom_values,
             self.locator
@@ -90,8 +88,7 @@ class GeometricAtomizer:
         Returns:
             List of LINESTRING ZM WKT strings
         """
-        import asyncio
-        from concurrent.futures import ThreadPoolExecutor
+        from ..utils import run_cpu_bound, run_cpu_batch_simple, chunk_list, get_optimal_workers
         
         # Flatten tensor
         flat_values = tensor.flatten()
@@ -101,9 +98,7 @@ class GeometricAtomizer:
         
         # If small enough, create single trajectory
         if len(atom_values) <= chunk_size:
-            loop = asyncio.get_event_loop()
-            wkt = await loop.run_in_executor(
-                None,
+            wkt = await run_cpu_bound(
                 self.builder.build_from_atoms,
                 atom_values,
                 self.locator
@@ -111,24 +106,15 @@ class GeometricAtomizer:
             return [wkt]
         
         # Otherwise, chunk it and process chunks concurrently
-        chunks = []
-        for i in range(0, len(atom_values), chunk_size):
-            chunk_values = atom_values[i:i+chunk_size]
-            chunks.append(chunk_values)
+        chunks = chunk_list(atom_values, chunk_size)
         
-        # Process all chunks concurrently using executor
-        loop = asyncio.get_event_loop()
-        with ThreadPoolExecutor(max_workers=min(len(chunks), 8)) as executor:
-            tasks = [
-                loop.run_in_executor(
-                    executor,
-                    self.builder.build_from_atoms,
-                    chunk_values,
-                    self.locator
-                )
-                for chunk_values in chunks
-            ]
-            wkts = await asyncio.gather(*tasks)
+        # Build partial function for each chunk
+        def build_chunk(chunk_values):
+            return self.builder.build_from_atoms(chunk_values, self.locator)
+        
+        # Process all chunks concurrently with optimal workers
+        optimal_workers = get_optimal_workers(len(chunks), max_workers=8)
+        wkts = await run_cpu_batch_simple(build_chunk, chunks, max_workers=optimal_workers)
         
         return list(wkts)
     
@@ -202,6 +188,8 @@ class GeometricAtomizer:
         if self.db is None:
             raise ValueError("Database connection required")
         
+        from ..utils import query_one
+        
         # Query atom by metadata name
         query = """
             SELECT atom_id, composition_ids, canonical_text
@@ -211,14 +199,12 @@ class GeometricAtomizer:
             LIMIT 1
         """
         
-        async with self.db.cursor() as cursor:
-            await cursor.execute(query, (name,))
-            row = await cursor.fetchone()
-            
-            if row is None:
-                raise ValueError(f"Composition '{name}' not found")
-            
-            atom_id, composition_ids, canonical_text = row
+        row = await query_one(self.db, query, (name,))
+        
+        if row is None:
+            raise ValueError(f"Composition '{name}' not found")
+        
+        atom_id, composition_ids, canonical_text = row
         
         # Reconstruct based on output type
         if output_type == 'text':
@@ -239,6 +225,8 @@ class GeometricAtomizer:
         if self.db is None:
             raise ValueError("Database connection required")
         
+        from ..utils import query_many
+        
         query = """
             SELECT atom_value 
             FROM atom 
@@ -246,18 +234,18 @@ class GeometricAtomizer:
             ORDER BY array_position(%s, atom_id)
         """
         
-        async with self.db.cursor() as cursor:
-            await cursor.execute(query, (composition_ids, composition_ids))
-            rows = await cursor.fetchall()
-            
-            chars = [bytes(row[0]).decode('utf-8') for row in rows]
-            return ''.join(chars)
+        rows = await query_many(self.db, query, (composition_ids, composition_ids))
+        
+        chars = [bytes(row[0]).decode('utf-8') for row in rows]
+        return ''.join(chars)
     
     async def _reconstruct_bytes_from_composition(self, composition_ids: List[int]) -> bytes:
         """Reconstruct bytes by fetching child atoms and concatenating their values."""
         if self.db is None:
             raise ValueError("Database connection required")
         
+        from ..utils import query_many
+        
         query = """
             SELECT atom_value 
             FROM atom 
@@ -265,12 +253,10 @@ class GeometricAtomizer:
             ORDER BY array_position(%s, atom_id)
         """
         
-        async with self.db.cursor() as cursor:
-            await cursor.execute(query, (composition_ids, composition_ids))
-            rows = await cursor.fetchall()
-            
-            byte_chunks = [bytes(row[0]) for row in rows]
-            return b''.join(byte_chunks)
+        rows = await query_many(self.db, query, (composition_ids, composition_ids))
+        
+        byte_chunks = [bytes(row[0]) for row in rows]
+        return b''.join(byte_chunks)
     
     async def ingest_model(
         self,
@@ -300,21 +286,22 @@ class GeometricAtomizer:
             comp_id = await self.atomize_tensor(tensor, chunk_size)
             
             # Update metadata with model/layer info
-            async with self.db.cursor() as cursor:
-                import json
-                metadata = {
-                    'model': model_name,
-                    'layer': layer_name,
-                    'shape': list(tensor.shape),
-                    'dtype': str(tensor.dtype),
-                    'name': f"{model_name}.{layer_name}"
-                }
-                await cursor.execute("""
-                    UPDATE atom 
-                    SET metadata = %s::JSONB
-                    WHERE atom_id = %s
-                """, (json.dumps(metadata), comp_id))
-                await self.db.commit()
+            from ..utils import execute_query
+            import json
+            
+            metadata = {
+                'model': model_name,
+                'layer': layer_name,
+                'shape': list(tensor.shape),
+                'dtype': str(tensor.dtype),
+                'name': f"{model_name}.{layer_name}"
+            }
+            await execute_query(self.db, """
+                UPDATE atom 
+                SET metadata = %s::JSONB
+                WHERE atom_id = %s
+            """, (json.dumps(metadata), comp_id))
+            await self.db.commit()
             
             composition_ids[layer_name] = comp_id
         
@@ -333,6 +320,8 @@ class GeometricAtomizer:
         Returns:
             Dict mapping layer names to numpy tensors
         """
+        from ..utils import query_many
+        
         # Query all compositions for this model
         query = """
             SELECT atom_id, metadata
@@ -342,9 +331,7 @@ class GeometricAtomizer:
             ORDER BY metadata->>'layer'
         """
         
-        async with self.db.cursor() as cursor:
-            await cursor.execute(query, (model_name,))
-            rows = await cursor.fetchall()
+        rows = await query_many(self.db, query, (model_name,))
         
         if not rows:
             raise ValueError(f"No compositions found for model '{model_name}'")
@@ -374,31 +361,31 @@ class GeometricAtomizer:
         if self.db is None:
             raise ValueError("Database connection required")
         
+        from ..utils import query_one
+        
         query = """
             SELECT atom_value, composition_ids
             FROM atom
             WHERE atom_id = %s
         """
         
-        async with self.db.cursor() as cursor:
-            await cursor.execute(query, (atom_id,))
-            row = await cursor.fetchone()
-            
-            if row is None:
-                raise ValueError(f"Atom {atom_id} not found")
-            
-            atom_value, composition_ids = row
-            
-            # If primitive, return value
-            if atom_value is not None:
-                return bytes(atom_value)
-            
-            # If composition, recursively reconstruct children
-            if composition_ids:
-                child_bytes = []
-                for child_id in composition_ids:
-                    child_data = await self._reconstruct_bytes_from_atom(child_id)
-                    child_bytes.append(child_data)
-                return b''.join(child_bytes)
+        row = await query_one(self.db, query, (atom_id,))
+        
+        if row is None:
+            raise ValueError(f"Atom {atom_id} not found")
+        
+        atom_value, composition_ids = row
+        
+        # If primitive, return value
+        if atom_value is not None:
+            return bytes(atom_value)
+        
+        # If composition, recursively reconstruct children
+        if composition_ids:
+            child_bytes = []
+            for child_id in composition_ids:
+                child_data = await self._reconstruct_bytes_from_atom(child_id)
+                child_bytes.append(child_data)
+            return b''.join(child_bytes)
             
             raise ValueError(f"Atom {atom_id} has neither atom_value nor composition_ids")

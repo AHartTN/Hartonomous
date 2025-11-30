@@ -174,10 +174,9 @@ class BulkCopyOperation:
     
     async def _write_binary_with_progress(self, copy, rows: List[Tuple], pbar):
         """Write binary rows with progress updates."""
-        for i in range(0, len(rows), self.chunk_size):
-            batch_end = min(i + self.chunk_size, len(rows))
-            batch = rows[i:batch_end]
-            
+        from .utils import chunk_list_iter
+        
+        for batch in chunk_list_iter(rows, self.chunk_size):
             for row in batch:
                 await copy.write_row(row)
             
@@ -190,10 +189,9 @@ class BulkCopyOperation:
     
     async def _write_text_with_progress(self, copy, rows: List[Any], formatter: Callable, pbar):
         """Write text rows with progress updates."""
-        for i in range(0, len(rows), self.chunk_size):
-            batch_end = min(i + self.chunk_size, len(rows))
-            batch = rows[i:batch_end]
-            
+        from .utils import chunk_list_iter
+        
+        for batch in chunk_list_iter(rows, self.chunk_size):
             formatted = formatter(batch)
             await copy.write(formatted)
             
@@ -201,10 +199,9 @@ class BulkCopyOperation:
     
     async def _write_text_no_progress(self, copy, rows: List[Any], formatter: Callable):
         """Write text rows without progress tracking."""
-        for i in range(0, len(rows), self.chunk_size):
-            batch_end = min(i + self.chunk_size, len(rows))
-            batch = rows[i:batch_end]
-            
+        from .utils import chunk_list_iter
+        
+        for batch in chunk_list_iter(rows, self.chunk_size):
             formatted = formatter(batch)
             await copy.write(formatted)
     

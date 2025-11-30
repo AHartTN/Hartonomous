@@ -246,8 +246,6 @@ class TestMultiDimensionalRoundtrips:
         print(f"  Shape: {original_shape}")
         print(f"  Total elements: {original.size}")
 
-
-@pytest.mark.slow
 class TestUnicodeRoundtrips:
     """Test roundtrips with Unicode text."""
     

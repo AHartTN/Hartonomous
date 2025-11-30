@@ -198,12 +198,12 @@ class TestSpatialReconstructor:
 class TestGeometricAtomizer:
     """Test high-level orchestrator."""
     
-    def test_atomize_text(self):
+    async def test_atomize_text(self):
         """Atomize text into trajectory."""
         atomizer = GeometricAtomizer()
         
         text = "Hello World"
-        wkt = atomizer.atomize_text(text)
+        wkt = await atomizer.atomize_text(text)
         
         # Should produce valid trajectory
         assert wkt.startswith("LINESTRING ZM (")
@@ -212,7 +212,7 @@ class TestGeometricAtomizer:
         comma_count = wkt.count(',')
         assert comma_count == len(text) - 1
     
-    def test_atomize_tensor_small(self):
+    async def test_atomize_tensor_small(self):
         """Atomize small tensor (no chunking needed)."""
         atomizer = GeometricAtomizer()
         
@@ -223,13 +223,13 @@ class TestGeometricAtomizer:
             [7.0, 8.0, 9.0]
         ], dtype=np.float32)
         
-        wkts = atomizer.atomize_tensor(tensor, chunk_size=1000)
+        wkts = await atomizer.atomize_tensor(tensor, chunk_size=1000)
         
         # Should produce single trajectory (9 elements < 1000)
         assert len(wkts) == 1
         assert wkts[0].startswith("LINESTRING ZM (")
     
-    def test_atomize_tensor_large(self):
+    async def test_atomize_tensor_large(self):
         """
         CRITICAL TEST: Large tensor should produce FEW trajectory rows.
         
@@ -240,7 +240,7 @@ class TestGeometricAtomizer:
         # Simulate large tensor: 1000 x 1000 = 1M elements
         tensor = np.random.randn(1000, 1000).astype(np.float32)
         
-        wkts = atomizer.atomize_tensor(tensor, chunk_size=10000)
+        wkts = await atomizer.atomize_tensor(tensor, chunk_size=10000)
         
         # Should produce ~100 chunks (1M / 10K)
         expected_chunks = 1_000_000 // 10000

@@ -1,56 +1,69 @@
-"""Text parser - handles text with character/word-level atomization."""
+"""Text parser - handles text with character/word-level atomization using geometric pipeline."""
 
-import hashlib
 from pathlib import Path
-from typing import Any, Dict
+from typing import List, Any, Dict
+from psycopg import AsyncConnection
 
-from src.core.atomization import BaseAtomizer
+from api.services.geometric_atomization.base_geometric_parser import BaseGeometricParser
 
 
-class TextParser(BaseAtomizer):
-    """Parse and atomize text via SQL functions."""
+class TextParser(BaseGeometricParser):
+    """Parse and atomize text using geometric/fractal pipeline."""
 
-    async def parse(self, text_path: Path, conn) -> int:
+    async def chunk_data(self, stream: Any, modality: str) -> List[bytes]:
         """
-        Parse text file into atoms.
+        Chunk text into character-level bytes.
+        
+        Args:
+            stream: Path to text file or text string
+            modality: Should be "text"
+            
+        Returns:
+            List of single-character byte chunks
+        """
+        # Handle Path or string input
+        if isinstance(stream, Path):
+            with open(stream, "r", encoding="utf-8") as f:
+                text = f.read()
+        else:
+            text = str(stream)
+        
+        # Chunk into character bytes
+        chunks = [char.encode("utf-8") for char in text]
+        
+        return chunks
+    
+    async def parse(self, text_path: Path, conn: AsyncConnection) -> int:
+        """
+        Parse text file into trajectory using geometric pipeline.
 
         Process:
         1. Read text file
-        2. Create parent atom for document
-        3. Call SQL atomize_text() for character-level decomposition
-        4. Link via composition
+        2. Chunk into character bytes
+        3. Crystallize sequence with fractal deduplication
+        4. Build and save trajectory as single LINESTRING
 
-        Returns parent atom_id.
+        Returns trajectory atom_id.
         """
+        # Read text
         with open(text_path, "r", encoding="utf-8") as f:
             text = f.read()
-
-        # Create parent atom for document
-        text_hash = hashlib.sha256(text.encode("utf-8")).digest()
-        parent_atom_id = await self.create_atom(
-            conn,
-            text_hash,
-            str(text_path.name),
-            {
-                "modality": "text",
-                "char_count": len(text),
-                "word_count": len(text.split()),
-                "file_path": str(text_path),
-            },
+        
+        # Prepare metadata
+        metadata = {
+            "modality": "text",
+            "char_count": len(text),
+            "word_count": len(text.split()),
+            "file_path": str(text_path),
+            "filename": text_path.name,
+        }
+        
+        # Process through geometric pipeline
+        trajectory_atom_id = await self.process_stream(
+            stream=text_path,
+            modality="text",
+            conn=conn,
+            metadata=metadata
         )
-
-        # Use SQL atomize_text() function for character decomposition
-        async with conn.cursor() as cur:
-            await cur.execute("SELECT atomize_text(%s)", (text,))
-            char_atom_ids = (await cur.fetchone())[0]
-
-        # Batch link all character atoms to document
-        if char_atom_ids:
-            await self.create_compositions_batch(
-                conn, parent_atom_id, char_atom_ids, list(range(len(char_atom_ids)))
-            )
-            self.stats["atoms_created"] += len(char_atom_ids)
-
-        self.stats["total_processed"] = len(text)
-
-        return parent_atom_id
+        
+        return trajectory_atom_id
