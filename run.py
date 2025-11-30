@@ -1,18 +1,8 @@
-"""
-Uvicorn startup with proper event loop configuration for psycopg3 async
-
-This script ensures the correct event loop is set before any async operations begin.
-"""
+"""Uvicorn startup script for API."""
 
 import sys
 
 if __name__ == "__main__":
-    # Set event loop policy BEFORE importing anything that uses asyncio
-    if sys.platform == "win32":
-        import asyncio
-
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-
     import uvicorn
     from api.config import settings
 

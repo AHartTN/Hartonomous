@@ -1,11 +1,12 @@
-"""
-Integration tests for Python-C# CodeAtomizer communication.
+"""Integration tests for Python-C# CodeAtomizer communication.
 
 Tests the complete flow:
 1. Python code_parser.py sends request to C# CodeAtomizer API
 2. C# API processes code with Roslyn/TreeSitter
 3. Python receives response and inserts atoms into PostgreSQL
 4. Verify atoms, compositions, and relations are created correctly
+
+REQUIREMENT: C# CodeAtomizer service must be running on http://localhost:8001
 """
 
 import os
@@ -15,10 +16,21 @@ from pathlib import Path
 import httpx
 import pytest
 
+pytestmark = pytest.mark.integration
+
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 from ingestion.parsers.code_parser import CodeParser
+
+
+def check_service_available(url: str) -> bool:
+    """Check if CodeAtomizer service is available."""
+    try:
+        response = httpx.get(f"{url}/api/v1/atomize/health", timeout=2.0)
+        return response.status_code == 200
+    except (httpx.ConnectError, httpx.TimeoutException):
+        return False
 
 
 class TestCodeAtomizerIntegration:
@@ -51,10 +63,22 @@ class TestCodeAtomizerIntegration:
 
         data = response.json()
         assert "languages" in data
-        assert "csharp" in data["languages"]
-        assert "python" in data["languages"]
-
-        print(f"✅ Supported languages: {', '.join(data['languages'][:10])}...")
+        
+        # Languages are now grouped by parser type
+        if isinstance(data["languages"], dict):
+            # Flatten all languages from all parsers
+            all_langs = []
+            for parser_langs in data["languages"].values():
+                if isinstance(parser_langs, list):
+                    all_langs.extend(parser_langs)
+            assert "csharp" in all_langs
+            assert "python" in all_langs
+            print(f"✅ Supported languages: {', '.join(all_langs[:10])}...")
+        else:
+            # Legacy flat list format
+            assert "csharp" in data["languages"]
+            assert "python" in data["languages"]
+            print(f"✅ Supported languages: {', '.join(data['languages'][:10])}...")
 
     def test_atomize_simple_csharp(self, service_url):
         """Test atomizing simple C# code via Roslyn."""
@@ -248,19 +272,16 @@ class TestCodeParserClass:
         service_url = os.getenv("CODE_ATOMIZER_URL", "http://localhost:8001")
         return CodeParser(atomizer_service_url=service_url)
 
-    def test_parser_initialization(self, parser):
+    async def test_parser_initialization(self, parser):
         """Test that CodeParser initializes with correct URL."""
         assert parser.service_url.startswith("http")
         assert "atomize" not in parser.service_url  # Base URL, not endpoint
         print(f"✅ CodeParser initialized with URL: {parser.service_url}")
 
-    def test_health_check_method(self, parser):
+    async def test_health_check_method(self, parser):
         """Test the _check_health() method."""
-        try:
-            parser._check_health()
-            print(f"✅ Health check passed for {parser.service_url}")
-        except RuntimeError as e:
-            pytest.skip(f"Service unavailable: {e}")
+        await parser._check_health()
+        print(f"✅ Health check passed for {parser.service_url}")
 
 
 if __name__ == "__main__":

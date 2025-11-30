@@ -1,12 +1,23 @@
 """Test Code parser."""
 
+import os
 from pathlib import Path
 
+import httpx
 import pytest
 
 from src.ingestion.parsers.code_parser import CodeParser
 
-pytestmark = pytest.mark.asyncio
+pytestmark = pytest.mark.integration
+
+
+def check_service_available(url: str) -> bool:
+    """Check if CodeAtomizer service is available."""
+    try:
+        response = httpx.get(f"{url}/api/v1/atomize/health", timeout=2.0)
+        return response.status_code == 200
+    except (httpx.ConnectError, httpx.TimeoutException):
+        return False
 
 
 class TestCodeParser:
@@ -25,6 +36,7 @@ class TestCodeParser:
         assert parser._detect_language(".rs") == "rust"
         assert parser._detect_language(".go") == "go"
 
+    @pytest.mark.asyncio
     async def test_parse_python_file(self, db_connection, clean_db, tmp_path):
         """Test parsing Python file (fallback to character-level)."""
         code_file = tmp_path / "test.py"

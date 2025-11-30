@@ -5,6 +5,7 @@ import pytest
 pytestmark = pytest.mark.asyncio
 
 
+@pytest.mark.sql
 class TestCompositionFunctionality:
     """Test atom composition actually builds hierarchies."""
 
@@ -137,3 +138,4 @@ class TestCompositionFunctionality:
             assert (
                 reconstructed == test_word
             ), f"Should reconstruct '{test_word}', got '{reconstructed}'"
+

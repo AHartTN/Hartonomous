@@ -6,7 +6,7 @@ import pytest
 
 from src.ingestion.parsers.text_parser import TextParser
 
-pytestmark = pytest.mark.asyncio
+pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
 
 
 class TestTextParser:

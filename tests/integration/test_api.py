@@ -31,7 +31,7 @@ async def test_client():
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             yield client
     except Exception as e:
-        pytest.skip(f"Failed to create test client: {e}")
+        raise RuntimeError(f"Failed to create test client: {e}") from e
 
 
 @pytest.mark.asyncio

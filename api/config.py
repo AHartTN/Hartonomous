@@ -59,10 +59,12 @@ class Settings(BaseSettings):
     pgsslmode: str = Field(default="prefer", description="SSL mode")
 
     # Connection Pool Settings
-    pool_min_size: int = Field(default=5, description="Min connection pool size")
-    pool_max_size: int = Field(default=20, description="Max connection pool size")
+    pool_min_size: int = Field(default=10, description="Min connection pool size")
+    pool_max_size: int = Field(default=50, description="Max connection pool size")
     pool_timeout: int = Field(default=30, description="Pool timeout (seconds)")
     pool_max_idle: int = Field(default=600, description="Max idle time (seconds)")
+    pool_max_lifetime: int = Field(default=3600, description="Max connection lifetime (seconds)")
+    pool_num_workers: int = Field(default=8, description="Number of parallel workers for async operations")
 
     # API Server Settings
     api_host: str = Field(
@@ -136,6 +138,12 @@ class Settings(BaseSettings):
     use_gpu: bool = Field(
         default=True,
         description="Use GPU acceleration when available (CuPy). Falls back to CPU if GPU not detected.",
+    )
+    
+    # Weight Spatial Positioning
+    enable_weight_spatial_positioning: bool = Field(
+        default=False,
+        description="Enable spatial key computation for model weight atoms. When enabled, weights get POINTZM coordinates (X=layer, Y=head, Z=value, M=hilbert).",
     )
 
     # Model configuration

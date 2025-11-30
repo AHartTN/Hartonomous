@@ -1,5 +1,4 @@
-"""
-Test script for GGUF model atomization.
+"""Test script for GGUF model atomization.
 
 Run this to test atomizing your Ollama models in D:/Models
 """
@@ -9,6 +8,7 @@ import sys
 import logging
 import time
 from pathlib import Path
+import pytest
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -16,6 +16,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from api.services.model_atomization import GGUFAtomizer
 from psycopg import AsyncConnection
 from psycopg_pool import AsyncConnectionPool
+from api.config import settings
+
+pytestmark = [pytest.mark.performance, pytest.mark.gguf]
 from api.config import settings
 
 # Configure logging to show ALL output with timestamps

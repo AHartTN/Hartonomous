@@ -1,18 +1,22 @@
-"""
-Quick validation test for ingestion pipeline.
+"""Quick validation test for ingestion pipeline.
+
 Tests atomization, compression, and landmark projection.
+This is an INTEGRATION test - validates complete pipeline from atomization through spatial positioning.
 """
 
+import pytest
 import numpy as np
 from pathlib import Path
 import sys
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+pytestmark = [pytest.mark.integration, pytest.mark.spatial]
 
-from core.atomization import Atomizer, ModalityType
-from core.landmark import LandmarkProjector
-from core.compression import AtomCompressor
+# Add src to path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
+
+from src.core.atomization import Atomizer, ModalityType
+from src.core.landmark import LandmarkProjector
+from src.core.compression import AtomCompressor
 
 
 def test_atomization():

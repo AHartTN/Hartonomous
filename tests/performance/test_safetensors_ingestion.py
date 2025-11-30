@@ -1,5 +1,5 @@
-"""
-SafeTensors Ingestion Test
+"""SafeTensors Ingestion Test
+
 Tests atomization of a SafeTensors model with all components:
 - Vocabulary (from tokenizer.json)
 - Configuration (from config.json)
@@ -7,11 +7,13 @@ Tests atomization of a SafeTensors model with all components:
 
 Uses the local cached embedding model (all-MiniLM-L6-v2) for quick validation.
 """
+
 import sys
 import asyncio
 import logging
 import time
 from pathlib import Path
+import pytest
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
@@ -20,6 +22,8 @@ sys.path.insert(0, str(project_root / "api"))
 
 from api.services.safetensors_atomization import SafeTensorsAtomizer
 from api.dependencies import get_db_connection
+
+pytestmark = [pytest.mark.performance, pytest.mark.safetensors]
 
 # Configure logging to show ALL output with timestamps
 logging.basicConfig(

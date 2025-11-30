@@ -152,10 +152,10 @@ class LandmarkProjector:
         else:
             x, y, z, _ = self.project_from_modality(modality)
 
-        noise = np.random.normal(0, 0.001, 3)
-        x = np.clip(x + noise[0], 0.0, 1.0)
-        y = np.clip(y + noise[1], 0.0, 1.0)
-        z = np.clip(z + noise[2], 0.0, 1.0)
+        # Ensure coordinates stay within valid range
+        x = np.clip(x, 0.0, 1.0)
+        y = np.clip(y, 0.0, 1.0)
+        z = np.clip(z, 0.0, 1.0)
 
         hilbert_index = self.hilbert.encode(x, y, z)
 

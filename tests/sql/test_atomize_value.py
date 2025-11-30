@@ -7,6 +7,7 @@ import pytest
 pytestmark = pytest.mark.asyncio
 
 
+@pytest.mark.sql
 class TestAtomizeValueFunctionality:
     """Test atomize_value SQL function actually works."""
 
@@ -126,6 +127,7 @@ import pytest
 pytestmark = pytest.mark.asyncio
 
 
+@pytest.mark.sql
 class TestAtomizeTextFunctionality:
     """Test atomize_text actually decomposes text into character atoms."""
 
@@ -187,6 +189,7 @@ class TestAtomizeTextFunctionality:
             assert atom_ids == [] or atom_ids is None
 
 
+@pytest.mark.sql
 class TestAtomizeNumericFunctionality:
     """Test atomize_numeric actually stores numbers."""
 
@@ -240,3 +243,4 @@ class TestAtomizeNumericFunctionality:
             id2 = (await cur.fetchone())[0]
 
             assert id1 == id2, "Same number should deduplicate"
+

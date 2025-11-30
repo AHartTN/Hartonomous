@@ -515,16 +515,67 @@ class DocumentParserService:
                             "language": lang,
                         })
                         
-                        # For C# code: could integrate with C# atomizer for AST-level parsing
-                        # Integration point: api.services.csharp_atomizer (future enhancement)
-                        # For now: atomize as text with language metadata
-                        
-                        await cur.execute(
-                            "SELECT atomize_text(%s, %s::jsonb)",
-                            (code, json.dumps(code_metadata)),
-                        )
-                        code_atoms = (await cur.fetchone())[0]
-                        total_atoms += len(code_atoms)
+                        # C# code: use semantic AST atomizer for deep code understanding
+                        if lang.lower() in ('csharp', 'cs', 'c#'):
+                            try:
+                                from api.services.code_atomization.code_atomizer_client import CodeAtomizerClient
+                                
+                                client = CodeAtomizerClient()
+                                try:
+                                    # Check if C# microservice is available
+                                    if await client.health_check():
+                                        logger.info(f"Atomizing C# code via Roslyn microservice (AST-level)...")
+                                        
+                                        # Get AST from C# microservice
+                                        ast_result = await client.atomize_csharp(
+                                            code=code,
+                                            filename="markdown_code_block.cs",
+                                            metadata=json.dumps(code_metadata)
+                                        )
+                                        
+                                        # Create code block atom with AST metadata
+                                        code_hash = hashlib.sha256(code.encode()).digest()
+                                        code_metadata['ast_available'] = True
+                                        code_metadata['ast_nodes'] = ast_result.get('node_count', 0)
+                                        
+                                        await cur.execute(
+                                            """
+                                            SELECT atomize_value(
+                                                %s,
+                                                %s,
+                                                %s::jsonb
+                                            )
+                                            """,
+                                            (code_hash, code[:100], json.dumps(code_metadata)),
+                                        )
+                                        code_atom_id = (await cur.fetchone())[0]
+                                        total_atoms += 1
+                                        
+                                        logger.info(f"✓ C# code atomized via Roslyn AST ({ast_result.get('node_count', 0)} nodes)")
+                                    else:
+                                        logger.warning("C# atomizer service unavailable, falling back to text atomization")
+                                        raise RuntimeError("C# atomizer service unavailable")
+                                        
+                                finally:
+                                    await client.close()
+                                    
+                            except Exception as e:
+                                logger.warning(f"C# atomization failed: {e}, falling back to text atomization")
+                                # Fallback to text atomization
+                                await cur.execute(
+                                    "SELECT atomize_text(%s, %s::jsonb)",
+                                    (code, json.dumps(code_metadata)),
+                                )
+                                code_atoms = (await cur.fetchone())[0]
+                                total_atoms += len(code_atoms)
+                        else:
+                            # Other languages: atomize as text
+                            await cur.execute(
+                                "SELECT atomize_text(%s, %s::jsonb)",
+                                (code, json.dumps(code_metadata)),
+                            )
+                            code_atoms = (await cur.fetchone())[0]
+                            total_atoms += len(code_atoms)
                     elif token.type == "inline":
                         # Atomize inline text
                         if token.content:

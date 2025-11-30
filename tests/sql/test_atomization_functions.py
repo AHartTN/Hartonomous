@@ -5,6 +5,7 @@ import pytest
 pytestmark = pytest.mark.asyncio
 
 
+@pytest.mark.sql
 class TestAtomizationFunctions:
     """Test all atomize_* SQL functions."""
 
@@ -74,3 +75,4 @@ class TestAtomizationFunctions:
             assert coords[0] == pytest.approx(0.5)
             assert coords[1] == pytest.approx(0.5)
             assert coords[2] == pytest.approx(0.5)
+

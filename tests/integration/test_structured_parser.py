@@ -7,7 +7,7 @@ import pytest
 
 from src.ingestion.parsers.structured_parser import StructuredParser
 
-pytestmark = pytest.mark.asyncio
+pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
 
 
 class TestStructuredParser:

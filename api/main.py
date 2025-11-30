@@ -65,7 +65,6 @@ async def lifespan(app: FastAPI):
         neo4j_worker = Neo4jProvenanceWorker(pool)
         neo4j_worker_task = asyncio.create_task(neo4j_worker.start())
         logger.info("Neo4j provenance worker started (production-ready)")
-
     # Start AGE worker (EXPERIMENTAL - disabled by default)
     if settings.age_worker_enabled:
         logger.warning(

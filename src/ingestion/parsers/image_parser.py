@@ -7,7 +7,7 @@ from typing import Any, Dict
 import numpy as np
 from PIL import Image
 
-from ...core.atomization import BaseAtomizer
+from src.core.atomization import BaseAtomizer
 
 
 class ImageParser(BaseAtomizer):

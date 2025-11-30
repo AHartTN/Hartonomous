@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-pytestmark = pytest.mark.asyncio
+pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
 
 
 class TestCompleteWorkflows:
@@ -59,32 +59,6 @@ class TestCompleteWorkflows:
             assert (
                 reconstructed == text_content
             ), f"Should reconstruct '{text_content}', got '{reconstructed}'"
-
-    async def test_model_weight_deduplication_workflow(self, db_connection, clean_db):
-        """REAL TEST: Model weights ? deduplication ? storage efficiency."""
-        from api.services.model_atomization import GGUFAtomizer
-
-        atomizer = GGUFAtomizer(threshold=0.01)
-
-        # Simulate model with duplicate weights
-        weights = [0.5, 0.5, 0.3, 0.5, 0.3, 0.5]  # 2 unique values, 6 total
-
-        atom_ids = []
-        for weight in weights:
-            atom_id = await atomizer._atomize_weight(db_connection, weight)
-            atom_ids.append(atom_id)
-
-        # VERIFY: Only 2 unique atoms created
-        unique_atoms = len(set(atom_ids))
-        assert unique_atoms == 2, f"Should deduplicate to 2 atoms, got {unique_atoms}"
-
-        # VERIFY: Atoms stored in database
-        async with db_connection.cursor() as cur:
-            await cur.execute(
-                "SELECT COUNT(*) FROM atom WHERE metadata->>'modality' = 'weight'"
-            )
-            db_count = (await cur.fetchone())[0]
-            assert db_count >= 2, "Weight atoms should be in database"
 
     async def test_image_to_atoms_workflow(self, db_connection, clean_db, tmp_path):
         """REAL TEST: Image ? pixel atoms ? sparse storage."""

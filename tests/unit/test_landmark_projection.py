@@ -6,6 +6,8 @@ from src.core.spatial.landmark_projection import (compute_distance,
                                                   compute_position)
 
 
+@pytest.mark.unit
+@pytest.mark.spatial
 class TestLandmarkSemanticPositioning:
     """Test landmark projection creates semantic spatial positions."""
 
@@ -92,3 +94,4 @@ class TestLandmarkSemanticPositioning:
             assert 0 <= x <= 1, f"x={x} out of range [0,1]"
             assert 0 <= y <= 1, f"y={y} out of range [0,1]"
             assert 0 <= z <= 1, f"z={z} out of range [0,1]"
+

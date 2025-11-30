@@ -13,8 +13,13 @@ Example:
 
 import asyncio
 import sys
+import os
 import argparse
 from pathlib import Path
+
+# Ensure UTF-8 encoding for Windows console
+if sys.platform == 'win32':
+    os.environ.setdefault('PYTHONIOENCODING', 'utf-8')
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))

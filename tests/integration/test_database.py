@@ -6,26 +6,18 @@ These tests require PostgreSQL to be running and accessible.
 Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 """
 
-import os
-
 import psycopg
 import pytest
+
+from api.config import settings
 
 pytestmark = pytest.mark.integration
 
 
 @pytest.fixture
 def db_connection_string():
-    """Get database connection string from environment."""
-    host = os.getenv("PGHOST", "localhost")
-    port = os.getenv("PGPORT", "5432")
-    database = os.getenv("PGDATABASE", "hartonomous_test")
-    user = os.getenv("PGUSER", "postgres")
-    password = os.getenv("PGPASSWORD", "")
-
-    if password:
-        return f"postgresql://{user}:{password}@{host}:{port}/{database}"
-    return f"postgresql://{user}@{host}:{port}/{database}"
+    """Get database connection string from settings."""
+    return settings.get_connection_string()
 
 
 @pytest.fixture
@@ -36,7 +28,7 @@ async def db_connection(db_connection_string):
         yield conn
         await conn.close()
     except Exception as e:
-        pytest.skip(f"Database not available: {e}")
+        raise RuntimeError(f"Database not available: {e}") from e
 
 
 @pytest.mark.asyncio
@@ -106,14 +98,7 @@ async def test_connection_pool():
     # pylint: disable=import-outside-toplevel
     from psycopg_pool import AsyncConnectionPool
 
-    conn_string = os.getenv("PGHOST", "localhost")
-    conn_string = (
-        f"postgresql://"
-        f"{os.getenv('PGUSER', 'postgres')}@"
-        f"{os.getenv('PGHOST', 'localhost')}:"
-        f"{os.getenv('PGPORT', '5432')}/"
-        f"{os.getenv('PGDATABASE', 'hartonomous_test')}"
-    )
+    conn_string = settings.get_connection_string()
 
     try:
         pool = AsyncConnectionPool(
@@ -131,7 +116,7 @@ async def test_connection_pool():
         await pool.close()
 
     except Exception as e:
-        pytest.skip(f"Connection pool test failed: {e}")
+        raise
 
 
 @pytest.mark.asyncio
@@ -165,4 +150,4 @@ async def test_transaction_handling(db_connection):
                 assert result[0] == "test_value"
 
     except Exception as e:
-        pytest.skip(f"Transaction test failed: {e}")
+        raise

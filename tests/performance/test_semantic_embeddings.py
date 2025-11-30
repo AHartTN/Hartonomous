@@ -1,5 +1,4 @@
-"""
-Test semantic embeddings for vocabulary tokens.
+"""Test semantic embeddings for vocabulary tokens.
 
 This script verifies that semantically similar tokens cluster together
 in 3D space using the embedding service.
@@ -8,12 +7,15 @@ in 3D space using the embedding service.
 import asyncio
 import sys
 from pathlib import Path
+import pytest
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from api.services.embedding_service import generate_semantic_coordinates
 import numpy as np
+
+pytestmark = [pytest.mark.performance, pytest.mark.spatial]
 
 
 def calculate_distance(coord1, coord2):

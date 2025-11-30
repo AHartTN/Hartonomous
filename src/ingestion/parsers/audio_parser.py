@@ -8,7 +8,7 @@ from typing import Any, Dict
 
 import numpy as np
 
-from ...core.atomization import BaseAtomizer
+from src.core.atomization import BaseAtomizer
 
 
 class AudioParser(BaseAtomizer):

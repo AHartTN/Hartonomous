@@ -6,7 +6,7 @@ import hashlib
 from pathlib import Path
 from typing import Any, Dict
 
-from ...core.atomization import BaseAtomizer
+from src.core.atomization import BaseAtomizer
 
 
 class VideoParser(BaseAtomizer):

@@ -10,7 +10,7 @@ from typing import Any, Dict, Optional
 
 import httpx
 
-from ...core.atomization import BaseAtomizer
+from src.core.atomization import BaseAtomizer
 
 
 class CodeParser(BaseAtomizer):
@@ -108,6 +108,11 @@ class CodeParser(BaseAtomizer):
                     else atom["metadata"]
                 )
                 hilbert_index = metadata.get("hilbertIndex", 0)
+                
+                # Add modality and subtype to metadata
+                metadata["modality"] = atom.get("modality", "code")
+                if "subtype" in atom:
+                    metadata["subtype"] = atom["subtype"]
 
                 # Build POINTZM geometry with Hilbert M coordinate
                 spatial_wkt = (
@@ -126,13 +131,11 @@ class CodeParser(BaseAtomizer):
                         atomic_value,
                         canonical_text,
                         spatial_key,
-                        modality,
-                        subtype,
                         metadata
                     ) VALUES (
                         %s, %s, %s,
                         ST_GeomFromEWKT(%s),
-                        %s, %s, %s::jsonb
+                        %s::jsonb
                     ) RETURNING atom_id
                     """,
                     (
@@ -140,13 +143,7 @@ class CodeParser(BaseAtomizer):
                         b"",  # atomic_value is empty for AST nodes
                         atom["canonicalText"],
                         spatial_wkt,
-                        atom["modality"],
-                        atom.get("subtype"),
-                        (
-                            json.dumps(metadata)
-                            if not isinstance(atom["metadata"], str)
-                            else atom["metadata"]
-                        ),
+                        json.dumps(metadata),
                     ),
                 )
 

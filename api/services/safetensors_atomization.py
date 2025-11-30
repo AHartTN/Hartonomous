@@ -299,7 +299,7 @@ class SafeTensorsAtomizer(BaseAtomizer):
             semantic_coords = [None] * vocab_size
         
         # Create token atoms with spatial keys
-        token_hashes = [hashlib.sha256(token.encode("utf-8")).digest() for token in all_tokens]
+        token_hashes = [hashlib.sha256(token.encode("utf-8", errors="replace")).digest() for token in all_tokens]
         token_metadatas = [
             json.dumps({
                 "modality": "tokenizer/vocabulary",

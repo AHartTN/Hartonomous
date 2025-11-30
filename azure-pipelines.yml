@@ -1,0 +1,291 @@
+# Hartonomous Azure Pipelines CI/CD
+# Enterprise-grade multi-stage testing pipeline
+
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+      - feature/*
+  paths:
+    exclude:
+      - docs/**
+      - '**.md'
+
+pr:
+  branches:
+    include:
+      - main
+      - develop
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  PYTHON_VERSION: '3.11'
+  PIP_CACHE_DIR: $(Pipeline.Workspace)/.pip
+
+stages:
+  # Stage 1: Smoke Tests (Fast Validation)
+  - stage: Smoke
+    displayName: 'Smoke Tests'
+    jobs:
+      - job: QuickValidation
+        displayName: 'Quick Validation (< 1 min)'
+        timeoutInMinutes: 5
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: '$(PYTHON_VERSION)'
+            displayName: 'Use Python $(PYTHON_VERSION)'
+          
+          - task: Cache@2
+            inputs:
+              key: 'python | "$(Agent.OS)" | requirements.txt | api/requirements.txt'
+              restoreKeys: |
+                python | "$(Agent.OS)"
+              path: $(PIP_CACHE_DIR)
+            displayName: 'Cache pip packages'
+          
+          - script: |
+              python -m pip install --upgrade pip
+              pip install -r requirements.txt
+              pip install -r api/requirements.txt
+              pip install pytest pytest-cov pytest-asyncio pytest-xdist
+            displayName: 'Install dependencies'
+          
+          - script: |
+              pytest tests/smoke -m smoke -v --junitxml=test-results-smoke.xml --tb=short
+            displayName: 'Run smoke tests'
+          
+          - task: PublishTestResults@2
+            condition: succeededOrFailed()
+            inputs:
+              testResultsFiles: 'test-results-smoke.xml'
+              testRunTitle: 'Smoke Tests'
+              failTaskOnFailedTests: true
+            displayName: 'Publish smoke test results'
+
+  # Stage 2: Unit Tests (Fast Isolated)
+  - stage: Unit
+    displayName: 'Unit Tests'
+    dependsOn: Smoke
+    condition: succeeded()
+    jobs:
+      - job: UnitTests
+        displayName: 'Fast Isolated Tests (< 5 min)'
+        timeoutInMinutes: 10
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: '$(PYTHON_VERSION)'
+            displayName: 'Use Python $(PYTHON_VERSION)'
+          
+          - task: Cache@2
+            inputs:
+              key: 'python | "$(Agent.OS)" | requirements.txt | api/requirements.txt'
+              restoreKeys: |
+                python | "$(Agent.OS)"
+              path: $(PIP_CACHE_DIR)
+            displayName: 'Cache pip packages'
+          
+          - script: |
+              python -m pip install --upgrade pip
+              pip install -r requirements.txt
+              pip install -r api/requirements.txt
+              pip install pytest pytest-cov pytest-asyncio pytest-xdist
+            displayName: 'Install dependencies'
+          
+          - script: |
+              pytest tests/unit -m unit -v --junitxml=test-results-unit.xml --cov=api --cov=src --cov-report=xml --cov-report=html -n auto
+            displayName: 'Run unit tests with coverage'
+          
+          - task: PublishTestResults@2
+            condition: succeededOrFailed()
+            inputs:
+              testResultsFiles: 'test-results-unit.xml'
+              testRunTitle: 'Unit Tests'
+              failTaskOnFailedTests: true
+            displayName: 'Publish unit test results'
+          
+          - task: PublishCodeCoverageResults@1
+            condition: succeededOrFailed()
+            inputs:
+              codeCoverageTool: 'cobertura'
+              summaryFileLocation: '$(System.DefaultWorkingDirectory)/coverage.xml'
+              reportDirectory: '$(System.DefaultWorkingDirectory)/htmlcov'
+            displayName: 'Publish coverage report'
+
+  # Stage 3: Integration Tests (Database & Services)
+  - stage: Integration
+    displayName: 'Integration Tests'
+    dependsOn: Unit
+    condition: succeeded()
+    jobs:
+      - job: IntegrationTests
+        displayName: 'Database & Service Tests (< 15 min)'
+        timeoutInMinutes: 20
+        services:
+          postgres:
+            image: postgres:15
+            env:
+              POSTGRES_DB: hartonomous_test
+              POSTGRES_USER: test_user
+              POSTGRES_PASSWORD: test_password
+            ports:
+              - 5432:5432
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: '$(PYTHON_VERSION)'
+            displayName: 'Use Python $(PYTHON_VERSION)'
+          
+          - task: Cache@2
+            inputs:
+              key: 'python | "$(Agent.OS)" | requirements.txt | api/requirements.txt'
+              restoreKeys: |
+                python | "$(Agent.OS)"
+              path: $(PIP_CACHE_DIR)
+            displayName: 'Cache pip packages'
+          
+          - script: |
+              python -m pip install --upgrade pip
+              pip install -r requirements.txt
+              pip install -r api/requirements.txt
+              pip install pytest pytest-cov pytest-asyncio pytest-xdist
+            displayName: 'Install dependencies'
+          
+          - script: |
+              export DATABASE_URL="postgresql://test_user:test_password@localhost:5432/hartonomous_test"
+              pytest tests/integration -m integration -v --junitxml=test-results-integration.xml --tb=short
+            displayName: 'Run integration tests'
+          
+          - task: PublishTestResults@2
+            condition: succeededOrFailed()
+            inputs:
+              testResultsFiles: 'test-results-integration.xml'
+              testRunTitle: 'Integration Tests'
+              failTaskOnFailedTests: true
+            displayName: 'Publish integration test results'
+
+  # Stage 4: SQL Tests (PostgreSQL Functions)
+  - stage: SQL
+    displayName: 'SQL Tests'
+    dependsOn: Integration
+    condition: succeeded()
+    jobs:
+      - job: SQLTests
+        displayName: 'PostgreSQL Function Tests'
+        timeoutInMinutes: 15
+        services:
+          postgres:
+            image: postgres:15
+            env:
+              POSTGRES_DB: hartonomous_test
+              POSTGRES_USER: test_user
+              POSTGRES_PASSWORD: test_password
+            ports:
+              - 5432:5432
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: '$(PYTHON_VERSION)'
+            displayName: 'Use Python $(PYTHON_VERSION)'
+          
+          - script: |
+              python -m pip install --upgrade pip
+              pip install -r requirements.txt
+              pip install -r api/requirements.txt
+              pip install pytest pytest-cov pytest-asyncio
+            displayName: 'Install dependencies'
+          
+          - script: |
+              export DATABASE_URL="postgresql://test_user:test_password@localhost:5432/hartonomous_test"
+              pytest tests/sql -m sql -v --junitxml=test-results-sql.xml --tb=short
+            displayName: 'Run SQL tests'
+          
+          - task: PublishTestResults@2
+            condition: succeededOrFailed()
+            inputs:
+              testResultsFiles: 'test-results-sql.xml'
+              testRunTitle: 'SQL Tests'
+              failTaskOnFailedTests: true
+            displayName: 'Publish SQL test results'
+
+  # Stage 5: Functional Tests (End-to-End)
+  - stage: Functional
+    displayName: 'Functional Tests'
+    dependsOn: SQL
+    condition: succeeded()
+    jobs:
+      - job: FunctionalTests
+        displayName: 'End-to-End Tests (< 30 min)'
+        timeoutInMinutes: 35
+        services:
+          postgres:
+            image: postgres:15
+            env:
+              POSTGRES_DB: hartonomous_test
+              POSTGRES_USER: test_user
+              POSTGRES_PASSWORD: test_password
+            ports:
+              - 5432:5432
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: '$(PYTHON_VERSION)'
+            displayName: 'Use Python $(PYTHON_VERSION)'
+          
+          - script: |
+              python -m pip install --upgrade pip
+              pip install -r requirements.txt
+              pip install -r api/requirements.txt
+              pip install pytest pytest-cov pytest-asyncio
+            displayName: 'Install dependencies'
+          
+          - script: |
+              export DATABASE_URL="postgresql://test_user:test_password@localhost:5432/hartonomous_test"
+              pytest tests/functional -m functional -v --junitxml=test-results-functional.xml --tb=short
+            displayName: 'Run functional tests'
+          
+          - task: PublishTestResults@2
+            condition: succeededOrFailed()
+            inputs:
+              testResultsFiles: 'test-results-functional.xml'
+              testRunTitle: 'Functional Tests'
+              failTaskOnFailedTests: true
+            displayName: 'Publish functional test results'
+
+  # Stage 6: Performance Tests (Optional, Manual Trigger)
+  - stage: Performance
+    displayName: 'Performance Tests'
+    dependsOn: Functional
+    condition: and(succeeded(), eq(variables['Build.Reason'], 'Manual'))
+    jobs:
+      - job: PerformanceTests
+        displayName: 'Load & Performance Tests'
+        timeoutInMinutes: 60
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: '$(PYTHON_VERSION)'
+            displayName: 'Use Python $(PYTHON_VERSION)'
+          
+          - script: |
+              python -m pip install --upgrade pip
+              pip install -r requirements.txt
+              pip install -r api/requirements.txt
+              pip install pytest pytest-benchmark
+            displayName: 'Install dependencies'
+          
+          - script: |
+              pytest tests/performance -v --junitxml=test-results-performance.xml --benchmark-only --tb=short
+            displayName: 'Run performance tests'
+          
+          - task: PublishTestResults@2
+            condition: succeededOrFailed()
+            inputs:
+              testResultsFiles: 'test-results-performance.xml'
+              testRunTitle: 'Performance Tests'
+              failTaskOnFailedTests: false
+            displayName: 'Publish performance test results'

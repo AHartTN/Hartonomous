@@ -8,7 +8,7 @@ from PIL import Image
 
 from src.ingestion.parsers.image_parser import ImageParser
 
-pytestmark = pytest.mark.asyncio
+pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
 
 
 class TestImageParser:
@@ -57,7 +57,6 @@ class TestImageParser:
 
             assert comp_count > 0  # At least some pixel chunks atomized
 
-    @pytest.mark.skipif(True, reason="Requires PIL")
     async def test_grayscale_image(self, db_connection, clean_db, tmp_path):
         """Test parsing grayscale image (converted to RGB)."""
         img = Image.new("L", (5, 5), color=128)

@@ -6,6 +6,8 @@ import pytest
 from src.core.spatial.hilbert_curve import decode_hilbert_3d, encode_hilbert_3d
 
 
+@pytest.mark.unit
+@pytest.mark.spatial
 class TestHilbertSpatialProperties:
     """Test Hilbert curve preserves spatial locality."""
 
@@ -114,3 +116,4 @@ class TestHilbertSpatialProperties:
         assert (
             len(set(indices)) == 8
         ), "All 8 corners should have unique Hilbert indices"
+

@@ -53,7 +53,7 @@ def test_imports():
 
         import config
     except ImportError as e:
-        pytest.skip(f"Failed to import modules (expected in CI): {e}")
+        raise ImportError(f"Failed to import modules: {e}") from e
 
 
 @pytest.mark.asyncio
@@ -112,8 +112,8 @@ def test_config_loading():
         assert hasattr(settings, "api_host")
         assert hasattr(settings, "api_port")
         assert hasattr(settings, "log_level")
-    except ImportError:
-        pytest.skip("Config module not available in CI")
+    except ImportError as e:
+        raise ImportError("Config module not available") from e
 
 
 @pytest.mark.asyncio

@@ -1,7 +1,10 @@
 """Test script to understand GGUF token parsing."""
 
+import pytest
 import gguf
 from pathlib import Path
+
+pytestmark = [pytest.mark.integration, pytest.mark.gguf]
 
 model_path = Path(
     r"D:\Models\blobs\sha256-1194192cf2a187eb02722edcc3f77b11d21f537048ce04b67ccf8ba78863006a"

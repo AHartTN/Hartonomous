@@ -6,6 +6,8 @@ import pytest
 from src.core.compression import compress_atom, decompress_atom
 
 
+@pytest.mark.unit
+@pytest.mark.compression
 class TestCompressionDataIntegrity:
     """Test compression preserves data correctly."""
 

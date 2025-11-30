@@ -37,7 +37,7 @@ from api.dependencies import get_db_connection
 # Services
 print("? Testing services...")
 from api.services.document_parser import DocumentParserService
-from api.services.image_atomization import ImageAtomizationService
+# from api.services.image_atomization import ImageAtomizationService  # TODO: Fix import
 from api.services.model_atomization import GGUFAtomizer
 
 # Database

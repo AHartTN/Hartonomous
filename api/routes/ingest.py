@@ -20,7 +20,7 @@ from api.dependencies import get_db_connection
 from api.models.ingest import (AudioIngestRequest, ErrorResponse,
                                ImageIngestRequest, IngestResponse,
                                TextIngestRequest)
-from api.services.atomization import AtomizationService
+from api.services.general_atomization import AtomizationService
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

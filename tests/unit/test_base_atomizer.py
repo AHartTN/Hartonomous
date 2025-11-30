@@ -7,6 +7,7 @@ from src.core.atomization.base_atomizer import BaseAtomizer
 pytestmark = pytest.mark.asyncio
 
 
+@pytest.mark.unit
 class TestBaseAtomizerSQLIntegration:
     """Test BaseAtomizer actually calls SQL and creates atoms."""
 
@@ -96,3 +97,4 @@ class TestBaseAtomizerSQLIntegration:
         assert atomizer.stats["total_processed"] == 100
         assert atomizer.stats["atoms_created"] == 50
         assert atomizer.stats["sparse_skipped"] == 30
+

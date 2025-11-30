@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -12,31 +13,50 @@ from psycopg import AsyncConnection
 load_dotenv()
 
 
+def pytest_configure(config):
+    """Configure pytest - set event loop policy for Windows before any async tests."""
+    if sys.platform == "win32":
+        # On Windows, psycopg requires SelectorEventLoop instead of ProactorEventLoop
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+
 @pytest.fixture(scope="session")
 def event_loop():
     """Create event loop for async tests."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     yield loop
     loop.close()
 
 
 @pytest.fixture(scope="session")
 async def db_connection():
-    """Create database connection for tests."""
-    conn_string = os.getenv(
-        "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/hartonomous_test"
-    )
-    conn = await AsyncConnection.connect(conn_string)
-    yield conn
-    await conn.close()
+    """Create database connection for tests using settings from .env."""
+    try:
+        from api.config import settings
+        
+        conn_string = settings.get_connection_string()
+        conn = await AsyncConnection.connect(conn_string)
+        yield conn
+        await conn.close()
+    except Exception as e:
+        raise RuntimeError(f"Database not available: {e}") from e
 
 
 @pytest.fixture
 async def clean_db(db_connection):
     """Clean test database before each test."""
-    async with db_connection.cursor() as cur:
-        await cur.execute("TRUNCATE atom, atom_composition, atom_relation CASCADE")
-    await db_connection.commit()
+    try:
+        await db_connection.rollback()  # Clear any existing transaction state
+        async with db_connection.cursor() as cur:
+            await cur.execute("TRUNCATE atom, atom_composition, atom_relation CASCADE")
+        await db_connection.commit()
+    except Exception as e:
+        await db_connection.rollback()
+        raise
     yield
 
 

@@ -5,6 +5,8 @@ import pytest
 pytestmark = pytest.mark.asyncio
 
 
+@pytest.mark.sql
+@pytest.mark.gpu
 class TestGPUFunctions:
     """Test GPU acceleration SQL functions."""
 
@@ -36,7 +38,7 @@ class TestGPUFunctions:
             has_gpu = (await cur.fetchone())[0]
 
             if not has_gpu:
-                pytest.skip("No GPU available")
+                raise RuntimeError("No GPU available")
 
             # Create test atoms
             await cur.execute(
@@ -59,3 +61,4 @@ class TestGPUFunctions:
             result = await cur.fetchone()
 
             assert result is not None
+
