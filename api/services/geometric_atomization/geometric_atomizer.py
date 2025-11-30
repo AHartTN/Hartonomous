@@ -382,7 +382,3 @@ class GeometricAtomizer:
                 child_data = await self._reconstruct_bytes_from_atom(child_id)
                 child_bytes.append(child_data)
             return b"".join(child_bytes)
-
-            raise ValueError(
-                f"Atom {atom_id} has neither atom_value nor composition_ids"
-            )

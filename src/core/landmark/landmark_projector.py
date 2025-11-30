@@ -213,7 +213,6 @@ class LandmarkProjector:
 
     def extract_code_landmarks(
         self,
-        code_vector: np.ndarray,
         language: str,
         ast_data: Optional[Dict[str, Any]] = None,
     ) -> List[LandmarkPosition]:

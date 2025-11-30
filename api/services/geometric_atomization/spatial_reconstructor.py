@@ -122,12 +122,6 @@ class SpatialReconstructor:
         if row is None:
             return None
 
-            atom_value, composition_ids, canonical_text = row
-
-            # If primitive atom, return value directly
-            if atom_value is not None:
-                return atom_value
-
             # If composition and expansion requested, recursively expand
             if composition_ids is not None and expand_compositions:
                 return await self._expand_composition(composition_ids)

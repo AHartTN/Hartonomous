@@ -195,7 +195,7 @@ class AsyncExecutorContext:
         self.executor = ThreadPoolExecutor(max_workers=self.max_workers)
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, *_):
         if self.executor:
             self.executor.shutdown(wait=False)
 

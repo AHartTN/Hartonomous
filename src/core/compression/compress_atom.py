@@ -17,7 +17,6 @@ def compress_atom(
     dtype: Optional[np.dtype] = None,
     sparse_threshold: float = 1e-6,
     use_rle: bool = True,
-    use_dict: bool = False,
 ) -> Tuple[bytes, Dict[str, Any]]:
     """Apply multi-layer compression to atom data."""
     # USE ACTUAL DATA DTYPE, not default to float64
