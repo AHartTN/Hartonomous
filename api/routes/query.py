@@ -16,8 +16,14 @@ from psycopg import AsyncConnection
 
 from api.dependencies import get_db_connection
 from api.models.ingest import ErrorResponse
-from api.models.query import (AtomResponse, LineageNode, LineageResponse,
-                              SearchRequest, SearchResponse, SearchResult)
+from api.models.query import (
+    AtomResponse,
+    LineageNode,
+    LineageResponse,
+    SearchRequest,
+    SearchResponse,
+    SearchResult,
+)
 from api.services.query import QueryService
 
 router = APIRouter()

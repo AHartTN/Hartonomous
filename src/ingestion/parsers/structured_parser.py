@@ -63,7 +63,7 @@ class StructuredParser(BaseAtomizer):
                 )
                 component_ids.append(component_id)
                 sequence_indices.append(idx // chunk_size)
-            
+
             if component_ids:
                 await self.create_compositions_batch(
                     conn, parent_atom_id, component_ids, sequence_indices

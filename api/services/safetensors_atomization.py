@@ -3,20 +3,20 @@
 import hashlib
 import json
 import logging
-import numpy as np
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import numpy as np
 from psycopg import AsyncConnection
 
 from api.config import settings
+from api.services.embedding_service import generate_semantic_coordinates
 from api.services.spatial_encoding import (
     calculate_architecture_spatial_key,
     calculate_vocabulary_spatial_key,
     calculate_weight_spatial_key,
     spatial_key_to_wkt,
 )
-from api.services.embedding_service import generate_semantic_coordinates
 from src.core.atomization.base_atomizer import BaseAtomizer
 from src.core.compression.encoding import MultiLayerEncoder
 
@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 GPU_AVAILABLE = False
 try:
     import cupy as cp
+
     GPU_AVAILABLE = True
     logger.info("✓ GPU acceleration available via CuPy")
 except ImportError:
@@ -57,10 +58,10 @@ class SafeTensorsAtomizer(BaseAtomizer):
         max_tensors: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Atomize SafeTensors model following hierarchical composition pattern."""
-        
+
         use_gpu = settings.use_gpu and GPU_AVAILABLE
         device = "GPU" if use_gpu else "CPU"
-        
+
         logger.info(
             f"Atomizing SafeTensors model: {model_name} ({file_path.stat().st_size / 1e9:.2f} GB) [Device: {device}]"
         )
@@ -79,7 +80,7 @@ class SafeTensorsAtomizer(BaseAtomizer):
                 (model_content_hash,),
             )
             existing = await cur.fetchone()
-            
+
             if existing:
                 model_atom_id = existing[0]
                 logger.info(f"Model atom already exists: {model_atom_id}")
@@ -147,7 +148,9 @@ class SafeTensorsAtomizer(BaseAtomizer):
         try:
             from safetensors import safe_open
         except ImportError:
-            logger.error("safetensors library not installed. Run: pip install safetensors")
+            logger.error(
+                "safetensors library not installed. Run: pip install safetensors"
+            )
             raise ImportError("Install safetensors: pip install safetensors")
 
         logger.info(f"Reading SafeTensors file: {file_path}")
@@ -173,12 +176,14 @@ class SafeTensorsAtomizer(BaseAtomizer):
                 logger.info(f"Processing first {max_tensors} tensors")
 
             for tensor_idx, tensor_name in enumerate(tensors_to_process):
-                logger.info(f"Processing tensor {tensor_idx+1}/{len(tensors_to_process)}: {tensor_name}")
-                
+                logger.info(
+                    f"Processing tensor {tensor_idx+1}/{len(tensors_to_process)}: {tensor_name}"
+                )
+
                 # Get tensor data
                 tensor_data = f.get_tensor(tensor_name)
                 shape = tensor_data.shape
-                
+
                 # Create tensor metadata atom
                 tensor_hash = hashlib.sha256(tensor_name.encode()).digest()
                 tensor_atom_id = await self.create_atom(
@@ -197,29 +202,33 @@ class SafeTensorsAtomizer(BaseAtomizer):
                 await self.create_composition(
                     conn, model_atom_id, tensor_atom_id, tensor_idx
                 )
-                self.stats["tensors_processed"] = self.stats.get("tensors_processed", 0) + 1
+                self.stats["tensors_processed"] = (
+                    self.stats.get("tensors_processed", 0) + 1
+                )
 
                 # Atomize weights
                 weights = tensor_data.flatten()
                 total_weights = len(weights)
-                
+
                 # Apply compression and sparse encoding
                 weights_np = np.array(weights, dtype=np.float32)
                 encoded_bytes, encoding_metadata = self.encoder.encode(weights_np)
                 compressed_weights = np.frombuffer(encoded_bytes, dtype=np.float32)
-                
+
                 # Sparse filtering
                 abs_weights = np.abs(compressed_weights)
                 sparse_mask = abs_weights < self.threshold
                 sparse_count = int(np.sum(sparse_mask))
-                
+
                 # Get non-sparse weights (keep as float32, no Decimal needed)
                 non_sparse_indices = np.where(~sparse_mask)[0].tolist()
-                non_sparse_weights = compressed_weights[~sparse_mask].tolist()  # float32
-                
+                non_sparse_weights = compressed_weights[
+                    ~sparse_mask
+                ].tolist()  # float32
+
                 unique_values = len(np.unique(compressed_weights))
                 rle_note = " (RLE applied)" if encoding_metadata.rle_applied else ""
-                
+
                 logger.info(
                     f"  Processed {total_weights:,} weights | "
                     f"{len(compressed_weights):,} after compression | "
@@ -228,53 +237,70 @@ class SafeTensorsAtomizer(BaseAtomizer):
                 )
 
                 self.stats["total_processed"] += total_weights
-                self.stats["sparse_skipped"] = self.stats.get("sparse_skipped", 0) + sparse_count
+                self.stats["sparse_skipped"] = (
+                    self.stats.get("sparse_skipped", 0) + sparse_count
+                )
 
                 # Batch atomize non-sparse weights
                 if non_sparse_weights:
-                    weight_atom_map = await self._atomize_weight_batch(conn, non_sparse_weights)
-                    
+                    weight_atom_map = await self._atomize_weight_batch(
+                        conn, non_sparse_weights
+                    )
+
                     # Batch create all compositions using UNNEST
                     import time
+
                     comp_count = len(non_sparse_indices)
-                    print(f"  → Building {comp_count:,} composition records...", flush=True)
+                    print(
+                        f"  → Building {comp_count:,} composition records...",
+                        flush=True,
+                    )
                     comp_start = time.time()
-                    
+
                     parent_ids = [tensor_atom_id] * comp_count
-                    component_ids = [weight_atom_map[non_sparse_weights[i]] for i in range(comp_count)]
+                    component_ids = [
+                        weight_atom_map[non_sparse_weights[i]]
+                        for i in range(comp_count)
+                    ]
                     sequence_idxs = non_sparse_indices
-                    
+
                     print(f"  → Inserting {comp_count:,} compositions...", flush=True)
                     async with conn.cursor() as cur:
-                        await cur.execute("""
+                        await cur.execute(
+                            """
                             INSERT INTO composition (parent_atom_id, component_atom_id, sequence_idx)
                             SELECT * FROM UNNEST(%s::bigint[], %s::bigint[], %s::integer[])
                             ON CONFLICT (parent_atom_id, component_atom_id) DO NOTHING
-                        """, (parent_ids, component_ids, sequence_idxs))
-                    
+                        """,
+                            (parent_ids, component_ids, sequence_idxs),
+                        )
+
                     comp_elapsed = time.time() - comp_start
                     comp_rate = comp_count / comp_elapsed if comp_elapsed > 0 else 0
-                    print(f"  → Inserted {comp_count:,} compositions ({comp_elapsed:.2f}s, {comp_rate:,.0f} comps/s)", flush=True)
+                    print(
+                        f"  → Inserted {comp_count:,} compositions ({comp_elapsed:.2f}s, {comp_rate:,.0f} comps/s)",
+                        flush=True,
+                    )
 
     async def _atomize_tokenizer(
         self, conn: AsyncConnection, tokenizer_path: Path, model_atom_id: int
     ):
         """Atomize tokenizer vocabulary from tokenizer.json."""
         logger.info("Atomizing tokenizer vocabulary...")
-        
+
         import time
-        
+
         with open(tokenizer_path, "r", encoding="utf-8") as f:
             tokenizer_data = json.load(f)
-        
+
         vocab = tokenizer_data.get("model", {}).get("vocab", {})
         if not vocab:
             logger.warning("No vocabulary found in tokenizer.json")
             return
-        
+
         vocab_size = len(vocab)
         logger.info(f"  Found {vocab_size:,} tokens in vocabulary")
-        
+
         # Create vocabulary root atom
         vocab_hash = hashlib.sha256(f"vocabulary:{model_atom_id}".encode()).digest()
         vocab_atom_id = await self.create_atom(
@@ -284,33 +310,42 @@ class SafeTensorsAtomizer(BaseAtomizer):
             {"modality": "tokenizer/vocabulary_root", "vocab_size": vocab_size},
         )
         await self.create_composition(conn, model_atom_id, vocab_atom_id, 0)
-        
+
         # Extract tokens
         start_time = time.time()
         all_tokens = list(vocab.keys())
-        
+
         # Generate semantic embeddings
         logger.info("    Generating semantic embeddings...")
         try:
             semantic_coords = generate_semantic_coordinates(all_tokens, fit_pca=True)
-            logger.info(f"      Generated semantic embeddings in {time.time() - start_time:.2f}s")
+            logger.info(
+                f"      Generated semantic embeddings in {time.time() - start_time:.2f}s"
+            )
         except Exception as e:
             logger.warning(f"Failed to generate embeddings: {e}")
             semantic_coords = [None] * vocab_size
-        
+
         # Create token atoms with spatial keys
-        token_hashes = [hashlib.sha256(token.encode("utf-8", errors="replace")).digest() for token in all_tokens]
+        token_hashes = [
+            hashlib.sha256(token.encode("utf-8", errors="replace")).digest()
+            for token in all_tokens
+        ]
         token_metadatas = [
-            json.dumps({
-                "modality": "tokenizer/vocabulary",
-                "token_id": vocab[token],
-                "char_count": len(token),
-                "vocab_size": vocab_size,
-                "semantic_coords": list(semantic_coords[i]) if semantic_coords[i] else None,
-            })
+            json.dumps(
+                {
+                    "modality": "tokenizer/vocabulary",
+                    "token_id": vocab[token],
+                    "char_count": len(token),
+                    "vocab_size": vocab_size,
+                    "semantic_coords": (
+                        list(semantic_coords[i]) if semantic_coords[i] else None
+                    ),
+                }
+            )
             for i, token in enumerate(all_tokens)
         ]
-        
+
         token_spatial_keys = [
             spatial_key_to_wkt(
                 calculate_vocabulary_spatial_key(
@@ -322,7 +357,7 @@ class SafeTensorsAtomizer(BaseAtomizer):
             )
             for i in range(vocab_size)
         ]
-        
+
         # Batch insert tokens
         async with conn.cursor() as cur:
             await cur.execute(
@@ -334,26 +369,28 @@ class SafeTensorsAtomizer(BaseAtomizer):
                 """,
                 (token_hashes, all_tokens, token_metadatas, token_spatial_keys),
             )
-            
+
             inserted_ids = [row[0] for row in await cur.fetchall()]
             logger.info(f"      Inserted {len(inserted_ids):,} new token atoms")
-        
-        logger.info(f"  ✓ Vocabulary atomization complete in {time.time() - start_time:.1f}s")
+
+        logger.info(
+            f"  ✓ Vocabulary atomization complete in {time.time() - start_time:.1f}s"
+        )
 
     async def _atomize_config(
         self, conn: AsyncConnection, config_path: Path, model_atom_id: int
     ):
         """Atomize model configuration."""
         logger.info("Atomizing model configuration...")
-        
+
         with open(config_path, "r", encoding="utf-8") as f:
             config = json.load(f)
-        
+
         logger.info(f"  Extracted {len(config)} configuration parameters")
-        
+
         # Calculate spatial coordinates for architecture
         x, y, z, m = calculate_architecture_spatial_key(config)
-        
+
         # Create architecture atom
         arch_hash = hashlib.sha256(json.dumps(config, sort_keys=True).encode()).digest()
         arch_atom_id = await self.create_atom(
@@ -362,10 +399,14 @@ class SafeTensorsAtomizer(BaseAtomizer):
             "model_architecture",
             {
                 "modality": "architecture/config",
-                **{k: v for k, v in config.items() if isinstance(v, (int, float, str, bool))},
+                **{
+                    k: v
+                    for k, v in config.items()
+                    if isinstance(v, (int, float, str, bool))
+                },
             },
         )
-        
+
         await self.create_composition(conn, model_atom_id, arch_atom_id, 1)
         logger.info("  ✓ Configuration atomized")
 
@@ -374,25 +415,29 @@ class SafeTensorsAtomizer(BaseAtomizer):
     ) -> Dict[Any, int]:
         """Batch atomize multiple weights."""
         import time
-        
+
         start = time.time()
         unique_weights = list(set(weights))
         dedup_ratio = len(weights) / len(unique_weights) if unique_weights else 0
-        
+
         logger.info(
             f"    Batch atomizing {len(weights):,} weights → {len(unique_weights):,} unique ({dedup_ratio:.1f}x dedup)"
         )
-        
+
         # Prepare batch data (simplified - metadata is just for storage)
-        weight_hashes = [hashlib.sha256(str(w).encode()).digest() for w in unique_weights]
+        weight_hashes = [
+            hashlib.sha256(str(w).encode()).digest() for w in unique_weights
+        ]
         weight_texts = [str(w) for w in unique_weights]
         # Simplified metadata - just modality field (value is redundant with canonical_text)
-        weight_metadatas = ['{"modality": "weight"}'] * len(unique_weights)  # Constant string, no json.dumps
+        weight_metadatas = ['{"modality": "weight"}'] * len(
+            unique_weights
+        )  # Constant string, no json.dumps
         weight_spatial_keys = [
             spatial_key_to_wkt(calculate_weight_spatial_key(float(w)))
             for w in unique_weights
         ]
-        
+
         # Batch insert
         async with conn.cursor() as cur:
             await cur.execute(
@@ -404,19 +449,21 @@ class SafeTensorsAtomizer(BaseAtomizer):
                 """,
                 (weight_hashes, weight_texts, weight_metadatas, weight_spatial_keys),
             )
-            
+
             results = await cur.fetchall()
             hash_to_id = {bytes(row[1]): row[0] for row in results}
-        
+
         # Build weight -> atom_id map
         weight_atom_map = {}
         for i, weight in enumerate(unique_weights):
             weight_atom_map[weight] = hash_to_id[weight_hashes[i]]
-        
+
         self.stats["atoms_created"] += len(unique_weights)
         self.stats["atoms_deduped"] += len(weights) - len(unique_weights)
-        
+
         elapsed = time.time() - start
-        logger.info(f"    Batch atomized in {elapsed:.2f}s ({len(unique_weights)/elapsed:.0f} atoms/s)")
-        
+        logger.info(
+            f"    Batch atomized in {elapsed:.2f}s ({len(unique_weights)/elapsed:.0f} atoms/s)"
+        )
+
         return weight_atom_map

@@ -97,4 +97,3 @@ class TestBaseAtomizerSQLIntegration:
         assert atomizer.stats["total_processed"] == 100
         assert atomizer.stats["atoms_created"] == 50
         assert atomizer.stats["sparse_skipped"] == 30
-

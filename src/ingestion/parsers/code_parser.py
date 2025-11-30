@@ -108,7 +108,7 @@ class CodeParser(BaseAtomizer):
                     else atom["metadata"]
                 )
                 hilbert_index = metadata.get("hilbertIndex", 0)
-                
+
                 # Add modality and subtype to metadata
                 metadata["modality"] = atom.get("modality", "code")
                 if "subtype" in atom:
@@ -156,7 +156,7 @@ class CodeParser(BaseAtomizer):
         comp_parent_ids = []
         comp_component_ids = []
         comp_sequence_indices = []
-        
+
         for comp in compositions:
             parent_id = hash_to_id.get(comp["parentHash"])
             component_id = hash_to_id.get(comp["componentHash"])
@@ -165,7 +165,7 @@ class CodeParser(BaseAtomizer):
                 comp_parent_ids.append(parent_id)
                 comp_component_ids.append(component_id)
                 comp_sequence_indices.append(comp["sequenceIndex"])
-        
+
         if comp_parent_ids:
             async with conn.cursor() as cur:
                 await cur.execute(

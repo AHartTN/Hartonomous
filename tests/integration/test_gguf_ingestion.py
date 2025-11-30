@@ -3,11 +3,13 @@
 import asyncio
 import logging
 from pathlib import Path
+
 import pytest
-from api.services.model_atomization import GGUFAtomizer
-from api.dependencies import set_connection_pool
 from psycopg_pool import AsyncConnectionPool
+
 from api.config import settings
+from api.dependencies import set_connection_pool
+from api.services.model_atomization import GGUFAtomizer
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.integration, pytest.mark.gguf]
 
@@ -20,7 +22,9 @@ async def test_gguf_ingestion(test_gguf_path):
     model_path = test_gguf_path
 
     if not model_path.exists():
-        raise FileNotFoundError(f"Test model not found: {model_path}. Run performance tests to download.")
+        raise FileNotFoundError(
+            f"Test model not found: {model_path}. Run performance tests to download."
+        )
 
     logger.info(f"Testing GGUF ingestion: {model_path.name}")
     logger.info(f"File size: {model_path.stat().st_size / 1e6:.2f} MB")
@@ -32,17 +36,23 @@ async def test_gguf_ingestion(test_gguf_path):
     )
 
     # Initialize connection pool with optimized settings
-    logger.info(f"Initializing connection pool: min={settings.pool_min_size}, max={settings.pool_max_size}")
+    logger.info(
+        f"Initializing connection pool: min={settings.pool_min_size}, max={settings.pool_max_size}"
+    )
     pool = AsyncConnectionPool(
         conninfo=db_url,
         min_size=settings.pool_min_size,
         max_size=settings.pool_max_size,
         timeout=settings.pool_timeout,
         max_idle=settings.pool_max_idle,
-        max_lifetime=settings.pool_max_lifetime if hasattr(settings, 'pool_max_lifetime') else 3600,
+        max_lifetime=(
+            settings.pool_max_lifetime
+            if hasattr(settings, "pool_max_lifetime")
+            else 3600
+        ),
     )
     await pool.open()
-    
+
     # Wait for pool to initialize
     logger.info("Waiting for connection pool to initialize...")
     await pool.wait(timeout=10.0)
@@ -62,7 +72,7 @@ async def test_gguf_ingestion(test_gguf_path):
                     conn=conn,
                     pool=pool,
                 )
-        
+
         logger.info("=" * 80)
         logger.info("INGESTION RESULTS:")
         logger.info(f"  Total weights processed: {result['total_processed']:,}")
@@ -71,14 +81,16 @@ async def test_gguf_ingestion(test_gguf_path):
         logger.info(f"  Deduplication ratio: {result['deduplication_ratio']:.1f}x")
         logger.info(f"  Sparse savings: {result.get('sparse_percentage', 0):.1f}%")
         logger.info("=" * 80)
-        
+
         # Validate results
-        assert result['total_processed'] > 0
-        assert result['atoms_created'] > 0
-        assert result['deduplication_ratio'] >= 1.0
-        
+        assert result["total_processed"] > 0
+        assert result["atoms_created"] > 0
+        assert result["deduplication_ratio"] >= 1.0
+
         # Pool health check
-        logger.info(f"Pool stats: name={pool.name}, size={pool.size}, closed={pool.closed}")
+        logger.info(
+            f"Pool stats: name={pool.name}, size={pool.size}, closed={pool.closed}"
+        )
     finally:
         logger.info("Closing connection pool...")
         await pool.close()
@@ -88,12 +100,26 @@ async def test_gguf_ingestion(test_gguf_path):
 if __name__ == "__main__":
     # For manual testing, use cached model
     import sys
+
     sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-    
+
     class MockFixture:
-        def exists(self): return Path(".cache/test_models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf").exists()
+        def exists(self):
+            return Path(
+                ".cache/test_models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
+            ).exists()
+
         @property
-        def name(self): return "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
-        def stat(self): return Path(".cache/test_models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf").stat()
-    
-    asyncio.run(test_gguf_ingestion(Path(".cache/test_models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf")))
+        def name(self):
+            return "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
+
+        def stat(self):
+            return Path(
+                ".cache/test_models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
+            ).stat()
+
+    asyncio.run(
+        test_gguf_ingestion(
+            Path(".cache/test_models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf")
+        )
+    )

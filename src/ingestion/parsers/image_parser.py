@@ -59,7 +59,7 @@ class ImageParser(BaseAtomizer):
         # Collect all non-sparse chunks first
         component_ids = []
         sequence_indices = []
-        
+
         for idx in range(0, len(pixels), chunk_size):
             chunk = pixels[idx : idx + chunk_size].flatten()
 

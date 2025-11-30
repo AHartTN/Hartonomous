@@ -9,8 +9,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from fastapi import (APIRouter, Depends, File, Form, HTTPException, UploadFile,
-                     status)
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from psycopg import AsyncConnection
 
 from api.dependencies import get_db_connection

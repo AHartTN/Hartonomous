@@ -17,9 +17,13 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from psycopg import AsyncConnection
 
 from api.dependencies import get_db_connection
-from api.models.ingest import (AudioIngestRequest, ErrorResponse,
-                               ImageIngestRequest, IngestResponse,
-                               TextIngestRequest)
+from api.models.ingest import (
+    AudioIngestRequest,
+    ErrorResponse,
+    ImageIngestRequest,
+    IngestResponse,
+    TextIngestRequest,
+)
 from api.services.general_atomization import AtomizationService
 
 router = APIRouter()

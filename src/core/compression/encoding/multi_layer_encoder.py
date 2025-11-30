@@ -62,11 +62,11 @@ class MultiLayerEncoder:
         # Vectorized approach: find where values change
         changes = np.concatenate(([True], data[1:] != data[:-1], [True]))
         change_indices = np.where(changes)[0]
-        
+
         # Values and their run lengths
         values = data[change_indices[:-1]]
         counts = np.diff(change_indices)
-        
+
         # Only use RLE if it saves space (at least 20% reduction)
         rle_size = len(values) * 2
         if rle_size < len(data) * 0.8:
@@ -82,7 +82,7 @@ class MultiLayerEncoder:
         """Reverse RLE encoding (vectorized)."""
         values = encoded[0::2]
         counts = encoded[1::2].astype(int)
-        
+
         # Use np.repeat for vectorized expansion
         return np.repeat(values, counts)
 

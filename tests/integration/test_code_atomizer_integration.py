@@ -63,7 +63,7 @@ class TestCodeAtomizerIntegration:
 
         data = response.json()
         assert "languages" in data
-        
+
         # Languages are now grouped by parser type
         if isinstance(data["languages"], dict):
             # Flatten all languages from all parsers

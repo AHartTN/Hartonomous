@@ -3,9 +3,14 @@
 import numpy as np
 import pytest
 
-from src.core.compression.encoding import (AtomEncoder, DeltaEncoder,
-                                           EncodingType, MultiLayerEncoder,
-                                           RLEEncoder, SparseEncoder)
+from src.core.compression.encoding import (
+    AtomEncoder,
+    DeltaEncoder,
+    EncodingType,
+    MultiLayerEncoder,
+    RLEEncoder,
+    SparseEncoder,
+)
 
 
 class TestSparseEncoder:

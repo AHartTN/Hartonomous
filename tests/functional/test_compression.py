@@ -2,6 +2,7 @@
 
 import numpy as np
 import pytest
+
 from src.core.compression.compress_atom import compress_atom
 from src.core.compression.decompress_atom import decompress_atom
 
@@ -19,7 +20,6 @@ def test_compression_functional():
     print(f'Compression ratio: {metadata["compression_ratio"]:.2f}x')
     print(f"Data integrity: {np.allclose(original, restored)}")
     print(f"Max error: {np.max(np.abs(original - restored)):.6f}")
-    
+
     assert np.allclose(original, restored)
     assert metadata["compression_ratio"] > 1.0
-

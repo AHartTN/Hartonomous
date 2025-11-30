@@ -70,4 +70,3 @@ class TestSpatialFunctions:
             if len(results) > 1:
                 for i in range(len(results) - 1):
                     assert results[i][1] >= results[i + 1][1]  # Descending weights
-

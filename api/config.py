@@ -63,8 +63,12 @@ class Settings(BaseSettings):
     pool_max_size: int = Field(default=50, description="Max connection pool size")
     pool_timeout: int = Field(default=30, description="Pool timeout (seconds)")
     pool_max_idle: int = Field(default=600, description="Max idle time (seconds)")
-    pool_max_lifetime: int = Field(default=3600, description="Max connection lifetime (seconds)")
-    pool_num_workers: int = Field(default=8, description="Number of parallel workers for async operations")
+    pool_max_lifetime: int = Field(
+        default=3600, description="Max connection lifetime (seconds)"
+    )
+    pool_num_workers: int = Field(
+        default=8, description="Number of parallel workers for async operations"
+    )
 
     # API Server Settings
     api_host: str = Field(
@@ -139,7 +143,7 @@ class Settings(BaseSettings):
         default=True,
         description="Use GPU acceleration when available (CuPy). Falls back to CPU if GPU not detected.",
     )
-    
+
     # Weight Spatial Positioning
     enable_weight_spatial_positioning: bool = Field(
         default=False,
@@ -158,8 +162,7 @@ class Settings(BaseSettings):
             logger.info("Loading configuration from Azure...")
 
             try:
-                from api.azure_config import (get_app_config_client,
-                                              get_key_vault_client)
+                from api.azure_config import get_app_config_client, get_key_vault_client
 
                 kv_client = get_key_vault_client()
                 app_config_client = get_app_config_client()

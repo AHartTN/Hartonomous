@@ -174,7 +174,7 @@ class DocumentParserService:
                                     f"Image on page {page_num}: "
                                     f"{img.get('width', 'unknown')}x{img.get('height', 'unknown')}"
                                 )
-                                
+
                                 # Create image atom with metadata
                                 # In future: extract pixels, vectorize, create spatial atoms
                                 img_metadata = {
@@ -185,7 +185,7 @@ class DocumentParserService:
                                     "width": img.get("width"),
                                     "height": img.get("height"),
                                 }
-                                
+
                                 img_ref = f"image_{page_num}_{img_idx}"
                                 await cur.execute(
                                     """
@@ -195,11 +195,15 @@ class DocumentParserService:
                                         %s::jsonb
                                     )
                                     """,
-                                    (img_ref.encode("utf-8"), img_ref, json.dumps(img_metadata)),
+                                    (
+                                        img_ref.encode("utf-8"),
+                                        img_ref,
+                                        json.dumps(img_metadata),
+                                    ),
                                 )
                                 img_atom_id = (await cur.fetchone())[0]
                                 total_atoms += 1
-                                
+
                                 # Link image to page
                                 await cur.execute(
                                     """
@@ -354,8 +358,10 @@ class DocumentParserService:
 
                 # Process tables
                 for table_idx, table in enumerate(doc.tables):
-                    logger.info(f"Table {table_idx}: {len(table.rows)} rows x {len(table.columns)} columns")
-                    
+                    logger.info(
+                        f"Table {table_idx}: {len(table.rows)} rows x {len(table.columns)} columns"
+                    )
+
                     # Create table atom
                     table_ref = f"table_{table_idx}"
                     table_metadata = {
@@ -364,7 +370,7 @@ class DocumentParserService:
                         "columns": len(table.columns),
                         "index": table_idx,
                     }
-                    
+
                     await cur.execute(
                         """
                         SELECT atomize_value(
@@ -373,11 +379,15 @@ class DocumentParserService:
                             %s::jsonb
                         )
                         """,
-                        (table_ref.encode("utf-8"), table_ref, json.dumps(table_metadata)),
+                        (
+                            table_ref.encode("utf-8"),
+                            table_ref,
+                            json.dumps(table_metadata),
+                        ),
                     )
                     table_atom_id = (await cur.fetchone())[0]
                     total_atoms += 1
-                    
+
                     # Link table to document
                     await cur.execute(
                         """
@@ -390,7 +400,7 @@ class DocumentParserService:
                         """,
                         (doc_atom_id, table_atom_id, table_idx),
                     )
-                    
+
                     # Atomize each cell
                     for row_idx, row in enumerate(table.rows):
                         for col_idx, cell in enumerate(row.cells):
@@ -402,13 +412,13 @@ class DocumentParserService:
                                     "column": col_idx,
                                     "table_index": table_idx,
                                 }
-                                
+
                                 await cur.execute(
                                     "SELECT atomize_text(%s, %s::jsonb)",
                                     (cell_text, json.dumps(cell_metadata)),
                                 )
                                 cell_char_atoms = (await cur.fetchone())[0]
-                                
+
                                 # Create cell atom and link to table
                                 cell_hash = hashlib.sha256(cell_text.encode()).digest()
                                 await cur.execute(
@@ -419,7 +429,7 @@ class DocumentParserService:
                                 )
                                 cell_atom_id = (await cur.fetchone())[0]
                                 total_atoms += len(cell_char_atoms) + 1
-                                
+
                                 # Link cell to table with position
                                 cell_position = row_idx * len(table.columns) + col_idx
                                 await cur.execute(
@@ -431,7 +441,13 @@ class DocumentParserService:
                                         jsonb_build_object('row', %s, 'col', %s)
                                     )
                                     """,
-                                    (table_atom_id, cell_atom_id, cell_position, row_idx, col_idx),
+                                    (
+                                        table_atom_id,
+                                        cell_atom_id,
+                                        cell_position,
+                                        row_idx,
+                                        col_idx,
+                                    ),
                                 )
 
                 logger.info(
@@ -508,36 +524,46 @@ class DocumentParserService:
                         # Create code block atom
                         code = token.content
                         lang = token.info if hasattr(token, "info") else "plaintext"
-                        
+
                         code_metadata = metadata.copy()
-                        code_metadata.update({
-                            "modality": "code",
-                            "language": lang,
-                        })
-                        
+                        code_metadata.update(
+                            {
+                                "modality": "code",
+                                "language": lang,
+                            }
+                        )
+
                         # C# code: use semantic AST atomizer for deep code understanding
-                        if lang.lower() in ('csharp', 'cs', 'c#'):
+                        if lang.lower() in ("csharp", "cs", "c#"):
                             try:
-                                from api.services.code_atomization.code_atomizer_client import CodeAtomizerClient
-                                
+                                from api.services.code_atomization.code_atomizer_client import (
+                                    CodeAtomizerClient,
+                                )
+
                                 client = CodeAtomizerClient()
                                 try:
                                     # Check if C# microservice is available
                                     if await client.health_check():
-                                        logger.info(f"Atomizing C# code via Roslyn microservice (AST-level)...")
-                                        
+                                        logger.info(
+                                            f"Atomizing C# code via Roslyn microservice (AST-level)..."
+                                        )
+
                                         # Get AST from C# microservice
                                         ast_result = await client.atomize_csharp(
                                             code=code,
                                             filename="markdown_code_block.cs",
-                                            metadata=json.dumps(code_metadata)
+                                            metadata=json.dumps(code_metadata),
                                         )
-                                        
+
                                         # Create code block atom with AST metadata
-                                        code_hash = hashlib.sha256(code.encode()).digest()
-                                        code_metadata['ast_available'] = True
-                                        code_metadata['ast_nodes'] = ast_result.get('node_count', 0)
-                                        
+                                        code_hash = hashlib.sha256(
+                                            code.encode()
+                                        ).digest()
+                                        code_metadata["ast_available"] = True
+                                        code_metadata["ast_nodes"] = ast_result.get(
+                                            "node_count", 0
+                                        )
+
                                         await cur.execute(
                                             """
                                             SELECT atomize_value(
@@ -546,21 +572,33 @@ class DocumentParserService:
                                                 %s::jsonb
                                             )
                                             """,
-                                            (code_hash, code[:100], json.dumps(code_metadata)),
+                                            (
+                                                code_hash,
+                                                code[:100],
+                                                json.dumps(code_metadata),
+                                            ),
                                         )
                                         code_atom_id = (await cur.fetchone())[0]
                                         total_atoms += 1
-                                        
-                                        logger.info(f"✓ C# code atomized via Roslyn AST ({ast_result.get('node_count', 0)} nodes)")
+
+                                        logger.info(
+                                            f"✓ C# code atomized via Roslyn AST ({ast_result.get('node_count', 0)} nodes)"
+                                        )
                                     else:
-                                        logger.warning("C# atomizer service unavailable, falling back to text atomization")
-                                        raise RuntimeError("C# atomizer service unavailable")
-                                        
+                                        logger.warning(
+                                            "C# atomizer service unavailable, falling back to text atomization"
+                                        )
+                                        raise RuntimeError(
+                                            "C# atomizer service unavailable"
+                                        )
+
                                 finally:
                                     await client.close()
-                                    
+
                             except Exception as e:
-                                logger.warning(f"C# atomization failed: {e}, falling back to text atomization")
+                                logger.warning(
+                                    f"C# atomization failed: {e}, falling back to text atomization"
+                                )
                                 # Fallback to text atomization
                                 await cur.execute(
                                     "SELECT atomize_text(%s, %s::jsonb)",

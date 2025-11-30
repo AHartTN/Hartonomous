@@ -14,8 +14,15 @@ from ..core.landmark import LandmarkPosition as Landmark
 from ..db.ingestion_db import IngestionDB
 from .ingestion_result import IngestionResult
 from .ingestion_status import IngestionStatus
-from .parsers import (AudioParser, CodeParser, ImageParser, ModelParser,
-                      StructuredParser, TextParser, VideoParser)
+from .parsers import (
+    AudioParser,
+    CodeParser,
+    ImageParser,
+    ModelParser,
+    StructuredParser,
+    TextParser,
+    VideoParser,
+)
 
 logger = logging.getLogger(__name__)
 

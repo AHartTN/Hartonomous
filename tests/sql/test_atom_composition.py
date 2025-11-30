@@ -138,4 +138,3 @@ class TestCompositionFunctionality:
             assert (
                 reconstructed == test_word
             ), f"Should reconstruct '{test_word}', got '{reconstructed}'"
-

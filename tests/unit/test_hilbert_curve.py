@@ -116,4 +116,3 @@ class TestHilbertSpatialProperties:
         assert (
             len(set(indices)) == 8
         ), "All 8 corners should have unique Hilbert indices"
-

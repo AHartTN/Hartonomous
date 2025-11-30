@@ -95,7 +95,9 @@ def calculate_vocabulary_spatial_key(
 
         # Z: Semantic hash from token text (enables text similarity)
         # Use first 4 bytes of hash, normalize to [0, 1]
-        text_hash = int.from_bytes(hashlib.sha256(token_text.encode()).digest()[4:8], "big")
+        text_hash = int.from_bytes(
+            hashlib.sha256(token_text.encode()).digest()[4:8], "big"
+        )
         z = (text_hash % 10000) / 10000.0
 
     # M: Hilbert index of token_id for efficient sequential access

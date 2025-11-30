@@ -23,10 +23,10 @@ class TestGGUFAtomizer:
     async def test_atomizer_threshold(self):
         """Test atomizer threshold configuration."""
         atomizer = GGUFAtomizer(threshold=0.01)
-        
+
         assert atomizer.threshold == 0.01
         assert atomizer.encoder.sparse_threshold == 0.01
-        
+
         # Test default threshold
         default_atomizer = GGUFAtomizer()
         assert default_atomizer.threshold == 1e-6

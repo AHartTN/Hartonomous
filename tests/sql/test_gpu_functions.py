@@ -61,4 +61,3 @@ class TestGPUFunctions:
             result = await cur.fetchone()
 
             assert result is not None
-

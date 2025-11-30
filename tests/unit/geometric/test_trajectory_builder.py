@@ -14,6 +14,7 @@ Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 """
 
 import pytest
+
 from api.services.geometric_atomization import AtomLocator, TrajectoryBuilder
 
 

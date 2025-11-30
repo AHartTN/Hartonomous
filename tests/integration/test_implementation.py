@@ -4,10 +4,11 @@ Tests atomization, compression, and landmark projection.
 This is an INTEGRATION test - validates complete pipeline from atomization through spatial positioning.
 """
 
-import pytest
-import numpy as np
-from pathlib import Path
 import sys
+from pathlib import Path
+
+import numpy as np
+import pytest
 
 pytestmark = [pytest.mark.integration, pytest.mark.spatial]
 
@@ -15,8 +16,8 @@ pytestmark = [pytest.mark.integration, pytest.mark.spatial]
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 from src.core.atomization import Atomizer, ModalityType
-from src.core.landmark import LandmarkProjector
 from src.core.compression import AtomCompressor
+from src.core.landmark import LandmarkProjector
 
 
 def test_atomization():

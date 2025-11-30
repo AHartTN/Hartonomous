@@ -4,8 +4,14 @@ Breaks down any input into atomic units for storage in the 3D spatial system.
 """
 
 from .atomizer import Atomizer
-from .parsers import (AudioParser, CodeParser, DocumentParser, ImageParser,
-                      TextParser, VideoParser)
+from .parsers import (
+    AudioParser,
+    CodeParser,
+    DocumentParser,
+    ImageParser,
+    TextParser,
+    VideoParser,
+)
 
 __all__ = [
     "Atomizer",

@@ -15,14 +15,14 @@ print("? Testing core.compression...")
 from src.core.compression import compress_atom, decompress_atom
 
 print("? Testing core.spatial...")
-from src.core.spatial import encode_hilbert_3d, decode_hilbert_3d
+from src.core.spatial import decode_hilbert_3d, encode_hilbert_3d
 
 print("? Testing core.landmark...")
 from src.core.landmark import LandmarkProjector
 
 # Ingestion
 print("? Testing ingestion.parsers...")
-from src.ingestion.parsers import TextParser, ImageParser, CodeParser
+from src.ingestion.parsers import CodeParser, ImageParser, TextParser
 
 # API
 print("? Testing API main...")
@@ -37,6 +37,7 @@ from api.dependencies import get_db_connection
 # Services
 print("? Testing services...")
 from api.services.document_parser import DocumentParserService
+
 # from api.services.image_atomization import ImageAtomizationService  # TODO: Fix import
 from api.services.model_atomization import GGUFAtomizer
 

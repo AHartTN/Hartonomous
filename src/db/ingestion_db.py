@@ -20,7 +20,7 @@ class IngestionDB:
     """
     Async database ingestion layer.
     Handles atomic writes with proper error handling and batching.
-    
+
     UPDATED: Uses FractalAtomizer for fractal deduplication.
     """
 
@@ -96,7 +96,7 @@ class IngestionDB:
         """
         Create hierarchical composition using SQL function.
         Returns list of composition_ids.
-        
+
         DEPRECATED: Use FractalAtomizer instead for new code.
         This method remains for backward compatibility.
         """
@@ -123,7 +123,7 @@ class IngestionDB:
 
                 logger.debug(f"Created {len(composition_ids)} compositions")
                 return composition_ids
-    
+
     async def create_fractal_composition(
         self,
         component_atom_ids: List[int],
@@ -133,33 +133,34 @@ class IngestionDB:
     ) -> int:
         """
         Create composition atom using fractal deduplication.
-        
+
         This is the NEW method - uses composition_ids array in atom table.
         Enables O(1) deduplication via coordinate collision.
-        
+
         Args:
             component_atom_ids: Child atom IDs
             canonical_text: Cached text representation
             is_stable: True for permanent concepts, False for transient
             metadata: Additional metadata
-        
+
         Returns:
             atom_id of composition (existing or newly created)
         """
         # Lazy init FractalAtomizer
         if self._fractal_atomizer is None:
             from api.services.geometric_atomization import FractalAtomizer
+
             async with self.pool.connection() as conn:
                 self._fractal_atomizer = FractalAtomizer(db_connection=conn)
-        
+
         # Use FractalAtomizer to create composition
         atom_id = await self._fractal_atomizer.get_or_create_composition(
             component_atom_ids,
             canonical_text=canonical_text,
             is_stable=is_stable,
-            metadata=metadata or {}
+            metadata=metadata or {},
         )
-        
+
         logger.debug(f"Created fractal composition atom {atom_id}")
         return atom_id
 

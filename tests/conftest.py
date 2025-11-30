@@ -25,7 +25,7 @@ def event_loop():
     """Create event loop for async tests."""
     if sys.platform == "win32":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    
+
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     yield loop
@@ -35,30 +35,32 @@ def event_loop():
 @pytest.fixture(scope="session")
 async def db_connection():
     """Create database connection for tests using settings from .env.
-    
+
     Ensures database schema is initialized before running tests.
     """
     try:
         from api.config import settings
-        
+
         conn_string = settings.get_connection_string()
         conn = await AsyncConnection.connect(conn_string)
-        
+
         # Verify schema is initialized (check for atom table)
         async with conn.cursor() as cur:
-            await cur.execute("""
+            await cur.execute(
+                """
                 SELECT EXISTS (
                     SELECT FROM information_schema.tables 
                     WHERE table_schema = 'public' 
                     AND table_name = 'atom'
                 )
-            """)
+            """
+            )
             exists = await cur.fetchone()
             if not exists or not exists[0]:
                 raise RuntimeError(
                     "Database schema not initialized. Run: .\\scripts\\Initialize-Database.ps1"
                 )
-        
+
         yield conn
         await conn.close()
     except Exception as e:
@@ -108,8 +110,12 @@ def test_gguf_path(test_models_dir):
 def test_safetensors_dir(project_root):
     """Return path to the cached SafeTensors embedding model."""
     snapshot_dir = (
-        project_root / ".cache" / "embedding_models" / "all-MiniLM-L6-v2" 
-        / "snapshots" / "c9745ed1d9f207416be6d2e6f8de32d1f16199bf"
+        project_root
+        / ".cache"
+        / "embedding_models"
+        / "all-MiniLM-L6-v2"
+        / "snapshots"
+        / "c9745ed1d9f207416be6d2e6f8de32d1f16199bf"
     )
     return snapshot_dir
 

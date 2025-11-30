@@ -70,7 +70,7 @@ class AudioParser(BaseAtomizer):
         # Collect all non-silent chunks first
         component_ids = []
         sequence_indices = []
-        
+
         for idx in range(0, len(audio_data), chunk_size):
             chunk = audio_data[idx : idx + chunk_size]
 

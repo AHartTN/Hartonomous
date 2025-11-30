@@ -50,4 +50,3 @@ class TestHilbertSQL:
             assert abs(x - 0.5) < 0.001
             assert abs(y - 0.3) < 0.001
             assert abs(z - 0.8) < 0.001
-

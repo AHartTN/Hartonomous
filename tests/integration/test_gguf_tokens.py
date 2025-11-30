@@ -1,8 +1,9 @@
 """Test script to understand GGUF token parsing."""
 
-import pytest
-import gguf
 from pathlib import Path
+
+import gguf
+import pytest
 
 pytestmark = [pytest.mark.integration, pytest.mark.gguf]
 

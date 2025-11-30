@@ -1,8 +1,9 @@
 """Test Hilbert encoding functionality."""
 
 import pytest
-from src.core.spatial.encode_hilbert_3d import encode_hilbert_3d
+
 from src.core.spatial.decode_hilbert_3d import decode_hilbert_3d
+from src.core.spatial.encode_hilbert_3d import encode_hilbert_3d
 
 
 @pytest.mark.functional
@@ -18,9 +19,8 @@ def test_hilbert_round_trip():
     print(f"Hilbert index: {hilbert}")
     print(f"Decoded: ({x2:.6f}, {y2:.6f}, {z2:.6f})")
     print(f"Error: ({abs(x-x2):.9f}, {abs(y-y2):.9f}, {abs(z-z2):.9f})")
-    
+
     # Order 21 gives ~2M discretization, so tolerance ~0.5e-6
     assert abs(x - x2) < 1e-5
     assert abs(y - y2) < 1e-5
     assert abs(z - z2) < 1e-5
-

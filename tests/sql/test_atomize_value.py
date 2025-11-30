@@ -243,4 +243,3 @@ class TestAtomizeNumericFunctionality:
             id2 = (await cur.fetchone())[0]
 
             assert id1 == id2, "Same number should deduplicate"
-
