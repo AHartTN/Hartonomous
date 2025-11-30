@@ -1,6 +1,5 @@
 """Base atomizer for SQL-based atomization."""
 
-import hashlib
 import json
 import logging
 from typing import Any, Dict, Optional

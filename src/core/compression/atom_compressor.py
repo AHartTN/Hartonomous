@@ -2,8 +2,6 @@
 Atom compressor wrapper - provides unified interface for atomization.
 """
 
-from typing import Optional
-
 import numpy as np
 
 from .compression_result import CompressionResult

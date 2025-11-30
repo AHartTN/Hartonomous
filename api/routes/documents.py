@@ -3,17 +3,15 @@ Document ingestion routes.
 POST /v1/ingest/document - Atomize documents (PDF, DOCX, MD, HTML, TXT)
 """
 
-import base64
-import io
 import logging
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from psycopg import AsyncConnection
 
 from api.dependencies import get_db_connection
-from api.models.ingest import ErrorResponse, IngestResponse
+from api.models.ingest import IngestResponse
 from api.services.document_parser import DocumentParserService
 
 router = APIRouter()

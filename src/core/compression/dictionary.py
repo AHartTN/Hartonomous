@@ -5,7 +5,7 @@ Maintains a global dictionary for deduplication across atoms.
 
 import hashlib
 import struct
-from typing import Dict, Optional, Tuple
+from typing import Dict, Tuple
 
 
 class DictionaryCompressor:

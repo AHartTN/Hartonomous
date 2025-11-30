@@ -11,8 +11,6 @@ Tests spatial query performance and correctness:
 Uses greenfield GeometricAtomizer architecture.
 """
 
-from typing import List, Tuple
-
 import numpy as np
 import pytest
 

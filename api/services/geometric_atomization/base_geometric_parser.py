@@ -80,7 +80,6 @@ class BaseGeometricParser(ABC):
         Returns:
             List of byte chunks ready for atomization
         """
-        pass
 
     async def process_stream(
         self,

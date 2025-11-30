@@ -115,7 +115,7 @@ async def test_connection_pool():
 
         await pool.close()
 
-    except Exception as e:
+    except Exception:
         raise
 
 
@@ -149,5 +149,5 @@ async def test_transaction_handling(db_connection):
                 result = await cur.fetchone()
                 assert result[0] == "test_value"
 
-    except Exception as e:
+    except Exception:
         raise

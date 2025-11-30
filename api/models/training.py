@@ -4,7 +4,7 @@ Pydantic models for training requests/responses.
 Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import List
 
 from pydantic import BaseModel, Field
 

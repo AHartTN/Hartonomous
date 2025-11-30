@@ -52,7 +52,6 @@ async def lifespan(app: FastAPI):
     set_connection_pool(pool)
 
     # Start background workers
-    age_worker_task = None
     neo4j_worker_task = None
 
     # Start Neo4j provenance worker (RECOMMENDED for production)
@@ -75,7 +74,7 @@ async def lifespan(app: FastAPI):
         from api.workers.age_sync import AGESyncWorker
 
         age_worker = AGESyncWorker(pool)
-        age_worker_task = asyncio.create_task(age_worker.start())
+        asyncio.create_task(age_worker.start())
         logger.info("AGE sync worker started (experimental only)")
 
     logger.info("✓ Hartonomous API ready")
@@ -199,8 +198,7 @@ async def root():
 
 
 if __name__ == "__main__":
-    import asyncio
-    import sys
+    pass
 
     import uvicorn
 

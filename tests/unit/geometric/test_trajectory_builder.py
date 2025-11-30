@@ -148,7 +148,7 @@ class TestSingleLINESTRINGBreakthrough:
         text = "Hello"
         atom_values = [char.encode('utf-8') for char in text]
         
-        wkt = builder.build_from_atoms(atom_values, locator)
+        builder.build_from_atoms(atom_values, locator)
         
         # Traditional would create 6 rows
         traditional_rows = len(text) + 1  # atoms + composition

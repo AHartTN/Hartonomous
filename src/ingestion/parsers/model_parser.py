@@ -5,7 +5,6 @@ Model parser - handles AI models with tensor-level atomization.
 import hashlib
 import json
 from pathlib import Path
-from typing import Any, Dict
 
 from src.core.atomization import BaseAtomizer
 
@@ -66,7 +65,6 @@ class ModelParser(BaseAtomizer):
     async def _parse_safetensors(self, model_path: Path, parent_atom_id: int, conn):
         """Parse SafeTensors format with full weight atomization."""
         try:
-            import numpy as np
             from safetensors import safe_open
         except ImportError:
             raise ImportError("Install safetensors: pip install safetensors")
@@ -121,7 +119,6 @@ class ModelParser(BaseAtomizer):
     async def _parse_pytorch(self, model_path: Path, parent_atom_id: int, conn):
         """Parse PyTorch checkpoint with full weight atomization."""
         try:
-            import numpy as np
             import torch
         except ImportError:
             raise ImportError("Install pytorch: pip install torch")
@@ -176,7 +173,6 @@ class ModelParser(BaseAtomizer):
     async def _parse_onnx(self, model_path: Path, parent_atom_id: int, conn):
         """Parse ONNX model with full weight atomization."""
         try:
-            import numpy as np
             import onnx
             from onnx import numpy_helper
         except ImportError:

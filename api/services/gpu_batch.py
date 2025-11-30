@@ -9,7 +9,6 @@ Provides GPU-accelerated batch operations for:
 Uses PostgreSQL PL/Python + PyTorch for in-database GPU acceleration.
 """
 
-import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 

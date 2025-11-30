@@ -5,8 +5,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
-from ..db.ingestion_writer import IngestionWriter
-from ..ingestion.parsers import ImageParser, ModelParser
+from ..ingestion.parsers import ModelParser
 
 router = APIRouter(prefix="/api/v1/ingest", tags=["ingestion"])
 

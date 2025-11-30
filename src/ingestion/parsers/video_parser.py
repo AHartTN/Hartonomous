@@ -4,7 +4,6 @@ Video parser - handles video with frame-level atomization.
 
 import hashlib
 from pathlib import Path
-from typing import Any, Dict
 
 from src.core.atomization import BaseAtomizer
 

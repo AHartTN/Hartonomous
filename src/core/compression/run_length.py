@@ -3,8 +3,6 @@ Run-length encoding for repeated byte patterns.
 Effective for repetitive data like blue pixels, repeated weights, etc.
 """
 
-from typing import List
-
 
 def apply_rle(data: bytes) -> bytes:
     """

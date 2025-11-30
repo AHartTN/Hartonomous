@@ -18,8 +18,8 @@ Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 """
 
 import logging
-from collections import Counter, defaultdict
-from typing import Dict, List, Set, Tuple
+from collections import Counter
+from typing import Dict, List, Tuple
 
 logger = logging.getLogger(__name__)
 

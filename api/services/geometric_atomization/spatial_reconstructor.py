@@ -18,7 +18,7 @@ Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 """
 
 import re
-from typing import Any, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 

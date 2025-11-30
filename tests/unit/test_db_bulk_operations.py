@@ -5,7 +5,6 @@ Tests the BulkCopyOperation class and convenience functions for
 proper encapsulation, error handling, and performance characteristics.
 """
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -84,7 +83,7 @@ class TestBulkCopyOperation:
             return "".join(f"{r[0]}\t{r[1]}\n" for r in batch)
 
         rows = [(1, "a"), (2, "b"), (3, "c")]
-        elapsed = await operation.execute_text(rows, format_tsv, "Test insert")
+        await operation.execute_text(rows, format_tsv, "Test insert")
 
         # Verify write was called for each chunk (2 chunks: 0-2, 2-3)
         assert copy_ctx.write.call_count == 2

@@ -15,7 +15,7 @@ class TestLandmarkSemanticPositioning:
         # Multiple code atoms
         pos1 = compute_position("code", "function", "concrete", "func1")
         pos2 = compute_position("code", "function", "concrete", "func2")
-        pos3 = compute_position("code", "class", "concrete", "class1")
+        compute_position("code", "class", "concrete", "class1")
 
         # Different modality
         pos_image = compute_position("image", "pixel", "literal", "pixel1")

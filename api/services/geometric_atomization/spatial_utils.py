@@ -16,7 +16,7 @@ Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 
 import hashlib
 import struct
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 # ============================================================================
 # CONSTANTS

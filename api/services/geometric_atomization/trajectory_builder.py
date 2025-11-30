@@ -32,7 +32,6 @@ class TrajectoryBuilder:
     
     def __init__(self):
         """Initialize TrajectoryBuilder."""
-        pass
     
     def build_wkt(
         self, 

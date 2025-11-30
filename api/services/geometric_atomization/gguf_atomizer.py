@@ -18,12 +18,11 @@ Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional
 
 from psycopg import AsyncConnection
 from psycopg_pool import AsyncConnectionPool
 
-from ..utils import execute_query, query_one
 from .atom_locator import AtomLocator
 from .fractal_atomizer import FractalAtomizer
 from .trajectory_builder import TrajectoryBuilder
@@ -161,7 +160,6 @@ class GGUFAtomizer:
         Returns:
             Trajectory atom ID
         """
-        import json
 
         import numpy as np
 

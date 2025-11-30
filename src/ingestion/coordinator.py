@@ -9,8 +9,6 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ..core.atomization import Atom
-from ..core.landmark import LandmarkPosition as Landmark
 from ..db.ingestion_db import IngestionDB
 from .ingestion_result import IngestionResult
 from .ingestion_status import IngestionStatus

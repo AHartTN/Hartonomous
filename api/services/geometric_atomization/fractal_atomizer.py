@@ -21,9 +21,8 @@ Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 import hashlib
 import logging
 import struct
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
-import numpy as np
 
 from . import spatial_utils
 

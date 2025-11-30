@@ -4,7 +4,7 @@ import hashlib
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 from psycopg import AsyncConnection
@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 # GPU availability check
 GPU_AVAILABLE = False
 try:
-    import cupy as cp
+    pass
 
     GPU_AVAILABLE = True
     logger.info("✓ GPU acceleration available via CuPy")

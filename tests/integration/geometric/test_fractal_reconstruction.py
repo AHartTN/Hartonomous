@@ -11,8 +11,6 @@ Tests the complete atomization → storage → reconstruction pipeline:
 Uses greenfield GeometricAtomizer architecture.
 """
 
-from typing import List
-
 import numpy as np
 import pytest
 

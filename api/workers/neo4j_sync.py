@@ -195,7 +195,7 @@ class Neo4jProvenanceWorker:
             data = json.loads(payload)
 
             atom_id = data.get("atom_id")
-            content_hash = data.get("content_hash")
+            data.get("content_hash")
 
             logger.debug(f"Processing atom creation: {atom_id}")
 

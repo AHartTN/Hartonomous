@@ -14,7 +14,6 @@ import logging
 import sys
 from pathlib import Path
 
-import numpy as np
 
 # Setup logging
 logging.basicConfig(
@@ -30,9 +29,6 @@ async def test_pipeline():
     from api.config import settings
     from api.dependencies import set_connection_pool
     from api.services.geometric_atomization.gguf_atomizer import GGUFAtomizer
-    from api.services.geometric_atomization.spatial_reconstructor import (
-        SpatialReconstructor,
-    )
 
     # Initialize pool
     pool = AsyncConnectionPool(settings.get_connection_string(), min_size=1, max_size=4)

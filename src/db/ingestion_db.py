@@ -5,13 +5,11 @@ UPDATED: Now uses FractalAtomizer for composition deduplication.
 
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
-from psycopg import AsyncConnection
 from psycopg_pool import AsyncConnectionPool
 
 from ..core.atomization import Atom
-from ..core.landmark import LandmarkPosition as Landmark
 
 logger = logging.getLogger(__name__)
 

@@ -1,7 +1,5 @@
 """Test text parser."""
 
-from pathlib import Path
-
 import pytest
 
 from src.ingestion.parsers.text_parser import TextParser

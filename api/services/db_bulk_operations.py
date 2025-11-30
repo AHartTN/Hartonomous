@@ -72,7 +72,7 @@ Thread Safety:
 
 import logging
 import time
-from typing import Any, Callable, List, Optional, Tuple, Union
+from typing import Any, Callable, List, Tuple
 
 from psycopg import AsyncConnection
 from tqdm.asyncio import tqdm

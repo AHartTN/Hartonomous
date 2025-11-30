@@ -1,7 +1,6 @@
 """Pytest configuration and fixtures."""
 
 import asyncio
-import os
 import sys
 from pathlib import Path
 
@@ -76,7 +75,7 @@ async def clean_db(db_connection):
             # Note: atom_composition is deprecated, compositions now stored in atom.composition_ids
             await cur.execute("TRUNCATE atom, atom_relation CASCADE")
         await db_connection.commit()
-    except Exception as e:
+    except Exception:
         await db_connection.rollback()
         raise
     yield

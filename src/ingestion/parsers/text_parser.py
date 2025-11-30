@@ -1,7 +1,7 @@
 """Text parser - handles text with character/word-level atomization using geometric pipeline."""
 
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, List
 
 from psycopg import AsyncConnection
 

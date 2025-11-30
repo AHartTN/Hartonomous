@@ -11,7 +11,6 @@ Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 import base64
 import logging
 import time
-from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from psycopg import AsyncConnection

@@ -34,7 +34,7 @@ Adaptive chunking (optimal size based on item count):
 Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 """
 
-from typing import Any, Iterator, List, Optional, TypeVar
+from typing import Iterator, List, Optional, TypeVar
 
 import numpy as np
 

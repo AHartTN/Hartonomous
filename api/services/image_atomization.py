@@ -11,9 +11,8 @@ import json
 import logging
 import struct
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
-import numpy as np
 from PIL import Image
 from psycopg import AsyncConnection
 

@@ -15,7 +15,7 @@ import io
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional
 
 from psycopg import AsyncConnection
 
@@ -578,7 +578,7 @@ class DocumentParserService:
                                                 json.dumps(code_metadata),
                                             ),
                                         )
-                                        code_atom_id = (await cur.fetchone())[0]
+                                        (await cur.fetchone())[0]
                                         total_atoms += 1
 
                                         logger.info(
@@ -637,7 +637,6 @@ class DocumentParserService:
         """
         try:
             import pytesseract
-            from PIL import Image
 
             # Convert page to image
             img = page.to_image(resolution=300)

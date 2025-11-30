@@ -1,7 +1,5 @@
 """Test Model parser."""
 
-from pathlib import Path
-
 import pytest
 
 from src.ingestion.parsers.model_parser import ModelParser

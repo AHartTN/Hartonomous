@@ -7,7 +7,6 @@ Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 from fastapi import APIRouter, Depends, HTTPException, status
 from psycopg import AsyncConnection
 
-from api.config import settings
 from api.dependencies import get_db_connection
 
 router = APIRouter()

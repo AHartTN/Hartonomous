@@ -9,7 +9,7 @@ This is the high-level API for the breakthrough architecture.
 Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 """
 
-from typing import Any, List, Optional, Tuple
+from typing import Any, List
 
 import numpy as np
 

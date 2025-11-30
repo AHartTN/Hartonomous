@@ -1,7 +1,6 @@
 """Test structured data parser."""
 
 import json
-from pathlib import Path
 
 import pytest
 

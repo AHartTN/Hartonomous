@@ -342,7 +342,7 @@ class TestCompressionRatio:
 
         # Create primitive + composition
         id_a = await atomizer.get_or_create_primitive(b"A")
-        comp_aa = await atomizer.get_or_create_composition([id_a, id_a])
+        await atomizer.get_or_create_composition([id_a, id_a])
 
         # Sequence: "AAAA" (4 As)
         sequence = [b"A"] * 4

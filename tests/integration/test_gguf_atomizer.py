@@ -1,7 +1,5 @@
 """Test GGUFAtomizer."""
 
-from pathlib import Path
-
 import pytest
 
 from api.services.model_atomization import GGUFAtomizer

@@ -15,7 +15,7 @@ Uses greenfield GeometricAtomizer architecture.
 import json
 import struct
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict
 
 import numpy as np
 import pytest

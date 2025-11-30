@@ -169,8 +169,8 @@ class TestCompressionImprovement:
         atomizer = FractalAtomizer()
 
         # Create primitives
-        id_a = await atomizer.get_or_create_primitive(b"A")
-        id_b = await atomizer.get_or_create_primitive(b"B")
+        await atomizer.get_or_create_primitive(b"A")
+        await atomizer.get_or_create_primitive(b"B")
 
         # Initial sequence: "ABABAB" (6 atoms)
         sequence = [b"A", b"B"] * 3
