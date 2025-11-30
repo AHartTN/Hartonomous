@@ -271,18 +271,20 @@ def locate_composition_concept(
     Compute composition coordinate via concept hashing.
 
     Independent of child coordinates - represents abstract concept.
+    
+    Order matters: [1,2] != [2,1] (compositions are ordered sequences).
 
     Args:
-        child_ids: List of child atom IDs
+        child_ids: List of child atom IDs (order preserved)
         coordinate_range: Coordinate range
 
     Returns:
         (x, y, z, m) tuple for composition atom
     """
-    # Hash the composition structure
+    # Hash the composition structure (preserve order)
     composition_bytes = b"".join(
         child_id.to_bytes(8, byteorder="little", signed=True)
-        for child_id in sorted(child_ids)
+        for child_id in child_ids  # ORDER MATTERS
     )
 
     return locate_atom(composition_bytes, coordinate_range)
