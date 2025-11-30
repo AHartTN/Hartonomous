@@ -29,6 +29,7 @@ from .trajectory_builder import TrajectoryBuilder
 from .spatial_reconstructor import SpatialReconstructor
 from .geometric_atomizer import GeometricAtomizer
 from .fractal_atomizer import FractalAtomizer
+from .bpe_crystallizer import BPECrystallizer
 
 __all__ = [
     "AtomLocator",
@@ -36,5 +37,6 @@ __all__ = [
     "SpatialReconstructor",
     "GeometricAtomizer",
     "FractalAtomizer",
+    "BPECrystallizer",
 ]
 

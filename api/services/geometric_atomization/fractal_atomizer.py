@@ -244,6 +244,10 @@ class FractalAtomizer:
         Returns:
             atom_id of composition
         """
+        # Validate input
+        if not child_ids:
+            raise ValueError("Cannot create composition with empty child_ids")
+        
         # Check cache
         child_tuple = tuple(child_ids)
         if child_tuple in self.composition_cache:

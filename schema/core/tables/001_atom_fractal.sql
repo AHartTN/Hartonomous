@@ -1,10 +1,26 @@
 -- ============================================================================
--- ATOM TABLE (FRACTAL RECURSIVE COMPOSITION)
--- The periodic table of intelligence - EVERYTHING is an atom
+-- ATOM TABLE (FRACTAL RECURSIVE COMPOSITION) - REFERENCE DOCUMENTATION
 -- ============================================================================
 -- 
--- BREAKTHROUGH: A Composition IS an Atom
+-- **THIS FILE IS REFERENCE DOCUMENTATION - NOT USED IN SCHEMA LOADING**
+-- The actual schema is in 001_atom.sql (which has been updated with fractal composition)
+--
+-- This file preserved as documentation of the "Three Seashells" breakthrough
+-- that solved the record explosion problem.
+--
+-- ============================================================================
+-- THE BREAKTHROUGH: A Composition IS an Atom
+-- ============================================================================
 -- 
+-- **THE SILVER BULLET SCHEMA CHANGE:**
+--   composition_ids BIGINT[]  -- This IS the composition - no separate table!
+--
+-- This single change eliminates the "relational link farm" and enables:
+-- 1. ONE ROW READ: "Hello World" = read one composition atom, get [ID_H, ID_e, ...]
+-- 2. INSTANT INDEXING: GIN(composition_ids) answers "Which docs contain Legal Disclaimer?"
+-- 3. O(1) DEDUPLICATION: Coordinate collision detects existing compositions
+-- 4. FRACTAL COMPRESSION: "Lorem Ipsum" 1000x = ONE atom referenced 1000 times
+--
 -- Level 0: Primitives      '.'  -> atom_id=1
 -- Level 1: Compositions    '...' -> atom_id=2, composition_ids=[1,1,1]
 -- Level 2: Higher Order    'Hello...' -> atom_id=3, composition_ids=[atom_hello, 2]
