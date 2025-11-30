@@ -59,7 +59,7 @@ BEGIN
     -- Atom doesn't exist: create new atom
     INSERT INTO atom (
         content_hash, 
-        atomic_value, 
+        atom_value, 
         canonical_text, 
         metadata,
         reference_count

@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS atom (
         (atom_value IS NOT NULL AND composition_ids IS NULL) OR
         (atom_value IS NULL AND composition_ids IS NOT NULL)
     )
-) USING columnar;
+);
 
 -- ============================================================================
 -- INDEXES

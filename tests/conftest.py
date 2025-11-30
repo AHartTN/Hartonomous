@@ -34,12 +34,31 @@ def event_loop():
 
 @pytest.fixture(scope="session")
 async def db_connection():
-    """Create database connection for tests using settings from .env."""
+    """Create database connection for tests using settings from .env.
+    
+    Ensures database schema is initialized before running tests.
+    """
     try:
         from api.config import settings
         
         conn_string = settings.get_connection_string()
         conn = await AsyncConnection.connect(conn_string)
+        
+        # Verify schema is initialized (check for atom table)
+        async with conn.cursor() as cur:
+            await cur.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'atom'
+                )
+            """)
+            exists = await cur.fetchone()
+            if not exists or not exists[0]:
+                raise RuntimeError(
+                    "Database schema not initialized. Run: .\\scripts\\Initialize-Database.ps1"
+                )
+        
         yield conn
         await conn.close()
     except Exception as e:
@@ -52,7 +71,8 @@ async def clean_db(db_connection):
     try:
         await db_connection.rollback()  # Clear any existing transaction state
         async with db_connection.cursor() as cur:
-            await cur.execute("TRUNCATE atom, atom_composition, atom_relation CASCADE")
+            # Note: atom_composition is deprecated, compositions now stored in atom.composition_ids
+            await cur.execute("TRUNCATE atom, atom_relation CASCADE")
         await db_connection.commit()
     except Exception as e:
         await db_connection.rollback()

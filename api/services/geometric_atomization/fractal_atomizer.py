@@ -13,6 +13,8 @@ Key Features:
 2. O(1) Lookup: Coordinate = hash of composition
 3. Semantic Compression: Paragraphs/disclaimers stored once, referenced 1000x
 
+REFACTORED: All spatial operations delegate to spatial_utils (DRY principle).
+
 Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 """
 
@@ -20,6 +22,7 @@ import hashlib
 import struct
 from typing import List, Tuple, Optional, Dict
 import numpy as np
+from . import spatial_utils
 
 
 class FractalAtomizer:
@@ -72,30 +75,9 @@ class FractalAtomizer:
         """
         Compute deterministic coordinate for primitive atom.
         
-        Same as AtomLocator.locate() from geometric implementation.
+        Delegates to spatial_utils.hash_to_coordinate().
         """
-        hash_bytes = hashlib.sha256(value).digest()
-        
-        # Extract 24 bytes (8 per dimension)
-        x_bytes = hash_bytes[0:8]
-        y_bytes = hash_bytes[8:16]
-        z_bytes = hash_bytes[16:24]
-        
-        # Convert to coordinates
-        x_int = struct.unpack('<Q', x_bytes)[0]
-        y_int = struct.unpack('<Q', y_bytes)[0]
-        z_int = struct.unpack('<Q', z_bytes)[0]
-        
-        max_uint64 = 2**64 - 1
-        x_norm = x_int / max_uint64
-        y_norm = y_int / max_uint64
-        z_norm = z_int / max_uint64
-        
-        x = (x_norm * 2 - 1) * self.coordinate_range
-        y = (y_norm * 2 - 1) * self.coordinate_range
-        z = (z_norm * 2 - 1) * self.coordinate_range
-        
-        return (x, y, z)
+        return spatial_utils.hash_to_coordinate(value, self.coordinate_range)
     
     def locate_composition(
         self, 
@@ -105,10 +87,11 @@ class FractalAtomizer:
         """
         Compute deterministic coordinate for composition atom.
         
+        Delegates to spatial_utils composition helpers.
+        
         Strategies:
         - 'midpoint': Average of child coordinates (spatial center)
         - 'concept': Hash-based (independent of children, represents abstract concept)
-        - 'weighted': Weighted average (children have different importance)
         
         Args:
             child_ids: List of child atom IDs
@@ -127,18 +110,18 @@ class FractalAtomizer:
                     # TODO: Query from database if not in cache
                     raise ValueError(f"Child atom {child_id} coordinate not in cache")
             
-            # Compute midpoint
-            x = sum(c[0] for c in child_coords) / len(child_coords)
-            y = sum(c[1] for c in child_coords) / len(child_coords)
-            z = sum(c[2] for c in child_coords) / len(child_coords)
-            
+            # Delegate to spatial_utils
+            x, y, z, _ = spatial_utils.locate_composition_midpoint(
+                child_coords, self.coordinate_range
+            )
             return (x, y, z)
         
         elif strategy == 'concept':
-            # Hash the composition itself
-            # This treats the composition as an independent concept
-            comp_hash = self.hash_composition(child_ids)
-            return self.locate_primitive(comp_hash)
+            # Delegate to spatial_utils
+            x, y, z, _ = spatial_utils.locate_composition_concept(
+                child_ids, self.coordinate_range
+            )
+            return (x, y, z)
         
         else:
             raise ValueError(f"Unknown strategy: {strategy}")
@@ -177,7 +160,7 @@ class FractalAtomizer:
         async with self.db.cursor() as cursor:
             # Check if exists by content_hash
             await cursor.execute("""
-                SELECT atom_id FROM atom WHERE content_hash = $1
+                SELECT atom_id FROM atom WHERE content_hash = %s
             """, (content_hash,))
             
             row = await cursor.fetchone()
@@ -192,7 +175,10 @@ class FractalAtomizer:
             x, y, z = coord
             m = self._compute_hilbert(x, y, z)
             
-            await cursor.execute("""
+            # Use spatial_utils for safe point creation
+            point_sql, point_params = spatial_utils.make_point_zm(x, y, z, m)
+            
+            await cursor.execute(f"""
                 INSERT INTO atom (
                     content_hash, 
                     atom_value, 
@@ -201,16 +187,16 @@ class FractalAtomizer:
                     metadata
                 )
                 VALUES (
-                    $1, $2, 
-                    ST_MakePointM($3, $4, $5, $6),
+                    %s, %s, 
+                    {point_sql},
                     TRUE,
-                    $7::JSONB
+                    %s::JSONB
                 )
                 RETURNING atom_id
             """, (
                 content_hash, 
-                value, 
-                x, y, z, m,
+                value,
+                *point_params,
                 json.dumps(metadata or {})
             ))
             
@@ -267,16 +253,20 @@ class FractalAtomizer:
         # Check database (by coordinate - O(1) collision detection)
         async with self.db.cursor() as cursor:
             x, y, z = coord
+            m = self._compute_hilbert(x, y, z)
+            
+            # Use spatial_utils for safe point creation
+            point_sql, point_params = spatial_utils.make_point_zm(x, y, z, m)
             
             # Check if composition exists at this coordinate
-            await cursor.execute("""
+            await cursor.execute(f"""
                 SELECT atom_id, composition_ids 
                 FROM atom 
                 WHERE composition_ids IS NOT NULL
-                AND ST_DWithin(spatial_key, ST_MakePointM($1, $2, $3, 0), $4)
-                ORDER BY ST_Distance(spatial_key, ST_MakePointM($1, $2, $3, 0))
+                AND ST_DWithin(spatial_key, {point_sql}, %s)
+                ORDER BY ST_Distance(spatial_key, {point_sql})
                 LIMIT 1
-            """, (x, y, z, 1e-6))  # Tolerance for float comparison
+            """, (*point_params, 1e-6, *point_params))  # Tolerance for float comparison
             
             row = await cursor.fetchone()
             if row:
@@ -289,9 +279,12 @@ class FractalAtomizer:
             
             # Create new composition
             import json
-            m = self._compute_hilbert(x, y, z)
+            # M already computed above
             
-            await cursor.execute("""
+            # Use spatial_utils for safe point creation
+            point_sql, point_params = spatial_utils.make_point_zm(x, y, z, m)
+            
+            await cursor.execute(f"""
                 INSERT INTO atom (
                     content_hash,
                     composition_ids,
@@ -301,16 +294,16 @@ class FractalAtomizer:
                     metadata
                 )
                 VALUES (
-                    $1, $2,
-                    ST_MakePointM($3, $4, $5, $6),
-                    $7, $8,
-                    $9::JSONB
+                    %s, %s,
+                    {point_sql},
+                    %s, %s,
+                    %s::JSONB
                 )
                 RETURNING atom_id
             """, (
                 content_hash,
                 child_ids,
-                x, y, z, m,
+                *point_params,
                 canonical_text,
                 is_stable,
                 json.dumps(metadata or {})
@@ -398,30 +391,9 @@ class FractalAtomizer:
         return collapsed
     
     def _compute_hilbert(self, x: float, y: float, z: float) -> int:
-        """Compute Hilbert M coordinate (Morton encoding as placeholder)."""
-        # Simplified Morton encoding (same as AtomLocator)
-        bits = 21
-        max_val = 2**bits - 1
+        """
+        Compute Hilbert M coordinate.
         
-        x_int = int((x / self.coordinate_range + 1) / 2 * max_val)
-        y_int = int((y / self.coordinate_range + 1) / 2 * max_val)
-        z_int = int((z / self.coordinate_range + 1) / 2 * max_val)
-        
-        x_int = max(0, min(max_val, x_int))
-        y_int = max(0, min(max_val, y_int))
-        z_int = max(0, min(max_val, z_int))
-        
-        return self._morton_encode(x_int, y_int, z_int)
-    
-    def _morton_encode(self, x: int, y: int, z: int) -> int:
-        """Morton encoding."""
-        def split_by_3(value: int) -> int:
-            value &= 0x1fffff
-            value = (value | value << 32) & 0x1f00000000ffff
-            value = (value | value << 16) & 0x1f0000ff0000ff
-            value = (value | value << 8) & 0x100f00f00f00f00f
-            value = (value | value << 4) & 0x10c30c30c30c30c3
-            value = (value | value << 2) & 0x1249249249249249
-            return value
-        
-        return split_by_3(x) | (split_by_3(y) << 1) | (split_by_3(z) << 2)
+        Delegates to spatial_utils.compute_hilbert_index().
+        """
+        return spatial_utils.compute_hilbert_index(x, y, z, self.coordinate_range)

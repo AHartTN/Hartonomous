@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS atom_history (
     history_id BIGSERIAL PRIMARY KEY,
     atom_id BIGINT NOT NULL,
     content_hash BYTEA NOT NULL,
-    atomic_value BYTEA CHECK (length(atomic_value) <= 64),
+    atom_value BYTEA CHECK (length(atom_value) <= 64),
     canonical_text TEXT,
     spatial_key GEOMETRY(POINTZM, 0),
     reference_count BIGINT NOT NULL DEFAULT 1,

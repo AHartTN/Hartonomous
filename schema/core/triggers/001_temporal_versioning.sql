@@ -10,10 +10,10 @@ BEGIN
     IF TG_OP = 'UPDATE' THEN
         -- Archive old version
         INSERT INTO atom_history (
-            atom_id, content_hash, atomic_value, canonical_text, spatial_key,
+            atom_id, content_hash, atom_value, canonical_text, spatial_key,
             reference_count, metadata, created_at, valid_from, valid_to
         ) VALUES (
-            OLD.atom_id, OLD.content_hash, OLD.atomic_value, OLD.canonical_text, OLD.spatial_key,
+            OLD.atom_id, OLD.content_hash, OLD.atom_value, OLD.canonical_text, OLD.spatial_key,
             OLD.reference_count, OLD.metadata, OLD.created_at, OLD.valid_from, now()
         );
         -- Update valid timestamps
@@ -22,10 +22,10 @@ BEGIN
     ELSIF TG_OP = 'DELETE' THEN
         -- Archive deleted version
         INSERT INTO atom_history (
-            atom_id, content_hash, atomic_value, canonical_text, spatial_key,
+            atom_id, content_hash, atom_value, canonical_text, spatial_key,
             reference_count, metadata, created_at, valid_from, valid_to
         ) VALUES (
-            OLD.atom_id, OLD.content_hash, OLD.atomic_value, OLD.canonical_text, OLD.spatial_key,
+            OLD.atom_id, OLD.content_hash, OLD.atom_value, OLD.canonical_text, OLD.spatial_key,
             OLD.reference_count, OLD.metadata, OLD.created_at, OLD.valid_from, now()
         );
         RETURN OLD;

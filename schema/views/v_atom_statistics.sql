@@ -15,7 +15,7 @@ SELECT
     MAX(reference_count) AS max_references,
     COUNT(*) FILTER (WHERE spatial_key IS NOT NULL) AS positioned_count,
     COUNT(*) FILTER (WHERE spatial_key IS NULL) AS unpositioned_count,
-    AVG(OCTET_LENGTH(atomic_value)) AS avg_size_bytes,
+    AVG(OCTET_LENGTH(atom_value)) AS avg_size_bytes,
     MIN(created_at) AS first_created,
     MAX(created_at) AS last_created
 FROM atom

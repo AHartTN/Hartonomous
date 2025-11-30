@@ -152,7 +152,7 @@ echo -e "${BLUE}  Step 3: Core Tables${NC}"
 echo -e "${BLUE}???????????????????????????????????????????????????????????${NC}"
 
 execute_sql_file "${SCHEMA_DIR}/core/tables/001_atom.sql" "atom table"
-execute_sql_file "${SCHEMA_DIR}/core/tables/002_atom_composition.sql" "atom_composition table"
+# Note: 002_atom_composition.sql is deprecated - compositions now stored in atom.composition_ids
 execute_sql_file "${SCHEMA_DIR}/core/tables/003_atom_relation.sql" "atom_relation table"
 execute_sql_file "${SCHEMA_DIR}/core/tables/004_history_tables.sql" "history tables"
 execute_sql_file "${SCHEMA_DIR}/core/tables/005_ooda_tables.sql" "OODA loop tables"

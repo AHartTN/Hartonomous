@@ -151,7 +151,7 @@ class TrajectoryBuilder:
     def build_ewkt(
         self,
         coordinates: List[Tuple[float, float, float]],
-        srid: int = 4326,
+        srid: int = 0,
         m_values: List[float] = None
     ) -> str:
         """
@@ -159,11 +159,11 @@ class TrajectoryBuilder:
         
         Args:
             coordinates: List of (x, y, z) tuples
-            srid: Spatial Reference System ID (default 4326 = WGS84)
+            srid: Spatial Reference System ID (default 0 = undefined/local)
             m_values: Optional M values
         
         Returns:
-            EWKT string: "SRID=4326;LINESTRING ZM (...)"
+            EWKT string: "SRID=0;LINESTRING ZM (...)"
         """
         wkt = self.build_wkt(coordinates, m_values)
         ewkt = f"SRID={srid};{wkt}"

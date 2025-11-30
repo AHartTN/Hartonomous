@@ -15,7 +15,7 @@ CREATE OR REPLACE FUNCTION compute_position_by_modality(
     p_atom_id BIGINT,
     p_modality TEXT,
     p_canonical_text TEXT,
-    p_atomic_value BYTEA,
+    p_atom_value BYTEA,
     p_neighbor_count INTEGER
 )
 RETURNS GEOMETRY

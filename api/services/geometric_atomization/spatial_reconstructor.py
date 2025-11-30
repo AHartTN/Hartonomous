@@ -1,5 +1,4 @@
-"""
-SpatialReconstructor: Reconstruct Content from Trajectories
+"""SpatialReconstructor: Reconstruct Content from Trajectories
 
 Parses LINESTRING trajectories to reconstruct original content.
 Achieves bit-perfect reconstruction by walking coordinates and looking up atoms.
@@ -13,12 +12,15 @@ Architecture:
 
 This is the inverse of TrajectoryBuilder - proves the architecture works.
 
+REFACTORED: Uses spatial_utils for safe SQL generation.
+
 Copyright (c) 2025 Anthony Hart. All Rights Reserved.
 """
 
 import re
 from typing import List, Tuple, Optional, Any
 import numpy as np
+from . import spatial_utils
 
 
 class SpatialReconstructor:
@@ -92,22 +94,25 @@ class SpatialReconstructor:
         if self.db is None:
             raise ValueError("Database connection required for atom lookup")
         
+        # Use spatial_utils for safe point creation (3D only, M ignored for distance)
+        point_sql, point_params = spatial_utils.make_point_3d(x, y, z)
+        
         # Query: Find atom within tolerance of coordinate
-        # Uses ST_DWithin for spatial proximity
-        query = """
+        # Uses ST_DWithin for spatial proximity in XYZ only (M ignored for spatial ops)
+        query = f"""
             SELECT atom_value, composition_ids, canonical_text
             FROM atom
             WHERE ST_DWithin(
                 spatial_key,
-                ST_MakePointM($1, $2, $3, 0),  -- M value doesn't matter for lookup
-                $4
+                {point_sql},
+                %s
             )
-            ORDER BY ST_Distance(spatial_key, ST_MakePointM($1, $2, $3, 0))
+            ORDER BY ST_Distance(spatial_key, {point_sql})
             LIMIT 1
         """
         
         async with self.db.cursor() as cursor:
-            await cursor.execute(query, (x, y, z, tolerance))
+            await cursor.execute(query, (*point_params, tolerance, *point_params))
             row = await cursor.fetchone()
             
             if row is None:
@@ -145,12 +150,12 @@ class SpatialReconstructor:
         query = """
             SELECT atom_value, composition_ids, canonical_text
             FROM atom
-            WHERE atom_id = ANY($1)
-            ORDER BY array_position($1, atom_id)
+            WHERE atom_id = ANY(%s)
+            ORDER BY array_position(%s, atom_id)
         """
         
         async with self.db.cursor() as cursor:
-            await cursor.execute(query, (composition_ids,))
+            await cursor.execute(query, (composition_ids, composition_ids))
             rows = await cursor.fetchall()
             
             for atom_value, child_comp_ids, canonical_text in rows:
@@ -257,7 +262,7 @@ class SpatialReconstructor:
         
         Args:
             wkt: LINESTRING ZM WKT
-            atom_lookup_dict: Dict mapping (x,y,z) → atom_value
+            atom_lookup_dict: Dict mapping (x,y,z) to atom_value
             tolerance: Coordinate matching tolerance
         
         Returns:

@@ -15,6 +15,7 @@ import numpy as np
 from .atom_locator import AtomLocator
 from .trajectory_builder import TrajectoryBuilder
 from .spatial_reconstructor import SpatialReconstructor
+from .fractal_atomizer import FractalAtomizer
 
 
 class GeometricAtomizer:
@@ -42,58 +43,94 @@ class GeometricAtomizer:
         self.locator = AtomLocator(coordinate_range=coordinate_range)
         self.builder = TrajectoryBuilder()
         self.reconstructor = SpatialReconstructor(db_connection=db_connection)
+        self.fractal = FractalAtomizer(db_connection=db_connection, coordinate_range=coordinate_range)
         self.db = db_connection
     
-    def atomize_text(self, text: str) -> str:
+    async def atomize_text(self, text: str) -> str:
         """
-        Atomize text into LINESTRING trajectory.
+        Atomize text into trajectory WKT.
         
         Args:
             text: Input text (e.g., "Hello World")
         
         Returns:
-            LINESTRING ZM WKT
+            LINESTRING ZM WKT string
         """
-        # Convert text to bytes (one atom per character)
+        import asyncio
+        
+        # Convert text to bytes (one byte per character)
         atom_values = [char.encode('utf-8') for char in text]
         
-        # Build trajectory
-        wkt = self.builder.build_from_atoms(atom_values, self.locator)
+        # Use trajectory builder to create WKT (run in executor for CPU-intensive hashing)
+        loop = asyncio.get_event_loop()
+        wkt = await loop.run_in_executor(
+            None,  # Use default ThreadPoolExecutor
+            self.builder.build_from_atoms,
+            atom_values,
+            self.locator
+        )
+        
         return wkt
     
-    def atomize_tensor(
+    async def atomize_tensor(
         self, 
         tensor: np.ndarray,
         chunk_size: int = 10000
     ) -> List[str]:
         """
-        Atomize tensor into LINESTRING trajectories.
+        Atomize tensor into trajectory WKT(s).
         
-        Large tensors may be chunked to avoid PostGIS limits.
+        Large tensors are chunked into multiple trajectories.
+        Chunks are processed concurrently for large models (600+ layers).
         
         Args:
             tensor: Numpy tensor (e.g., model weights)
-            chunk_size: Max atoms per trajectory
+            chunk_size: Max atoms per trajectory (for chunking)
         
         Returns:
-            List of LINESTRING ZM WKT strings (one per chunk)
+            List of LINESTRING ZM WKT strings
         """
+        import asyncio
+        from concurrent.futures import ThreadPoolExecutor
+        
         # Flatten tensor
         flat_values = tensor.flatten()
         
         # Convert to bytes (assume float32)
         atom_values = [val.tobytes() for val in flat_values]
         
-        # Locate atoms
-        coordinates = self.locator.locate_multiple(atom_values)
+        # If small enough, create single trajectory
+        if len(atom_values) <= chunk_size:
+            loop = asyncio.get_event_loop()
+            wkt = await loop.run_in_executor(
+                None,
+                self.builder.build_from_atoms,
+                atom_values,
+                self.locator
+            )
+            return [wkt]
         
-        # Build trajectories (chunked if needed)
-        if len(coordinates) <= chunk_size:
-            # Single trajectory
-            return [self.builder.build_wkt(coordinates)]
-        else:
-            # Multiple chunks
-            return self.builder.chunk_trajectory(coordinates, chunk_size)
+        # Otherwise, chunk it and process chunks concurrently
+        chunks = []
+        for i in range(0, len(atom_values), chunk_size):
+            chunk_values = atom_values[i:i+chunk_size]
+            chunks.append(chunk_values)
+        
+        # Process all chunks concurrently using executor
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor(max_workers=min(len(chunks), 8)) as executor:
+            tasks = [
+                loop.run_in_executor(
+                    executor,
+                    self.builder.build_from_atoms,
+                    chunk_values,
+                    self.locator
+                )
+                for chunk_values in chunks
+            ]
+            wkts = await asyncio.gather(*tasks)
+        
+        return list(wkts)
     
     async def store_trajectory(
         self,
@@ -102,35 +139,48 @@ class GeometricAtomizer:
         metadata: dict = None
     ) -> int:
         """
-        Store trajectory in database.
+        Store trajectory as a composition.
+        
+        DEPRECATED: This method is for backward compatibility with tests.
+        New code should use atomize_text/atomize_tensor directly.
         
         Args:
             name: Composition name (e.g., "model.layers.0.weight")
-            wkt: LINESTRING ZM WKT
+            wkt: LINESTRING ZM WKT (will be parsed back to atoms)
             metadata: Optional metadata dict
         
         Returns:
-            Composition ID
+            atom_id of the composition
         """
         if self.db is None:
             raise ValueError("Database connection required")
         
-        # Call create_composition SQL function
-        query = """
-            SELECT create_composition(
-                $1::TEXT,                    -- name
-                ST_GeomFromText($2),         -- trajectory WKT
-                $3::JSONB                    -- metadata
+        # Parse WKT to extract atoms
+        points = self.reconstructor.parse_wkt(wkt)
+        
+        # For each point, get or create primitive atom
+        # This is a simplified approach - real implementation would need to
+        # look up existing atoms by coordinate or store coordinate->atom_id mapping
+        atom_ids = []
+        for x, y, z, m in points:
+            # For now, just create dummy primitives
+            # Real implementation needs coordinate->atom lookup
+            atom_id = await self.fractal.get_or_create_primitive(
+                f"{x},{y},{z},{m}".encode('utf-8'),
+                metadata={'coord': [x, y, z, m]}
             )
-        """
+            atom_ids.append(atom_id)
         
-        import json
-        metadata_json = json.dumps(metadata or {})
+        # Create composition with name in metadata
+        meta = metadata or {}
+        meta['name'] = name
         
-        async with self.db.cursor() as cursor:
-            await cursor.execute(query, (name, wkt, metadata_json))
-            result = await cursor.fetchone()
-            composition_id = result[0]
+        composition_id = await self.fractal.get_or_create_composition(
+            child_ids=atom_ids,
+            canonical_text=name,
+            metadata=meta,
+            is_stable=True
+        )
         
         return composition_id
     
@@ -152,11 +202,12 @@ class GeometricAtomizer:
         if self.db is None:
             raise ValueError("Database connection required")
         
-        # Query trajectory WKT by name
+        # Query atom by metadata name
         query = """
-            SELECT ST_AsText(spatial_key)
-            FROM atom_composition
-            WHERE name = $1
+            SELECT atom_id, composition_ids, canonical_text
+            FROM atom
+            WHERE metadata->>'name' = %s
+            AND composition_ids IS NOT NULL
             LIMIT 1
         """
         
@@ -167,17 +218,59 @@ class GeometricAtomizer:
             if row is None:
                 raise ValueError(f"Composition '{name}' not found")
             
-            wkt = row[0]
+            atom_id, composition_ids, canonical_text = row
         
         # Reconstruct based on output type
-        if output_type == 'bytes':
-            return await self.reconstructor.reconstruct_sequence(wkt)
-        elif output_type == 'text':
-            return await self.reconstructor.reconstruct_text(wkt)
+        if output_type == 'text':
+            # Use canonical_text if available
+            if canonical_text:
+                return canonical_text
+            # Otherwise reconstruct from children
+            return await self._reconstruct_text_from_composition(composition_ids)
+        elif output_type == 'bytes':
+            return await self._reconstruct_bytes_from_composition(composition_ids)
         elif output_type == 'tensor':
             raise NotImplementedError("Tensor reconstruction requires shape metadata")
         else:
             raise ValueError(f"Unknown output_type: {output_type}")
+    
+    async def _reconstruct_text_from_composition(self, composition_ids: List[int]) -> str:
+        """Reconstruct text by fetching child atoms and concatenating their values."""
+        if self.db is None:
+            raise ValueError("Database connection required")
+        
+        query = """
+            SELECT atom_value 
+            FROM atom 
+            WHERE atom_id = ANY(%s)
+            ORDER BY array_position(%s, atom_id)
+        """
+        
+        async with self.db.cursor() as cursor:
+            await cursor.execute(query, (composition_ids, composition_ids))
+            rows = await cursor.fetchall()
+            
+            chars = [bytes(row[0]).decode('utf-8') for row in rows]
+            return ''.join(chars)
+    
+    async def _reconstruct_bytes_from_composition(self, composition_ids: List[int]) -> bytes:
+        """Reconstruct bytes by fetching child atoms and concatenating their values."""
+        if self.db is None:
+            raise ValueError("Database connection required")
+        
+        query = """
+            SELECT atom_value 
+            FROM atom 
+            WHERE atom_id = ANY(%s)
+            ORDER BY array_position(%s, atom_id)
+        """
+        
+        async with self.db.cursor() as cursor:
+            await cursor.execute(query, (composition_ids, composition_ids))
+            rows = await cursor.fetchall()
+            
+            byte_chunks = [bytes(row[0]) for row in rows]
+            return b''.join(byte_chunks)
     
     async def ingest_model(
         self,
@@ -186,17 +279,15 @@ class GeometricAtomizer:
         chunk_size: int = 10000
     ) -> dict:
         """
-        Ingest entire model into database as trajectories.
-        
-        This is the KEY operation - replaces broken Hilbert-based ingestion.
+        Ingest entire model into database as compositions.
         
         Args:
             model_state_dict: PyTorch/TensorFlow model weights
             model_name: Model identifier
-            chunk_size: Max atoms per trajectory
+            chunk_size: Max atoms per composition
         
         Returns:
-            Dict mapping layer names to composition IDs
+            Dict mapping layer names to composition atom_ids
         """
         composition_ids = {}
         
@@ -206,25 +297,26 @@ class GeometricAtomizer:
                 tensor = tensor.numpy()
             
             # Atomize tensor
-            wkts = self.atomize_tensor(tensor, chunk_size)
+            comp_id = await self.atomize_tensor(tensor, chunk_size)
             
-            # Store each chunk
-            for i, wkt in enumerate(wkts):
-                chunk_name = f"{model_name}.{layer_name}"
-                if len(wkts) > 1:
-                    chunk_name += f".chunk{i}"
-                
+            # Update metadata with model/layer info
+            async with self.db.cursor() as cursor:
+                import json
                 metadata = {
                     'model': model_name,
                     'layer': layer_name,
                     'shape': list(tensor.shape),
                     'dtype': str(tensor.dtype),
-                    'chunk_index': i,
-                    'total_chunks': len(wkts)
+                    'name': f"{model_name}.{layer_name}"
                 }
-                
-                comp_id = await self.store_trajectory(chunk_name, wkt, metadata)
-                composition_ids[chunk_name] = comp_id
+                await cursor.execute("""
+                    UPDATE atom 
+                    SET metadata = %s::JSONB
+                    WHERE atom_id = %s
+                """, (json.dumps(metadata), comp_id))
+                await self.db.commit()
+            
+            composition_ids[layer_name] = comp_id
         
         return composition_ids
     
@@ -233,7 +325,7 @@ class GeometricAtomizer:
         model_name: str
     ) -> dict:
         """
-        Reconstruct entire model from trajectories.
+        Reconstruct entire model from compositions.
         
         Args:
             model_name: Model identifier
@@ -243,10 +335,11 @@ class GeometricAtomizer:
         """
         # Query all compositions for this model
         query = """
-            SELECT name, ST_AsText(spatial_key), metadata
-            FROM atom_composition
-            WHERE metadata->>'model' = $1
-            ORDER BY name
+            SELECT atom_id, metadata
+            FROM atom
+            WHERE metadata->>'model' = %s
+            AND composition_ids IS NOT NULL
+            ORDER BY metadata->>'layer'
         """
         
         async with self.db.cursor() as cursor:
@@ -256,39 +349,56 @@ class GeometricAtomizer:
         if not rows:
             raise ValueError(f"No compositions found for model '{model_name}'")
         
-        # Group chunks by layer
-        import json
-        from collections import defaultdict
-        
-        layer_chunks = defaultdict(list)
-        for name, wkt, metadata_json in rows:
-            metadata = json.loads(metadata_json)
-            layer_name = metadata['layer']
-            layer_chunks[layer_name].append({
-                'wkt': wkt,
-                'metadata': metadata
-            })
-        
         # Reconstruct each layer
+        import json
         state_dict = {}
-        for layer_name, chunks in layer_chunks.items():
-            # Sort chunks by index
-            chunks_sorted = sorted(chunks, key=lambda c: c['metadata']['chunk_index'])
+        for atom_id, metadata_json in rows:
+            metadata = json.loads(metadata_json) if isinstance(metadata_json, str) else metadata_json
+            layer_name = metadata['layer']
+            shape = tuple(metadata['shape'])
             
-            # Reconstruct atoms from all chunks
-            all_atoms = []
-            for chunk in chunks_sorted:
-                atoms = await self.reconstructor.reconstruct_sequence(chunk['wkt'])
-                all_atoms.extend(atoms)
-            
-            # Convert to tensor
-            shape = tuple(chunks[0]['metadata']['shape'])
-            dtype_str = chunks[0]['metadata']['dtype']
+            # Reconstruct tensor from composition
+            # For now, simplified - real implementation needs recursive reconstruction
+            tensor_bytes = await self._reconstruct_bytes_from_atom(atom_id)
             
             # Convert bytes to numpy
-            flat_values = np.frombuffer(b''.join(all_atoms), dtype=np.float32)
+            flat_values = np.frombuffer(tensor_bytes, dtype=np.float32)
             tensor = flat_values.reshape(shape)
             
             state_dict[layer_name] = tensor
         
         return state_dict
+    
+    async def _reconstruct_bytes_from_atom(self, atom_id: int) -> bytes:
+        """Recursively reconstruct bytes from an atom (primitive or composition)."""
+        if self.db is None:
+            raise ValueError("Database connection required")
+        
+        query = """
+            SELECT atom_value, composition_ids
+            FROM atom
+            WHERE atom_id = %s
+        """
+        
+        async with self.db.cursor() as cursor:
+            await cursor.execute(query, (atom_id,))
+            row = await cursor.fetchone()
+            
+            if row is None:
+                raise ValueError(f"Atom {atom_id} not found")
+            
+            atom_value, composition_ids = row
+            
+            # If primitive, return value
+            if atom_value is not None:
+                return bytes(atom_value)
+            
+            # If composition, recursively reconstruct children
+            if composition_ids:
+                child_bytes = []
+                for child_id in composition_ids:
+                    child_data = await self._reconstruct_bytes_from_atom(child_id)
+                    child_bytes.append(child_data)
+                return b''.join(child_bytes)
+            
+            raise ValueError(f"Atom {atom_id} has neither atom_value nor composition_ids")

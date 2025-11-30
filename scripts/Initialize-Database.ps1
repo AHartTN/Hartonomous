@@ -184,7 +184,7 @@ Write-Host "  Step 3: Core Tables" -ForegroundColor Blue
 Write-Host "???????????????????????????????????????????????????????????" -ForegroundColor Blue
 
 Execute-SqlFile -FilePath "$schemaDir\core\tables\001_atom.sql" -Description "atom table"
-Execute-SqlFile -FilePath "$schemaDir\core\tables\002_atom_composition.sql" -Description "atom_composition table"
+# Note: 002_atom_composition.sql is deprecated - compositions now stored in atom.composition_ids
 Execute-SqlFile -FilePath "$schemaDir\core\tables\003_atom_relation.sql" -Description "atom_relation table"
 Execute-SqlFile -FilePath "$schemaDir\core\tables\004_history_tables.sql" -Description "history tables"
 Execute-SqlFile -FilePath "$schemaDir\core\tables\005_ooda_tables.sql" -Description "OODA loop tables"

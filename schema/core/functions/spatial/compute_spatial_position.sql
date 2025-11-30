@@ -31,7 +31,7 @@ BEGIN
     SELECT 
         metadata->>'modality' as modality,
         canonical_text,
-        atomic_value
+        atom_value
     INTO v_atom
     FROM atom 
     WHERE atom_id = p_atom_id;
@@ -47,7 +47,7 @@ BEGIN
         p_atom_id,
         v_modality,
         v_atom.canonical_text,
-        v_atom.atomic_value,
+        v_atom.atom_value,
         p_neighbor_count
     );
     
