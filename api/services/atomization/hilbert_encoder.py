@@ -1,36 +1,48 @@
 """
-Hilbert Curve Encoding for 3D Tensor Position Mapping
+Hilbert Curve Encoding for 3D Spatial Indexing
 
-Provides both database-backed and pure NumPy implementations for encoding
-tensor positions (i,j,layer) into 1D Hilbert indices that preserve spatial locality.
+Encodes integer coordinates (i, j, layer) to 1D Hilbert indices for:
+1. RLE compression - consecutive indices = spatial runs
+2. Cache-friendly access - locality preservation
+3. Fast range queries - single integer comparison
 
-This enables:
-1. RLE compression - consecutive Hilbert indices = spatial runs
-2. Cache-friendly access - nearby indices = nearby memory locations
-3. Range queries - Hilbert range ≈ spatial bounding box
+Lossless roundtrip guaranteed for integer coordinates.
 """
 
 import numpy as np
 from typing import Tuple, Optional
-import psycopg
+import math
 
 
 class HilbertEncoder:
     """
-    Encode 3D tensor positions to 1D Hilbert indices.
+    Encode 3D integer coordinates to 1D Hilbert indices.
     
     Uses rotation-based algorithm from:
     "Efficient 3D Hilbert Curve Encoding and Decoding Algorithms"
     https://arxiv.org/pdf/2308.05673
     """
     
-    def __init__(self, bits: int = 21):
+    @staticmethod
+    def calculate_bits(rows: int, cols: int, layers: int) -> int:
+        """
+        Calculate minimum bits needed for lossless encoding.
+        
+        Args:
+            rows, cols, layers: Maximum dimensions
+            
+        Returns:
+            Bits needed per dimension (same for all 3 for simplicity)
+        """
+        max_dim = max(rows, cols, layers)
+        return max(1, int(math.ceil(math.log2(max_dim))))
+    
+    def __init__(self, bits: int):
         """
         Initialize encoder with precision.
         
         Args:
-            bits: Precision bits per dimension (default 21 = 2^21 ≈ 2M resolution)
-                  Total index space: 2^(3*bits) = 2^63 for bits=21
+            bits: Precision bits per dimension (use calculate_bits() for dynamic)
         """
         if bits < 1 or bits > 21:
             raise ValueError(f"Bits must be in range [1, 21], got {bits}")
@@ -38,73 +50,63 @@ class HilbertEncoder:
         self.bits = bits
         self.max_coord = (1 << bits) - 1
     
-    def encode_batch(
-        self,
-        positions: np.ndarray,
-        shape: Tuple[int, int],
-        layer_index: int,
-        num_layers: int
-    ) -> np.ndarray:
+    def encode_batch(self, positions: np.ndarray) -> np.ndarray:
         """
-        Encode batch of tensor positions to Hilbert indices.
+        Encode integer positions to Hilbert indices (VECTORIZED).
         
         Args:
-            positions: (N, 2) array of [i, j] positions in tensor
-            shape: (rows, cols) tensor shape for normalization
-            layer_index: Current layer index (0-based)
-            num_layers: Total number of layers in model
+            positions: int array shape (N, 3) with (i, j, layer) coordinates
             
         Returns:
-            (N,) array of 63-bit Hilbert indices
-            
-        Example:
-            # Encode positions in 768x768 tensor, layer 5 of 32
-            positions = np.array([[0, 0], [0, 1], [1, 0]])
-            hilbert_indices = encoder.encode_batch(
-                positions, 
-                shape=(768, 768),
-                layer_index=5,
-                num_layers=32
-            )
+            int64 array shape (N,) with Hilbert indices
         """
-        if positions.shape[1] != 2:
-            raise ValueError(f"Expected positions shape (N, 2), got {positions.shape}")
+        if positions.ndim != 2 or positions.shape[1] != 3:
+            raise ValueError(f"Expected (N, 3) array, got shape {positions.shape}")
         
-        rows, cols = shape
+        # Ensure integer type
+        if not np.issubdtype(positions.dtype, np.integer):
+            raise TypeError(f"Positions must be integers, got {positions.dtype}")
         
-        # Normalize to [0, 1] - use max coordinate for normalization
-        x = positions[:, 0].astype(np.float64) / max(rows - 1, 1)
-        y = positions[:, 1].astype(np.float64) / max(cols - 1, 1)
-        z = np.full(len(positions), layer_index / max(num_layers - 1, 1), dtype=np.float64)
-        
-        # Vectorized encoding
-        return self._encode_vectorized(x, y, z)
+        return self._encode_vectorized(positions[:, 0], positions[:, 1], positions[:, 2])
     
-    def _encode_vectorized(
-        self, 
-        x: np.ndarray, 
-        y: np.ndarray, 
-        z: np.ndarray
-    ) -> np.ndarray:
+    def encode_semantic(self, coords: np.ndarray) -> np.ndarray:
         """
-        Vectorized Hilbert encoding using NumPy.
+        Encode semantic landmark coordinates (floats in [0, 1]) to Hilbert indices.
+        
+        Used for atom.spatial_key M coordinate from landmark projection.
         
         Args:
-            x, y, z: Normalized coordinates [0.0, 1.0]
+            coords: float array shape (N, 3) with (x, y, z) in [0, 1]
+            
+        Returns:
+            int64 array shape (N,) with Hilbert indices
+        """
+        if coords.ndim != 2 or coords.shape[1] != 3:
+            raise ValueError(f"Expected (N, 3) array, got shape {coords.shape}")
+        
+        # Normalize to integer grid
+        coords_clipped = np.clip(coords, 0, 1)
+        coords_scaled = coords_clipped * self.max_coord
+        coords_int = np.round(coords_scaled).astype(np.int64)
+        
+        return self._encode_vectorized(coords_int[:, 0], coords_int[:, 1], coords_int[:, 2])
+    
+    def _encode_vectorized(self, xi: np.ndarray, yi: np.ndarray, zi: np.ndarray) -> np.ndarray:
+        """
+        Vectorized Hilbert encoding for integer coordinates.
+        
+        Args:
+            xi, yi, zi: Integer coordinate arrays
             
         Returns:
             Hilbert indices as int64 array
         """
-        # Validate ranges
-        if np.any((x < 0) | (x > 1) | (y < 0) | (y > 1) | (z < 0) | (z > 1)):
-            raise ValueError("All coordinates must be in range [0.0, 1.0]")
+        # Clip to valid range
+        xi = np.clip(xi, 0, self.max_coord)
+        yi = np.clip(yi, 0, self.max_coord)
+        zi = np.clip(zi, 0, self.max_coord)
         
-        # Convert to integer coordinates
-        xi = (x * self.max_coord).astype(np.int64)
-        yi = (y * self.max_coord).astype(np.int64)
-        zi = (z * self.max_coord).astype(np.int64)
-        
-        n = len(x)
+        n = len(xi)
         hilbert = np.zeros(n, dtype=np.int64)
         rotation = np.zeros(n, dtype=np.int64)
         
@@ -182,12 +184,12 @@ class HilbertEncoder:
 
 class HilbertDecoder:
     """
-    Decode 1D Hilbert indices back to 3D positions.
+    Decode 1D Hilbert indices back to 3D integer positions.
     
-    Used for tensor reconstruction: Hilbert range -> position arrays.
+    Lossless inverse of HilbertEncoder for integer coordinates.
     """
     
-    def __init__(self, bits: int = 21):
+    def __init__(self, bits: int):
         """
         Initialize decoder with precision.
         
@@ -200,31 +202,15 @@ class HilbertDecoder:
         self.bits = bits
         self.max_coord = (1 << bits) - 1
     
-    def decode_batch(
-        self,
-        hilbert_indices: np.ndarray,
-        shape: Tuple[int, int],
-        num_layers: int
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def decode_batch(self, hilbert_indices: np.ndarray) -> np.ndarray:
         """
-        Decode batch of Hilbert indices to tensor positions.
+        Decode Hilbert indices to integer positions.
         
         Args:
-            hilbert_indices: (N,) array of Hilbert indices
-            shape: (rows, cols) tensor shape for denormalization
-            num_layers: Total number of layers
+            hilbert_indices: int64 array shape (N,)
             
         Returns:
-            (i_positions, j_positions, layer_indices) as separate arrays
-            
-        Example:
-            # Decode Hilbert range [1000, 1005] to positions
-            hilbert_range = np.arange(1000, 1006)
-            i_pos, j_pos, layers = decoder.decode_batch(
-                hilbert_range,
-                shape=(768, 768),
-                num_layers=32
-            )
+            int64 array shape (N, 3) with (i, j, layer) coordinates
         """
         n = len(hilbert_indices)
         x = np.zeros(n, dtype=np.int64)
@@ -251,25 +237,8 @@ class HilbertDecoder:
             # Update rotation for next level
             rotation = (rotation + (quadrant << 3)) & 7
         
-        rows, cols = shape
-        
-        # Normalize to [0.0, 1.0] first
-        x_norm = x.astype(np.float64) / self.max_coord
-        y_norm = y.astype(np.float64) / self.max_coord
-        z_norm = z.astype(np.float64) / self.max_coord
-        
-        # Denormalize to tensor coordinates (reverse of normalization in encode)
-        # Use round() to handle precision loss from 21-bit encoding
-        i_positions = np.round(x_norm * max(rows - 1, 1)).astype(np.int32)
-        j_positions = np.round(y_norm * max(cols - 1, 1)).astype(np.int32)
-        layer_indices = np.round(z_norm * max(num_layers - 1, 1)).astype(np.int32)
-        
-        # Clamp to valid ranges
-        i_positions = np.clip(i_positions, 0, rows - 1)
-        j_positions = np.clip(j_positions, 0, cols - 1)
-        layer_indices = np.clip(layer_indices, 0, num_layers - 1)
-        
-        return i_positions, j_positions, layer_indices
+        # Return integer coordinates directly (no denormalization)
+        return np.column_stack([x, y, z])
     
     def decode_via_database(
         self,

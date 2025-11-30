@@ -1,6 +1,21 @@
 -- ============================================================================
--- ATOM_COMPOSITION TABLE
--- Hierarchical structure - documents ? sentences ? words ? characters
+-- ATOM_COMPOSITION TABLE (DEPRECATED - LEGACY)
+-- ============================================================================
+-- 
+-- **NOTE**: This table is now DEPRECATED in favor of fractal composition.
+-- 
+-- NEW APPROACH: Compositions are stored in the atom table itself via 
+-- composition_ids BIGINT[] column. This enables:
+--   - O(1) deduplication via coordinate collision
+--   - Fractal compression (reuse atoms across documents)
+--   - Simpler schema (one table instead of two)
+-- 
+-- This table remains for:
+--   - Historical data migration
+--   - Specialized use cases requiring explicit parent-child tracking
+--   - Backward compatibility
+-- 
+-- For new code, use FractalAtomizer and atom.composition_ids instead.
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS atom_composition (
@@ -33,7 +48,7 @@ CREATE TABLE IF NOT EXISTS atom_composition (
 -- COMMENTS
 -- ============================================================================
 
-COMMENT ON TABLE atom_composition IS 'Hierarchical composition: defines structure (what contains what, in what order). Sparse by default - missing sequence_index = implicit zero.';
+COMMENT ON TABLE atom_composition IS '[DEPRECATED] Use atom.composition_ids instead. Legacy table for explicit parent-child tracking.';
 COMMENT ON COLUMN atom_composition.parent_atom_id IS 'The containing/parent atom (e.g., document, sentence, vector)';
 COMMENT ON COLUMN atom_composition.component_atom_id IS 'The contained/child atom (e.g., word, character, float value)';
 COMMENT ON COLUMN atom_composition.sequence_index IS 'Position within parent. Gaps = implicit zeros (sparse representation)';

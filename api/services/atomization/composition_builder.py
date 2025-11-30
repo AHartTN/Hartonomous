@@ -20,6 +20,61 @@ logger = logging.getLogger(__name__)
 class CompositionBuilder:
     """Handles efficient creation of atom compositions."""
     
+    async def create_batch_with_geometry(
+        self,
+        conn: AsyncConnection,
+        composition_rows: List[tuple]
+    ) -> float:
+        """
+        Create compositions with spatial geometry (POINT/LINESTRING).
+        Uses batched INSERT with ST_GeomFromText for PostGIS geometry.
+        
+        Args:
+            conn: Database connection
+            composition_rows: List of (parent_id, component_id, sequence_idx, geometry_wkt, metadata_json)
+            
+        Returns:
+            Elapsed time in seconds
+        """
+        start_time = time.time()
+        
+        if not composition_rows:
+            return 0.0
+        
+        logger.info(f"    Inserting {len(composition_rows):,} compositions with geometry...")
+        
+        # Process in batches to avoid parameter limits
+        BATCH_SIZE = 10000
+        async with conn.cursor() as cur:
+            for batch_start in range(0, len(composition_rows), BATCH_SIZE):
+                batch_end = min(batch_start + BATCH_SIZE, len(composition_rows))
+                batch = composition_rows[batch_start:batch_end]
+                
+                # Build parameterized INSERT with ST_GeomFromText
+                placeholders = []
+                params = []
+                for row in batch:
+                    parent_id, component_id, seq_idx, geom_wkt, metadata = row
+                    placeholders.append("(%s, %s, %s, ST_GeomFromText(%s), %s::jsonb)")
+                    # Use empty JSON if metadata is None
+                    metadata_value = metadata if metadata is not None else '{}'
+                    params.extend([parent_id, component_id, seq_idx, geom_wkt, metadata_value])
+                
+                insert_sql = f"""
+                    INSERT INTO atom_composition 
+                    (parent_atom_id, component_atom_id, sequence_index, spatial_key, metadata)
+                    VALUES {','.join(placeholders)}
+                """
+                await cur.execute(insert_sql, params)
+                
+                if batch_end < len(composition_rows):
+                    logger.info(f"    Progress: {batch_end:,}/{len(composition_rows):,} rows inserted...")
+        
+        elapsed = time.time() - start_time
+        logger.info(f"    ✓ Geometry INSERT complete: {len(composition_rows):,} rows in {elapsed:.2f}s ({len(composition_rows)/elapsed:,.0f} rows/s)")
+        
+        return elapsed
+    
     async def create_batch_sequential(
         self,
         conn: AsyncConnection,

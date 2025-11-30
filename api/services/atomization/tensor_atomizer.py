@@ -6,6 +6,7 @@ Single Responsibility: Handle tensor-specific atomization logic.
 
 import logging
 import time
+import json
 from typing import Dict, List, Tuple, Any
 from psycopg import AsyncConnection
 from psycopg_pool import AsyncConnectionPool
@@ -127,21 +128,23 @@ class TensorAtomizer:
         atomize_time = time.time() - atomize_start
         logger.info(f"  ✓ Weights atomized in {atomize_time:.2f}s")
         
-        # Create tensor atom
+        # Create tensor atom with complete metadata (REQUIRED for reconstruction)
         indices = parse_tensor_name(tensor_name)
+        shape_tuple = tensor_data.shape
+        
         metadata = {
             "model_name": model_name,
             "tensor_name": tensor_name,
-            "shape": list(tensor_data.shape),
+            "shape": list(shape_tuple),  # CRITICAL: Needed to reconstruct tensor dimensions
             "dtype": str(tensor_data.dtype),
-            "modality": "tensor",
+            "modality": "model-tensor",
+            "parameter_type": "weight" if "weight" in tensor_name else "bias" if "bias" in tensor_name else "unknown",
+            "total_elements": int(np.prod(shape_tuple)),
             **indices
         }
         
         tensor_hash = f"tensor:{model_name}:{tensor_name}".encode()
         
-        # bulk_insert_atoms expects (content_hash, canonical_text, metadata_json_str) for COPY
-        # TEXT format COPY requires JSON string, not dict (psycopg3 limitation)
         import json
         rows = [(tensor_hash, tensor_name, json.dumps(metadata))]
         _, results = await bulk_insert_atoms(conn, rows, include_spatial=False)
@@ -156,8 +159,8 @@ class TensorAtomizer:
         non_sparse_weights_np = np.array(non_sparse_weights, dtype=np.float32)
         
         # Binary search: O(log n) vectorized across all weights
-        indices = np.searchsorted(sorted_weights, non_sparse_weights_np)
-        component_atom_ids = sorted_atom_ids[indices]
+        weight_indices = np.searchsorted(sorted_weights, non_sparse_weights_np)
+        component_atom_ids = sorted_atom_ids[weight_indices]
         
         map_time = time.time() - map_start
         logger.info(
@@ -165,24 +168,105 @@ class TensorAtomizer:
             f"({len(non_sparse_weights)/map_time:,.0f} lookups/s)"
         )
         
-        # Phase 4: Build columnar compositions (NumPy arrays, NO dict lists)
-        logger.info(f"  Building {len(non_sparse_weights):,} composition arrays...")
-        comp_start = time.time()
+        # Phase 4: Hilbert encoding with integer coordinates
+        logger.info(f"  Encoding positions with Hilbert curves...")
+        hilbert_start = time.time()
         
-        # Get non-sparse indices (positions in original flattened tensor)
-        non_sparse_indices = np.where(
-            np.abs(np.array(weights, dtype=np.float32)) >= self.weight_processor.threshold
-        )[0].astype(np.int32)
+        # Get non-sparse indices and convert to multi-dimensional positions
+        weights_array = np.array(weights, dtype=np.float32)
+        non_sparse_mask = np.abs(weights_array) >= self.weight_processor.threshold
+        flat_indices = np.where(non_sparse_mask)[0]
         
-        comp_build_time = time.time() - comp_start
-        logger.info(
-            f"  ✓ Composition arrays built in {comp_build_time:.2f}s "
-            f"({len(non_sparse_indices)/comp_build_time:,.0f} arrays/s)"
-        )
+        # Convert flat indices to (i, j, layer) integer positions
+        if len(tensor_data.shape) == 1:
+            # 1D tensor (bias)
+            positions = np.column_stack([
+                flat_indices,
+                np.zeros_like(flat_indices),
+                np.zeros_like(flat_indices)
+            ]).astype(np.int64)
+            bits_needed = max(1, int(np.ceil(np.log2(tensor_data.shape[0]))))
+        elif len(tensor_data.shape) == 2:
+            # 2D tensor (most weights)
+            rows, cols = tensor_data.shape
+            i_pos = flat_indices // cols
+            j_pos = flat_indices % cols
+            positions = np.column_stack([
+                i_pos, j_pos, np.zeros_like(i_pos)
+            ]).astype(np.int64)
+            bits_needed = max(1, int(np.ceil(np.log2(max(rows, cols)))))
+        else:
+            # 3D+ tensor
+            idx_tuple = np.unravel_index(flat_indices, tensor_data.shape)
+            if len(idx_tuple) >= 3:
+                positions = np.column_stack(idx_tuple[:3]).astype(np.int64)
+            else:
+                pad_cols = [np.zeros(len(flat_indices), dtype=np.int64)] * (3 - len(idx_tuple))
+                positions = np.column_stack(list(idx_tuple) + pad_cols)
+            bits_needed = max(1, int(np.ceil(np.log2(max(tensor_data.shape)))))
         
-        # Insert compositions with NumPy arrays (single COPY operation)
-        await self.composition_builder.create_batch_sequential(
-            conn, tensor_atom_id, component_atom_ids, non_sparse_indices
+        # Encode integer positions to Hilbert indices (lossless)
+        from .hilbert_encoder import HilbertEncoder
+        encoder = HilbertEncoder(bits=bits_needed)
+        hilbert_indices = encoder.encode_batch(positions)
+        
+        hilbert_time = time.time() - hilbert_start
+        logger.info(f"  ✓ Hilbert encoding complete in {hilbert_time:.2f}s (bits={bits_needed})")
+        
+        # Phase 5: Group into runs (RLE compression via LINESTRING geometries)
+        logger.info(f"  Detecting runs in {len(hilbert_indices):,} positions...")
+        stream_start = time.time()
+        
+        # Sort by (atom_id, hilbert_index) to group consecutive runs
+        sort_order = np.lexsort((hilbert_indices, component_atom_ids))
+        sorted_atoms = component_atom_ids[sort_order]
+        sorted_hilbert = hilbert_indices[sort_order]
+        
+        # Detect runs: consecutive hilbert indices with same atom_id
+        composition_rows = []
+        i = 0
+        while i < len(sorted_atoms):
+            current_atom = sorted_atoms[i]
+            run_start = sorted_hilbert[i]
+            run_end = run_start
+            j = i + 1
+            
+            # Extend run while atom_id matches and hilbert indices are consecutive
+            while j < len(sorted_atoms) and sorted_atoms[j] == current_atom and sorted_hilbert[j] == run_end + 1:
+                run_end = sorted_hilbert[j]
+                j += 1
+            
+            run_length = run_end - run_start + 1
+            
+            if run_length == 1:
+                # Single position - use POINTZM (x, y, z, m) where m=hilbert_index
+                geometry_wkt = f"POINTZM(0 0 0 {run_start})"
+                metadata_json = None
+            else:
+                # Run of positions - use LINESTRINGZM
+                geometry_wkt = f"LINESTRINGZM(0 0 0 {run_start}, 0 0 0 {run_end})"
+                metadata_json = json.dumps({
+                    "run_length": run_length,
+                    "encoding": "rle"
+                })
+            
+            composition_rows.append((
+                tensor_atom_id,
+                int(current_atom),
+                int(run_start),  # sequence_index = start of run
+                geometry_wkt,
+                metadata_json
+            ))
+            
+            i = j
+        
+        stream_time = time.time() - stream_start
+        logger.info(f"  ✓ Compressed to {len(composition_rows):,} compositions (from {len(hilbert_indices):,} positions) in {stream_time:.2f}s")
+        logger.info(f"  ✓ Compression ratio: {len(hilbert_indices)/len(composition_rows):.1f}x")
+        
+        # Insert compositions with geometry
+        await self.composition_builder.create_batch_with_geometry(
+            conn, composition_rows
         )
         
         total_time = time.time() - start_time

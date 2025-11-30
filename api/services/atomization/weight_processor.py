@@ -143,9 +143,14 @@ class WeightProcessor:
         
         atom_texts = np.array([str(w) for w in unique_weights])  # text[]
         
-        # Metadata as JSON strings (TEXT format COPY requirement)
+        # Metadata with modality and value semantics
         atom_metadata = np.array([
-            json.dumps({"modality": "weight", "value": float(w)})
+            json.dumps({
+                "modality": "model-weight",
+                "value": float(w),
+                "dtype": "float32",
+                "bytes": 4
+            })
             for w in unique_weights
         ])
         

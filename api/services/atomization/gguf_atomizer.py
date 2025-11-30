@@ -79,6 +79,10 @@ class GGUFAtomizer(BaseAtomizer):
         # Get final stats
         stats = self.tensor_atomizer.get_stats()
         
+        # Track tensor atoms
+        stats['tensor_atoms'] = getattr(self, '_tensor_atoms', [])
+        stats['tensors_processed'] = len(getattr(self, '_tensor_atoms', []))
+        
         logger.info(f"\n{'='*80}")
         logger.info(f"GGUF Atomization Complete")
         logger.info(f"  Total weights processed: {stats['total_processed']:,}")
@@ -124,16 +128,20 @@ class GGUFAtomizer(BaseAtomizer):
         # Atomize tensors
         logger.info(f"\nProcessing {len(reader.tensors)} tensors...")
         
+        self._tensor_atoms = []
+        
         for idx, tensor in enumerate(reader.tensors, 1):
             logger.info(f"\n[Tensor {idx}/{len(reader.tensors)}]")
             
-            await self.tensor_atomizer.atomize_tensor(
+            tensor_atom_id, tensor_stats = await self.tensor_atomizer.atomize_tensor(
                 conn=conn,
                 pool=pool,
                 tensor_name=tensor.name,
                 tensor_data=tensor.data,
                 model_name=model_name
             )
+            
+            self._tensor_atoms.append(tensor_atom_id)
     
     async def _atomize_vocabulary(
         self,

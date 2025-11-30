@@ -75,7 +75,8 @@ class SpatialReconstructor:
         x: float, 
         y: float, 
         z: float,
-        tolerance: float = 1e-6
+        tolerance: float = 1e-6,
+        expand_compositions: bool = True
     ) -> Optional[bytes]:
         """
         Look up atom at specific coordinate.
@@ -83,6 +84,7 @@ class SpatialReconstructor:
         Args:
             x, y, z: Coordinate
             tolerance: Distance tolerance for matching (handles floating point imprecision)
+            expand_compositions: If True, recursively expand composition_ids
         
         Returns:
             Atom value (bytes) or None if not found
@@ -93,7 +95,7 @@ class SpatialReconstructor:
         # Query: Find atom within tolerance of coordinate
         # Uses ST_DWithin for spatial proximity
         query = """
-            SELECT atom_value
+            SELECT atom_value, composition_ids, canonical_text
             FROM atom
             WHERE ST_DWithin(
                 spatial_key,
@@ -111,7 +113,58 @@ class SpatialReconstructor:
             if row is None:
                 return None
             
-            return row[0]  # atom_value
+            atom_value, composition_ids, canonical_text = row
+            
+            # If primitive atom, return value directly
+            if atom_value is not None:
+                return atom_value
+            
+            # If composition and expansion requested, recursively expand
+            if composition_ids is not None and expand_compositions:
+                return await self._expand_composition(composition_ids)
+            
+            # Fallback: return canonical text as bytes
+            if canonical_text:
+                return canonical_text.encode('utf-8')
+            
+            return None
+    
+    async def _expand_composition(self, composition_ids: List[int]) -> bytes:
+        """
+        Recursively expand composition to get final value.
+        
+        Args:
+            composition_ids: Array of child atom IDs
+        
+        Returns:
+            Concatenated bytes from all children (recursively expanded)
+        """
+        result = b''
+        
+        # Query to get atoms by IDs
+        query = """
+            SELECT atom_value, composition_ids, canonical_text
+            FROM atom
+            WHERE atom_id = ANY($1)
+            ORDER BY array_position($1, atom_id)
+        """
+        
+        async with self.db.cursor() as cursor:
+            await cursor.execute(query, (composition_ids,))
+            rows = await cursor.fetchall()
+            
+            for atom_value, child_comp_ids, canonical_text in rows:
+                # Primitive: use value
+                if atom_value is not None:
+                    result += atom_value
+                # Composition: recurse
+                elif child_comp_ids is not None:
+                    result += await self._expand_composition(child_comp_ids)
+                # Fallback: canonical text
+                elif canonical_text:
+                    result += canonical_text.encode('utf-8')
+        
+        return result
     
     async def reconstruct_sequence(
         self, 
