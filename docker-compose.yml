@@ -1,0 +1,220 @@
+version: '3.8'
+
+services:
+  postgres-localhost:
+    image: postgis/postgis:16-3.4
+    container_name: hartonomous-db-localhost
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_local
+      POSTGRES_DB: hartonomous_localhost
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-localhost-data:/var/lib/postgresql/data
+      - ./scripts/init-postgres-extensions.sql:/docker-entrypoint-initdb.d/01-extensions.sql
+      - ./scripts/plpython-functions.sql:/docker-entrypoint-initdb.d/02-functions.sql
+    networks:
+      - hartonomous-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d hartonomous_localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres-dev:
+    image: postgis/postgis:16-3.4
+    container_name: hartonomous-db-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_dev
+      POSTGRES_DB: hartonomous_dev
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-dev-data:/var/lib/postgresql/data
+      - ./scripts/init-postgres-extensions.sql:/docker-entrypoint-initdb.d/01-extensions.sql
+      - ./scripts/plpython-functions.sql:/docker-entrypoint-initdb.d/02-functions.sql
+    networks:
+      - hartonomous-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d hartonomous_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres-staging:
+    image: postgis/postgis:16-3.4
+    container_name: hartonomous-db-staging
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_staging
+      POSTGRES_DB: hartonomous_staging
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres-staging-data:/var/lib/postgresql/data
+      - ./scripts/init-postgres-extensions.sql:/docker-entrypoint-initdb.d/01-extensions.sql
+      - ./scripts/plpython-functions.sql:/docker-entrypoint-initdb.d/02-functions.sql
+    networks:
+      - hartonomous-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d hartonomous_staging"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres-production:
+    image: postgis/postgis:16-3.4
+    container_name: hartonomous-db-production
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_prod
+      POSTGRES_DB: hartonomous_production
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres-production-data:/var/lib/postgresql/data
+      - ./scripts/init-postgres-extensions.sql:/docker-entrypoint-initdb.d/01-extensions.sql
+      - ./scripts/plpython-functions.sql:/docker-entrypoint-initdb.d/02-functions.sql
+    networks:
+      - hartonomous-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d hartonomous_production"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api-localhost:
+    build:
+      context: .
+      dockerfile: Hartonomous.Api/Dockerfile
+    container_name: hartonomous-api-localhost
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: localhost
+      ASPNETCORE_URLS: http://+:5000
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres-localhost:
+        condition: service_healthy
+    networks:
+      - hartonomous-network
+
+  api-dev:
+    build:
+      context: .
+      dockerfile: Hartonomous.Api/Dockerfile
+    container_name: hartonomous-api-dev
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: dev
+      ASPNETCORE_URLS: http://+:5001
+    ports:
+      - "5001:5001"
+    depends_on:
+      postgres-dev:
+        condition: service_healthy
+    networks:
+      - hartonomous-network
+
+  api-staging:
+    build:
+      context: .
+      dockerfile: Hartonomous.Api/Dockerfile
+    container_name: hartonomous-api-staging
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: staging
+      ASPNETCORE_URLS: http://+:5002
+    ports:
+      - "5002:5002"
+    depends_on:
+      postgres-staging:
+        condition: service_healthy
+    networks:
+      - hartonomous-network
+
+  api-production:
+    build:
+      context: .
+      dockerfile: Hartonomous.Api/Dockerfile
+    container_name: hartonomous-api-production
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: production
+      ASPNETCORE_URLS: http://+:5003
+    ports:
+      - "5003:5003"
+    depends_on:
+      postgres-production:
+        condition: service_healthy
+    networks:
+      - hartonomous-network
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: hartonomous-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@hartonomous.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+      - ./scripts/pgadmin-servers.json:/pgadmin4/servers.json
+    networks:
+      - hartonomous-network
+    depends_on:
+      - postgres-localhost
+      - postgres-dev
+      - postgres-staging
+      - postgres-production
+
+  neo4j:
+    image: neo4j:5.15-community
+    container_name: hartonomous-neo4j
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: neo4j/hartonomous123
+      NEO4J_PLUGINS: '["graph-data-science"]'
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j-data:/data
+      - neo4j-logs:/logs
+    networks:
+      - hartonomous-network
+
+volumes:
+  postgres-localhost-data:
+    driver: local
+  postgres-dev-data:
+    driver: local
+  postgres-staging-data:
+    driver: local
+  postgres-production-data:
+    driver: local
+  pgadmin-data:
+    driver: local
+  neo4j-data:
+    driver: local
+  neo4j-logs:
+    driver: local
+
+networks:
+  hartonomous-network:
+    driver: bridge

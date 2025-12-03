@@ -1,0 +1,26 @@
+# Hartonomous Python Dependencies
+# Python 3.13+ recommended for optimal CUDA performance
+
+# Database connectivity
+psycopg2-binary==2.9.9
+asyncpg==0.29.0
+
+# GPU acceleration (CUDA)
+cupy-cuda12x==13.0.0  # CuPy for CUDA 12.x
+nvidia-ml-py==12.560.30  # NVIDIA Management Library
+
+# Tensor operations
+numpy==2.0.0
+scipy==1.13.0
+
+# Machine Learning (optional)
+torch==2.5.0  # PyTorch with CUDA support
+# Install with: pip install torch --index-url https://download.pytorch.org/whl/cu121
+
+# Data serialization
+msgpack==1.0.8
+orjson==3.10.0
+
+# Utilities
+python-dotenv==1.0.1
+rich==13.7.0  # Pretty terminal output

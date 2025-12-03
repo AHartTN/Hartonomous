@@ -1,0 +1,44 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "Localhost",
+      "Group": "Hartonomous",
+      "Host": "postgres-localhost",
+      "Port": 5432,
+      "MaintenanceDB": "hartonomous_localhost",
+      "Username": "postgres",
+      "SSLMode": "prefer",
+      "PassFile": "/tmp/pgpassfile"
+    },
+    "2": {
+      "Name": "Dev",
+      "Group": "Hartonomous",
+      "Host": "postgres-dev",
+      "Port": 5432,
+      "MaintenanceDB": "hartonomous_dev",
+      "Username": "postgres",
+      "SSLMode": "prefer",
+      "PassFile": "/tmp/pgpassfile"
+    },
+    "3": {
+      "Name": "Staging",
+      "Group": "Hartonomous",
+      "Host": "postgres-staging",
+      "Port": 5432,
+      "MaintenanceDB": "hartonomous_staging",
+      "Username": "postgres",
+      "SSLMode": "prefer",
+      "PassFile": "/tmp/pgpassfile"
+    },
+    "4": {
+      "Name": "Production",
+      "Group": "Hartonomous",
+      "Host": "postgres-production",
+      "Port": 5432,
+      "MaintenanceDB": "hartonomous_production",
+      "Username": "postgres",
+      "SSLMode": "prefer",
+      "PassFile": "/tmp/pgpassfile"
+    }
+  }
+}

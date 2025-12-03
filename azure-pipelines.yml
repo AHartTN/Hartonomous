@@ -1,0 +1,270 @@
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+      - feature/*
+  paths:
+    include:
+      - Hartonomous.Db/**
+      - Hartonomous.Api/**
+      - Hartonomous.Shared/**
+      - Hartonomous.Maui/**
+      - docker-compose*.yml
+      - scripts/**
+
+pr:
+  branches:
+    include:
+      - main
+      - develop
+
+variables:
+  buildConfiguration: 'Release'
+  dotnetVersion: '10.0.x'
+  vmImageName: 'ubuntu-latest'
+  dockerRegistryServiceConnection: 'HartonomousACR'
+  containerRegistry: 'hartonomous.azurecr.io'
+  arcResourceGroup: 'hartonomous-rg'
+  arcCluster1: 'hartonomous-arc-01'
+  arcCluster2: 'hartonomous-arc-02'
+
+stages:
+  - stage: Build
+    displayName: 'Build and Test'
+    jobs:
+      - job: Build
+        displayName: 'Build Solution'
+        pool:
+          vmImage: $(vmImageName)
+        steps:
+          - task: UseDotNet@2
+            displayName: 'Install .NET SDK'
+            inputs:
+              packageType: 'sdk'
+              version: $(dotnetVersion)
+
+          - task: DotNetCoreCLI@2
+            displayName: 'Restore NuGet Packages'
+            inputs:
+              command: 'restore'
+              projects: '**/*.csproj'
+
+          - task: DotNetCoreCLI@2
+            displayName: 'Build Solution'
+            inputs:
+              command: 'build'
+              projects: '**/*.csproj'
+              arguments: '--configuration $(buildConfiguration) --no-restore'
+
+          - task: DotNetCoreCLI@2
+            displayName: 'Run Tests'
+            inputs:
+              command: 'test'
+              projects: '**/*Tests.csproj'
+              arguments: '--configuration $(buildConfiguration) --no-build --collect:"XPlat Code Coverage" --logger trx'
+              publishTestResults: true
+
+          - task: Docker@2
+            displayName: 'Build API Docker Image'
+            inputs:
+              containerRegistry: $(dockerRegistryServiceConnection)
+              repository: 'hartonomous-api'
+              command: 'build'
+              Dockerfile: 'Hartonomous.Api/Dockerfile'
+              tags: |
+                $(Build.BuildId)
+                latest
+
+          - task: Docker@2
+            displayName: 'Push API Docker Image'
+            inputs:
+              containerRegistry: $(dockerRegistryServiceConnection)
+              repository: 'hartonomous-api'
+              command: 'push'
+              tags: |
+                $(Build.BuildId)
+                latest
+
+  - stage: DeployLocalhost
+    displayName: 'Deploy to Localhost (Arc Cluster 1)'
+    dependsOn: Build
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: DeployLocalhost
+        displayName: 'Deploy Localhost Environment'
+        pool:
+          vmImage: $(vmImageName)
+        environment: 'localhost'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - task: AzureCLI@2
+                  displayName: 'Deploy to Arc Cluster 1'
+                  inputs:
+                    azureSubscription: 'AzureArcConnection'
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      az config set extension.use_dynamic_install=yes_without_prompt
+
+                      az connectedk8s connect \
+                        --name $(arcCluster1) \
+                        --resource-group $(arcResourceGroup) \
+                        --location eastus \
+                        --enable-oidc-issuer
+
+                      az connectedk8s enable-features \
+                        -n $(arcCluster1) \
+                        -g $(arcResourceGroup) \
+                        --features cluster-connect
+
+                      kubectl apply -f k8s/localhost/namespace.yaml
+                      kubectl apply -f k8s/localhost/postgres.yaml
+                      kubectl apply -f k8s/localhost/api.yaml
+
+                      kubectl rollout status deployment/postgres-localhost -n hartonomous-localhost
+                      kubectl rollout status deployment/api-localhost -n hartonomous-localhost
+
+                - task: PowerShell@2
+                  displayName: 'Run Database Migrations'
+                  inputs:
+                    targetType: 'inline'
+                    script: |
+                      $env:ASPNETCORE_ENVIRONMENT = "localhost"
+                      dotnet ef database update --project Hartonomous.Db/Hartonomous.Db.csproj --startup-project Hartonomous.Api/Hartonomous.Api.csproj
+
+  - stage: DeployDev
+    displayName: 'Deploy to Dev (Arc Cluster 1)'
+    dependsOn: Build
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/develop'))
+    jobs:
+      - deployment: DeployDev
+        displayName: 'Deploy Dev Environment'
+        pool:
+          vmImage: $(vmImageName)
+        environment: 'dev'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - task: AzureCLI@2
+                  displayName: 'Deploy to Arc Cluster 1'
+                  inputs:
+                    azureSubscription: 'AzureArcConnection'
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      kubectl apply -f k8s/dev/namespace.yaml
+                      kubectl apply -f k8s/dev/postgres.yaml
+                      kubectl apply -f k8s/dev/api.yaml
+
+                      kubectl rollout status deployment/postgres-dev -n hartonomous-dev
+                      kubectl rollout status deployment/api-dev -n hartonomous-dev
+
+                - task: PowerShell@2
+                  displayName: 'Run Database Migrations'
+                  inputs:
+                    targetType: 'inline'
+                    script: |
+                      $env:ASPNETCORE_ENVIRONMENT = "dev"
+                      dotnet ef database update --project Hartonomous.Db/Hartonomous.Db.csproj --startup-project Hartonomous.Api/Hartonomous.Api.csproj
+
+  - stage: DeployStaging
+    displayName: 'Deploy to Staging (Arc Cluster 2)'
+    dependsOn: DeployDev
+    condition: succeeded()
+    jobs:
+      - deployment: DeployStaging
+        displayName: 'Deploy Staging Environment'
+        pool:
+          vmImage: $(vmImageName)
+        environment: 'staging'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - task: AzureCLI@2
+                  displayName: 'Deploy to Arc Cluster 2'
+                  inputs:
+                    azureSubscription: 'AzureArcConnection'
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      az connectedk8s connect \
+                        --name $(arcCluster2) \
+                        --resource-group $(arcResourceGroup) \
+                        --location eastus \
+                        --enable-oidc-issuer
+
+                      kubectl apply -f k8s/staging/namespace.yaml
+                      kubectl apply -f k8s/staging/postgres.yaml
+                      kubectl apply -f k8s/staging/api.yaml
+
+                      kubectl rollout status deployment/postgres-staging -n hartonomous-staging
+                      kubectl rollout status deployment/api-staging -n hartonomous-staging
+
+                - task: PowerShell@2
+                  displayName: 'Run Database Migrations'
+                  inputs:
+                    targetType: 'inline'
+                    script: |
+                      $env:ASPNETCORE_ENVIRONMENT = "staging"
+                      dotnet ef database update --project Hartonomous.Db/Hartonomous.Db.csproj --startup-project Hartonomous.Api/Hartonomous.Api.csproj
+
+  - stage: DeployProduction
+    displayName: 'Deploy to Production (Arc Cluster 2)'
+    dependsOn: DeployStaging
+    condition: succeeded()
+    jobs:
+      - deployment: DeployProduction
+        displayName: 'Deploy Production Environment'
+        pool:
+          vmImage: $(vmImageName)
+        environment: 'production'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - task: AzureCLI@2
+                  displayName: 'Deploy to Arc Cluster 2'
+                  inputs:
+                    azureSubscription: 'AzureArcConnection'
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      kubectl apply -f k8s/production/namespace.yaml
+                      kubectl apply -f k8s/production/postgres.yaml
+                      kubectl apply -f k8s/production/api.yaml
+
+                      kubectl rollout status deployment/postgres-production -n hartonomous-production
+                      kubectl rollout status deployment/api-production -n hartonomous-production
+
+                - task: PowerShell@2
+                  displayName: 'Run Database Migrations'
+                  inputs:
+                    targetType: 'inline'
+                    script: |
+                      $env:ASPNETCORE_ENVIRONMENT = "production"
+                      dotnet ef database update --project Hartonomous.Db/Hartonomous.Db.csproj --startup-project Hartonomous.Api/Hartonomous.Api.csproj
+
+                - task: PowerShell@2
+                  displayName: 'Run Health Checks'
+                  inputs:
+                    targetType: 'inline'
+                    script: |
+                      $apiUrl = kubectl get svc api-production -n hartonomous-production -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+                      $response = Invoke-WebRequest -Uri "http://$apiUrl/health" -UseBasicParsing
+                      if ($response.StatusCode -ne 200) {
+                        throw "Health check failed"
+                      }
+                      Write-Host "Production deployment healthy"
