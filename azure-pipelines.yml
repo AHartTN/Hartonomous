@@ -115,19 +115,13 @@ stages:
               arguments: '--configuration $(buildConfiguration) --no-build --collect:"XPlat Code Coverage" --logger trx'
               publishTestResults: true
 
-          - task: Docker@2
-            displayName: 'Login to GitHub Container Registry'
-            inputs:
-              command: 'login'
-              containerRegistry: 'ghcr.io'
-              username: '$(GITHUB_USERNAME)'
-              password: '$(GITHUB_TOKEN)'
-
-          - task: Bash@3
+          - task: AzureCLI@2
             displayName: 'Build and Push Docker Image to GHCR'
             inputs:
-              targetType: 'inline'
-              script: |
+              azureSubscription: 'AzureArcConnection'
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
                 IMAGE_NAME="$(containerRegistry)/$(containerNamespace)/hartonomous-api"
                 IMAGE_TAG="$(Build.BuildId)"
 
@@ -135,7 +129,8 @@ stages:
                 docker build -t $IMAGE_NAME:$IMAGE_TAG -t $IMAGE_NAME:latest -f Hartonomous.Api/Dockerfile .
 
                 echo "Pushing to GHCR..."
-                echo "$(GITHUB_TOKEN)" | docker login ghcr.io -u $(GITHUB_USERNAME) --password-stdin
+                GITHUB_USER=$(az keyvault secret show --vault-name kv-hartonomous --name github-username --query value -o tsv)
+                az keyvault secret show --vault-name kv-hartonomous --name github-token --query value -o tsv | docker login ghcr.io -u "$GITHUB_USER" --password-stdin
                 docker push $IMAGE_NAME:$IMAGE_TAG
                 docker push $IMAGE_NAME:latest
 
@@ -168,13 +163,14 @@ stages:
                     inlineScript: |
                       az config set extension.use_dynamic_install=yes_without_prompt
 
-                      # Pull and run Docker container from GHCR
+                      # Arc machine fetches GitHub credentials from Key Vault
                       az connectedmachine run-command create \
                         --name deploy-localhost-$(Build.BuildId) \
                         --resource-group $(arcResourceGroup) \
                         --machine-name $(arcCluster1) \
                         --script "
-                          echo '$(GITHUB_TOKEN)' | docker login ghcr.io -u $(GITHUB_USERNAME) --password-stdin
+                          GITHUB_USER=\$(az keyvault secret show --vault-name kv-hartonomous --name github-username --query value -o tsv)
+                          az keyvault secret show --vault-name kv-hartonomous --name github-token --query value -o tsv | docker login ghcr.io -u \"\$GITHUB_USER\" --password-stdin
                           docker pull ghcr.io/$(containerNamespace)/hartonomous-api:$(Build.BuildId)
                           docker-compose -f /opt/hartonomous/docker-compose.yml up -d
                         "
@@ -217,7 +213,8 @@ stages:
                         --resource-group $(arcResourceGroup) \
                         --machine-name $(arcCluster1) \
                         --script "
-                          echo '$(GITHUB_TOKEN)' | docker login ghcr.io -u $(GITHUB_USERNAME) --password-stdin
+                          GITHUB_USER=\$(az keyvault secret show --vault-name kv-hartonomous --name github-username --query value -o tsv)
+                          az keyvault secret show --vault-name kv-hartonomous --name github-token --query value -o tsv | docker login ghcr.io -u \"\$GITHUB_USER\" --password-stdin
                           docker pull ghcr.io/$(containerNamespace)/hartonomous-api:$(Build.BuildId)
                           docker-compose -f /opt/hartonomous/docker-compose.yml up -d
                         "
@@ -258,7 +255,8 @@ stages:
                         --resource-group $(arcResourceGroup) \
                         --machine-name $(arcCluster2) \
                         --script "
-                          echo '$(GITHUB_TOKEN)' | docker login ghcr.io -u $(GITHUB_USERNAME) --password-stdin
+                          GITHUB_USER=\$(az keyvault secret show --vault-name kv-hartonomous --name github-username --query value -o tsv)
+                          az keyvault secret show --vault-name kv-hartonomous --name github-token --query value -o tsv | docker login ghcr.io -u \"\$GITHUB_USER\" --password-stdin
                           docker pull ghcr.io/$(containerNamespace)/hartonomous-api:$(Build.BuildId)
                           docker-compose -f /opt/hartonomous/docker-compose.yml up -d
                         "
@@ -299,7 +297,8 @@ stages:
                         --resource-group $(arcResourceGroup) \
                         --machine-name $(arcCluster2) \
                         --script "
-                          echo '$(GITHUB_TOKEN)' | docker login ghcr.io -u $(GITHUB_USERNAME) --password-stdin
+                          GITHUB_USER=\$(az keyvault secret show --vault-name kv-hartonomous --name github-username --query value -o tsv)
+                          az keyvault secret show --vault-name kv-hartonomous --name github-token --query value -o tsv | docker login ghcr.io -u \"\$GITHUB_USER\" --password-stdin
                           docker pull ghcr.io/$(containerNamespace)/hartonomous-api:$(Build.BuildId)
                           docker-compose -f /opt/hartonomous/docker-compose.yml up -d
                         "

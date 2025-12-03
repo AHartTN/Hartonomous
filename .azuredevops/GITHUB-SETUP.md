@@ -1,57 +1,44 @@
-# GitHub Container Registry (GHCR) Setup
+# GitHub Container Registry (GHCR) Setup - Zero Trust
 
-## You Already Have This Configured!
+## Credentials Stored in Key Vault ✅
 
-Your GitHub account (`AHartTN`) is authenticated with the necessary scopes:
-- ✅ `repo` - Repository access
-- ✅ `workflow` - GitHub Actions access
-- ✅ Token authenticated via GitHub CLI
+Your GitHub credentials are securely stored in Azure Key Vault:
+- ✅ `github-username` - GitHub username (fetched dynamically)
+- ✅ `github-token` - GitHub PAT (fetched dynamically, never logged)
 
-Your Azure service principals are already set up:
-- ✅ `Hartonomous-GitHub-Actions-Development` (66a37c0f-5666-450b-b61f-c9e33b56115e)
-- ✅ `Hartonomous-GitHub-Actions-Production` (48a904b7-f070-407d-abab-1b71a3c049a9)
-- ✅ `Hartonomous-GitHub-Actions-Staging` (f05370b1-d09f-4085-bd04-ac028c28b7f8)
+## Zero Trust Authentication Flow
 
-## One-Time Azure DevOps Configuration
+### Build Pipeline (Azure DevOps Agent)
+1. Agent authenticates to Azure using service connection managed identity
+2. Fetches GitHub username from Key Vault: `kv-hartonomous/github-username`
+3. Pipes GitHub token directly from Key Vault to `docker login` (never stored in variable)
+4. Pushes images to `ghcr.io/ahartn/hartonomous-api`
 
-### Add GitHub Token as Pipeline Variable
+### Deploy Pipeline (Arc Machines)
+1. Arc machine authenticates to Azure using its SystemAssigned managed identity
+2. Fetches GitHub username from Key Vault
+3. Pipes GitHub token directly from Key Vault to `docker login`
+4. Pulls images from GHCR
 
-1. In Azure DevOps, go to **Pipelines** → **Library**
-2. Create a new **Variable Group** named `GitHub`
-3. Add these variables:
-   - `GITHUB_USERNAME` = `AHartTN` (not secret)
-   - `GITHUB_TOKEN` = Your GitHub PAT (click lock icon to make it secret)
+## No Manual Configuration Required!
 
-4. Link to your pipeline:
-   - Edit `azure-pipelines.yml`
-   - Add at the top under `variables:`:
-   ```yaml
-   - group: GitHub
-   ```
+**Zero pipeline variables needed** - everything fetched dynamically from Key Vault.
 
-### Get Your GitHub Personal Access Token
+## Updating GitHub Credentials
 
-Option 1: Use existing token from CLI
+If you need to rotate your GitHub token:
+
 ```bash
-gh auth token
-```
-
-Option 2: Create new token
-```bash
+# Rotate token and store in Key Vault
 gh auth refresh -s write:packages
+gh auth token | az keyvault secret set --vault-name kv-hartonomous --name github-token --value @-
 ```
 
-Option 3: Manual (GitHub.com)
-1. Go to GitHub.com → Settings → Developer Settings → Personal Access Tokens → Tokens (classic)
-2. Generate new token with scopes:
-   - `read:packages`
-   - `write:packages`
-   - `delete:packages` (optional)
-3. Copy token and add to Azure DevOps Library
+The pipeline will automatically use the new token on the next run.
 
-## Container Image URL
+## Container Image URLs
 
-Your images will be pushed to:
+Your images are pushed to:
 ```
 ghcr.io/ahartn/hartonomous-api:latest
 ghcr.io/ahartn/hartonomous-api:<build-id>
@@ -63,14 +50,6 @@ ghcr.io/ahartn/hartonomous-api:<build-id>
 - ✅ Unlimited public images
 - ✅ 500 MB private storage free
 - ✅ 1 GB data transfer/month free
-
-## Verify Setup
-
-After configuring the variable group, test with:
-```bash
-docker login ghcr.io -u AHartTN -p $(gh auth token)
-echo "If login succeeds, you're ready!"
-```
 
 ## Make Images Public (Optional)
 
