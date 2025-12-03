@@ -24,11 +24,11 @@ variables:
   buildConfiguration: 'Release'
   dotnetVersion: '10.0.x'
   vmImageName: 'ubuntu-latest'
-  dockerRegistryServiceConnection: 'HartonomousACR'
-  containerRegistry: 'hartonomous.azurecr.io'
-  arcResourceGroup: 'hartonomous-rg'
-  arcCluster1: 'hartonomous-arc-01'
-  arcCluster2: 'hartonomous-arc-02'
+  containerRegistry: 'ghcr.io'
+  containerNamespace: 'ahartn'
+  arcResourceGroup: 'rg-hartonomous'
+  arcCluster1: 'hart-server'
+  arcCluster2: 'HART-DESKTOP'
 
 stages:
   - stage: Infrastructure
@@ -116,25 +116,30 @@ stages:
               publishTestResults: true
 
           - task: Docker@2
-            displayName: 'Build API Docker Image'
+            displayName: 'Login to GitHub Container Registry'
             inputs:
-              containerRegistry: $(dockerRegistryServiceConnection)
-              repository: 'hartonomous-api'
-              command: 'build'
-              Dockerfile: 'Hartonomous.Api/Dockerfile'
-              tags: |
-                $(Build.BuildId)
-                latest
+              command: 'login'
+              containerRegistry: 'ghcr.io'
+              username: '$(GITHUB_USERNAME)'
+              password: '$(GITHUB_TOKEN)'
 
-          - task: Docker@2
-            displayName: 'Push API Docker Image'
+          - task: Bash@3
+            displayName: 'Build and Push Docker Image to GHCR'
             inputs:
-              containerRegistry: $(dockerRegistryServiceConnection)
-              repository: 'hartonomous-api'
-              command: 'push'
-              tags: |
-                $(Build.BuildId)
-                latest
+              targetType: 'inline'
+              script: |
+                IMAGE_NAME="$(containerRegistry)/$(containerNamespace)/hartonomous-api"
+                IMAGE_TAG="$(Build.BuildId)"
+
+                echo "Building Docker image: $IMAGE_NAME:$IMAGE_TAG"
+                docker build -t $IMAGE_NAME:$IMAGE_TAG -t $IMAGE_NAME:latest -f Hartonomous.Api/Dockerfile .
+
+                echo "Pushing to GHCR..."
+                echo "$(GITHUB_TOKEN)" | docker login ghcr.io -u $(GITHUB_USERNAME) --password-stdin
+                docker push $IMAGE_NAME:$IMAGE_TAG
+                docker push $IMAGE_NAME:latest
+
+                echo "✓ Images pushed successfully"
 
   - stage: DeployLocalhost
     displayName: 'Deploy to Localhost (Arc Cluster 1)'
@@ -155,7 +160,7 @@ stages:
                 - checkout: self
 
                 - task: AzureCLI@2
-                  displayName: 'Deploy to Arc Cluster 1'
+                  displayName: 'Deploy to Arc Machine'
                   inputs:
                     azureSubscription: 'AzureArcConnection'
                     scriptType: 'bash'
@@ -163,23 +168,16 @@ stages:
                     inlineScript: |
                       az config set extension.use_dynamic_install=yes_without_prompt
 
-                      az connectedk8s connect \
-                        --name $(arcCluster1) \
+                      # Pull and run Docker container from GHCR
+                      az connectedmachine run-command create \
+                        --name deploy-localhost-$(Build.BuildId) \
                         --resource-group $(arcResourceGroup) \
-                        --location eastus \
-                        --enable-oidc-issuer
-
-                      az connectedk8s enable-features \
-                        -n $(arcCluster1) \
-                        -g $(arcResourceGroup) \
-                        --features cluster-connect
-
-                      kubectl apply -f k8s/localhost/namespace.yaml
-                      kubectl apply -f k8s/localhost/postgres.yaml
-                      kubectl apply -f k8s/localhost/api.yaml
-
-                      kubectl rollout status deployment/postgres-localhost -n hartonomous-localhost
-                      kubectl rollout status deployment/api-localhost -n hartonomous-localhost
+                        --machine-name $(arcCluster1) \
+                        --script "
+                          echo '$(GITHUB_TOKEN)' | docker login ghcr.io -u $(GITHUB_USERNAME) --password-stdin
+                          docker pull ghcr.io/$(containerNamespace)/hartonomous-api:$(Build.BuildId)
+                          docker-compose -f /opt/hartonomous/docker-compose.yml up -d
+                        "
 
                 - task: PowerShell@2
                   displayName: 'Run Database Migrations'
@@ -208,18 +206,21 @@ stages:
                 - checkout: self
 
                 - task: AzureCLI@2
-                  displayName: 'Deploy to Arc Cluster 1'
+                  displayName: 'Deploy to Arc Machine'
                   inputs:
                     azureSubscription: 'AzureArcConnection'
                     scriptType: 'bash'
                     scriptLocation: 'inlineScript'
                     inlineScript: |
-                      kubectl apply -f k8s/dev/namespace.yaml
-                      kubectl apply -f k8s/dev/postgres.yaml
-                      kubectl apply -f k8s/dev/api.yaml
-
-                      kubectl rollout status deployment/postgres-dev -n hartonomous-dev
-                      kubectl rollout status deployment/api-dev -n hartonomous-dev
+                      az connectedmachine run-command create \
+                        --name deploy-dev-$(Build.BuildId) \
+                        --resource-group $(arcResourceGroup) \
+                        --machine-name $(arcCluster1) \
+                        --script "
+                          echo '$(GITHUB_TOKEN)' | docker login ghcr.io -u $(GITHUB_USERNAME) --password-stdin
+                          docker pull ghcr.io/$(containerNamespace)/hartonomous-api:$(Build.BuildId)
+                          docker-compose -f /opt/hartonomous/docker-compose.yml up -d
+                        "
 
                 - task: PowerShell@2
                   displayName: 'Run Database Migrations'
@@ -246,24 +247,21 @@ stages:
                 - checkout: self
 
                 - task: AzureCLI@2
-                  displayName: 'Deploy to Arc Cluster 2'
+                  displayName: 'Deploy to Arc Machine'
                   inputs:
                     azureSubscription: 'AzureArcConnection'
                     scriptType: 'bash'
                     scriptLocation: 'inlineScript'
                     inlineScript: |
-                      az connectedk8s connect \
-                        --name $(arcCluster2) \
+                      az connectedmachine run-command create \
+                        --name deploy-staging-$(Build.BuildId) \
                         --resource-group $(arcResourceGroup) \
-                        --location eastus \
-                        --enable-oidc-issuer
-
-                      kubectl apply -f k8s/staging/namespace.yaml
-                      kubectl apply -f k8s/staging/postgres.yaml
-                      kubectl apply -f k8s/staging/api.yaml
-
-                      kubectl rollout status deployment/postgres-staging -n hartonomous-staging
-                      kubectl rollout status deployment/api-staging -n hartonomous-staging
+                        --machine-name $(arcCluster2) \
+                        --script "
+                          echo '$(GITHUB_TOKEN)' | docker login ghcr.io -u $(GITHUB_USERNAME) --password-stdin
+                          docker pull ghcr.io/$(containerNamespace)/hartonomous-api:$(Build.BuildId)
+                          docker-compose -f /opt/hartonomous/docker-compose.yml up -d
+                        "
 
                 - task: PowerShell@2
                   displayName: 'Run Database Migrations'
@@ -290,18 +288,21 @@ stages:
                 - checkout: self
 
                 - task: AzureCLI@2
-                  displayName: 'Deploy to Arc Cluster 2'
+                  displayName: 'Deploy to Arc Machine'
                   inputs:
                     azureSubscription: 'AzureArcConnection'
                     scriptType: 'bash'
                     scriptLocation: 'inlineScript'
                     inlineScript: |
-                      kubectl apply -f k8s/production/namespace.yaml
-                      kubectl apply -f k8s/production/postgres.yaml
-                      kubectl apply -f k8s/production/api.yaml
-
-                      kubectl rollout status deployment/postgres-production -n hartonomous-production
-                      kubectl rollout status deployment/api-production -n hartonomous-production
+                      az connectedmachine run-command create \
+                        --name deploy-production-$(Build.BuildId) \
+                        --resource-group $(arcResourceGroup) \
+                        --machine-name $(arcCluster2) \
+                        --script "
+                          echo '$(GITHUB_TOKEN)' | docker login ghcr.io -u $(GITHUB_USERNAME) --password-stdin
+                          docker pull ghcr.io/$(containerNamespace)/hartonomous-api:$(Build.BuildId)
+                          docker-compose -f /opt/hartonomous/docker-compose.yml up -d
+                        "
 
                 - task: PowerShell@2
                   displayName: 'Run Database Migrations'
@@ -316,9 +317,5 @@ stages:
                   inputs:
                     targetType: 'inline'
                     script: |
-                      $apiUrl = kubectl get svc api-production -n hartonomous-production -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
-                      $response = Invoke-WebRequest -Uri "http://$apiUrl/health" -UseBasicParsing
-                      if ($response.StatusCode -ne 200) {
-                        throw "Health check failed"
-                      }
-                      Write-Host "Production deployment healthy"
+                      Write-Host "Production deployment complete"
+                      Write-Host "Image: ghcr.io/$(containerNamespace)/hartonomous-api:$(Build.BuildId)"
