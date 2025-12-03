@@ -12,6 +12,7 @@ trigger:
       - Hartonomous.Maui/**
       - docker-compose*.yml
       - scripts/**
+      - infrastructure/**
 
 pr:
   branches:
@@ -30,8 +31,57 @@ variables:
   arcCluster2: 'hartonomous-arc-02'
 
 stages:
+  - stage: Infrastructure
+    displayName: 'Setup Zero Trust Infrastructure'
+    jobs:
+      - job: ConfigureInfrastructure
+        displayName: 'Configure RBAC and Key Vault'
+        pool:
+          vmImage: $(vmImageName)
+        steps:
+          - checkout: self
+
+          - task: AzureCLI@2
+            displayName: 'Setup Zero Trust (Idempotent)'
+            inputs:
+              azureSubscription: 'AzureArcConnection'
+              scriptType: 'bash'
+              scriptLocation: 'scriptPath'
+              scriptPath: 'infrastructure/setup-zero-trust.sh'
+              workingDirectory: '$(System.DefaultWorkingDirectory)'
+            continueOnError: false
+
+          - task: PowerShell@2
+            displayName: 'Verify Key Vault Secrets'
+            inputs:
+              targetType: 'inline'
+              script: |
+                Write-Host "Verifying Key Vault configuration..."
+                az keyvault secret list --vault-name kv-hartonomous --query "[].name" -o table
+
+                $requiredSecrets = @(
+                  "AzureAd--TenantId",
+                  "AzureAd--ClientId",
+                  "postgres-connection-localhost",
+                  "postgres-connection-dev",
+                  "postgres-connection-staging",
+                  "postgres-connection-production"
+                )
+
+                $existingSecrets = az keyvault secret list --vault-name kv-hartonomous --query "[].name" -o tsv
+
+                foreach ($secret in $requiredSecrets) {
+                  if ($existingSecrets -notcontains $secret) {
+                    Write-Host "ERROR: Missing required secret: $secret" -ForegroundColor Red
+                    exit 1
+                  }
+                }
+
+                Write-Host "✓ All required secrets present" -ForegroundColor Green
+
   - stage: Build
     displayName: 'Build and Test'
+    dependsOn: Infrastructure
     jobs:
       - job: Build
         displayName: 'Build Solution'
@@ -88,7 +138,9 @@ stages:
 
   - stage: DeployLocalhost
     displayName: 'Deploy to Localhost (Arc Cluster 1)'
-    dependsOn: Build
+    dependsOn:
+      - Infrastructure
+      - Build
     condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
     jobs:
       - deployment: DeployLocalhost
@@ -139,7 +191,9 @@ stages:
 
   - stage: DeployDev
     displayName: 'Deploy to Dev (Arc Cluster 1)'
-    dependsOn: Build
+    dependsOn:
+      - Infrastructure
+      - Build
     condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/develop'))
     jobs:
       - deployment: DeployDev
