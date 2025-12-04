@@ -49,12 +49,20 @@ variables:
   ${{ if eq(parameters.deploymentTarget, 'Default') }}:
     ${{ if eq(parameters.deploymentEnvironment, 'Development') }}:
       deployHost: 'hart-desktop'
-      deployUser: '${{ if eq(parameters.deploymentOS, ''Linux'') }}:www-data${{ else }}:Administrator'
-      deployMethod: '${{ if eq(parameters.deploymentOS, ''Linux'') }}:SSH${{ else }}:WinRM'
+      ${{ if eq(parameters.deploymentOS, 'Linux') }}:
+        deployUser: 'www-data'
+        deployMethod: 'SSH'
+      ${{ else }}:
+        deployUser: 'Administrator'
+        deployMethod: 'WinRM'
     ${{ else }}:
       deployHost: 'hart-server'
-      deployUser: '${{ if eq(parameters.deploymentOS, ''Linux'') }}:www-data${{ else }}:Administrator'
-      deployMethod: '${{ if eq(parameters.deploymentOS, ''Linux'') }}:SSH${{ else }}:WinRM'
+      ${{ if eq(parameters.deploymentOS, 'Linux') }}:
+        deployUser: 'www-data'
+        deployMethod: 'SSH'
+      ${{ else }}:
+        deployUser: 'Administrator'
+        deployMethod: 'WinRM'
   ${{ if eq(parameters.deploymentTarget, 'hart-server-linux') }}:
     deployHost: 'hart-server'
     deployUser: 'www-data'
