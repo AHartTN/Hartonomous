@@ -44,49 +44,28 @@ variables:
   buildConfiguration: 'Release'
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
   DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
-  # Deployment configuration based on target and environment
+  # Azure Arc deployment configuration
+  # Required pipeline variables (set in Azure DevOps):
+  # - DEPLOY_STORAGE_ACCOUNT: Storage account name for deployment artifacts
+  # - DEPLOY_RESOURCE_GROUP: Resource group containing Arc-enabled servers
   # Default: Production/Staging -> HART-SERVER, Development -> HART-DESKTOP
   ${{ if eq(parameters.deploymentTarget, 'Default') }}:
     ${{ if eq(parameters.deploymentEnvironment, 'Development') }}:
       deployHost: 'hart-desktop'
-      ${{ if eq(parameters.deploymentOS, 'Linux') }}:
-        deployUser: 'www-data'
-        deployMethod: 'SSH'
-      ${{ else }}:
-        deployUser: 'Administrator'
-        deployMethod: 'WinRM'
     ${{ else }}:
       deployHost: 'hart-server'
-      ${{ if eq(parameters.deploymentOS, 'Linux') }}:
-        deployUser: 'www-data'
-        deployMethod: 'SSH'
-      ${{ else }}:
-        deployUser: 'Administrator'
-        deployMethod: 'WinRM'
   ${{ if eq(parameters.deploymentTarget, 'hart-server-linux') }}:
     deployHost: 'hart-server'
-    deployUser: 'www-data'
-    deployMethod: 'SSH'
   ${{ if eq(parameters.deploymentTarget, 'hart-server-windows') }}:
     deployHost: 'hart-server'
-    deployUser: 'Administrator'
-    deployMethod: 'WinRM'
   ${{ if eq(parameters.deploymentTarget, 'hart-desktop-linux') }}:
     deployHost: 'hart-desktop'
-    deployUser: 'www-data'
-    deployMethod: 'SSH'
   ${{ if eq(parameters.deploymentTarget, 'hart-desktop-windows') }}:
     deployHost: 'hart-desktop'
-    deployUser: 'Administrator'
-    deployMethod: 'WinRM'
   ${{ if eq(parameters.deploymentTarget, 'azure-linux') }}:
     deployHost: '$(AZURE_LINUX_HOST)'
-    deployUser: 'azureuser'
-    deployMethod: 'SSH'
   ${{ if eq(parameters.deploymentTarget, 'azure-windows') }}:
     deployHost: '$(AZURE_WINDOWS_HOST)'
-    deployUser: 'azureuser'
-    deployMethod: 'WinRM'
 
 stages:
   - stage: Build
@@ -258,7 +237,7 @@ stages:
     condition: and(succeeded(), and(ne('${{ parameters.deploymentTarget }}', 'None'), or(eq('${{ parameters.deploymentTarget }}', 'Default'), eq(variables['Build.SourceBranch'], 'refs/heads/main'))))
     jobs:
       - deployment: DeployLinux
-        displayName: 'Deploy to Linux Server'
+        displayName: 'Deploy to Arc-enabled Linux Server'
         condition: eq('${{ parameters.deploymentOS }}', 'Linux')
         environment: '${{ parameters.deploymentEnvironment }}'
         strategy:
@@ -276,44 +255,90 @@ stages:
                 - download: current
                   artifact: web-drop
                 
-                - task: CopyFilesOverSSH@0
-                  displayName: 'Copy API to Linux Server'
+                - task: AzureCLI@2
+                  displayName: 'Upload Artifacts to Storage'
                   inputs:
-                    sshEndpoint: '$(deployHost)'
-                    sourceFolder: '$(Pipeline.Workspace)/api-drop'
-                    contents: '**'
-                    targetFolder: '/tmp/hartonomous-deploy/api'
-                    cleanTargetFolder: true
+                    azureSubscription: 'Azure-Service-Connection'
+                    scriptType: 'pscore'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      # Create temporary storage container for deployment artifacts
+                      $storageAccount = "$(DEPLOY_STORAGE_ACCOUNT)"
+                      $containerName = "deployments-$(Build.BuildId)"
+                      
+                      # Upload artifacts
+                      az storage container create --name $containerName --account-name $storageAccount --auth-mode login
+                      az storage blob upload-batch --destination $containerName --source "$(Pipeline.Workspace)/api-drop" --destination-path "api" --account-name $storageAccount --auth-mode login
+                      az storage blob upload-batch --destination $containerName --source "$(Pipeline.Workspace)/worker-drop" --destination-path "worker" --account-name $storageAccount --auth-mode login
+                      az storage blob upload-batch --destination $containerName --source "$(Pipeline.Workspace)/web-drop" --destination-path "web" --account-name $storageAccount --auth-mode login
+                      az storage blob upload --container-name $containerName --file "$(Build.SourcesDirectory)/deploy/deploy-app.sh" --name "deploy-app.sh" --account-name $storageAccount --auth-mode login
+                      
+                      # Generate SAS token (1 hour expiry)
+                      $expiry = (Get-Date).AddHours(1).ToString("yyyy-MM-ddTHH:mm:ssZ")
+                      $sasToken = az storage container generate-sas --name $containerName --account-name $storageAccount --permissions r --expiry $expiry --auth-mode login --as-user --output tsv
+                      Write-Host "##vso[task.setvariable variable=DEPLOY_CONTAINER]$containerName"
+                      Write-Host "##vso[task.setvariable variable=DEPLOY_SAS_TOKEN]$sasToken"
                 
-                - task: CopyFilesOverSSH@0
-                  displayName: 'Copy Worker to Linux Server'
+                - task: AzureCLI@2
+                  displayName: 'Deploy via Azure Arc Run Command'
                   inputs:
-                    sshEndpoint: '$(deployHost)'
-                    sourceFolder: '$(Pipeline.Workspace)/worker-drop'
-                    contents: '**'
-                    targetFolder: '/tmp/hartonomous-deploy/worker'
-                    cleanTargetFolder: true
-                
-                - task: CopyFilesOverSSH@0
-                  displayName: 'Copy Web to Linux Server'
-                  inputs:
-                    sshEndpoint: '$(deployHost)'
-                    sourceFolder: '$(Pipeline.Workspace)/web-drop'
-                    contents: '**'
-                    targetFolder: '/tmp/hartonomous-deploy/web'
-                    cleanTargetFolder: true
-                
-                - task: SSH@0
-                  displayName: 'Execute Deployment Script'
-                  inputs:
-                    sshEndpoint: '$(deployHost)'
-                    runOptions: 'inline'
-                    inline: |
+                    azureSubscription: 'Azure-Service-Connection'
+                    scriptType: 'pscore'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      # Execute deployment script via Arc Run Command
+                      $storageAccount = "$(DEPLOY_STORAGE_ACCOUNT)"
+                      $containerName = "$(DEPLOY_CONTAINER)"
+                      $sasToken = "$(DEPLOY_SAS_TOKEN)"
+                      $resourceGroup = "$(DEPLOY_RESOURCE_GROUP)"
+                      $machineName = "$(deployHost)"
+                      
+                      # Create deployment script
+                      $script = @"
+                      #!/bin/bash
+                      set -e
+                      
+                      # Download artifacts from storage
+                      STORAGE_URL="https://$storageAccount.blob.core.windows.net/$containerName"
+                      mkdir -p /tmp/hartonomous-deploy/{api,worker,web}
+                      
+                      # Use Azure CLI with managed identity to download
+                      az login --identity
+                      az storage blob download-batch --source $containerName --destination /tmp/hartonomous-deploy/api --pattern "api/*" --account-name $storageAccount --auth-mode login
+                      az storage blob download-batch --source $containerName --destination /tmp/hartonomous-deploy/worker --pattern "worker/*" --account-name $storageAccount --auth-mode login
+                      az storage blob download-batch --source $containerName --destination /tmp/hartonomous-deploy/web --pattern "web/*" --account-name $storageAccount --auth-mode login
+                      az storage blob download --container-name $containerName --name deploy-app.sh --file /tmp/hartonomous-deploy/deploy-app.sh --account-name $storageAccount --auth-mode login
+                      
+                      # Execute deployment
                       chmod +x /tmp/hartonomous-deploy/deploy-app.sh
-                      sudo /tmp/hartonomous-deploy/deploy-app.sh ${{ parameters.deploymentEnvironment }} all
+                      sudo REMOTE_DEPLOY=false /tmp/hartonomous-deploy/deploy-app.sh ${{ parameters.deploymentEnvironment }} all
+                      
+                      # Cleanup
+                      rm -rf /tmp/hartonomous-deploy
+                      "@
+                      
+                      # Execute via Run Command
+                      az connectedmachine run-command create `
+                        --resource-group $resourceGroup `
+                        --machine-name $machineName `
+                        --name "deploy-${{ parameters.deploymentEnvironment }}-$(Build.BuildId)" `
+                        --script "$script" `
+                        --timeout-in-seconds 1800
+                
+                - task: AzureCLI@2
+                  displayName: 'Cleanup Storage Container'
+                  condition: always()
+                  inputs:
+                    azureSubscription: 'Azure-Service-Connection'
+                    scriptType: 'pscore'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      $storageAccount = "$(DEPLOY_STORAGE_ACCOUNT)"
+                      $containerName = "$(DEPLOY_CONTAINER)"
+                      az storage container delete --name $containerName --account-name $storageAccount --auth-mode login
       
       - deployment: DeployWindows
-        displayName: 'Deploy to Windows Server'
+        displayName: 'Deploy to Arc-enabled Windows Server'
         condition: eq('${{ parameters.deploymentOS }}', 'Windows')
         environment: '${{ parameters.deploymentEnvironment }}'
         strategy:
@@ -331,15 +356,84 @@ stages:
                 - download: current
                   artifact: web-drop
                 
-                - task: PowerShellOnTargetMachines@3
-                  displayName: 'Deploy to Windows Server'
+                - task: AzureCLI@2
+                  displayName: 'Upload Artifacts to Storage'
                   inputs:
-                    Machines: '$(deployHost)'
-                    UserName: '$(deployUser)'
-                    UserPassword: '$(DEPLOY_PASSWORD)'
-                    ScriptType: 'FilePath'
-                    ScriptPath: '$(Build.SourcesDirectory)/deploy/Deploy-App.ps1'
-                    ScriptArguments: '-Environment ${{ parameters.deploymentEnvironment }} -Component all -ApiArtifact "$(Pipeline.Workspace)/api-drop" -WorkerArtifact "$(Pipeline.Workspace)/worker-drop" -WebArtifact "$(Pipeline.Workspace)/web-drop"'
+                    azureSubscription: 'Azure-Service-Connection'
+                    scriptType: 'pscore'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      # Create temporary storage container for deployment artifacts
+                      $storageAccount = "$(DEPLOY_STORAGE_ACCOUNT)"
+                      $containerName = "deployments-$(Build.BuildId)"
+                      
+                      # Upload artifacts
+                      az storage container create --name $containerName --account-name $storageAccount --auth-mode login
+                      az storage blob upload-batch --destination $containerName --source "$(Pipeline.Workspace)/api-drop" --destination-path "api" --account-name $storageAccount --auth-mode login
+                      az storage blob upload-batch --destination $containerName --source "$(Pipeline.Workspace)/worker-drop" --destination-path "worker" --account-name $storageAccount --auth-mode login
+                      az storage blob upload-batch --destination $containerName --source "$(Pipeline.Workspace)/web-drop" --destination-path "web" --account-name $storageAccount --auth-mode login
+                      az storage blob upload --container-name $containerName --file "$(Build.SourcesDirectory)/deploy/Deploy-App.ps1" --name "Deploy-App.ps1" --account-name $storageAccount --auth-mode login
+                      
+                      # Generate SAS token (1 hour expiry)
+                      $expiry = (Get-Date).AddHours(1).ToString("yyyy-MM-ddTHH:mm:ssZ")
+                      $sasToken = az storage container generate-sas --name $containerName --account-name $storageAccount --permissions r --expiry $expiry --auth-mode login --as-user --output tsv
+                      Write-Host "##vso[task.setvariable variable=DEPLOY_CONTAINER]$containerName"
+                      Write-Host "##vso[task.setvariable variable=DEPLOY_SAS_TOKEN]$sasToken"
+                
+                - task: AzureCLI@2
+                  displayName: 'Deploy via Azure Arc Run Command'
+                  inputs:
+                    azureSubscription: 'Azure-Service-Connection'
+                    scriptType: 'pscore'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      # Execute deployment script via Arc Run Command
+                      $storageAccount = "$(DEPLOY_STORAGE_ACCOUNT)"
+                      $containerName = "$(DEPLOY_CONTAINER)"
+                      $sasToken = "$(DEPLOY_SAS_TOKEN)"
+                      $resourceGroup = "$(DEPLOY_RESOURCE_GROUP)"
+                      $machineName = "$(deployHost)"
+                      
+                      # Create deployment script
+                      $script = @"
+                      # Download artifacts from storage
+                      `$storageUrl = "https://$storageAccount.blob.core.windows.net/$containerName"
+                      `$tempPath = "C:\Temp\hartonomous-deploy-$(Build.BuildId)"
+                      New-Item -Path `$tempPath -ItemType Directory -Force | Out-Null
+                      
+                      # Use Azure CLI with managed identity to download
+                      az login --identity
+                      az storage blob download-batch --source $containerName --destination "`$tempPath\api" --pattern "api/*" --account-name $storageAccount --auth-mode login
+                      az storage blob download-batch --source $containerName --destination "`$tempPath\worker" --pattern "worker/*" --account-name $storageAccount --auth-mode login
+                      az storage blob download-batch --source $containerName --destination "`$tempPath\web" --pattern "web/*" --account-name $storageAccount --auth-mode login
+                      az storage blob download --container-name $containerName --name Deploy-App.ps1 --file "`$tempPath\Deploy-App.ps1" --account-name $storageAccount --auth-mode login
+                      
+                      # Execute deployment
+                      & "`$tempPath\Deploy-App.ps1" -Environment "${{ parameters.deploymentEnvironment }}" -Component all -ApiArtifact "`$tempPath\api" -WorkerArtifact "`$tempPath\worker" -WebArtifact "`$tempPath\web"
+                      
+                      # Cleanup
+                      Remove-Item -Path `$tempPath -Recurse -Force
+                      "@
+                      
+                      # Execute via Run Command
+                      az connectedmachine run-command create `
+                        --resource-group $resourceGroup `
+                        --machine-name $machineName `
+                        --name "deploy-${{ parameters.deploymentEnvironment }}-$(Build.BuildId)" `
+                        --script "$script" `
+                        --timeout-in-seconds 1800
+                
+                - task: AzureCLI@2
+                  displayName: 'Cleanup Storage Container'
+                  condition: always()
+                  inputs:
+                    azureSubscription: 'Azure-Service-Connection'
+                    scriptType: 'pscore'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      $storageAccount = "$(DEPLOY_STORAGE_ACCOUNT)"
+                      $containerName = "$(DEPLOY_CONTAINER)"
+                      az storage container delete --name $containerName --account-name $storageAccount --auth-mode login
       - job: PublishAPI
         displayName: 'Publish API'
         steps:
