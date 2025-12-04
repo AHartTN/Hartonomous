@@ -89,7 +89,7 @@ public class ConstantRepository : Repository<Constant>, IConstantRepository
         var constants = await _dbSet
             .Where(c => c.Coordinate != null && c.Status == ConstantStatus.Active)
             .NearestByHilbert(c => c.Coordinate!, center, 10000)
-            .OrderByHilbertDistance(c => c.Coordinate!, center.Coordinate)
+            .OrderByHilbertDistance(c => c.Coordinate!, center)
             .Take(k)
             .ToListAsync(cancellationToken);
         
