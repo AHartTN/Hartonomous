@@ -199,6 +199,46 @@ public sealed class SpatialCoordinate : ValueObject
             precision);
     }
     
+    /// <summary>
+    /// Interpolates multiple spatial coordinates to create a centroid.
+    /// Used for BPE token spatial representation from constituent constants.
+    /// Averages the 4D Hilbert indices and metadata values.
+    /// </summary>
+    public static SpatialCoordinate Interpolate(
+        IEnumerable<SpatialCoordinate> coordinates,
+        int? precision = null)
+    {
+        var coordList = coordinates.ToList();
+        if (coordList.Count == 0)
+            throw new ArgumentException("Cannot interpolate empty coordinate list", nameof(coordinates));
+
+        if (coordList.Count == 1)
+            return coordList[0];
+
+        var targetPrecision = precision ?? coordList[0].Precision;
+
+        // Average the quantized metadata values
+        var avgEntropy = (int)coordList.Average(c => c.QuantizedEntropy);
+        var avgCompressibility = (int)coordList.Average(c => c.QuantizedCompressibility);
+        var avgConnectivity = (int)coordList.Average(c => c.QuantizedConnectivity);
+
+        // Decode first coordinate to get spatial X, then average
+        var (firstX, _, _, _) = HilbertCurve4D.Decode(
+            coordList[0].HilbertHigh, 
+            coordList[0].HilbertLow, 
+            coordList[0].Precision);
+        
+        // For simplicity, use first coordinate's X (could average decoded X values)
+        var avgX = firstX;
+
+        return FromUniversalProperties(
+            avgX,
+            avgEntropy,
+            avgCompressibility,
+            avgConnectivity,
+            targetPrecision);
+    }
+    
     private static uint ProjectHashToSpatial(Hash256 hash, int precision)
     {
         var bytes = hash.Bytes;

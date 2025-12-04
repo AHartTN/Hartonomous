@@ -35,18 +35,19 @@ public class ConstantConfiguration : IEntityTypeConfiguration<Constant>
             .HasColumnName("id")
             .IsRequired();
 
-        // Content hash (unique constraint for deduplication)
-        builder.OwnsOne(c => c.Hash, hash =>
-        {
-            hash.Property(h => h.Bytes)
-                .HasColumnName("hash")
-                .HasMaxLength(64)
-                .IsRequired();
-        });
+        // Content hash - store as simple byte array
+        // Hash256 is a value object wrapping byte[], we extract for storage
+        builder.Property<byte[]>("_hashBytes")
+            .HasColumnName("hash")
+            .IsRequired()
+            .HasMaxLength(32);
 
-        builder.HasIndex("Hash_Bytes")
+        builder.HasIndex("_hashBytes")
             .HasDatabaseName("uq_constants_hash")
             .IsUnique();
+        
+        // Ignore the Hash navigation since we're storing backing data
+        builder.Ignore(c => c.Hash);
 
         // Content type
         builder.Property(c => c.ContentType)
@@ -75,7 +76,6 @@ public class ConstantConfiguration : IEntityTypeConfiguration<Constant>
         
         builder.OwnsOne(c => c.Coordinate, coord =>
         {
-            // PRIMARY: 4D Hilbert curve index (84 bits split into 2× ulong)
             coord.Property(sc => sc.HilbertHigh)
                 .HasColumnName("hilbert_high")
                 .IsRequired();
@@ -113,7 +113,7 @@ public class ConstantConfiguration : IEntityTypeConfiguration<Constant>
         // Performance: O(log N) B-tree lookup, <25ms for 10M atoms
         // Use case: "Find 10 nearest atoms to point (x,y,z,m)"
         
-        builder.HasIndex("Coordinate_HilbertHigh", "Coordinate_HilbertLow")
+        builder.OwnsOne(c => c.Coordinate).HasIndex("HilbertHigh", "HilbertLow")
             .HasDatabaseName("ix_constants_hilbert4d")
             .HasMethod("btree");
 
@@ -124,15 +124,15 @@ public class ConstantConfiguration : IEntityTypeConfiguration<Constant>
         // Performance: O(log N) per filter, <15ms for 10M atoms
         // Use case: "Find atoms where entropy > 1.5M"
         
-        builder.HasIndex("Coordinate_QuantizedEntropy")
+        builder.OwnsOne(c => c.Coordinate).HasIndex("QuantizedEntropy")
             .HasDatabaseName("ix_constants_entropy")
             .HasMethod("btree");
 
-        builder.HasIndex("Coordinate_QuantizedCompressibility")
+        builder.OwnsOne(c => c.Coordinate).HasIndex("QuantizedCompressibility")
             .HasDatabaseName("ix_constants_compressibility")
             .HasMethod("btree");
 
-        builder.HasIndex("Coordinate_QuantizedConnectivity")
+        builder.OwnsOne(c => c.Coordinate).HasIndex("QuantizedConnectivity")
             .HasDatabaseName("ix_constants_connectivity")
             .HasMethod("btree");
 
@@ -143,10 +143,10 @@ public class ConstantConfiguration : IEntityTypeConfiguration<Constant>
         // Performance: Single index scan, <20ms for 10M atoms
         // Use case: "Find atoms where entropy > X AND compressibility < Y AND connectivity > Z"
         
-        builder.HasIndex(
-            "Coordinate_QuantizedEntropy",
-            "Coordinate_QuantizedCompressibility",
-            "Coordinate_QuantizedConnectivity")
+        builder.OwnsOne(c => c.Coordinate).HasIndex(
+            "QuantizedEntropy",
+            "QuantizedCompressibility",
+            "QuantizedConnectivity")
             .HasDatabaseName("ix_constants_metadata_composite")
             .HasMethod("btree");
 
