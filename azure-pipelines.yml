@@ -34,11 +34,17 @@ stages:
                 Write-Host "Build Configuration: $(buildConfiguration)"
                 Write-Host "Working Directory: $(Build.SourcesDirectory)"
                 Write-Host ""
+                Write-Host "PATH Environment Variable:"
+                Write-Host $env:PATH
+                Write-Host ""
                 Write-Host ".NET SDK Version:"
                 dotnet --version
                 Write-Host ""
                 Write-Host ".NET SDKs Installed:"
                 dotnet --list-sdks
+                Write-Host ""
+                Write-Host ".NET Runtimes Installed:"
+                dotnet --list-runtimes
                 Write-Host ""
                 Write-Host "========================================"
 
