@@ -14,6 +14,8 @@ variables:
   buildConfiguration: 'Release'
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
   DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+  keyVaultName: 'hartonomous-kv'
+  certName: 'HartIndustries-CodeSigning'
 
 stages:
   - stage: Build
@@ -22,29 +24,17 @@ stages:
       - job: Build
         displayName: 'Build Solution'
         steps:
-          - task: PowerShell@2
-            displayName: 'Check .NET SDK'
-            inputs:
-              targetType: 'inline'
-              script: |
-                Write-Host "Checking .NET SDK installation..."
-                dotnet --version
-                dotnet --list-sdks
-                Write-Host "Current directory: $(Get-Location)"
-                Write-Host "Files in directory:"
-                Get-ChildItem -Name
-
           - task: DotNetCoreCLI@2
             displayName: 'Restore NuGet Packages'
             inputs:
               command: 'restore'
-              projects: '**/*.sln'
+              projects: 'Hartonomous.sln'
 
           - task: DotNetCoreCLI@2
             displayName: 'Build Solution'
             inputs:
               command: 'build'
-              projects: '**/*.sln'
+              projects: 'Hartonomous.sln'
               arguments: '--configuration $(buildConfiguration) --no-restore'
 
           - task: DotNetCoreCLI@2
@@ -54,3 +44,94 @@ stages:
               projects: '**/*Tests.csproj'
               arguments: '--configuration $(buildConfiguration) --no-build --collect:"XPlat Code Coverage"'
             continueOnError: true
+
+          - task: PublishCodeCoverageResults@2
+            displayName: 'Publish Code Coverage'
+            inputs:
+              summaryFileLocation: '$(Agent.TempDirectory)/**/*.cobertura.xml'
+            condition: succeededOrFailed()
+
+  - stage: Package
+    displayName: 'Create NuGet Packages'
+    dependsOn: Build
+    condition: and(succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/tags/v')))
+    jobs:
+      - job: Pack
+        displayName: 'Pack and Sign NuGet'
+        steps:
+          - task: DotNetCoreCLI@2
+            displayName: 'Pack NuGet Packages'
+            inputs:
+              command: 'pack'
+              packagesToPack: |
+                Hartonomous.Core/Hartonomous.Core.csproj
+                Hartonomous.Data/Hartonomous.Data.csproj
+                Hartonomous.Infrastructure/Hartonomous.Infrastructure.csproj
+              configuration: $(buildConfiguration)
+              packDirectory: '$(Build.ArtifactStagingDirectory)/packages'
+              nobuild: false
+              includesymbols: true
+              includesource: true
+              versioningScheme: 'off'
+
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish NuGet Artifacts'
+            inputs:
+              PathtoPublish: '$(Build.ArtifactStagingDirectory)/packages'
+              ArtifactName: 'nuget-packages'
+
+  - stage: Deploy
+    displayName: 'Deploy Applications'
+    dependsOn: Build
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - job: PublishAPI
+        displayName: 'Publish API'
+        steps:
+          - task: DotNetCoreCLI@2
+            displayName: 'Publish API'
+            inputs:
+              command: 'publish'
+              publishWebProjects: false
+              projects: 'Hartonomous.API/Hartonomous.API.csproj'
+              arguments: '--configuration $(buildConfiguration) --output $(Build.ArtifactStagingDirectory)/api'
+              zipAfterPublish: true
+
+          - task: PublishBuildArtifacts@1
+            inputs:
+              PathtoPublish: '$(Build.ArtifactStagingDirectory)/api'
+              ArtifactName: 'api-drop'
+
+      - job: PublishWorker
+        displayName: 'Publish Worker'
+        steps:
+          - task: DotNetCoreCLI@2
+            displayName: 'Publish Worker'
+            inputs:
+              command: 'publish'
+              publishWebProjects: false
+              projects: 'Hartonomous.Worker/Hartonomous.Worker.csproj'
+              arguments: '--configuration $(buildConfiguration) --output $(Build.ArtifactStagingDirectory)/worker'
+              zipAfterPublish: true
+
+          - task: PublishBuildArtifacts@1
+            inputs:
+              PathtoPublish: '$(Build.ArtifactStagingDirectory)/worker'
+              ArtifactName: 'worker-drop'
+
+      - job: PublishWeb
+        displayName: 'Publish Blazor Web'
+        steps:
+          - task: DotNetCoreCLI@2
+            displayName: 'Publish Web'
+            inputs:
+              command: 'publish'
+              publishWebProjects: false
+              projects: 'Hartonomous.App/Hartonomous.App.Web/Hartonomous.App.Web.csproj'
+              arguments: '--configuration $(buildConfiguration) --output $(Build.ArtifactStagingDirectory)/web'
+              zipAfterPublish: true
+
+          - task: PublishBuildArtifacts@1
+            inputs:
+              PathtoPublish: '$(Build.ArtifactStagingDirectory)/web'
+              ArtifactName: 'web-drop'
