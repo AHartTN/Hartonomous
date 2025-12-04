@@ -184,10 +184,8 @@ public static class HilbertCurve4D
     /// </summary>
     private static uint ApplyGrayCode(uint index, uint state)
     {
-        // For now: simplified implementation without full rotation tables
         // TODO: Implement complete 4D rotation/reflection lookup table
-        
-        // Standard Gray code as starting point
+        // For now: standard Gray code (works, but not optimal for 4D locality)
         return index ^ (index >> 1);
     }
     
@@ -216,8 +214,8 @@ public static class HilbertCurve4D
     /// </summary>
     private static uint UpdateState(uint state, uint index)
     {
-        // Simplified state transition
         // TODO: Implement complete state transition table for 4D
+        // For now: simplified state transition
         return (state + index) % 24;
     }
     
