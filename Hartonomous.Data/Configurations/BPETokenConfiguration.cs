@@ -45,6 +45,28 @@ public class BPETokenConfiguration : IEntityTypeConfiguration<BPEToken>
             .HasColumnName("constant_sequence")
             .HasColumnType("uuid[]")
             .IsRequired();
+        
+        // NEW: Composition geometry (LINESTRINGZM)
+        builder.Property(t => t.CompositionGeometry)
+            .HasColumnName("composition_geometry")
+            .HasColumnType("geometry(LineStringZM, 4326)")
+            .IsRequired(false); // Nullable for backward compatibility
+        
+        // Spatial index for geometric queries
+        builder.HasIndex(t => t.CompositionGeometry)
+            .HasMethod("gist")
+            .HasDatabaseName("ix_bpe_tokens_composition_gist")
+            .HasFilter("composition_geometry IS NOT NULL"); // Partial index
+        
+        // NEW: Path length
+        builder.Property(t => t.PathLength)
+            .HasColumnName("path_length")
+            .HasPrecision(18, 6)
+            .IsRequired(false);
+        
+        builder.HasIndex(t => t.PathLength)
+            .HasDatabaseName("ix_bpe_tokens_path_length")
+            .HasFilter("path_length IS NOT NULL"); // Partial index
 
         builder.Property(t => t.SequenceLength)
             .HasColumnName("sequence_length")
@@ -128,5 +150,12 @@ public class BPETokenConfiguration : IEntityTypeConfiguration<BPEToken>
 
         builder.HasIndex(t => t.IsDeleted)
             .HasDatabaseName("ix_bpe_tokens_is_deleted");
+        
+        // Composite indexes for common queries
+        builder.HasIndex(t => new { t.IsActive, t.Frequency, t.IsDeleted })
+            .HasDatabaseName("ix_bpe_tokens_active_frequency_deleted");
+        
+        builder.HasIndex(t => new { t.MergeLevel, t.SequenceLength, t.IsDeleted })
+            .HasDatabaseName("ix_bpe_tokens_merge_sequence_deleted");
     }
 }

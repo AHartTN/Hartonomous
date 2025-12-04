@@ -1,11 +1,13 @@
 using Hartonomous.Core.Domain.Common;
 using Hartonomous.Core.Domain.ValueObjects;
+using NetTopologySuite.Geometries;
 
 namespace Hartonomous.Core.Domain.Entities;
 
 /// <summary>
 /// Byte Pair Encoding token representing a composition of constants
 /// Learns frequent patterns automatically through BPE algorithm
+/// Stores composition as LINESTRINGZM geometry for spatial queries
 /// </summary>
 public class BPEToken : AggregateRoot
 {
@@ -17,6 +19,12 @@ public class BPEToken : AggregateRoot
     
     /// <summary>Ordered sequence of constant IDs that compose this token</summary>
     public List<Guid> ConstantSequence { get; private set; } = new();
+    
+    /// <summary>LINESTRINGZM geometry representing composition path through 4D space</summary>
+    public LineString? CompositionGeometry { get; private set; }
+    
+    /// <summary>Total geometric length of composition path in 4D space</summary>
+    public double? PathLength { get; private set; }
     
     /// <summary>Total size in bytes of composed constants</summary>
     public int TotalSize { get; private set; }
@@ -64,12 +72,39 @@ public class BPEToken : AggregateRoot
         
         var now = DateTime.UtcNow;
         
+        // Create single-point linestring if constant has location
+        LineString? geometry = null;
+        double? pathLength = null;
+        
+        if (constant.Location != null)
+        {
+            // Single point becomes a degenerate linestring (start = end)
+            var coords = new[] {
+                new CoordinateZM(
+                    constant.Location.X,
+                    constant.Location.Y,
+                    constant.Location.Z,
+                    constant.Location.M
+                ),
+                new CoordinateZM(
+                    constant.Location.X,
+                    constant.Location.Y,
+                    constant.Location.Z,
+                    constant.Location.M
+                )
+            };
+            geometry = new LineString(coords) { SRID = 4326 };
+            pathLength = 0; // Degenerate linestring has zero length
+        }
+        
         var token = new BPEToken
         {
             Id = Guid.NewGuid(),
             TokenId = tokenId,
             Hash = constant.Hash,
             ConstantSequence = new List<Guid> { constant.Id },
+            CompositionGeometry = geometry,
+            PathLength = pathLength,
             TotalSize = constant.Size,
             SequenceLength = 1,
             Frequency = 1,
@@ -119,17 +154,38 @@ public class BPEToken : AggregateRoot
         mergedSequence.AddRange(leftToken.ConstantSequence);
         mergedSequence.AddRange(rightToken.ConstantSequence);
         
+        var constantList = constants.ToList();
+        
         // Compute hash of merged sequence
         var mergedData = new byte[leftToken.TotalSize + rightToken.TotalSize];
         var offset = 0;
         
-        foreach (var constant in constants)
+        foreach (var constant in constantList)
         {
             Array.Copy(constant.Data, 0, mergedData, offset, constant.Data.Length);
             offset += constant.Data.Length;
         }
         
         var hash = Hash256.Compute(mergedData);
+        
+        // Build composition geometry from ordered constants
+        LineString? geometry = null;
+        double? pathLength = null;
+        
+        var constantsWithLocations = constantList.Where(c => c.Location != null).ToList();
+        if (constantsWithLocations.Count >= 2)
+        {
+            var coords = constantsWithLocations.Select(c => new CoordinateZM(
+                c.Location!.X,
+                c.Location.Y,
+                c.Location.Z,
+                c.Location.M
+            )).ToArray();
+            
+            geometry = new LineString(coords) { SRID = 4326 };
+            pathLength = geometry.Length;
+        }
+        
         var now = DateTime.UtcNow;
         
         var token = new BPEToken
@@ -138,6 +194,8 @@ public class BPEToken : AggregateRoot
             TokenId = tokenId,
             Hash = hash,
             ConstantSequence = mergedSequence,
+            CompositionGeometry = geometry,
+            PathLength = pathLength,
             TotalSize = leftToken.TotalSize + rightToken.TotalSize,
             SequenceLength = leftToken.SequenceLength + rightToken.SequenceLength,
             Frequency = frequency,
@@ -151,7 +209,7 @@ public class BPEToken : AggregateRoot
             Version = 1
         };
         
-        foreach (var constant in constants)
+        foreach (var constant in constantList)
         {
             token.Constants.Add(constant);
         }
@@ -181,6 +239,36 @@ public class BPEToken : AggregateRoot
         
         var constantList = constants.ToList();
         var totalSize = constantList.Sum(c => c.Size);
+        
+        // Build composition geometry from ordered constants
+        LineString? geometry = null;
+        double? pathLength = null;
+        
+        var constantsWithLocations = constantList.Where(c => c.Location != null).ToList();
+        if (constantsWithLocations.Count >= 2)
+        {
+            var coords = constantsWithLocations.Select(c => new CoordinateZM(
+                c.Location!.X,
+                c.Location.Y,
+                c.Location.Z,
+                c.Location.M
+            )).ToArray();
+            
+            geometry = new LineString(coords) { SRID = 4326 };
+            pathLength = geometry.Length;
+        }
+        else if (constantsWithLocations.Count == 1)
+        {
+            // Single point - create degenerate linestring
+            var loc = constantsWithLocations[0].Location!;
+            var coords = new[] {
+                new CoordinateZM(loc.X, loc.Y, loc.Z, loc.M),
+                new CoordinateZM(loc.X, loc.Y, loc.Z, loc.M)
+            };
+            geometry = new LineString(coords) { SRID = 4326 };
+            pathLength = 0;
+        }
+        
         var now = DateTime.UtcNow;
         
         var token = new BPEToken
@@ -189,6 +277,8 @@ public class BPEToken : AggregateRoot
             TokenId = tokenId,
             Hash = hash,
             ConstantSequence = new List<Guid>(constantSequence),
+            CompositionGeometry = geometry,
+            PathLength = pathLength,
             TotalSize = totalSize,
             SequenceLength = constantSequence.Count,
             Frequency = 1,
@@ -215,6 +305,56 @@ public class BPEToken : AggregateRoot
         // Assume each constant reference is 16 bytes (Guid), raw size is totalSize
         var compressedSize = sequenceLength * 16;
         return totalSize > 0 ? (double)totalSize / compressedSize : 1.0;
+    }
+    
+    /// <summary>Get start point of composition geometry</summary>
+    public Point? StartPoint => CompositionGeometry?.StartPoint;
+    
+    /// <summary>Get end point of composition geometry</summary>
+    public Point? EndPoint => CompositionGeometry?.EndPoint;
+    
+    /// <summary>Check if token's geometry contains a specific point</summary>
+    public bool ContainsPoint(Point point)
+    {
+        if (CompositionGeometry == null || point == null)
+        {
+            return false;
+        }
+        
+        return CompositionGeometry.Contains(point);
+    }
+    
+    /// <summary>Check if token contains a specific constant by ID</summary>
+    public bool ContainsConstant(Guid constantId)
+    {
+        return ConstantSequence.Contains(constantId);
+    }
+    
+    /// <summary>Compute geometric distance to another token's composition</summary>
+    public double? GeometricDistanceTo(BPEToken other)
+    {
+        if (other == null)
+        {
+            throw new ArgumentNullException(nameof(other));
+        }
+        
+        if (CompositionGeometry == null || other.CompositionGeometry == null)
+        {
+            return null;
+        }
+        
+        return CompositionGeometry.Distance(other.CompositionGeometry);
+    }
+    
+    /// <summary>Check if this token's geometry intersects another's</summary>
+    public bool IntersectsWith(BPEToken other)
+    {
+        if (other?.CompositionGeometry == null || CompositionGeometry == null)
+        {
+            return false;
+        }
+        
+        return CompositionGeometry.Intersects(other.CompositionGeometry);
     }
     
     public void IncrementFrequency()
