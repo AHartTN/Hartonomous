@@ -66,7 +66,7 @@ public class LandmarkRepository : Repository<Landmark>, ILandmarkRepository
         // Two-phase: fast B-tree range query, then exact distance filtering
         return await _dbSet
             .Where(l => l.IsActive && l.Center != null)
-            .GetNearestByHilbertAsync(center, int.MaxValue, l => l.Center!, maxDistance);
+            .WhereHilbertRange(center, maxDistance, maxDistance, maxDistance, maxDistance).OrderByHilbertDistance(center, int.MaxValue).Take(l => l.Center!);
     }
     
     public async Task<IEnumerable<Landmark>> GetActiveLandmarksAsync(CancellationToken cancellationToken = default)
@@ -121,7 +121,7 @@ public class LandmarkRepository : Repository<Landmark>, ILandmarkRepository
         // Hilbert-optimized 1-NN query (100x faster than PostGIS R-tree)
         var landmarks = await _dbSet
             .Where(l => l.IsActive && l.Center != null)
-            .GetNearestByHilbertAsync(coordinate, 1, l => l.Center!);
+            .NearestByHilbert(coordinate, 1, l => l.Center!);
         
         return landmarks.FirstOrDefault();
     }

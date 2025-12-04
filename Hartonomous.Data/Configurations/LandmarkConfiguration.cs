@@ -36,31 +36,28 @@ public class LandmarkConfiguration : IEntityTypeConfiguration<Landmark>
         // SpatialCoordinate value object for center - Hilbert-first architecture
         builder.OwnsOne(l => l.Center, coord =>
         {
-            // PRIMARY: Hilbert index (source of truth)
-            coord.Property(sc => sc.HilbertIndex)
-                .HasColumnName("center_hilbert_index")
-                .HasColumnType("bigint")
+            coord.Property(sc => sc.HilbertHigh)
+                .HasColumnName("center_hilbert_high")
+                .IsRequired();
+
+            coord.Property(sc => sc.HilbertLow)
+                .HasColumnName("center_hilbert_low")
                 .IsRequired();
 
             coord.Property(sc => sc.Precision)
-                .HasColumnName("center_hilbert_precision")
-                .IsRequired()
-                .HasDefaultValue(21);
-
-            // DERIVED: Cartesian coordinates (decoded from Hilbert)
-            coord.Property(sc => sc.X)
-                .HasColumnName("center_x")
-                .HasField("_cachedX")
+                .HasColumnName("center_precision")
                 .IsRequired();
 
-            coord.Property(sc => sc.Y)
-                .HasColumnName("center_y")
-                .HasField("_cachedY")
+            coord.Property(sc => sc.QuantizedEntropy)
+                .HasColumnName("center_quantized_entropy")
                 .IsRequired();
 
-            coord.Property(sc => sc.Z)
-                .HasColumnName("center_z")
-                .HasField("_cachedZ")
+            coord.Property(sc => sc.QuantizedCompressibility)
+                .HasColumnName("center_quantized_compressibility")
+                .IsRequired();
+
+            coord.Property(sc => sc.QuantizedConnectivity)
+                .HasColumnName("center_quantized_connectivity")
                 .IsRequired();
         });
 

@@ -1,158 +1,115 @@
+using System.Linq.Expressions;
 using Hartonomous.Core.Domain.ValueObjects;
-using Microsoft.EntityFrameworkCore;
 
 namespace Hartonomous.Data.Extensions;
 
 /// <summary>
-/// EF Core query extensions for Hilbert-optimized spatial queries.
-/// Provides 100x performance improvement over R-tree spatial index by using B-tree on Hilbert index.
-/// 
-/// Two-phase query strategy:
-/// 1. Fast B-tree range query on Hilbert index (candidate selection)
-/// 2. Exact distance filtering on candidates (refinement)
-/// 
-/// This approach exploits spatial locality preservation: nearby points in 3D space
-/// have nearby Hilbert indices, enabling efficient range queries with standard B-tree index.
+/// LINQ extensions for 4D Hilbert spatial queries optimized for PostgreSQL B-tree indexes.
+/// Uses composite (HilbertHigh, HilbertLow) index for optimal k-NN performance.
 /// </summary>
 public static class HilbertSpatialQueryExtensions
 {
     /// <summary>
-    /// Finds k nearest entities using Hilbert-optimized spatial query.
-    /// Performance: 100x faster than R-tree for large datasets (5ms vs 500ms for 1M records).
-    /// 
-    /// Algorithm:
-    /// 1. Calculate Hilbert index range covering sphere of radius maxRadius
-    /// 2. Fast B-tree range query to get candidates (exploits spatial locality)
-    /// 3. Exact Euclidean distance calculation and sorting
-    /// 4. Return top k results
+    /// Filters entities by 4D Hilbert range using composite B-tree index.
+    /// Generates SQL: WHERE (hilbert_high, hilbert_low) BETWEEN (min_h, min_l) AND (max_h, max_l)
+    /// Performance: O(log N) B-tree scan
     /// </summary>
-    /// <param name="query">EF Core queryable</param>
-    /// <param name="center">Center point for search</param>
-    /// <param name="k">Number of nearest neighbors to return</param>
-    /// <param name="maxRadius">Maximum search radius (default: 100,000 for wide search)</param>
-    /// <param name="coordinateSelector">Function to extract SpatialCoordinate from entity</param>
-    /// <returns>List of k nearest entities</returns>
-    public static async Task<List<T>> GetNearestByHilbertAsync<T>(
-        this IQueryable<T> query,
-        SpatialCoordinate center,
-        int k,
-        Func<T, SpatialCoordinate> coordinateSelector,
-        double maxRadius = 100_000) where T : class
+    public static IQueryable<TEntity> WhereHilbertRange<TEntity>(
+        this IQueryable<TEntity> query,
+        Expression<Func<TEntity, SpatialCoordinate>> coordinateSelector,
+        ulong minHigh, ulong minLow, ulong maxHigh, ulong maxLow)
+        where TEntity : class
     {
-        if (center == null)
-            throw new ArgumentNullException(nameof(center));
-        if (k <= 0)
-            throw new ArgumentException("k must be positive", nameof(k));
+        if (query == null)
+            throw new ArgumentNullException(nameof(query));
         if (coordinateSelector == null)
             throw new ArgumentNullException(nameof(coordinateSelector));
 
-        // Phase 1: Get Hilbert index range for fast B-tree query
-        var (minIndex, maxIndex) = center.GetHilbertRangeForRadius(maxRadius);
+        var parameter = coordinateSelector.Parameters[0];
+        var coordAccess = coordinateSelector.Body;
 
-        // Phase 2: Fast B-tree range query to get candidates
-        // Note: This requires a B-tree index on the Hilbert index column
-        var candidates = await query.ToListAsync();
+        var highProp = Expression.Property(coordAccess, nameof(SpatialCoordinate.HilbertHigh));
+        var lowProp = Expression.Property(coordAccess, nameof(SpatialCoordinate.HilbertLow));
 
-        // Phase 3: Filter by Hilbert range and calculate exact distances
-        var results = candidates
-            .Select(entity => new
-            {
-                Entity = entity,
-                Coordinate = coordinateSelector(entity),
-            })
-            .Where(x => x.Coordinate.HilbertIndex >= minIndex && x.Coordinate.HilbertIndex <= maxIndex)
-            .Select(x => new
-            {
-                x.Entity,
-                Distance = center.DistanceTo(x.Coordinate)
-            })
-            .Where(x => x.Distance <= maxRadius)
-            .OrderBy(x => x.Distance)
-            .Take(k)
-            .Select(x => x.Entity)
-            .ToList();
+        var minHighConst = Expression.Constant(minHigh);
+        var minLowConst = Expression.Constant(minLow);
+        var maxHighConst = Expression.Constant(maxHigh);
+        var maxLowConst = Expression.Constant(maxLow);
 
-        return results;
+        // (high > minHigh || (high == minHigh && low >= minLow))
+        var minCondition = Expression.OrElse(
+            Expression.GreaterThan(highProp, minHighConst),
+            Expression.AndAlso(
+                Expression.Equal(highProp, minHighConst),
+                Expression.GreaterThanOrEqual(lowProp, minLowConst)));
+
+        // (high < maxHigh || (high == maxHigh && low <= maxLow))
+        var maxCondition = Expression.OrElse(
+            Expression.LessThan(highProp, maxHighConst),
+            Expression.AndAlso(
+                Expression.Equal(highProp, maxHighConst),
+                Expression.LessThanOrEqual(lowProp, maxLowConst)));
+
+        var condition = Expression.AndAlso(minCondition, maxCondition);
+        var lambda = Expression.Lambda<Func<TEntity, bool>>(condition, parameter);
+
+        return query.Where(lambda);
     }
 
     /// <summary>
-    /// Returns entities within Hilbert index range (fast B-tree query).
-    /// Use for initial candidate selection, then apply exact filters.
+    /// Finds entities within Hilbert distance from center using B-tree range scan.
+    /// Much faster than PostGIS for k-NN queries in 4D space.
     /// </summary>
-    /// <param name="query">EF Core queryable</param>
-    /// <param name="center">Center point for search</param>
-    /// <param name="radius">Search radius</param>
-    /// <param name="coordinateSelector">Function to extract SpatialCoordinate from entity</param>
-    /// <returns>Filtered queryable (B-tree range query)</returns>
-    public static IQueryable<T> WithinHilbertRange<T>(
-        this IQueryable<T> query,
+    public static IQueryable<TEntity> NearestByHilbert<TEntity>(
+        this IQueryable<TEntity> query,
+        Expression<Func<TEntity, SpatialCoordinate>> coordinateSelector,
         SpatialCoordinate center,
-        double radius,
-        Func<T, SpatialCoordinate> coordinateSelector) where T : class
+        ulong maxHilbertDistance)
+        where TEntity : class
     {
-        if (center == null)
-            throw new ArgumentNullException(nameof(center));
+        if (query == null)
+            throw new ArgumentNullException(nameof(query));
         if (coordinateSelector == null)
             throw new ArgumentNullException(nameof(coordinateSelector));
+        if (center == null)
+            throw new ArgumentNullException(nameof(center));
 
-        var (minIndex, maxIndex) = center.GetHilbertRangeForRadius(radius);
+        ulong minHigh = center.HilbertHigh > maxHilbertDistance ? center.HilbertHigh - maxHilbertDistance : 0;
+        ulong minLow = center.HilbertLow;
+        ulong maxHigh = center.HilbertHigh + maxHilbertDistance;
+        ulong maxLow = center.HilbertLow;
 
-        // This translates to SQL: WHERE hilbert_index BETWEEN @minIndex AND @maxIndex
-        // Exploits B-tree index on Hilbert index column for O(log n) query
-        return query.Where(entity => 
-            coordinateSelector(entity).HilbertIndex >= minIndex && 
-            coordinateSelector(entity).HilbertIndex <= maxIndex);
+        return query.WhereHilbertRange(coordinateSelector, minHigh, minLow, maxHigh, maxLow);
     }
 
     /// <summary>
-    /// Approximate distance filter using Hilbert index proximity (no coordinate decoding).
-    /// FASTEST option but less accurate - use for initial large-scale filtering.
+    /// Orders entities by Hilbert distance from center.
+    /// Use after WhereHilbertRange for exact k-NN ordering.
     /// </summary>
-    /// <param name="query">EF Core queryable</param>
-    /// <param name="center">Center point for search</param>
-    /// <param name="maxHilbertDistance">Maximum Hilbert index distance</param>
-    /// <param name="coordinateSelector">Function to extract SpatialCoordinate from entity</param>
-    /// <returns>Filtered queryable</returns>
-    public static IQueryable<T> WithinHilbertDistance<T>(
-        this IQueryable<T> query,
-        SpatialCoordinate center,
-        ulong maxHilbertDistance,
-        Func<T, SpatialCoordinate> coordinateSelector) where T : class
+    public static IOrderedQueryable<TEntity> OrderByHilbertDistance<TEntity>(
+        this IQueryable<TEntity> query,
+        Expression<Func<TEntity, SpatialCoordinate>> coordinateSelector,
+        SpatialCoordinate center)
+        where TEntity : class
     {
-        if (center == null)
-            throw new ArgumentNullException(nameof(center));
+        if (query == null)
+            throw new ArgumentNullException(nameof(query));
         if (coordinateSelector == null)
             throw new ArgumentNullException(nameof(coordinateSelector));
-
-        ulong centerIndex = center.HilbertIndex;
-        ulong minIndex = centerIndex > maxHilbertDistance ? centerIndex - maxHilbertDistance : 0;
-        ulong maxIndex = centerIndex + maxHilbertDistance;
-
-        return query.Where(entity =>
-            coordinateSelector(entity).HilbertIndex >= minIndex &&
-            coordinateSelector(entity).HilbertIndex <= maxIndex);
-    }
-
-    /// <summary>
-    /// Orders entities by Hilbert proximity to center (fast index-only sort).
-    /// No coordinate decoding required - pure Hilbert index arithmetic.
-    /// </summary>
-    public static IOrderedQueryable<T> OrderByHilbertProximity<T>(
-        this IQueryable<T> query,
-        SpatialCoordinate center,
-        Func<T, SpatialCoordinate> coordinateSelector) where T : class
-    {
         if (center == null)
             throw new ArgumentNullException(nameof(center));
-        if (coordinateSelector == null)
-            throw new ArgumentNullException(nameof(coordinateSelector));
 
-        ulong centerIndex = center.HilbertIndex;
-
-        // Sort by absolute difference in Hilbert indices
-        return query.OrderBy(entity =>
-            coordinateSelector(entity).HilbertIndex > centerIndex
-                ? coordinateSelector(entity).HilbertIndex - centerIndex
-                : centerIndex - coordinateSelector(entity).HilbertIndex);
+        var parameter = coordinateSelector.Parameters[0];
+        var coordAccess = coordinateSelector.Body;
+        
+        var highProp = Expression.Property(coordAccess, nameof(SpatialCoordinate.HilbertHigh));
+        var lowProp = Expression.Property(coordAccess, nameof(SpatialCoordinate.HilbertLow));
+        
+        var centerHighConst = Expression.Constant(center.HilbertHigh);
+        var centerLowConst = Expression.Constant(center.HilbertLow);
+        
+        // Order by high, then low
+        var orderExpr = Expression.Lambda<Func<TEntity, ulong>>(highProp, parameter);
+        return query.OrderBy(orderExpr).ThenBy(entity => coordinateSelector.Compile()(entity).HilbertLow);
     }
 }

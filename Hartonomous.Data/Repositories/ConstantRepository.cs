@@ -57,9 +57,14 @@ public class ConstantRepository : Repository<Constant>, IConstantRepository
         
         // Hilbert-optimized proximity query (100x faster than PostGIS R-tree)
         // Two-phase: fast B-tree range query, then exact distance filtering
+        var (minHigh, minLow, maxHigh, maxLow) = center.GetHilbertRangeForRadius(radius);
+        
         var constants = await _dbSet
             .Where(c => c.Coordinate != null && c.Status == ConstantStatus.Active)
-            .GetNearestByHilbertAsync(center, maxResults, c => c.Coordinate!, radius);
+            .WhereHilbertRange(c => c.Coordinate!, minHigh, minLow, maxHigh, maxLow)
+            .OrderByHilbertDistance(c => c.Coordinate!, center)
+            .Take(maxResults)
+            .ToListAsync(cancellationToken);
         
         return constants;
     }
@@ -83,7 +88,10 @@ public class ConstantRepository : Repository<Constant>, IConstantRepository
         // Two-phase: fast B-tree range query, then exact distance sorting
         var constants = await _dbSet
             .Where(c => c.Coordinate != null && c.Status == ConstantStatus.Active)
-            .GetNearestByHilbertAsync(center, k, c => c.Coordinate!);
+            .NearestByHilbert(c => c.Coordinate!, center, 10000)
+            .OrderByHilbertDistance(c => c.Coordinate!, center.Coordinate)
+            .Take(k)
+            .ToListAsync(cancellationToken);
         
         return constants;
     }
@@ -124,9 +132,9 @@ public class ConstantRepository : Repository<Constant>, IConstantRepository
         }
         
         return await _dbSet
-            .Where(c => c.Coordinate != null && c.Coordinate.HilbertIndex > 0)
-            .Where(c => c.Coordinate!.HilbertIndex >= startId && c.Coordinate!.HilbertIndex <= endId)
-            .OrderBy(c => c.Coordinate!.HilbertIndex)
+            .Where(c => c.Coordinate != null && c.Coordinate.HilbertHigh > 0)
+            .Where(c => c.Coordinate!.HilbertHigh >= startId && c.Coordinate!.HilbertHigh <= endId)
+            .OrderBy(c => c.Coordinate!.HilbertLow)
             .Take(maxResults)
             .ToListAsync(cancellationToken);
     }
