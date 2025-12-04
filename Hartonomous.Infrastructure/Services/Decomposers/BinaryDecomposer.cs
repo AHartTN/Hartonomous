@@ -1,3 +1,4 @@
+using Hartonomous.Core.Application.Interfaces;
 using Hartonomous.Core.Domain.Entities;
 using Hartonomous.Core.Domain.Enums;
 using Hartonomous.Core.Domain.ValueObjects;

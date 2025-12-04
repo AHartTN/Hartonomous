@@ -228,7 +228,7 @@ public class BPEService : IBPEService
 
             _logger.LogInformation(
                 "BPE vocabulary learning complete: {TokenCount} tokens learned, min frequency {MinFreq}, max merge level {MaxLevel}",
-                learnedTokens.Count, minFrequency, learnedTokens.Max(t => t.MergeLevel));
+                learnedTokens.Count, minFrequency, learnedTokens.Any() ? learnedTokens.Max(t => t.MergeLevel) : 0);
             
             // Invalidate cache to reload with new tokens
             _vocabularyLoaded = false;

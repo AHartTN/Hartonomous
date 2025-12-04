@@ -40,4 +40,5 @@
   <Project Path="Hartonomous.API.Tests/Hartonomous.API.Tests.csproj" />
   <Project Path="Hartonomous.Core.Tests/Hartonomous.Core.Tests.csproj" />
   <Project Path="Hartonomous.Data.Tests/Hartonomous.Data.Tests.csproj" />
+  <Project Path="Hartonomous.Infrastructure.Tests/Hartonomous.Infrastructure.Tests.csproj" />
 </Solution>
