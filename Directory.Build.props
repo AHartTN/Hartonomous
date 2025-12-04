@@ -1,59 +1,144 @@
 <Project>
-  <PropertyGroup>
-    <!-- Common output base directory -->
-    <BaseOutputPath>$(SolutionDir)artifacts\</BaseOutputPath>
-    <BaseIntermediateOutputPath>$(SolutionDir)obj\</BaseIntermediateOutputPath>
-    
-    <!-- Environment-specific output paths -->
-    <OutputPath Condition="'$(Configuration)' == 'Debug' OR '$(Configuration)' == 'Local'">$(BaseOutputPath)local\$(MSBuildProjectName)\</OutputPath>
-    <OutputPath Condition="'$(Configuration)' == 'Dev'">$(BaseOutputPath)dev\$(MSBuildProjectName)\</OutputPath>
-    <OutputPath Condition="'$(Configuration)' == 'Staging'">$(BaseOutputPath)staging\$(MSBuildProjectName)\</OutputPath>
-    <OutputPath Condition="'$(Configuration)' == 'Release' OR '$(Configuration)' == 'Production'">$(BaseOutputPath)production\$(MSBuildProjectName)\</OutputPath>
-    
-    <!-- Intermediate output -->
-    <IntermediateOutputPath>$(BaseIntermediateOutputPath)$(Configuration)\$(MSBuildProjectName)\</IntermediateOutputPath>
-    
-    <!-- Package output -->
+  
+  <!-- ======================================
+       Company and Product Information
+       ====================================== -->
+  <PropertyGroup Label="Company">
+    <Company>Hart Industries</Company>
+    <Copyright>Copyright © 2025 Anthony Hart. All Rights Reserved.</Copyright>
+    <Product>Hartonomous Atomic Content-Addressable Storage</Product>
+    <Authors>Anthony Hart</Authors>
+  </PropertyGroup>
+
+  <!-- ======================================
+       Versioning
+       ====================================== -->
+  <PropertyGroup Label="Versioning">
+    <VersionPrefix>1.0.0</VersionPrefix>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+  </PropertyGroup>
+
+  <!-- ======================================
+       Language and Code Quality
+       ====================================== -->
+  <PropertyGroup Label="Language">
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <WarningLevel>6</WarningLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisMode>AllEnabledByDefault</AnalysisMode>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn> <!-- Missing XML comments -->
+  </PropertyGroup>
+
+  <!-- ======================================
+       Build Artifacts Structure
+       ====================================== -->
+  <PropertyGroup Label="Output">
+    <BaseOutputPath>$(MSBuildThisFileDirectory)artifacts\</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)obj\</BaseIntermediateOutputPath>
     <PackageOutputPath>$(BaseOutputPath)packages\</PackageOutputPath>
   </PropertyGroup>
 
-  <PropertyGroup>
-    <!-- Environment detection -->
+  <!-- ======================================
+       Environment Detection and Configuration
+       ====================================== -->
+  <PropertyGroup Label="Environment">
+    <!-- Detect environment from Configuration -->
     <EnvironmentName Condition="'$(Configuration)' == 'Debug' OR '$(Configuration)' == 'Local'">Local</EnvironmentName>
     <EnvironmentName Condition="'$(Configuration)' == 'Dev'">Development</EnvironmentName>
     <EnvironmentName Condition="'$(Configuration)' == 'Staging'">Staging</EnvironmentName>
     <EnvironmentName Condition="'$(Configuration)' == 'Release' OR '$(Configuration)' == 'Production'">Production</EnvironmentName>
-    
-    <!-- Default to Local if not set -->
     <EnvironmentName Condition="'$(EnvironmentName)' == ''">Local</EnvironmentName>
+    
+    <!-- Configuration-specific output paths -->
+    <OutputPath>$(BaseOutputPath)$(EnvironmentName)\$(MSBuildProjectName)\</OutputPath>
+    <IntermediateOutputPath>$(BaseIntermediateOutputPath)$(Configuration)\$(MSBuildProjectName)\</IntermediateOutputPath>
   </PropertyGroup>
 
-  <!-- Configuration-specific settings -->
+  <!-- ======================================
+       Debug/Local Configuration
+       ====================================== -->
   <PropertyGroup Condition="'$(Configuration)' == 'Debug' OR '$(Configuration)' == 'Local'">
-    <DefineConstants>$(DefineConstants);LOCAL</DefineConstants>
+    <DefineConstants>$(DefineConstants);DEBUG;TRACE;LOCAL</DefineConstants>
     <Optimize>false</Optimize>
-    <DebugType>full</DebugType>
+    <DebugType>embedded</DebugType>
     <DebugSymbols>true</DebugSymbols>
   </PropertyGroup>
 
+  <!-- ======================================
+       Development Configuration
+       ====================================== -->
   <PropertyGroup Condition="'$(Configuration)' == 'Dev'">
-    <DefineConstants>$(DefineConstants);DEV</DefineConstants>
+    <DefineConstants>$(DefineConstants);TRACE;DEV</DefineConstants>
     <Optimize>false</Optimize>
-    <DebugType>portable</DebugType>
+    <DebugType>embedded</DebugType>
     <DebugSymbols>true</DebugSymbols>
   </PropertyGroup>
 
+  <!-- ======================================
+       Staging Configuration
+       ====================================== -->
   <PropertyGroup Condition="'$(Configuration)' == 'Staging'">
-    <DefineConstants>$(DefineConstants);STAGING</DefineConstants>
+    <DefineConstants>$(DefineConstants);TRACE;STAGING</DefineConstants>
     <Optimize>true</Optimize>
-    <DebugType>portable</DebugType>
+    <DebugType>embedded</DebugType>
     <DebugSymbols>true</DebugSymbols>
   </PropertyGroup>
 
+  <!-- ======================================
+       Production/Release Configuration
+       ====================================== -->
   <PropertyGroup Condition="'$(Configuration)' == 'Release' OR '$(Configuration)' == 'Production'">
-    <DefineConstants>$(DefineConstants);PRODUCTION</DefineConstants>
+    <DefineConstants>$(DefineConstants);TRACE;PRODUCTION</DefineConstants>
     <Optimize>true</Optimize>
-    <DebugType>none</DebugType>
-    <DebugSymbols>false</DebugSymbols>
+    <DebugType>embedded</DebugType>
+    <DebugSymbols>true</DebugSymbols>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
   </PropertyGroup>
+
+  <!-- ======================================
+       Deterministic and CI Builds
+       ====================================== -->
+  <PropertyGroup Label="CI">
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true' or '$(TF_BUILD)' == 'True'">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+  <!-- ======================================
+       NuGet Package Configuration
+       ====================================== -->
+  <PropertyGroup Label="NuGet" Condition="'$(IsPackable)' == 'true'">
+    <PackageProjectUrl>https://dev.azure.com/aharttn/Hartonomous</PackageProjectUrl>
+    <PackageLicenseExpression>Proprietary</PackageLicenseExpression>
+    <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
+    <RepositoryUrl>https://dev.azure.com/aharttn/Hartonomous/_git/Hartonomous</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+  <!-- ======================================
+       Common Package References
+       ====================================== -->
+  <ItemGroup Label="Code Analysis">
+    <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="9.0.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup Label="Source Link" Condition="'$(IsPackable)' == 'true'">
+    <PackageReference Include="Microsoft.SourceLink.AzureRepos.Git" Version="8.0.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
 </Project>

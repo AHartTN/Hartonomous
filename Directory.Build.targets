@@ -39,4 +39,51 @@
     <None Include="$(MSBuildThisFileDirectory)LICENSE" Pack="true" PackagePath=""/>
     <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath=""/>
   </ItemGroup>
+
+  <!-- ======================================
+       Post-Build Customizations and Targets
+       Imported after all other build logic
+       ====================================== -->
+
+  <!-- ======================================
+       Build Information Display
+       ====================================== -->
+  <Target Name="DisplayBuildInfo" BeforeTargets="Build">
+    <Message Importance="high" Text="========================================" />
+    <Message Importance="high" Text="Building: $(MSBuildProjectName)" />
+    <Message Importance="high" Text="Configuration: $(Configuration)" />
+    <Message Importance="high" Text="Environment: $(EnvironmentName)" />
+    <Message Importance="high" Text="Framework: $(TargetFramework)" />
+    <Message Importance="high" Text="Output: $(OutputPath)" />
+    <Message Importance="high" Text="========================================" />
+  </Target>
+
+  <!-- ======================================
+       Clean Build Artifacts
+       ====================================== -->
+  <Target Name="CleanArtifacts" AfterTargets="Clean">
+    <Message Importance="high" Text="Cleaning build artifacts for $(MSBuildProjectName)..." />
+    <RemoveDir Directories="$(BaseIntermediateOutputPath)$(MSBuildProjectName)" />
+    <RemoveDir Directories="$(OutputPath)" />
+  </Target>
+
+  <!-- ======================================
+       Validate Configuration
+       ====================================== -->
+  <Target Name="ValidateConfiguration" BeforeTargets="BeforeBuild">
+    <Error Condition="'$(Configuration)' == ''" Text="Configuration property is not set" />
+    <Error Condition="'$(TargetFramework)' == ''" Text="TargetFramework property is not set" />
+  </Target>
+
+  <!-- ======================================
+       Display Package Information (Packable Projects)
+       ====================================== -->
+  <Target Name="DisplayPackageInfo" AfterTargets="Pack" Condition="'$(IsPackable)' == 'true'">
+    <Message Importance="high" Text="========================================" />
+    <Message Importance="high" Text="Package Created: $(PackageId)" />
+    <Message Importance="high" Text="Version: $(PackageVersion)" />
+    <Message Importance="high" Text="Output: $(PackageOutputPath)" />
+    <Message Importance="high" Text="========================================" />
+  </Target>
+
 </Project>
