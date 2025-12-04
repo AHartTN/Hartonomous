@@ -12,91 +12,90 @@ pool:
 variables:
   - group: AzureDevOps-Secrets  # Create this variable group with AZURE_DEVOPS_PAT
 
-steps:
-  - checkout: self
-    persistCredentials: true
-    displayName: 'Checkout Repository'
+jobs:
+  - job: PublishDocs
+    displayName: 'Publish Documentation'
+    steps:
+      - checkout: self
+        persistCredentials: true
+        displayName: 'Checkout Repository'
 
-  - task: AzureCLI@2
-    inputs:
-      azureSubscription: 'Azure-Service-Connection'  # Configure this
-      scriptType: 'bash'
-      scriptLocation: 'inlineScript'
-      inlineScript: |
-        # Install Azure DevOps extension
-        az extension add --name azure-devops --only-show-errors
-        
-        # Configure defaults
-        az devops configure --defaults \
-          organization=$(System.CollectionUri) \
-          project=$(System.TeamProject)
-    displayName: 'Setup Azure CLI'
+      - task: AzureCLI@2
+        inputs:
+          azureSubscription: 'Azure-Service-Connection'  # Configure this
+          scriptType: 'bash'
+          scriptLocation: 'inlineScript'
+          inlineScript: |
+            # Install Azure DevOps extension
+            az extension add --name azure-devops --only-show-errors
+            
+            # Configure defaults
+            az devops configure --defaults \
+              organization=$(System.CollectionUri) \
+              project=$(System.TeamProject)
+        displayName: 'Setup Azure CLI'
 
-  - task: PowerShell@2
-    inputs:
-      targetType: 'filePath'
-      filePath: '$(Build.SourcesDirectory)/docs/scripts/sync-to-wiki.ps1'
-      arguments: >
-        -Organization "$(System.CollectionUri)"
-        -Project "$(System.TeamProject)"
-        -PAT "$(AZURE_DEVOPS_PAT)"
-    displayName: 'Sync Documentation to Wiki'
-    env:
-      AZURE_DEVOPS_EXT_PAT: $(AZURE_DEVOPS_PAT)
+      - task: PowerShell@2
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(Build.SourcesDirectory)/docs/scripts/sync-to-wiki.ps1'
+          arguments: >
+            -Organization "$(System.CollectionUri)"
+            -Project "$(System.TeamProject)"
+            -PAT "$(AZURE_DEVOPS_PAT)"
+        displayName: 'Sync Documentation to Wiki'
+        env:
+          AZURE_DEVOPS_EXT_PAT: $(AZURE_DEVOPS_PAT)
 
-  - task: PowerShell@2
-    inputs:
-      targetType: 'inline'
-      script: |
-        $env:AZURE_DEVOPS_EXT_PAT = "$(AZURE_DEVOPS_PAT)"
-        
-        # Create release note in Wiki
-        $releaseNote = @"
-        # Release $(Build.BuildNumber)
-        
-        ## Documentation Updates
-        
-        - Build: $(Build.BuildNumber)
-        - Commit: $(Build.SourceVersion)
-        - Date: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
-        - Branch: $(Build.SourceBranchName)
-        
-        ## Changes
-        
-        $(git log --pretty=format:"- %s (%an)" $(Build.SourceVersion)~5..$(Build.SourceVersion) -- docs/)
-        
-        ## Build Details
-        
-        [View Build]($(System.TeamFoundationCollectionUri)$(System.TeamProject)/_build/results?buildId=$(Build.BuildId))
-        "@
-        
-        # Save to file
-        $releaseNote | Out-File -FilePath release-note.md -Encoding UTF8
-        
-        # Create wiki page
-        az devops wiki page create `
-          --path "/Release-Notes/$(Build.BuildNumber)" `
-          --file-path release-note.md `
-          --org "$(System.CollectionUri)" `
-          --project "$(System.TeamProject)"
-    displayName: 'Create Release Note in Wiki'
-    env:
-      AZURE_DEVOPS_EXT_PAT: $(AZURE_DEVOPS_PAT)
-    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+      - task: PowerShell@2
+        inputs:
+          targetType: 'inline'
+          script: |
+            $env:AZURE_DEVOPS_EXT_PAT = "$(AZURE_DEVOPS_PAT)"
+            
+            # Create release note in Wiki
+            $releaseNote = @"
+            # Release $(Build.BuildNumber)
+            
+            ## Documentation Updates
+            
+            - Build: $(Build.BuildNumber)
+            - Commit: $(Build.SourceVersion)
+            - Date: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+            - Branch: $(Build.SourceBranchName)
+            
+            ## Build Details
+            
+            [View Build]($(System.TeamFoundationCollectionUri)$(System.TeamProject)/_build/results?buildId=$(Build.BuildId))
+            "@
+            
+            # Save to file
+            $releaseNote | Out-File -FilePath release-note.md -Encoding UTF8
+            
+            # Create wiki page
+            az devops wiki page create `
+              --path "/Release-Notes/$(Build.BuildNumber)" `
+              --file-path release-note.md `
+              --org "$(System.CollectionUri)" `
+              --project "$(System.TeamProject)"
+        displayName: 'Create Release Note in Wiki'
+        env:
+          AZURE_DEVOPS_EXT_PAT: $(AZURE_DEVOPS_PAT)
+        condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
 
-  - task: PowerShell@2
-    inputs:
-      targetType: 'inline'
-      script: |
-        Write-Host "================================================================" -ForegroundColor Cyan
-        Write-Host " Documentation Published Successfully!" -ForegroundColor Green
-        Write-Host "================================================================" -ForegroundColor Cyan
-        Write-Host ""
-        Write-Host "Wiki URL:" -ForegroundColor Yellow
-        Write-Host "$(System.CollectionUri)$(System.TeamProject)/_wiki/wikis/Hartonomous-Documentation" -ForegroundColor White
-        Write-Host ""
-        Write-Host "Build: $(Build.BuildNumber)" -ForegroundColor Gray
-        Write-Host "Commit: $(Build.SourceVersion)" -ForegroundColor Gray
-        Write-Host ""
-    displayName: 'Publish Summary'
-    condition: succeeded()
+      - task: PowerShell@2
+        inputs:
+          targetType: 'inline'
+          script: |
+            Write-Host "================================================================" -ForegroundColor Cyan
+            Write-Host " Documentation Published Successfully!" -ForegroundColor Green
+            Write-Host "================================================================" -ForegroundColor Cyan
+            Write-Host ""
+            Write-Host "Wiki URL:" -ForegroundColor Yellow
+            Write-Host "$(System.CollectionUri)$(System.TeamProject)/_wiki/wikis/Hartonomous-Documentation" -ForegroundColor White
+            Write-Host ""
+            Write-Host "Build: $(Build.BuildNumber)" -ForegroundColor Gray
+            Write-Host "Commit: $(Build.SourceVersion)" -ForegroundColor Gray
+            Write-Host ""
+        displayName: 'Publish Summary'
+        condition: succeeded()
