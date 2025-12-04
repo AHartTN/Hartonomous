@@ -243,6 +243,78 @@ stages:
                 - checkout: self
                 
                 - task: AzureCLI@2
+                  displayName: 'Setup Infrastructure (systemd services)'
+                  inputs:
+                    azureSubscription: 'Azure-Service-Connection'
+                    scriptType: 'pscore'
+                    scriptLocation: 'inlineScript'
+                    addSpnToEnvironment: true
+                    inlineScript: |
+                      $setupScript = Get-Content "$(Build.SourcesDirectory)/deploy/setup-systemd-services.sh" -Raw
+                      
+                      az connectedmachine run-command create `
+                        --resource-group rg-hartonomous `
+                        --machine-name "$(deployHost)" `
+                        --name "setup-systemd-${{ parameters.deploymentEnvironment }}-$(Build.BuildId)" `
+                        --script "$setupScript ${{ parameters.deploymentEnvironment }}" `
+                        --timeout-in-seconds 600
+                
+                - task: AzureCLI@2
+                  displayName: 'Setup Infrastructure (nginx reverse proxy)'
+                  inputs:
+                    azureSubscription: 'Azure-Service-Connection'
+                    scriptType: 'pscore'
+                    scriptLocation: 'inlineScript'
+                    addSpnToEnvironment: true
+                    inlineScript: |
+                      $setupScript = Get-Content "$(Build.SourcesDirectory)/deploy/setup-nginx-config.sh" -Raw
+                      
+                      az connectedmachine run-command create `
+                        --resource-group rg-hartonomous `
+                        --machine-name "$(deployHost)" `
+                        --name "setup-nginx-${{ parameters.deploymentEnvironment }}-$(Build.BuildId)" `
+                        --script "$setupScript ${{ parameters.deploymentEnvironment }}" `
+                        --timeout-in-seconds 600
+                
+                - task: AzureCLI@2
+                  displayName: 'Validate Infrastructure'
+                  inputs:
+                    azureSubscription: 'Azure-Service-Connection'
+                    scriptType: 'pscore'
+                    scriptLocation: 'inlineScript'
+                    addSpnToEnvironment: true
+                    inlineScript: |
+                      $validationScript = @"
+                      #!/bin/bash
+                      set -e
+                      
+                      echo "Validating infrastructure for ${{ parameters.deploymentEnvironment }}..."
+                      
+                      # Check systemd services exist
+                      systemctl list-unit-files | grep hartonomous-api-${{ parameters.deploymentEnvironment }} || exit 1
+                      systemctl list-unit-files | grep hartonomous-worker-${{ parameters.deploymentEnvironment }} || exit 1
+                      systemctl list-unit-files | grep hartonomous-web-${{ parameters.deploymentEnvironment }} || exit 1
+                      
+                      # Check nginx configuration
+                      nginx -t || exit 1
+                      
+                      # Check directories exist
+                      test -d /srv/www/${{ parameters.deploymentEnvironment }} || exit 1
+                      test -d /srv/www/${{ parameters.deploymentEnvironment }}/api || exit 1
+                      test -d /srv/www/${{ parameters.deploymentEnvironment }}/worker || exit 1
+                      test -d /srv/www/${{ parameters.deploymentEnvironment }}/web || exit 1
+                      
+                      echo "✓ Infrastructure validation passed"
+                      "@
+                      
+                      az connectedmachine run-command create `
+                        --resource-group rg-hartonomous `
+                        --machine-name "$(deployHost)" `
+                        --name "validate-infra-${{ parameters.deploymentEnvironment }}-$(Build.BuildId)" `
+                        --script "$validationScript" `
+                        --timeout-in-seconds 300
+                
+                - task: AzureCLI@2
                   displayName: 'Deploy via Azure Arc Run Command'
                   inputs:
                     azureSubscription: 'Azure-Service-Connection'
@@ -313,6 +385,76 @@ stages:
             deploy:
               steps:
                 - checkout: self
+                
+                - task: AzureCLI@2
+                  displayName: 'Setup Infrastructure (IIS)'
+                  inputs:
+                    azureSubscription: 'Azure-Service-Connection'
+                    scriptType: 'pscore'
+                    scriptLocation: 'inlineScript'
+                    addSpnToEnvironment: true
+                    inlineScript: |
+                      $setupScript = Get-Content "$(Build.SourcesDirectory)/deploy/Setup-IIS-Infrastructure.ps1" -Raw
+                      
+                      az connectedmachine run-command create `
+                        --resource-group rg-hartonomous `
+                        --machine-name "$(deployHost)" `
+                        --name "setup-iis-${{ parameters.deploymentEnvironment }}-$(Build.BuildId)" `
+                        --script "$setupScript -Environment ${{ parameters.deploymentEnvironment }}" `
+                        --timeout-in-seconds 600
+                
+                - task: AzureCLI@2
+                  displayName: 'Validate Infrastructure'
+                  inputs:
+                    azureSubscription: 'Azure-Service-Connection'
+                    scriptType: 'pscore'
+                    scriptLocation: 'inlineScript'
+                    addSpnToEnvironment: true
+                    inlineScript: |
+                      $validationScript = @"
+                      Import-Module WebAdministration
+                      
+                      Write-Host "Validating infrastructure for ${{ parameters.deploymentEnvironment }}..."
+                      
+                      # Check IIS app pools exist
+                      if (-not (Test-Path "IIS:\AppPools\Hartonomous.API.${{ parameters.deploymentEnvironment }}")) {
+                          Write-Error "API app pool not found"
+                          exit 1
+                      }
+                      if (-not (Test-Path "IIS:\AppPools\Hartonomous.Web.${{ parameters.deploymentEnvironment }}")) {
+                          Write-Error "Web app pool not found"
+                          exit 1
+                      }
+                      
+                      # Check IIS sites exist
+                      if (-not (Test-Path "IIS:\Sites\Hartonomous.API.${{ parameters.deploymentEnvironment }}")) {
+                          Write-Error "API site not found"
+                          exit 1
+                      }
+                      if (-not (Test-Path "IIS:\Sites\Hartonomous.Web.${{ parameters.deploymentEnvironment }}")) {
+                          Write-Error "Web site not found"
+                          exit 1
+                      }
+                      
+                      # Check directories exist
+                      if (-not (Test-Path "C:\inetpub\wwwroot\hartonomous\${{ parameters.deploymentEnvironment }}")) {
+                          Write-Error "Deploy directory not found"
+                          exit 1
+                      }
+                      if (-not (Test-Path "C:\Services\Hartonomous\${{ parameters.deploymentEnvironment }}")) {
+                          Write-Error "Services directory not found"
+                          exit 1
+                      }
+                      
+                      Write-Host "✓ Infrastructure validation passed"
+                      "@
+                      
+                      az connectedmachine run-command create `
+                        --resource-group rg-hartonomous `
+                        --machine-name "$(deployHost)" `
+                        --name "validate-infra-${{ parameters.deploymentEnvironment }}-$(Build.BuildId)" `
+                        --script "$validationScript" `
+                        --timeout-in-seconds 300
                 
                 - task: AzureCLI@2
                   displayName: 'Deploy via Azure Arc Run Command'
