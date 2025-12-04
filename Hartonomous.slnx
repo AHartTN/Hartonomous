@@ -9,7 +9,7 @@
   
   <!-- API & Services -->
   <Folder Name="/Services/">
-    <Project Path="Hartonomous.API/Hartonomous.API.csproj" />
+    <Project Path="Hartonomous.Api/Hartonomous.Api.csproj" />
     <Project Path="Hartonomous.Worker/Hartonomous.Worker.csproj" />
   </Folder>
   

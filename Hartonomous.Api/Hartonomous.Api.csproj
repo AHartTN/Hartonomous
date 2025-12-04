@@ -4,6 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <UserSecretsId>aspnet-Hartonomous.API-68cd3fc5-1e09-4da5-8252-cffaf064ea38</UserSecretsId>
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+    <IsPackable>false</IsPackable>
   </PropertyGroup>
 
   <ItemGroup>

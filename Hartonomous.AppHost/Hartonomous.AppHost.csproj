@@ -6,6 +6,7 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <UserSecretsId>486ccbcc-d012-4ff4-835c-170125356aad</UserSecretsId>
+    <IsPackable>false</IsPackable>
   </PropertyGroup>
 
   <ItemGroup>
@@ -14,7 +15,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Hartonomous.API\Hartonomous.API.csproj" />
+    <ProjectReference Include="..\Hartonomous.Api\Hartonomous.Api.csproj" />
     <ProjectReference Include="..\Hartonomous.App\Hartonomous.App\Hartonomous.App.csproj" />
     <ProjectReference Include="..\Hartonomous.App\Hartonomous.App.Web\Hartonomous.App.Web.csproj" />
     <ProjectReference Include="..\Hartonomous.Worker\Hartonomous.Worker.csproj" />
