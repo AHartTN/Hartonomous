@@ -69,21 +69,21 @@ stages:
             inputs:
               command: 'build'
               projects: 'Hartonomous.Core/Hartonomous.Core.csproj'
-              arguments: '--configuration $(buildConfiguration) --no-restore'
+              arguments: '--configuration $(buildConfiguration) --no-restore -p:GeneratePackageOnBuild=false'
 
           - task: DotNetCoreCLI@2
             displayName: 'Build Data'
             inputs:
               command: 'build'
               projects: 'Hartonomous.Data/Hartonomous.Data.csproj'
-              arguments: '--configuration $(buildConfiguration) --no-restore'
+              arguments: '--configuration $(buildConfiguration) --no-restore -p:GeneratePackageOnBuild=false'
 
           - task: DotNetCoreCLI@2
             displayName: 'Build Infrastructure'
             inputs:
               command: 'build'
               projects: 'Hartonomous.Infrastructure/Hartonomous.Infrastructure.csproj'
-              arguments: '--configuration $(buildConfiguration) --no-restore'
+              arguments: '--configuration $(buildConfiguration) --no-restore -p:GeneratePackageOnBuild=false'
 
           - task: DotNetCoreCLI@2
             displayName: 'Build API'
