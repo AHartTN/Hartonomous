@@ -22,47 +22,37 @@ stages:
       - job: Build
         displayName: 'Build Solution (Server Projects)'
         steps:
-          - task: DotNetCoreCLI@2
-            displayName: 'Restore Core Library'
+          - task: PowerShell@2
+            displayName: 'Display Environment Info'
             inputs:
-              command: 'restore'
-              projects: 'Hartonomous.Core/Hartonomous.Core.csproj'
+              targetType: 'inline'
+              script: |
+                Write-Host "========================================"
+                Write-Host "Environment Information"
+                Write-Host "========================================"
+                Write-Host "Agent: $env:AGENT_NAME"
+                Write-Host "Build Configuration: $(buildConfiguration)"
+                Write-Host "Working Directory: $(Build.SourcesDirectory)"
+                Write-Host ""
+                Write-Host ".NET SDK Version:"
+                dotnet --version
+                Write-Host ""
+                Write-Host ".NET SDKs Installed:"
+                dotnet --list-sdks
+                Write-Host ""
+                Write-Host "========================================"
 
           - task: DotNetCoreCLI@2
-            displayName: 'Restore Data Library'
+            displayName: 'Restore All Server Projects'
             inputs:
               command: 'restore'
-              projects: 'Hartonomous.Data/Hartonomous.Data.csproj'
-
-          - task: DotNetCoreCLI@2
-            displayName: 'Restore Infrastructure Library'
-            inputs:
-              command: 'restore'
-              projects: 'Hartonomous.Infrastructure/Hartonomous.Infrastructure.csproj'
-
-          - task: DotNetCoreCLI@2
-            displayName: 'Restore API'
-            inputs:
-              command: 'restore'
-              projects: 'Hartonomous.API/Hartonomous.API.csproj'
-
-          - task: DotNetCoreCLI@2
-            displayName: 'Restore Worker'
-            inputs:
-              command: 'restore'
-              projects: 'Hartonomous.Worker/Hartonomous.Worker.csproj'
-
-          - task: DotNetCoreCLI@2
-            displayName: 'Restore Web Client'
-            inputs:
-              command: 'restore'
-              projects: 'Hartonomous.App/Hartonomous.App.Web.Client/Hartonomous.App.Web.Client.csproj'
-
-          - task: DotNetCoreCLI@2
-            displayName: 'Restore Web'
-            inputs:
-              command: 'restore'
-              projects: 'Hartonomous.App/Hartonomous.App.Web/Hartonomous.App.Web.csproj'
+              projects: |
+                Hartonomous.Core/Hartonomous.Core.csproj
+                Hartonomous.Data/Hartonomous.Data.csproj
+                Hartonomous.Infrastructure/Hartonomous.Infrastructure.csproj
+                Hartonomous.ServiceDefaults/Hartonomous.ServiceDefaults.csproj
+                Hartonomous.API/Hartonomous.API.csproj
+                Hartonomous.Worker/Hartonomous.Worker.csproj
 
           - task: DotNetCoreCLI@2
             displayName: 'Build Core'
@@ -86,32 +76,25 @@ stages:
               arguments: '--configuration $(buildConfiguration) --no-restore -p:GeneratePackageOnBuild=false'
 
           - task: DotNetCoreCLI@2
+            displayName: 'Build ServiceDefaults'
+            inputs:
+              command: 'build'
+              projects: 'Hartonomous.ServiceDefaults/Hartonomous.ServiceDefaults.csproj'
+              arguments: '--configuration $(buildConfiguration) --no-restore -p:GeneratePackageOnBuild=false'
+
+          - task: DotNetCoreCLI@2
             displayName: 'Build API'
             inputs:
               command: 'build'
               projects: 'Hartonomous.API/Hartonomous.API.csproj'
-              arguments: '--configuration $(buildConfiguration) --no-restore'
+              arguments: '--configuration $(buildConfiguration) --no-restore -p:GeneratePackageOnBuild=false'
 
           - task: DotNetCoreCLI@2
             displayName: 'Build Worker'
             inputs:
               command: 'build'
               projects: 'Hartonomous.Worker/Hartonomous.Worker.csproj'
-              arguments: '--configuration $(buildConfiguration) --no-restore'
-
-          - task: DotNetCoreCLI@2
-            displayName: 'Build Web Client'
-            inputs:
-              command: 'build'
-              projects: 'Hartonomous.App/Hartonomous.App.Web.Client/Hartonomous.App.Web.Client.csproj'
-              arguments: '--configuration $(buildConfiguration) --no-restore'
-
-          - task: DotNetCoreCLI@2
-            displayName: 'Build Web'
-            inputs:
-              command: 'build'
-              projects: 'Hartonomous.App/Hartonomous.App.Web/Hartonomous.App.Web.csproj'
-              arguments: '--configuration $(buildConfiguration) --no-restore'
+              arguments: '--configuration $(buildConfiguration) --no-restore -p:GeneratePackageOnBuild=false'
 
           - task: DotNetCoreCLI@2
             displayName: 'Run Tests'
