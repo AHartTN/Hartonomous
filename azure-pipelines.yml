@@ -14,26 +14,103 @@ variables:
   buildConfiguration: 'Release'
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
   DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
-  solution: 'Hartonomous.slnx'
 
 stages:
   - stage: Build
     displayName: 'Build and Test'
     jobs:
       - job: Build
-        displayName: 'Build Solution'
+        displayName: 'Build Solution (Server Projects)'
         steps:
           - task: DotNetCoreCLI@2
-            displayName: 'Restore Solution'
+            displayName: 'Restore Core Library'
             inputs:
               command: 'restore'
-              projects: '$(solution)'
+              projects: 'Hartonomous.Core/Hartonomous.Core.csproj'
 
           - task: DotNetCoreCLI@2
-            displayName: 'Build Solution'
+            displayName: 'Restore Data Library'
+            inputs:
+              command: 'restore'
+              projects: 'Hartonomous.Data/Hartonomous.Data.csproj'
+
+          - task: DotNetCoreCLI@2
+            displayName: 'Restore Infrastructure Library'
+            inputs:
+              command: 'restore'
+              projects: 'Hartonomous.Infrastructure/Hartonomous.Infrastructure.csproj'
+
+          - task: DotNetCoreCLI@2
+            displayName: 'Restore API'
+            inputs:
+              command: 'restore'
+              projects: 'Hartonomous.API/Hartonomous.API.csproj'
+
+          - task: DotNetCoreCLI@2
+            displayName: 'Restore Worker'
+            inputs:
+              command: 'restore'
+              projects: 'Hartonomous.Worker/Hartonomous.Worker.csproj'
+
+          - task: DotNetCoreCLI@2
+            displayName: 'Restore Web Client'
+            inputs:
+              command: 'restore'
+              projects: 'Hartonomous.App/Hartonomous.App.Web.Client/Hartonomous.App.Web.Client.csproj'
+
+          - task: DotNetCoreCLI@2
+            displayName: 'Restore Web'
+            inputs:
+              command: 'restore'
+              projects: 'Hartonomous.App/Hartonomous.App.Web/Hartonomous.App.Web.csproj'
+
+          - task: DotNetCoreCLI@2
+            displayName: 'Build Core'
             inputs:
               command: 'build'
-              projects: '$(solution)'
+              projects: 'Hartonomous.Core/Hartonomous.Core.csproj'
+              arguments: '--configuration $(buildConfiguration) --no-restore'
+
+          - task: DotNetCoreCLI@2
+            displayName: 'Build Data'
+            inputs:
+              command: 'build'
+              projects: 'Hartonomous.Data/Hartonomous.Data.csproj'
+              arguments: '--configuration $(buildConfiguration) --no-restore'
+
+          - task: DotNetCoreCLI@2
+            displayName: 'Build Infrastructure'
+            inputs:
+              command: 'build'
+              projects: 'Hartonomous.Infrastructure/Hartonomous.Infrastructure.csproj'
+              arguments: '--configuration $(buildConfiguration) --no-restore'
+
+          - task: DotNetCoreCLI@2
+            displayName: 'Build API'
+            inputs:
+              command: 'build'
+              projects: 'Hartonomous.API/Hartonomous.API.csproj'
+              arguments: '--configuration $(buildConfiguration) --no-restore'
+
+          - task: DotNetCoreCLI@2
+            displayName: 'Build Worker'
+            inputs:
+              command: 'build'
+              projects: 'Hartonomous.Worker/Hartonomous.Worker.csproj'
+              arguments: '--configuration $(buildConfiguration) --no-restore'
+
+          - task: DotNetCoreCLI@2
+            displayName: 'Build Web Client'
+            inputs:
+              command: 'build'
+              projects: 'Hartonomous.App/Hartonomous.App.Web.Client/Hartonomous.App.Web.Client.csproj'
+              arguments: '--configuration $(buildConfiguration) --no-restore'
+
+          - task: DotNetCoreCLI@2
+            displayName: 'Build Web'
+            inputs:
+              command: 'build'
+              projects: 'Hartonomous.App/Hartonomous.App.Web/Hartonomous.App.Web.csproj'
               arguments: '--configuration $(buildConfiguration) --no-restore'
 
           - task: DotNetCoreCLI@2
