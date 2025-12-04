@@ -1,0 +1,1302 @@
+[1m============================= test session starts =============================[0m
+platform win32 -- Python 3.14.0, pytest-9.0.1, pluggy-1.6.0 -- C:\Python314\python.exe
+cachedir: .pytest_cache
+rootdir: D:\Repositories\Hartonomous
+configfile: pytest.ini
+testpaths: tests
+plugins: anyio-4.11.0, asyncio-1.3.0, cov-7.0.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=session, asyncio_default_test_loop_scope=function
+[1mcollecting ... [0mToken field type: <class 'gguf.gguf_reader.ReaderField'>
+Token field data type: <class 'list'>
+Token field data length: 151936
+Token field types: [<GGUFValueType.ARRAY: 9>, <GGUFValueType.STRING: 8>]
+
+=== Testing Official Approach ===
+field.data[0] = 6
+field.parts[field.data[0]] type: <class 'numpy.memmap'>
+
+First 10 tokens using field.parts[field.data[i]]:
+  [0] data[0]=6, parts[6] type=<class 'numpy.memmap'>, shape=(1,)
+       decoded: '!'
+  [1] data[1]=8, parts[8] type=<class 'numpy.memmap'>, shape=(1,)
+       decoded: '"'
+  [2] data[2]=10, parts[10] type=<class 'numpy.memmap'>, shape=(1,)
+       decoded: '#'
+  [3] data[3]=12, parts[12] type=<class 'numpy.memmap'>, shape=(1,)
+       decoded: '$'
+  [4] data[4]=14, parts[14] type=<class 'numpy.memmap'>, shape=(1,)
+       decoded: '%'
+  [5] data[5]=16, parts[16] type=<class 'numpy.memmap'>, shape=(1,)
+       decoded: '&'
+  [6] data[6]=18, parts[18] type=<class 'numpy.memmap'>, shape=(1,)
+       decoded: "'"
+  [7] data[7]=20, parts[20] type=<class 'numpy.memmap'>, shape=(1,)
+       decoded: '('
+  [8] data[8]=22, parts[22] type=<class 'numpy.memmap'>, shape=(1,)
+       decoded: ')'
+  [9] data[9]=24, parts[24] type=<class 'numpy.memmap'>, shape=(1,)
+       decoded: '*'
+Testing all imports...
+? Testing core.atomization...
+? Testing core.compression...
+? Testing core.spatial...
+? Testing core.landmark...
+? Testing ingestion.parsers...
+? Testing API main...
+? Testing API config...
+? Testing API dependencies...
+? Testing services...
+? Testing database...
+
+? ALL IMPORTS SUCCESSFUL - NO ERRORS
+collected 318 items
+
+tests/functional/test_compression.py::test_compression_functional 
+>>> STARTING test_compression_functional
+Original size: 4000 bytes
+Compressed size: 3739 bytes
+Compression ratio: 1.07x
+Data integrity: True
+Max error: 0.000000
+[32mPASSED[0m[TIMER] test_compression_functional: 0.0088s
+
+tests/functional/test_hilbert.py::test_hilbert_round_trip 
+>>> STARTING test_hilbert_round_trip
+Original: (0.5, 0.3, 0.8)
+Hilbert index: 2245029567212453670
+Decoded: (0.500000, 0.300000, 0.800000)
+Error: (0.000000238, 0.000000143, 0.000000381)
+[32mPASSED[0m[TIMER] test_hilbert_round_trip: 0.0003s
+
+tests/functional/test_positioning.py::test_spatial_positioning 
+>>> STARTING test_spatial_positioning
+Position for code function: (0.148, 0.347, 0.490)
+Hilbert index: 530196530008833211
+Position for image literal: (0.470, 0.547, 0.862)
+Hilbert index: 4264733030001822082
+Distance between them: 0.531
+[32mPASSED[0m[TIMER] test_spatial_positioning: 0.0003s
+
+tests/geometric/test_bpe_integration.py::TestBPEIntegration::test_learn_repeated_phrase 
+>>> STARTING test_learn_repeated_phrase
+
+Observed 147 pairs
+Unique pairs: 56
+Minted 10 composition atoms
+Original: 10 tokens
+Compressed: 5 atoms
+[32mPASSED[0m[TIMER] test_learn_repeated_phrase: 0.0034s
+
+tests/geometric/test_bpe_integration.py::TestBPEIntegration::test_recursive_merging 
+>>> STARTING test_recursive_merging
+
+First pass minted: 0 compositions
+After first merge: 40 -> 40 atoms
+Second pass minted: 2 compositions
+After second merge: 40 -> 20 atoms
+[32mPASSED[0m[TIMER] test_recursive_merging: 0.0021s
+
+tests/geometric/test_bpe_integration.py::TestBPEIntegration::test_autonomous_discovery 
+>>> STARTING test_autonomous_discovery
+
+Top patterns discovered:
+  (69, 74): 20 occurrences
+  (73, 74): 11 occurrences
+  (74, 75): 11 occurrences
+  (74, 73): 10 occurrences
+  (74, 71): 10 occurrences
+
+Autonomously minted 7 composition atoms
+[32mPASSED[0m[TIMER] test_autonomous_discovery: 0.0018s
+
+tests/geometric/test_bpe_integration.py::TestBPEIntegration::test_incremental_learning 
+>>> STARTING test_incremental_learning
+
+After batch 1: 28 pairs observed
+Minted: 3 compositions
+After batch 2: 56 pairs observed
+Minted additional: 2 compositions
+Total compositions: 5
+[32mPASSED[0m[TIMER] test_incremental_learning: 0.0013s
+
+tests/geometric/test_bpe_integration.py::TestBPEIntegration::test_compression_improves_over_time 
+>>> STARTING test_compression_improves_over_time
+
+Baseline (no learning): 50 -> 50 atoms
+Learned 5 patterns
+After learning: 50 -> 25 atoms
+[32mPASSED[0m[TIMER] test_compression_improves_over_time: 0.0017s
+
+tests/geometric/test_bpe_integration.py::TestOODALoop::test_observe_phase 
+>>> STARTING test_observe_phase
+[32mPASSED[0m[TIMER] test_observe_phase: 0.0002s
+
+tests/geometric/test_bpe_integration.py::TestOODALoop::test_orient_phase 
+>>> STARTING test_orient_phase
+[32mPASSED[0m[TIMER] test_orient_phase: 0.0002s
+
+tests/geometric/test_bpe_integration.py::TestOODALoop::test_decide_phase 
+>>> STARTING test_decide_phase
+[32mPASSED[0m[TIMER] test_decide_phase: 0.0012s
+
+tests/geometric/test_bpe_integration.py::TestOODALoop::test_act_phase 
+>>> STARTING test_act_phase
+[32mPASSED[0m[TIMER] test_act_phase: 0.0002s
+
+tests/geometric/test_fractal_atomization.py::TestFractalDeduplication::test_primitive_deduplication 
+>>> STARTING test_primitive_deduplication
+[32mPASSED[0m[TIMER] test_primitive_deduplication: 0.0011s
+
+tests/geometric/test_fractal_atomization.py::TestFractalDeduplication::test_ellipsis_composition 
+>>> STARTING test_ellipsis_composition
+[32mPASSED[0m[TIMER] test_ellipsis_composition: 0.0012s
+
+tests/geometric/test_fractal_atomization.py::TestFractalDeduplication::test_hello_ellipsis_composition 
+>>> STARTING test_hello_ellipsis_composition
+[32mPASSED[0m[TIMER] test_hello_ellipsis_composition: 0.0012s
+
+tests/geometric/test_fractal_atomization.py::TestFractalDeduplication::test_lorem_ipsum_compression 
+>>> STARTING test_lorem_ipsum_compression
+OK 1000x 'Lorem Ipsum' compressed from ~10,000 chars to 13 atoms
+   Compression ratio: 769.2x
+[32mPASSED[0m[TIMER] test_lorem_ipsum_compression: 0.0014s
+
+tests/geometric/test_fractal_atomization.py::TestFractalDeduplication::test_coordinate_determinism 
+>>> STARTING test_coordinate_determinism
+[32mPASSED[0m[TIMER] test_coordinate_determinism: 0.0013s
+
+tests/geometric/test_fractal_atomization.py::TestFractalDeduplication::test_hash_collision_detection 
+>>> STARTING test_hash_collision_detection
+[32mPASSED[0m[TIMER] test_hash_collision_detection: 0.0012s
+
+tests/geometric/test_fractal_atomization.py::TestFractalDeduplication::test_crystallize_sequence 
+>>> STARTING test_crystallize_sequence
+[32mPASSED[0m[TIMER] test_crystallize_sequence: 0.0012s
+
+tests/geometric/test_fractal_edge_cases.py::TestEdgeCases::test_empty_composition 
+>>> STARTING test_empty_composition
+[32mPASSED[0m[TIMER] test_empty_composition: 0.0012s
+
+tests/geometric/test_fractal_edge_cases.py::TestEdgeCases::test_single_element_composition 
+>>> STARTING test_single_element_composition
+[32mPASSED[0m[TIMER] test_single_element_composition: 0.0013s
+
+tests/geometric/test_fractal_edge_cases.py::TestEdgeCases::test_deep_nesting 
+>>> STARTING test_deep_nesting
+[32mPASSED[0m[TIMER] test_deep_nesting: 0.0014s
+
+tests/geometric/test_fractal_edge_cases.py::TestEdgeCases::test_large_composition_array 
+>>> STARTING test_large_composition_array
+[32mPASSED[0m[TIMER] test_large_composition_array: 0.0031s
+
+tests/geometric/test_fractal_edge_cases.py::TestEdgeCases::test_duplicate_detection 
+>>> STARTING test_duplicate_detection
+[32mPASSED[0m[TIMER] test_duplicate_detection: 0.0012s
+
+tests/geometric/test_fractal_edge_cases.py::TestEdgeCases::test_coordinate_uniqueness 
+>>> STARTING test_coordinate_uniqueness
+[32mPASSED[0m[TIMER] test_coordinate_uniqueness: 0.0012s
+
+tests/geometric/test_fractal_edge_cases.py::TestBPECrystallizer::test_observe_and_count 
+>>> STARTING test_observe_and_count
+[32mPASSED[0m[TIMER] test_observe_and_count: 0.0002s
+
+tests/geometric/test_fractal_edge_cases.py::TestBPECrystallizer::test_merge_candidate_selection 
+>>> STARTING test_merge_candidate_selection
+[32mPASSED[0m[TIMER] test_merge_candidate_selection: 0.0002s
+
+tests/geometric/test_fractal_edge_cases.py::TestBPECrystallizer::test_apply_merges 
+>>> STARTING test_apply_merges
+[32mPASSED[0m[TIMER] test_apply_merges: 0.0001s
+
+tests/geometric/test_fractal_edge_cases.py::TestBPECrystallizer::test_recursive_merging 
+>>> STARTING test_recursive_merging
+[32mPASSED[0m[TIMER] test_recursive_merging: 0.0001s
+
+tests/geometric/test_fractal_edge_cases.py::TestBPECrystallizer::test_bpe_integration 
+>>> STARTING test_bpe_integration
+[32mPASSED[0m[TIMER] test_bpe_integration: 0.0013s
+
+tests/geometric/test_fractal_edge_cases.py::TestBPECrystallizer::test_compression_ratio_calculation 
+>>> STARTING test_compression_ratio_calculation
+[32mPASSED[0m[TIMER] test_compression_ratio_calculation: 0.0012s
+
+tests/geometric/test_fractal_edge_cases.py::TestPerformance::test_coordinate_computation_speed 
+>>> STARTING test_coordinate_computation_speed
+
+1000 primitives: 0.0038s (264522 ops/sec)
+[32mPASSED[0m[TIMER] test_coordinate_computation_speed: 0.0050s
+
+tests/geometric/test_fractal_edge_cases.py::TestPerformance::test_cache_effectiveness 
+>>> STARTING test_cache_effectiveness
+[32mPASSED[0m[TIMER] test_cache_effectiveness: 0.0016s
+
+tests/geometric/test_geometric_atomization.py::TestSpatialUtils::test_deterministic_coordinates 
+>>> STARTING test_deterministic_coordinates
+[32mPASSED[0m[TIMER] test_deterministic_coordinates: 0.0002s
+
+tests/geometric/test_geometric_atomization.py::TestSpatialUtils::test_different_atoms_different_coords 
+>>> STARTING test_different_atoms_different_coords
+[32mPASSED[0m[TIMER] test_different_atoms_different_coords: 0.0002s
+
+tests/geometric/test_geometric_atomization.py::TestSpatialUtils::test_coordinate_range 
+>>> STARTING test_coordinate_range
+[32mPASSED[0m[TIMER] test_coordinate_range: 0.0005s
+
+tests/geometric/test_geometric_atomization.py::TestSpatialUtils::test_hilbert_index 
+>>> STARTING test_hilbert_index
+[32mPASSED[0m[TIMER] test_hilbert_index: 0.0001s
+
+tests/geometric/test_geometric_atomization.py::TestTrajectoryBuilder::test_build_simple_trajectory 
+>>> STARTING test_build_simple_trajectory
+[32mPASSED[0m[TIMER] test_build_simple_trajectory: 0.0002s
+
+tests/geometric/test_geometric_atomization.py::TestTrajectoryBuilder::test_hello_world_single_linestring 
+>>> STARTING test_hello_world_single_linestring
+[32mPASSED[0m[TIMER] test_hello_world_single_linestring: 0.0003s
+
+tests/geometric/test_geometric_atomization.py::TestTrajectoryBuilder::test_large_tensor_chunking 
+>>> STARTING test_large_tensor_chunking
+[32mPASSED[0m[TIMER] test_large_tensor_chunking: 0.2155s
+
+tests/geometric/test_geometric_atomization.py::TestSpatialReconstructor::test_parse_wkt 
+>>> STARTING test_parse_wkt
+[32mPASSED[0m[TIMER] test_parse_wkt: 0.0003s
+
+tests/geometric/test_geometric_atomization.py::TestSpatialReconstructor::test_reconstruct_local 
+>>> STARTING test_reconstruct_local
+[32mPASSED[0m[TIMER] test_reconstruct_local: 0.0003s
+
+tests/geometric/test_geometric_atomization.py::TestGeometricAtomizer::test_atomize_text 
+>>> STARTING test_atomize_text
+[32mPASSED[0m[TIMER] test_atomize_text: 0.0026s
+
+tests/geometric/test_geometric_atomization.py::TestGeometricAtomizer::test_atomize_tensor_small 
+>>> STARTING test_atomize_tensor_small
+[32mPASSED[0m[TIMER] test_atomize_tensor_small: 0.0019s
+
+tests/geometric/test_geometric_atomization.py::TestGeometricAtomizer::test_atomize_tensor_large 
+>>> STARTING test_atomize_tensor_large
+[32mPASSED[0m[TIMER] test_atomize_tensor_large: 4.8718s
+
+tests/geometric/test_geometric_atomization.py::TestGeometricAtomizer::test_roundtrip_text 
+>>> STARTING test_roundtrip_text
+[32mPASSED[0m[TIMER] test_roundtrip_text: 0.0008s
+
+tests/geometric/test_geometric_atomization.py::TestGeometricAtomizer::test_roundtrip_tensor 
+>>> STARTING test_roundtrip_tensor
+[32mPASSED[0m[TIMER] test_roundtrip_tensor: 0.0048s
+
+tests/integration/geometric/test_fractal_reconstruction.py::TestSimpleRoundtrips::test_text_roundtrip 
+>>> STARTING test_text_roundtrip
+
+OK Text roundtrip:
+  Original: 'Hello, World! This is a test.'
+  Reconstructed: 'Hello, World! This is a test.'
+  Match: True
+[32mPASSED[0m[TIMER] test_text_roundtrip: 1.4427s
+
+tests/integration/geometric/test_fractal_reconstruction.py::TestSimpleRoundtrips::test_float32_roundtrip 
+>>> STARTING test_float32_roundtrip
+
+OK Float32 roundtrip:
+  Original: [   1.5       -2.7        3.14159    0.      -100.25   ]
+  Reconstructed: [   1.5       -2.7        3.14159    0.      -100.25   ]
+  Bit-perfect: True
+[32mPASSED[0m[TIMER] test_float32_roundtrip: 1.2330s
+
+tests/integration/geometric/test_fractal_reconstruction.py::TestSimpleRoundtrips::test_int8_roundtrip 
+>>> STARTING test_int8_roundtrip
+
+OK Int8 roundtrip:
+  Original: [-128   -1    0    1  127]
+  Reconstructed: [-128   -1    0    1  127]
+[32mPASSED[0m[TIMER] test_int8_roundtrip: 1.3196s
+
+tests/integration/geometric/test_fractal_reconstruction.py::TestChunkedRoundtrips::test_chunked_tensor_roundtrip 
+>>> STARTING test_chunked_tensor_roundtrip
+
+OK Chunked tensor roundtrip:
+  Original shape: (15000,)
+  Chunks: 3
+  Reconstructed shape: (15000,)
+  Match: True
+[32mPASSED[0m[TIMER] test_chunked_tensor_roundtrip: 4.6354s
+
+tests/integration/geometric/test_fractal_reconstruction.py::TestMultiDimensionalRoundtrips::test_2d_matrix_roundtrip 
+>>> STARTING test_2d_matrix_roundtrip
+
+OK 2D matrix roundtrip:
+  Original shape: (3, 3)
+  Flattened for atomization: (9,)
+  Reconstructed shape: (3, 3)
+[32mPASSED[0m[TIMER] test_2d_matrix_roundtrip: 2.4426s
+
+tests/integration/geometric/test_fractal_reconstruction.py::TestMultiDimensionalRoundtrips::test_3d_tensor_roundtrip 
+>>> STARTING test_3d_tensor_roundtrip
+
+OK 3D tensor roundtrip:
+  Shape: (4, 4, 3)
+  Total elements: 48
+[32mPASSED[0m[TIMER] test_3d_tensor_roundtrip: 1.2307s
+
+tests/integration/geometric/test_fractal_reconstruction.py::TestUnicodeRoundtrips::test_unicode_text 
+>>> STARTING test_unicode_text
+
+OK Unicode roundtrip:
+  Original length: 53 chars
+  Reconstructed length: 53 chars
+  Match: True
+[32mPASSED[0m[TIMER] test_unicode_text: 1.2762s
+
+tests/integration/geometric/test_fractal_reconstruction.py::TestUnicodeRoundtrips::test_long_unicode_text 
+>>> STARTING test_long_unicode_text
+
+OK Long Unicode roundtrip:
+  Original length: 1475 chars
+  Reconstructed length: 1475 chars
+[32mPASSED[0m[TIMER] test_long_unicode_text: 1.8596s
+
+tests/integration/geometric/test_fractal_reconstruction.py::TestFullModelRoundtrips::test_mock_model_roundtrip 
+>>> STARTING test_mock_model_roundtrip
+
+OK Full model roundtrip:
+  Layers: 4
+  All layers bit-perfect: True
+[32mPASSED[0m[TIMER] test_mock_model_roundtrip: 3.0657s
+
+tests/integration/geometric/test_fractal_reconstruction.py::TestFullModelRoundtrips::test_large_layer_chunked_roundtrip 
+>>> STARTING test_large_layer_chunked_roundtrip
+
+OK Large layer chunked roundtrip:
+  Shape: (200, 100)
+  Total values: 20,000
+  Chunks created: 1
+  Bit-perfect: True
+[32mPASSED[0m[TIMER] test_large_layer_chunked_roundtrip: 3.0465s
+
+tests/integration/geometric/test_fractal_reconstruction.py::TestEdgeCases::test_single_value_roundtrip 
+>>> STARTING test_single_value_roundtrip
+
+OK Single value roundtrip: 3.141590118408203 == 3.141590118408203
+[32mPASSED[0m[TIMER] test_single_value_roundtrip: 2.8604s
+
+tests/integration/geometric/test_fractal_reconstruction.py::TestEdgeCases::test_zero_values_roundtrip 
+>>> STARTING test_zero_values_roundtrip
+
+OK Zeros roundtrip: all 10 values == 0.0
+[32mPASSED[0m[TIMER] test_zero_values_roundtrip: 1.2930s
+
+tests/integration/geometric/test_gguf_ingestion.py::TestGGUFMetadataExtraction::test_read_gguf_header 
+>>> STARTING test_read_gguf_header
+
+[OK] GGUF Metadata:
+  Version: 3
+  Tensors: 201
+  Size: 668.79 MB
+[32mPASSED[0m[TIMER] test_read_gguf_header: 0.0021s
+
+tests/integration/geometric/test_gguf_ingestion.py::TestBasicTensorIngestion::test_atomize_small_tensor 
+>>> STARTING test_atomize_small_tensor
+
+[OK] Atomized 10 values -> 1 LINESTRING
+  WKT length: 937 chars
+[32mPASSED[0m[TIMER] test_atomize_small_tensor: 0.0017s
+
+tests/integration/geometric/test_gguf_ingestion.py::TestBasicTensorIngestion::test_atomize_large_tensor_chunked 
+>>> STARTING test_atomize_large_tensor_chunked
+
+[OK] Chunked 50K values -> 5 trajectories
+  Avg WKT size: 952796 chars
+[32mPASSED[0m[TIMER] test_atomize_large_tensor_chunked: 0.2370s
+
+tests/integration/geometric/test_gguf_ingestion.py::TestDatabaseIngestion::test_store_single_trajectory 
+>>> STARTING test_store_single_trajectory
+
+[OK] Stored trajectory -> composition ID 18489757
+[32mPASSED[0m[TIMER] test_store_single_trajectory: 0.6081s
+
+tests/integration/geometric/test_gguf_ingestion.py::TestDatabaseIngestion::test_store_multiple_chunks 
+>>> STARTING test_store_multiple_chunks
+
+[OK] Stored 5 chunks -> 5 compositions
+[32mPASSED[0m[TIMER] test_store_multiple_chunks: 0.6292s
+
+tests/integration/geometric/test_gguf_ingestion.py::TestModelIngestion::test_ingest_mock_model 
+>>> STARTING test_ingest_mock_model
+
+[OK] Ingested 3 layers -> 3 compositions
+[32mPASSED[0m[TIMER] test_ingest_mock_model: 0.6369s
+
+tests/integration/geometric/test_gguf_ingestion.py::TestModelIngestion::test_reconstruct_mock_model 
+>>> STARTING test_reconstruct_mock_model
+
+[OK] Bit-perfect reconstruction of 2 layers
+[32mPASSED[0m[TIMER] test_reconstruct_mock_model: 1.2712s
+
+tests/integration/geometric/test_gguf_ingestion.py::TestRealGGUFIngestion::test_ingest_first_5_tensors 
+>>> STARTING test_ingest_first_5_tensors
+
+[OK] Ingested 5 TinyLlama tensors
+  Compositions created: 5
+  Tensor names: ['output.weight', 'blk.0.attn_q.weight', 'blk.0.attn_k.weight', 'blk.0.ffn_gate.weight', 'token_embd.weight']
+[32mPASSED[0m[TIMER] test_ingest_first_5_tensors: 2.3978s
+
+tests/integration/geometric/test_safetensors_ingestion.py::TestSafeTensorsLoading::test_load_safetensors_file 
+>>> STARTING test_load_safetensors_file
+
+OK Loaded SafeTensors:
+  Total tensors: 104
+  Sample keys: ['embeddings.LayerNorm.bias', 'embeddings.LayerNorm.weight', 'embeddings.position_embeddings.weight', 'embeddings.position_ids', 'embeddings.token_type_embeddings.weight']
+  Total parameters: 22,713,728
+[32mPASSED[0m[TIMER] test_load_safetensors_file: 0.0465s
+
+tests/integration/geometric/test_safetensors_ingestion.py::TestSafeTensorsLoading::test_tensor_shapes 
+>>> STARTING test_tensor_shapes
+
+OK All 104 tensors have valid shapes
+[32mPASSED[0m[TIMER] test_tensor_shapes: 0.0469s
+
+tests/integration/geometric/test_safetensors_ingestion.py::TestEmbeddingAtomization::test_atomize_small_embedding 
+>>> STARTING test_atomize_small_embedding
+
+OK Atomized 100╫384 embedding -> 1 trajectory
+  Total values: 38,400
+  WKT size: 3,692,200 chars
+[32mPASSED[0m[TIMER] test_atomize_small_embedding: 0.1452s
+
+tests/integration/geometric/test_safetensors_ingestion.py::TestEmbeddingAtomization::test_atomize_large_embedding_chunked 
+>>> STARTING test_atomize_large_embedding_chunked
+
+OK Chunked large embedding:
+  Shape: (100, 500)
+  Total values: 50,000
+  Chunks: 5
+[32mPASSED[0m[TIMER] test_atomize_large_embedding_chunked: 0.2383s
+
+tests/integration/geometric/test_safetensors_ingestion.py::TestDatabaseStorage::test_store_single_embedding 
+>>> STARTING test_store_single_embedding
+
+OK Stored embedding layer -> composition 18492077
+[32mPASSED[0m[TIMER] test_store_single_embedding: 0.5502s
+
+tests/integration/geometric/test_safetensors_ingestion.py::TestFullModelIngestion::test_ingest_minilm_mock 
+>>> STARTING test_ingest_minilm_mock
+
+OK Ingested mock MiniLM:
+  Layers: 5
+  Compositions: 5
+[32mPASSED[0m[TIMER] test_ingest_minilm_mock: 0.6434s
+
+tests/integration/geometric/test_safetensors_ingestion.py::TestFullModelIngestion::test_reconstruct_minilm_mock 
+>>> STARTING test_reconstruct_minilm_mock
+
+OK Bit-perfect reconstruction of 2 layers
+[32mPASSED[0m[TIMER] test_reconstruct_minilm_mock: 1.2898s
+
+tests/integration/geometric/test_safetensors_ingestion.py::TestRealSafeTensorsIngestion::test_ingest_first_5_layers 
+>>> STARTING test_ingest_first_5_layers
+
+OK Ingested 4 MiniLM layers:
+  Layer names: ['embeddings.LayerNorm.bias', 'embeddings.LayerNorm.weight', 'embeddings.position_ids', 'embeddings.token_type_embeddings.weight']
+  Compositions: 4
+  embeddings.LayerNorm.bias: (384,) (384 params)
+  embeddings.LayerNorm.weight: (384,) (384 params)
+  embeddings.position_ids: (1, 512) (512 params)
+  embeddings.token_type_embeddings.weight: (2, 384) (768 params)
+[32mPASSED[0m[TIMER] test_ingest_first_5_layers: 0.8660s
+
+tests/integration/geometric/test_safetensors_ingestion.py::TestRealSafeTensorsIngestion::test_query_stored_embeddings 
+>>> STARTING test_query_stored_embeddings
+
+OK Query results:
+  test-minilm-query.embeddings.LayerNorm.bias: None points, 45 bytes
+[32mPASSED[0m[TIMER] test_query_stored_embeddings: 1.4324s
+
+tests/integration/geometric/test_spatial_queries.py::TestBasicSpatialQueries::test_st_numpoints 
+>>> STARTING test_st_numpoints
+
+OK Composition has 5 child atoms
+[32mPASSED[0m[TIMER] test_st_numpoints: 0.6244s
+
+tests/integration/geometric/test_spatial_queries.py::TestBasicSpatialQueries::test_st_length 
+>>> STARTING test_st_length
+
+OK Distance from first to last atom: 1094238.28
+[32mPASSED[0m[TIMER] test_st_length: 0.5298s
+
+tests/integration/geometric/test_spatial_queries.py::TestProximitySearches::test_st_dwithin_single_trajectory 
+>>> STARTING test_st_dwithin_single_trajectory
+
+OK ST_DWithin found 5 trajectories:
+  test.trajectory_0: 806159.19 units
+  test.trajectory_3: 806208.61 units
+  test.trajectory_1: 806228.74 units
+  test.trajectory_4: 806230.50 units
+  test.trajectory_2: 806314.93 units
+[32mPASSED[0m[TIMER] test_st_dwithin_single_trajectory: 0.5721s
+
+tests/integration/geometric/test_spatial_queries.py::TestProximitySearches::test_st_dwithin_performance 
+>>> STARTING test_st_dwithin_performance
+
+OK Proximity search performance:
+  Found: 0 trajectories
+  Time: 0.23 ms
+[32mPASSED[0m[TIMER] test_st_dwithin_performance: 1.7428s
+
+tests/integration/geometric/test_spatial_queries.py::TestDistanceCalculations::test_st_distance_to_point 
+>>> STARTING test_st_distance_to_point
+
+OK ST_3DDistance to origin: 983783.37
+[32mPASSED[0m[TIMER] test_st_distance_to_point: 0.8065s
+
+tests/integration/geometric/test_spatial_queries.py::TestDistanceCalculations::test_trajectory_to_trajectory_distance 
+>>> STARTING test_trajectory_to_trajectory_distance
+
+OK Trajectory-to-trajectory distance: 270470.96
+[32mPASSED[0m[TIMER] test_trajectory_to_trajectory_distance: 0.5818s
+
+tests/integration/geometric/test_spatial_queries.py::TestCoordinateLookups::test_find_atom_at_coordinate 
+>>> STARTING test_find_atom_at_coordinate
+
+OK Found first child atom:
+  Expected coordinate: (100000.0, 800000.0, 408447.265625, 0.0)
+  Actual atom: POINT ZM (100000 800000 408447.265625 8.476311191415316e+18)
+[32mPASSED[0m[TIMER] test_find_atom_at_coordinate: 1.2629s
+
+tests/integration/geometric/test_spatial_queries.py::TestCoordinateLookups::test_query_atoms_in_bounding_box 
+>>> STARTING test_query_atoms_in_bounding_box
+
+OK Bounding box query:
+  Found: 5 trajectories
+  test.bbox_0: None points
+  test.bbox_1: None points
+  test.bbox_2: None points
+  test.bbox_3: None points
+  test.bbox_4: None points
+[32mPASSED[0m[TIMER] test_query_atoms_in_bounding_box: 0.7077s
+
+tests/integration/geometric/test_spatial_queries.py::TestQueryOptimization::test_spatial_index_usage 
+>>> STARTING test_spatial_index_usage
+
+OK Query plan analysis:
+  Uses spatial index: True
+[32mPASSED[0m[TIMER] test_spatial_index_usage: 0.7340s
+
+tests/integration/geometric/test_spatial_queries.py::TestQueryOptimization::test_query_selectivity 
+>>> STARTING test_query_selectivity
+
+OK Query selectivity test:
+  Threshold 10,000: 0 results in 0.50 ms
+  Threshold 100,000: 0 results in 0.21 ms
+  Threshold 1,000,000: 30 results in 0.91 ms
+[32mPASSED[0m[TIMER] test_query_selectivity: 0.8984s
+
+tests/integration/test_api.py::test_root_endpoint 
+>>> STARTING test_root_endpoint
+[32mPASSED[0m[TIMER] test_root_endpoint: 0.0683s
+
+tests/integration/test_api.py::test_health_endpoint 
+>>> STARTING test_health_endpoint
+[32mPASSED[0m[TIMER] test_health_endpoint: 0.0019s
+
+tests/integration/test_api.py::test_openapi_docs 
+>>> STARTING test_openapi_docs
+[32mPASSED[0m[TIMER] test_openapi_docs: 0.0398s
+
+tests/integration/test_api.py::test_cors_headers 
+>>> STARTING test_cors_headers
+[32mPASSED[0m[TIMER] test_cors_headers: 0.0024s
+
+tests/integration/test_api.py::test_invalid_endpoint 
+>>> STARTING test_invalid_endpoint
+[32mPASSED[0m[TIMER] test_invalid_endpoint: 0.0105s
+
+tests/integration/test_api.py::test_api_versioning 
+>>> STARTING test_api_versioning
+[32mPASSED[0m[TIMER] test_api_versioning: 0.0043s
+
+tests/integration/test_code_atomizer_integration.py::TestCodeAtomizerIntegration::test_service_health 
+>>> STARTING test_service_health
+Service healthy: {'status': 'healthy', 'service': 'Hartonomous Code Atomizer', 'version': '0.2.0', 'parsers': ['Roslyn', 'Tree-sitter'], 'languages': 20}
+[32mPASSED[0m[TIMER] test_service_health: 0.3355s
+
+tests/integration/test_code_atomizer_integration.py::TestCodeAtomizerIntegration::test_list_supported_languages 
+>>> STARTING test_list_supported_languages
+Supported languages: csharp, vb, python, javascript, typescript, go, rust, java, cpp, c...
+[32mPASSED[0m[TIMER] test_list_supported_languages: 0.2988s
+
+tests/integration/test_code_atomizer_integration.py::TestCodeAtomizerIntegration::test_atomize_simple_csharp 
+>>> STARTING test_atomize_simple_csharp
+Atomized C# code: 4 atoms, 3 compositions, 2 relations
+[32mPASSED[0m[TIMER] test_atomize_simple_csharp: 0.2955s
+
+tests/integration/test_code_atomizer_integration.py::TestCodeAtomizerIntegration::test_atomize_python_code 
+>>> STARTING test_atomize_python_code
+Atomized Python code: 4 atoms
+[32mPASSED[0m[TIMER] test_atomize_python_code: 0.2987s
+
+tests/integration/test_code_atomizer_integration.py::TestCodeAtomizerIntegration::test_content_hash_format 
+>>> STARTING test_content_hash_format
+Content hash is valid base64 (SHA-256): j38T7SfPvEWrGi53nATs...
+[32mPASSED[0m[TIMER] test_content_hash_format: 0.3007s
+
+tests/integration/test_code_atomizer_integration.py::TestCodeAtomizerIntegration::test_spatial_coordinates_present 
+>>> STARTING test_spatial_coordinates_present
+All 3 atoms have spatial coordinates + Hilbert indices
+[32mPASSED[0m[TIMER] test_spatial_coordinates_present: 0.3004s
+
+tests/integration/test_code_atomizer_integration.py::TestCodeAtomizerIntegration::test_compositions_structure 
+>>> STARTING test_compositions_structure
+Compositions have correct structure: 2 found
+[32mPASSED[0m[TIMER] test_compositions_structure: 0.2988s
+
+tests/integration/test_code_atomizer_integration.py::TestCodeAtomizerIntegration::test_relations_structure 
+>>> STARTING test_relations_structure
+Relations have correct structure: 4 found
+[32mPASSED[0m[TIMER] test_relations_structure: 0.2990s
+
+tests/integration/test_code_atomizer_integration.py::TestCodeParserClass::test_parser_initialization 
+>>> STARTING test_parser_initialization
+CodeParser initialized with URL: http://localhost:8001
+[32mPASSED[0m[TIMER] test_parser_initialization: 0.0020s
+
+tests/integration/test_code_atomizer_integration.py::TestCodeParserClass::test_health_check_method 
+>>> STARTING test_health_check_method
+Health check passed for http://localhost:8001
+[32mPASSED[0m[TIMER] test_health_check_method: 0.3092s
+
+tests/integration/test_code_parser.py::TestCodeParser::test_detect_language 
+>>> STARTING test_detect_language
+[32mPASSED[0m[TIMER] test_detect_language: 0.0002s
+
+tests/integration/test_code_parser.py::TestCodeParser::test_parse_python_file 
+>>> STARTING test_parse_python_file
+[32mPASSED[0m[TIMER] test_parse_python_file: 1.2239s
+
+tests/integration/test_database.py::test_database_connection 
+>>> STARTING test_database_connection
+[32mPASSED[0m[TIMER] test_database_connection: 0.0017s
+
+tests/integration/test_database.py::test_database_version 
+>>> STARTING test_database_version
+[32mPASSED[0m[TIMER] test_database_version: 0.0015s
+
+tests/integration/test_database.py::test_database_extensions 
+>>> STARTING test_database_extensions
+[32mPASSED[0m[TIMER] test_database_extensions: 0.0019s
+
+tests/integration/test_database.py::test_schema_exists 
+>>> STARTING test_schema_exists
+[32mPASSED[0m[TIMER] test_schema_exists: 0.0021s
+
+tests/integration/test_database.py::test_connection_pool 
+>>> STARTING test_connection_pool
+[32mPASSED[0m[TIMER] test_connection_pool: 0.0526s
+
+tests/integration/test_database.py::test_transaction_handling 
+>>> STARTING test_transaction_handling
+[32mPASSED[0m[TIMER] test_transaction_handling: 0.0212s
+
+tests/integration/test_end_to_end.py::TestCompleteWorkflows::test_text_atomization_to_query_workflow 
+>>> STARTING test_text_atomization_to_query_workflow
+[31mFAILED[0m[TIMER] test_text_atomization_to_query_workflow: 0.7202s
+
+tests/integration/test_end_to_end.py::TestCompleteWorkflows::test_image_to_atoms_workflow 
+>>> STARTING test_image_to_atoms_workflow
+[31mFAILED[0m[TIMER] test_image_to_atoms_workflow: 0.5378s
+
+tests/integration/test_fractal_ingestion_pipeline.py::test_pipeline 
+>>> STARTING test_pipeline
+[32mPASSED[0m[TIMER] test_pipeline: 0.0028s
+
+tests/integration/test_gguf_atomizer.py::TestGGUFAtomizer::test_atomizer_initialization 
+>>> STARTING test_atomizer_initialization
+[31mFAILED[0m[TIMER] test_atomizer_initialization: 0.0041s
+
+tests/integration/test_gguf_atomizer.py::TestGGUFAtomizer::test_atomizer_threshold 
+>>> STARTING test_atomizer_threshold
+[31mFAILED[0m[TIMER] test_atomizer_threshold: 0.0034s
+
+tests/integration/test_gguf_atomizer.py::TestGGUFAtomizer::test_weight_deduplication 
+>>> STARTING test_weight_deduplication
+[31mERROR[0m[TIMER] test_weight_deduplication: 0.0368s
+
+tests/integration/test_gguf_ingestion.py::test_gguf_ingestion 
+>>> STARTING test_gguf_ingestion
+[31mFAILED[0m[TIMER] test_gguf_ingestion: 0.1958s
+
+tests/integration/test_image_parser.py::TestImageParser::test_parse_simple_image 
+>>> STARTING test_parse_simple_image
+[31mERROR[0m[TIMER] test_parse_simple_image: 0.0356s
+
+tests/integration/test_image_parser.py::TestImageParser::test_image_composition 
+>>> STARTING test_image_composition
+[31mERROR[0m[TIMER] test_image_composition: 0.0353s
+
+tests/integration/test_image_parser.py::TestImageParser::test_grayscale_image 
+>>> STARTING test_grayscale_image
+[31mERROR[0m[TIMER] test_grayscale_image: 0.0373s
+
+tests/integration/test_implementation.py::test_atomization 
+>>> STARTING test_atomization
+Testing atomization...
+[31mFAILED[0m[TIMER] test_atomization: 0.0031s
+
+
+=================================== ERRORS ====================================
+[31m[1m________ ERROR at setup of TestGGUFAtomizer.test_weight_deduplication _________[0m
+[1m[31mC:\Users\ahart\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py[0m:458: in setup
+    [0m[94mreturn[39;49;00m [96msuper[39;49;00m().setup()[90m[39;49;00m
+           ^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mC:\Users\ahart\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py[0m:743: in pytest_fixture_setup
+    [0mhook_result = [94myield[39;49;00m[90m[39;49;00m
+                  ^^^^^[90m[39;49;00m
+[1m[31mC:\Users\ahart\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py[0m:313: in _asyncgen_fixture_wrapper
+    [0mresult = runner.run(setup(), context=context)[90m[39;49;00m
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mC:\Python314\Lib\asyncio\runners.py[0m:127: in run
+    [0m[94mreturn[39;49;00m [96mself[39;49;00m._loop.run_until_complete(task)[90m[39;49;00m
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mC:\Python314\Lib\asyncio\base_events.py[0m:719: in run_until_complete
+    [0m[94mreturn[39;49;00m future.result()[90m[39;49;00m
+           ^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mC:\Users\ahart\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py[0m:309: in setup
+    [0mres = [94mawait[39;49;00m gen_obj.[92m__anext__[39;49;00m()[90m[39;49;00m
+          ^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mtests\conftest.py[0m:79: in clean_db
+    [0m[94mawait[39;49;00m cur.execute([33m"[39;49;00m[33mDELETE FROM atom_relation; DELETE FROM atom;[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+[1m[31mC:\Users\ahart\AppData\Roaming\Python\Python314\site-packages\psycopg\cursor_async.py[0m:97: in execute
+    [0m[94mraise[39;49;00m ex.with_traceback([94mNone[39;49;00m)[90m[39;49;00m
+[1m[31mE   psycopg.errors.InFailedSqlTransaction: current transaction is aborted, commands ignored until end of transaction block[0m
+[31m[1m__________ ERROR at setup of TestImageParser.test_parse_simple_image __________[0m
+[1m[31mC:\Users\ahart\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py[0m:458: in setup
+    [0m[94mreturn[39;49;00m [96msuper[39;49;00m().setup()[90m[39;49;00m
+           ^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mC:\Users\ahart\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py[0m:743: in pytest_fixture_setup
+    [0mhook_result = [94myield[39;49;00m[90m[39;49;00m
+                  ^^^^^[90m[39;49;00m
+[1m[31mC:\Users\ahart\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py[0m:313: in _asyncgen_fixture_wrapper
+    [0mresult = runner.run(setup(), context=context)[90m[39;49;00m
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mC:\Python314\Lib\asyncio\runners.py[0m:127: in run
+    [0m[94mreturn[39;49;00m [96mself[39;49;00m._loop.run_until_complete(task)[90m[39;49;00m
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mC:\Python314\Lib\asyncio\base_events.py[0m:719: in run_until_complete
+    [0m[94mreturn[39;49;00m future.result()[90m[39;49;00m
+           ^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mC:\Users\ahart\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py[0m:309: in setup
+    [0mres = [94mawait[39;49;00m gen_obj.[92m__anext__[39;49;00m()[90m[39;49;00m
+          ^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mtests\conftest.py[0m:79: in clean_db
+    [0m[94mawait[39;49;00m cur.execute([33m"[39;49;00m[33mDELETE FROM atom_relation; DELETE FROM atom;[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+[1m[31mC:\Users\ahart\AppData\Roaming\Python\Python314\site-packages\psycopg\cursor_async.py[0m:97: in execute
+    [0m[94mraise[39;49;00m ex.with_traceback([94mNone[39;49;00m)[90m[39;49;00m
+[1m[31mE   psycopg.errors.InFailedSqlTransaction: current transaction is aborted, commands ignored until end of transaction block[0m
+[31m[1m__________ ERROR at setup of TestImageParser.test_image_composition ___________[0m
+[1m[31mC:\Users\ahart\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py[0m:458: in setup
+    [0m[94mreturn[39;49;00m [96msuper[39;49;00m().setup()[90m[39;49;00m
+           ^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mC:\Users\ahart\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py[0m:743: in pytest_fixture_setup
+    [0mhook_result = [94myield[39;49;00m[90m[39;49;00m
+                  ^^^^^[90m[39;49;00m
+[1m[31mC:\Users\ahart\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py[0m:313: in _asyncgen_fixture_wrapper
+    [0mresult = runner.run(setup(), context=context)[90m[39;49;00m
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mC:\Python314\Lib\asyncio\runners.py[0m:127: in run
+    [0m[94mreturn[39;49;00m [96mself[39;49;00m._loop.run_until_complete(task)[90m[39;49;00m
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mC:\Python314\Lib\asyncio\base_events.py[0m:719: in run_until_complete
+    [0m[94mreturn[39;49;00m future.result()[90m[39;49;00m
+           ^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mC:\Users\ahart\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py[0m:309: in setup
+    [0mres = [94mawait[39;49;00m gen_obj.[92m__anext__[39;49;00m()[90m[39;49;00m
+          ^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mtests\conftest.py[0m:79: in clean_db
+    [0m[94mawait[39;49;00m cur.execute([33m"[39;49;00m[33mDELETE FROM atom_relation; DELETE FROM atom;[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+[1m[31mC:\Users\ahart\AppData\Roaming\Python\Python314\site-packages\psycopg\cursor_async.py[0m:97: in execute
+    [0m[94mraise[39;49;00m ex.with_traceback([94mNone[39;49;00m)[90m[39;49;00m
+[1m[31mE   psycopg.errors.InFailedSqlTransaction: current transaction is aborted, commands ignored until end of transaction block[0m
+[31m[1m___________ ERROR at setup of TestImageParser.test_grayscale_image ____________[0m
+[1m[31mC:\Users\ahart\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py[0m:458: in setup
+    [0m[94mreturn[39;49;00m [96msuper[39;49;00m().setup()[90m[39;49;00m
+           ^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mC:\Users\ahart\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py[0m:743: in pytest_fixture_setup
+    [0mhook_result = [94myield[39;49;00m[90m[39;49;00m
+                  ^^^^^[90m[39;49;00m
+[1m[31mC:\Users\ahart\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py[0m:313: in _asyncgen_fixture_wrapper
+    [0mresult = runner.run(setup(), context=context)[90m[39;49;00m
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mC:\Python314\Lib\asyncio\runners.py[0m:127: in run
+    [0m[94mreturn[39;49;00m [96mself[39;49;00m._loop.run_until_complete(task)[90m[39;49;00m
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mC:\Python314\Lib\asyncio\base_events.py[0m:719: in run_until_complete
+    [0m[94mreturn[39;49;00m future.result()[90m[39;49;00m
+           ^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mC:\Users\ahart\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py[0m:309: in setup
+    [0mres = [94mawait[39;49;00m gen_obj.[92m__anext__[39;49;00m()[90m[39;49;00m
+          ^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mtests\conftest.py[0m:79: in clean_db
+    [0m[94mawait[39;49;00m cur.execute([33m"[39;49;00m[33mDELETE FROM atom_relation; DELETE FROM atom;[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+[1m[31mC:\Users\ahart\AppData\Roaming\Python\Python314\site-packages\psycopg\cursor_async.py[0m:97: in execute
+    [0m[94mraise[39;49;00m ex.with_traceback([94mNone[39;49;00m)[90m[39;49;00m
+[1m[31mE   psycopg.errors.InFailedSqlTransaction: current transaction is aborted, commands ignored until end of transaction block[0m
+================================== FAILURES ===================================
+[31m[1m________ TestCompleteWorkflows.test_text_atomization_to_query_workflow ________[0m
+[1m[31mtests\integration\test_end_to_end.py[0m:26: in test_text_atomization_to_query_workflow
+    [0mdoc_atom_id = [94mawait[39;49;00m parser.parse(text_file, db_connection)[90m[39;49;00m
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31msrc\ingestion\parsers\text_parser.py[0m:63: in parse
+    [0mtrajectory_atom_id = [94mawait[39;49;00m [96mself[39;49;00m.process_stream([90m[39;49;00m
+[1m[31mapi\services\geometric_atomization\base_geometric_parser.py[0m:129: in process_stream
+    [0mtrajectory_wkt = [94mawait[39;49;00m [96mself[39;49;00m.build_trajectory_from_atoms(conn, atom_ids)[90m[39;49;00m
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mapi\services\geometric_atomization\base_geometric_parser.py[0m:206: in build_trajectory_from_atoms
+    [0mrows = [94mawait[39;49;00m query_many(conn, query, (atom_ids,))[90m[39;49;00m
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mapi\services\utils\db_query_utils.py[0m:79: in query_many
+    [0m[94mawait[39;49;00m cursor.execute(query, params)[90m[39;49;00m
+[1m[31mC:\Users\ahart\AppData\Roaming\Python\Python314\site-packages\psycopg\cursor_async.py[0m:97: in execute
+    [0m[94mraise[39;49;00m ex.with_traceback([94mNone[39;49;00m)[90m[39;49;00m
+[1m[31mE   psycopg.ProgrammingError: the query has 0 placeholders but 1 parameters were passed[0m
+[31m[1m_____________ TestCompleteWorkflows.test_image_to_atoms_workflow ______________[0m
+[1m[31mtests\integration\test_end_to_end.py[0m:91: in test_image_to_atoms_workflow
+    [0m[94mawait[39;49;00m cur.execute([90m[39;49;00m
+[1m[31mC:\Users\ahart\AppData\Roaming\Python\Python314\site-packages\psycopg\cursor_async.py[0m:97: in execute
+    [0m[94mraise[39;49;00m ex.with_traceback([94mNone[39;49;00m)[90m[39;49;00m
+[1m[31mE   psycopg.errors.UndefinedTable: relation "atom_composition" does not exist[0m
+[1m[31mE   LINE 1: SELECT COUNT(*) FROM atom_composition WHERE parent_atom_id =...[0m
+[1m[31mE                                ^[0m
+[31m[1m________________ TestGGUFAtomizer.test_atomizer_initialization ________________[0m
+[1m[31mtests\integration\test_gguf_atomizer.py[0m:18: in test_atomizer_initialization
+    [0m[94massert[39;49;00m [96mlen[39;49;00m(atomizer.cache) == [94m0[39;49;00m[90m[39;49;00m
+               ^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mE   AttributeError: 'GGUFAtomizer' object has no attribute 'cache'[0m
+[31m[1m__________________ TestGGUFAtomizer.test_atomizer_threshold ___________________[0m
+[1m[31mtests\integration\test_gguf_atomizer.py[0m:26: in test_atomizer_threshold
+    [0m[94massert[39;49;00m atomizer.encoder.sparse_threshold == [94m0.01[39;49;00m[90m[39;49;00m
+           ^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mE   AttributeError: 'GGUFAtomizer' object has no attribute 'encoder'[0m
+[31m[1m_____________________________ test_gguf_ingestion _____________________________[0m
+[1m[31mtests\integration\test_gguf_ingestion.py[0m:64: in test_gguf_ingestion
+    [0matomizer = GGUFAtomizer(threshold=[94m0.1[39;49;00m, parallel_processing=[94mTrue[39;49;00m)[90m[39;49;00m
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mE   TypeError: GGUFAtomizer.__init__() got an unexpected keyword argument 'parallel_processing'[0m
+------------------------------ Captured log call ------------------------------
+[32mINFO    [0m psycopg.pool:pool_async.py:177 waiting for pool 'pool-3' initialization
+[35mDEBUG   [0m psycopg.pool:pool_async.py:973 task running in pool-3-worker-0: <AddConnection 'pool-3' at 0x24697618510>
+[35mDEBUG   [0m psycopg.pool:pool_async.py:973 task running in pool-3-worker-1: <AddConnection 'pool-3' at 0x24697618fc0>
+[35mDEBUG   [0m psycopg.pool:pool_async.py:973 task running in pool-3-worker-2: <AddConnection 'pool-3' at 0x246982e1010>
+[32mINFO    [0m psycopg.pool:pool_async.py:714 adding new connection to the pool
+[35mDEBUG   [0m psycopg.pool:pool_async.py:973 task running in pool-3-worker-0: <AddConnection 'pool-3' at 0x246977085a0>
+[32mINFO    [0m psycopg.pool:pool_async.py:714 adding new connection to the pool
+[35mDEBUG   [0m psycopg.pool:pool_async.py:973 task running in pool-3-worker-1: <AddConnection 'pool-3' at 0x24697708e20>
+[32mINFO    [0m psycopg.pool:pool_async.py:714 adding new connection to the pool
+[35mDEBUG   [0m psycopg.pool:pool_async.py:973 task running in pool-3-worker-2: <AddConnection 'pool-3' at 0x246982c8150>
+[32mINFO    [0m psycopg.pool:pool_async.py:714 adding new connection to the pool
+[35mDEBUG   [0m psycopg.pool:pool_async.py:973 task running in pool-3-worker-0: <AddConnection 'pool-3' at 0x246982ca050>
+[32mINFO    [0m psycopg.pool:pool_async.py:714 adding new connection to the pool
+[35mDEBUG   [0m psycopg.pool:pool_async.py:973 task running in pool-3-worker-1: <AddConnection 'pool-3' at 0x2469828ba70>
+[32mINFO    [0m psycopg.pool:pool_async.py:714 adding new connection to the pool
+[35mDEBUG   [0m psycopg.pool:pool_async.py:973 task running in pool-3-worker-2: <AddConnection 'pool-3' at 0x2469828bb60>
+[32mINFO    [0m psycopg.pool:pool_async.py:714 adding new connection to the pool
+[35mDEBUG   [0m psycopg.pool:pool_async.py:973 task running in pool-3-worker-0: <AddConnection 'pool-3' at 0x24697d974d0>
+[32mINFO    [0m psycopg.pool:pool_async.py:714 adding new connection to the pool
+[35mDEBUG   [0m psycopg.pool:pool_async.py:973 task running in pool-3-worker-1: <Schedule 'pool-3' at 0x246976d0f50>
+[32mINFO    [0m psycopg.pool:pool_async.py:714 adding new connection to the pool
+[32mINFO    [0m psycopg.pool:pool_async.py:714 adding new connection to the pool
+[32mINFO    [0m psycopg.pool:pool_async.py:186 pool 'pool-3' is ready to use
+[35mDEBUG   [0m psycopg.pool:pool_async.py:463 pool 'pool-3' closed
+[35mDEBUG   [0m psycopg.pool:pool_async.py:634 terminating working task pool-3-worker-1
+[35mDEBUG   [0m psycopg.pool:pool_async.py:634 terminating working task pool-3-worker-2
+[35mDEBUG   [0m psycopg.pool:pool_async.py:634 terminating working task pool-3-worker-0
+[31m[1m______________________________ test_atomization _______________________________[0m
+[1m[31mtests\integration\test_implementation.py[0m:31: in test_atomization
+    [0matoms = atomizer.atomize_array(data, ModalityType.MODEL_WEIGHT)[90m[39;49;00m
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mE   TypeError: Atomizer.atomize_array() missing 1 required positional argument: 'modality'[0m
+[33m============================== warnings summary ===============================[0m
+tests/integration/test_api.py::test_root_endpoint
+  D:\Repositories\Hartonomous\api\models\base.py:14: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class BaseModel(PydanticBaseModel):
+
+tests/integration/test_gguf_ingestion.py::test_gguf_ingestion
+  C:\Users\ahart\AppData\Roaming\Python\Python314\site-packages\psycopg_pool\pool_async.py:148: RuntimeWarning: opening the async pool AsyncConnectionPool in the constructor is deprecated and will not be supported anymore in a future release. Please use `await pool.open()`, or use the pool as context manager using: `async with AsyncConnectionPool(...) as pool: `...
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+============================== slowest durations ==============================
+4.87s call     tests/geometric/test_geometric_atomization.py::TestGeometricAtomizer::test_atomize_tensor_large
+4.00s call     tests/integration/geometric/test_fractal_reconstruction.py::TestChunkedRoundtrips::test_chunked_tensor_roundtrip
+2.49s call     tests/integration/geometric/test_fractal_reconstruction.py::TestFullModelRoundtrips::test_mock_model_roundtrip
+2.36s setup    tests/integration/geometric/test_fractal_reconstruction.py::TestEdgeCases::test_single_value_roundtrip
+2.06s call     tests/integration/geometric/test_fractal_reconstruction.py::TestFullModelRoundtrips::test_large_layer_chunked_roundtrip
+1.84s setup    tests/integration/geometric/test_fractal_reconstruction.py::TestMultiDimensionalRoundtrips::test_2d_matrix_roundtrip
+1.78s call     tests/integration/geometric/test_gguf_ingestion.py::TestRealGGUFIngestion::test_ingest_first_5_tensors
+1.27s call     tests/integration/geometric/test_fractal_reconstruction.py::TestUnicodeRoundtrips::test_long_unicode_text
+1.23s call     tests/integration/geometric/test_spatial_queries.py::TestProximitySearches::test_st_dwithin_performance
+0.99s setup    tests/integration/geometric/test_fractal_reconstruction.py::TestFullModelRoundtrips::test_large_layer_chunked_roundtrip
+0.80s setup    tests/integration/geometric/test_spatial_queries.py::TestDistanceCalculations::test_st_distance_to_point
+0.80s setup    tests/integration/geometric/test_fractal_reconstruction.py::TestSimpleRoundtrips::test_text_roundtrip
+0.80s setup    tests/integration/geometric/test_safetensors_ingestion.py::TestRealSafeTensorsIngestion::test_query_stored_embeddings
+0.71s setup    tests/integration/geometric/test_spatial_queries.py::TestQueryOptimization::test_query_selectivity
+0.70s call     tests/integration/geometric/test_fractal_reconstruction.py::TestSimpleRoundtrips::test_text_roundtrip
+0.69s setup    tests/integration/geometric/test_spatial_queries.py::TestCoordinateLookups::test_query_atoms_in_bounding_box
+0.68s setup    tests/integration/geometric/test_spatial_queries.py::TestQueryOptimization::test_spatial_index_usage
+0.67s setup    tests/integration/geometric/test_fractal_reconstruction.py::TestEdgeCases::test_zero_values_roundtrip
+0.67s call     tests/integration/geometric/test_fractal_reconstruction.py::TestSimpleRoundtrips::test_int8_roundtrip
+0.66s setup    tests/integration/geometric/test_gguf_ingestion.py::TestModelIngestion::test_reconstruct_mock_model
+0.66s call     tests/integration/geometric/test_spatial_queries.py::TestCoordinateLookups::test_find_atom_at_coordinate
+0.65s setup    tests/integration/geometric/test_fractal_reconstruction.py::TestSimpleRoundtrips::test_int8_roundtrip
+0.65s setup    tests/integration/geometric/test_safetensors_ingestion.py::TestFullModelIngestion::test_reconstruct_minilm_mock
+0.64s call     tests/integration/geometric/test_safetensors_ingestion.py::TestFullModelIngestion::test_reconstruct_minilm_mock
+0.64s setup    tests/integration/geometric/test_fractal_reconstruction.py::TestUnicodeRoundtrips::test_unicode_text
+0.64s setup    tests/integration/geometric/test_fractal_reconstruction.py::TestChunkedRoundtrips::test_chunked_tensor_roundtrip
+0.64s call     tests/integration/geometric/test_safetensors_ingestion.py::TestRealSafeTensorsIngestion::test_query_stored_embeddings
+0.63s call     tests/integration/geometric/test_fractal_reconstruction.py::TestUnicodeRoundtrips::test_unicode_text
+0.63s setup    tests/integration/geometric/test_fractal_reconstruction.py::TestMultiDimensionalRoundtrips::test_3d_tensor_roundtrip
+0.63s setup    tests/integration/geometric/test_safetensors_ingestion.py::TestRealSafeTensorsIngestion::test_ingest_first_5_layers
+0.63s setup    tests/integration/test_code_parser.py::TestCodeParser::test_parse_python_file
+0.63s setup    tests/integration/geometric/test_gguf_ingestion.py::TestModelIngestion::test_ingest_mock_model
+0.63s setup    tests/integration/geometric/test_safetensors_ingestion.py::TestFullModelIngestion::test_ingest_minilm_mock
+0.62s setup    tests/integration/geometric/test_fractal_reconstruction.py::TestSimpleRoundtrips::test_float32_roundtrip
+0.62s setup    tests/integration/geometric/test_spatial_queries.py::TestBasicSpatialQueries::test_st_numpoints
+0.62s setup    tests/integration/geometric/test_gguf_ingestion.py::TestRealGGUFIngestion::test_ingest_first_5_tensors
+0.62s call     tests/integration/geometric/test_fractal_reconstruction.py::TestEdgeCases::test_zero_values_roundtrip
+0.62s setup    tests/integration/geometric/test_gguf_ingestion.py::TestDatabaseIngestion::test_store_multiple_chunks
+0.61s call     tests/integration/geometric/test_gguf_ingestion.py::TestModelIngestion::test_reconstruct_mock_model
+0.61s call     tests/integration/geometric/test_fractal_reconstruction.py::TestSimpleRoundtrips::test_float32_roundtrip
+0.61s setup    tests/integration/geometric/test_spatial_queries.py::TestCoordinateLookups::test_find_atom_at_coordinate
+0.61s setup    tests/integration/geometric/test_gguf_ingestion.py::TestDatabaseIngestion::test_store_single_trajectory
+0.60s call     tests/integration/geometric/test_fractal_reconstruction.py::TestMultiDimensionalRoundtrips::test_2d_matrix_roundtrip
+0.60s call     tests/integration/geometric/test_fractal_reconstruction.py::TestMultiDimensionalRoundtrips::test_3d_tensor_roundtrip
+0.60s call     tests/integration/test_code_parser.py::TestCodeParser::test_parse_python_file
+0.59s setup    tests/integration/geometric/test_fractal_reconstruction.py::TestUnicodeRoundtrips::test_long_unicode_text
+0.58s setup    tests/integration/geometric/test_spatial_queries.py::TestDistanceCalculations::test_trajectory_to_trajectory_distance
+0.57s setup    tests/integration/geometric/test_fractal_reconstruction.py::TestFullModelRoundtrips::test_mock_model_roundtrip
+0.55s setup    tests/integration/test_end_to_end.py::TestCompleteWorkflows::test_text_atomization_to_query_workflow
+0.55s setup    tests/integration/geometric/test_spatial_queries.py::TestProximitySearches::test_st_dwithin_single_trajectory
+0.53s setup    tests/integration/geometric/test_safetensors_ingestion.py::TestDatabaseStorage::test_store_single_embedding
+0.53s setup    tests/integration/geometric/test_spatial_queries.py::TestBasicSpatialQueries::test_st_length
+0.52s setup    tests/integration/test_end_to_end.py::TestCompleteWorkflows::test_image_to_atoms_workflow
+0.51s setup    tests/integration/geometric/test_spatial_queries.py::TestProximitySearches::test_st_dwithin_performance
+0.50s call     tests/integration/geometric/test_fractal_reconstruction.py::TestEdgeCases::test_single_value_roundtrip
+0.34s call     tests/integration/test_code_atomizer_integration.py::TestCodeAtomizerIntegration::test_service_health
+0.31s call     tests/integration/test_code_atomizer_integration.py::TestCodeParserClass::test_health_check_method
+0.30s call     tests/integration/test_code_atomizer_integration.py::TestCodeAtomizerIntegration::test_content_hash_format
+0.30s call     tests/integration/test_code_atomizer_integration.py::TestCodeAtomizerIntegration::test_spatial_coordinates_present
+0.30s call     tests/integration/test_code_atomizer_integration.py::TestCodeAtomizerIntegration::test_relations_structure
+0.30s call     tests/integration/test_code_atomizer_integration.py::TestCodeAtomizerIntegration::test_compositions_structure
+0.30s call     tests/integration/test_code_atomizer_integration.py::TestCodeAtomizerIntegration::test_list_supported_languages
+0.30s call     tests/integration/test_code_atomizer_integration.py::TestCodeAtomizerIntegration::test_atomize_python_code
+0.30s call     tests/integration/test_code_atomizer_integration.py::TestCodeAtomizerIntegration::test_atomize_simple_csharp
+0.24s call     tests/integration/geometric/test_safetensors_ingestion.py::TestEmbeddingAtomization::test_atomize_large_embedding_chunked
+0.24s call     tests/integration/geometric/test_safetensors_ingestion.py::TestRealSafeTensorsIngestion::test_ingest_first_5_layers
+0.24s call     tests/integration/geometric/test_gguf_ingestion.py::TestBasicTensorIngestion::test_atomize_large_tensor_chunked
+0.22s call     tests/geometric/test_geometric_atomization.py::TestTrajectoryBuilder::test_large_tensor_chunking
+0.19s call     tests/integration/test_gguf_ingestion.py::test_gguf_ingestion
+0.19s call     tests/integration/geometric/test_spatial_queries.py::TestQueryOptimization::test_query_selectivity
+0.14s call     tests/integration/geometric/test_safetensors_ingestion.py::TestEmbeddingAtomization::test_atomize_small_embedding
+0.07s setup    tests/integration/test_api.py::test_root_endpoint
+0.06s call     tests/integration/geometric/test_spatial_queries.py::TestQueryOptimization::test_spatial_index_usage
+0.05s call     tests/integration/test_database.py::test_connection_pool
+0.05s call     tests/integration/geometric/test_safetensors_ingestion.py::TestSafeTensorsLoading::test_tensor_shapes
+0.04s call     tests/integration/geometric/test_safetensors_ingestion.py::TestSafeTensorsLoading::test_load_safetensors_file
+0.04s call     tests/integration/test_api.py::test_openapi_docs
+0.02s call     tests/integration/geometric/test_spatial_queries.py::TestProximitySearches::test_st_dwithin_single_trajectory
+0.02s call     tests/integration/geometric/test_safetensors_ingestion.py::TestDatabaseStorage::test_store_single_embedding
+0.02s call     tests/integration/test_database.py::test_transaction_handling
+0.02s call     tests/integration/geometric/test_safetensors_ingestion.py::TestFullModelIngestion::test_ingest_minilm_mock
+0.01s call     tests/integration/geometric/test_spatial_queries.py::TestCoordinateLookups::test_query_atoms_in_bounding_box
+0.01s call     tests/integration/test_end_to_end.py::TestCompleteWorkflows::test_image_to_atoms_workflow
+0.01s call     tests/integration/geometric/test_gguf_ingestion.py::TestDatabaseIngestion::test_store_multiple_chunks
+0.01s call     tests/integration/geometric/test_gguf_ingestion.py::TestModelIngestion::test_ingest_mock_model
+0.01s call     tests/functional/test_compression.py::test_compression_functional
+0.01s setup    tests/integration/test_api.py::test_invalid_endpoint
+0.00s call     tests/geometric/test_fractal_edge_cases.py::TestPerformance::test_coordinate_computation_speed
+0.00s call     tests/geometric/test_geometric_atomization.py::TestGeometricAtomizer::test_roundtrip_tensor
+0.00s teardown tests/integration/test_api.py::test_invalid_endpoint
+0.00s call     tests/integration/geometric/test_spatial_queries.py::TestDistanceCalculations::test_trajectory_to_trajectory_distance
+0.00s call     tests/geometric/test_bpe_integration.py::TestBPEIntegration::test_learn_repeated_phrase
+0.00s call     tests/geometric/test_fractal_edge_cases.py::TestEdgeCases::test_large_composition_array
+0.00s call     tests/integration/geometric/test_spatial_queries.py::TestBasicSpatialQueries::test_st_length
+0.00s call     tests/integration/test_end_to_end.py::TestCompleteWorkflows::test_text_atomization_to_query_workflow
+0.00s setup    tests/integration/test_api.py::test_api_versioning
+0.00s call     tests/integration/geometric/test_spatial_queries.py::TestDistanceCalculations::test_st_distance_to_point
+0.00s call     tests/integration/geometric/test_spatial_queries.py::TestBasicSpatialQueries::test_st_numpoints
+0.00s call     tests/integration/geometric/test_gguf_ingestion.py::TestDatabaseIngestion::test_store_single_trajectory
+0.00s setup    tests/integration/geometric/test_safetensors_ingestion.py::TestEmbeddingAtomization::test_atomize_small_embedding
+0.00s setup    tests/geometric/test_geometric_atomization.py::TestGeometricAtomizer::test_atomize_text
+0.00s call     tests/geometric/test_bpe_integration.py::TestBPEIntegration::test_recursive_merging
+0.00s setup    tests/integration/test_api.py::test_cors_headers
+0.00s call     tests/geometric/test_bpe_integration.py::TestBPEIntegration::test_autonomous_discovery
+0.00s setup    tests/integration/test_code_atomizer_integration.py::TestCodeParserClass::test_parser_initialization
+0.00s call     tests/geometric/test_bpe_integration.py::TestBPEIntegration::test_compression_improves_over_time
+0.00s setup    tests/integration/geometric/test_gguf_ingestion.py::TestGGUFMetadataExtraction::test_read_gguf_header
+0.00s setup    tests/integration/geometric/test_safetensors_ingestion.py::TestSafeTensorsLoading::test_load_safetensors_file
+0.00s setup    tests/integration/test_gguf_ingestion.py::test_gguf_ingestion
+0.00s setup    tests/integration/test_database.py::test_transaction_handling
+0.00s setup    tests/integration/geometric/test_safetensors_ingestion.py::TestEmbeddingAtomization::test_atomize_large_embedding_chunked
+0.00s teardown tests/integration/test_implementation.py::test_atomization
+0.00s call     tests/geometric/test_fractal_edge_cases.py::TestPerformance::test_cache_effectiveness
+0.00s setup    tests/integration/geometric/test_safetensors_ingestion.py::TestSafeTensorsLoading::test_tensor_shapes
+0.00s setup    tests/integration/test_gguf_atomizer.py::TestGGUFAtomizer::test_atomizer_initialization
+0.00s setup    tests/integration/test_fractal_ingestion_pipeline.py::test_pipeline
+0.00s setup    tests/geometric/test_geometric_atomization.py::TestGeometricAtomizer::test_atomize_tensor_small
+0.00s setup    tests/integration/test_api.py::test_health_endpoint
+0.00s setup    tests/integration/geometric/test_gguf_ingestion.py::TestBasicTensorIngestion::test_atomize_large_tensor_chunked
+0.00s setup    tests/integration/test_database.py::test_database_connection
+0.00s call     tests/geometric/test_fractal_edge_cases.py::TestEdgeCases::test_deep_nesting
+0.00s setup    tests/integration/test_database.py::test_schema_exists
+0.00s call     tests/integration/test_fractal_ingestion_pipeline.py::test_pipeline
+0.00s call     tests/geometric/test_fractal_edge_cases.py::TestBPECrystallizer::test_bpe_integration
+0.00s setup    tests/integration/test_gguf_atomizer.py::TestGGUFAtomizer::test_atomizer_threshold
+0.00s call     tests/geometric/test_bpe_integration.py::TestBPEIntegration::test_incremental_learning
+0.00s call     tests/geometric/test_fractal_atomization.py::TestFractalDeduplication::test_lorem_ipsum_compression
+0.00s setup    tests/integration/test_api.py::test_openapi_docs
+0.00s setup    tests/integration/test_code_atomizer_integration.py::TestCodeParserClass::test_health_check_method
+0.00s call     tests/integration/test_api.py::test_api_versioning
+0.00s setup    tests/integration/geometric/test_gguf_ingestion.py::TestBasicTensorIngestion::test_atomize_small_tensor
+0.00s call     tests/geometric/test_fractal_atomization.py::TestFractalDeduplication::test_coordinate_determinism
+0.00s call     tests/geometric/test_fractal_edge_cases.py::TestEdgeCases::test_single_element_composition
+0.00s call     tests/geometric/test_bpe_integration.py::TestOODALoop::test_decide_phase
+0.00s setup    tests/integration/test_database.py::test_connection_pool
+0.00s setup    tests/integration/test_database.py::test_database_version
+0.00s call     tests/geometric/test_fractal_atomization.py::TestFractalDeduplication::test_hello_ellipsis_composition
+0.00s call     tests/geometric/test_fractal_atomization.py::TestFractalDeduplication::test_hash_collision_detection
+0.00s call     tests/geometric/test_fractal_edge_cases.py::TestBPECrystallizer::test_compression_ratio_calculation
+0.00s call     tests/geometric/test_fractal_edge_cases.py::TestEdgeCases::test_coordinate_uniqueness
+0.00s setup    tests/integration/test_database.py::test_database_extensions
+0.00s setup    tests/geometric/test_geometric_atomization.py::TestGeometricAtomizer::test_atomize_tensor_large
+0.00s call     tests/geometric/test_fractal_atomization.py::TestFractalDeduplication::test_crystallize_sequence
+0.00s call     tests/geometric/test_fractal_edge_cases.py::TestEdgeCases::test_duplicate_detection
+0.00s call     tests/geometric/test_fractal_edge_cases.py::TestEdgeCases::test_empty_composition
+0.00s call     tests/geometric/test_fractal_atomization.py::TestFractalDeduplication::test_ellipsis_composition
+0.00s call     tests/geometric/test_fractal_atomization.py::TestFractalDeduplication::test_primitive_deduplication
+0.00s setup    tests/functional/test_compression.py::test_compression_functional
+0.00s setup    tests/integration/test_image_parser.py::TestImageParser::test_image_composition
+0.00s teardown tests/integration/test_gguf_ingestion.py::test_gguf_ingestion
+0.00s teardown tests/integration/test_database.py::test_connection_pool
+0.00s call     tests/integration/test_api.py::test_root_endpoint
+0.00s teardown tests/integration/test_code_parser.py::TestCodeParser::test_parse_python_file
+0.00s call     tests/integration/test_database.py::test_schema_exists
+0.00s teardown tests/integration/test_code_atomizer_integration.py::TestCodeParserClass::test_health_check_method
+0.00s teardown tests/integration/geometric/test_safetensors_ingestion.py::TestEmbeddingAtomization::test_atomize_small_embedding
+0.00s call     tests/integration/test_api.py::test_invalid_endpoint
+0.00s call     tests/integration/test_database.py::test_database_extensions
+0.00s teardown tests/integration/test_api.py::test_api_versioning
+0.00s setup    tests/integration/test_image_parser.py::TestImageParser::test_grayscale_image
+0.00s call     tests/geometric/test_geometric_atomization.py::TestGeometricAtomizer::test_roundtrip_text
+0.00s call     tests/integration/geometric/test_gguf_ingestion.py::TestGGUFMetadataExtraction::test_read_gguf_header
+0.00s setup    tests/integration/test_image_parser.py::TestImageParser::test_parse_simple_image
+0.00s setup    tests/integration/test_gguf_atomizer.py::TestGGUFAtomizer::test_weight_deduplication
+0.00s call     tests/integration/test_api.py::test_cors_headers
+0.00s teardown tests/integration/geometric/test_fractal_reconstruction.py::TestFullModelRoundtrips::test_large_layer_chunked_roundtrip
+0.00s teardown tests/integration/geometric/test_safetensors_ingestion.py::TestSafeTensorsLoading::test_load_safetensors_file
+0.00s teardown tests/integration/geometric/test_gguf_ingestion.py::TestRealGGUFIngestion::test_ingest_first_5_tensors
+0.00s teardown tests/geometric/test_geometric_atomization.py::TestGeometricAtomizer::test_atomize_tensor_large
+0.00s teardown tests/integration/geometric/test_spatial_queries.py::TestCoordinateLookups::test_find_atom_at_coordinate
+0.00s teardown tests/integration/geometric/test_fractal_reconstruction.py::TestChunkedRoundtrips::test_chunked_tensor_roundtrip
+0.00s teardown tests/integration/test_end_to_end.py::TestCompleteWorkflows::test_text_atomization_to_query_workflow
+0.00s call     tests/integration/test_api.py::test_health_endpoint
+0.00s teardown tests/integration/geometric/test_safetensors_ingestion.py::TestRealSafeTensorsIngestion::test_query_stored_embeddings
+0.00s teardown tests/integration/geometric/test_fractal_reconstruction.py::TestEdgeCases::test_zero_values_roundtrip
+0.00s teardown tests/integration/geometric/test_fractal_reconstruction.py::TestSimpleRoundtrips::test_int8_roundtrip
+0.00s teardown tests/integration/test_end_to_end.py::TestCompleteWorkflows::test_image_to_atoms_workflow
+0.00s call     tests/integration/geometric/test_gguf_ingestion.py::TestBasicTensorIngestion::test_atomize_small_tensor
+0.00s teardown tests/integration/geometric/test_gguf_ingestion.py::TestModelIngestion::test_reconstruct_mock_model
+0.00s teardown tests/integration/geometric/test_fractal_reconstruction.py::TestUnicodeRoundtrips::test_long_unicode_text
+0.00s teardown tests/integration/geometric/test_fractal_reconstruction.py::TestFullModelRoundtrips::test_mock_model_roundtrip
+0.00s teardown tests/integration/geometric/test_fractal_reconstruction.py::TestMultiDimensionalRoundtrips::test_2d_matrix_roundtrip
+0.00s teardown tests/integration/geometric/test_fractal_reconstruction.py::TestEdgeCases::test_single_value_roundtrip
+0.00s teardown tests/integration/geometric/test_fractal_reconstruction.py::TestSimpleRoundtrips::test_text_roundtrip
+0.00s teardown tests/integration/geometric/test_safetensors_ingestion.py::TestFullModelIngestion::test_reconstruct_minilm_mock
+0.00s teardown tests/integration/geometric/test_safetensors_ingestion.py::TestRealSafeTensorsIngestion::test_ingest_first_5_layers
+0.00s teardown tests/integration/test_api.py::test_openapi_docs
+0.00s teardown tests/integration/geometric/test_fractal_reconstruction.py::TestMultiDimensionalRoundtrips::test_3d_tensor_roundtrip
+0.00s teardown tests/integration/geometric/test_fractal_reconstruction.py::TestSimpleRoundtrips::test_float32_roundtrip
+0.00s teardown tests/integration/geometric/test_spatial_queries.py::TestProximitySearches::test_st_dwithin_performance
+0.00s call     tests/geometric/test_geometric_atomization.py::TestGeometricAtomizer::test_atomize_tensor_small
+0.00s call     tests/geometric/test_geometric_atomization.py::TestGeometricAtomizer::test_atomize_text
+0.00s teardown tests/integration/geometric/test_safetensors_ingestion.py::TestSafeTensorsLoading::test_tensor_shapes
+0.00s teardown tests/integration/geometric/test_fractal_reconstruction.py::TestUnicodeRoundtrips::test_unicode_text
+0.00s call     tests/geometric/test_geometric_atomization.py::TestSpatialUtils::test_coordinate_range
+0.00s teardown tests/integration/geometric/test_spatial_queries.py::TestProximitySearches::test_st_dwithin_single_trajectory
+0.00s teardown tests/integration/geometric/test_safetensors_ingestion.py::TestEmbeddingAtomization::test_atomize_large_embedding_chunked
+0.00s teardown tests/integration/geometric/test_gguf_ingestion.py::TestBasicTensorIngestion::test_atomize_large_tensor_chunked
+0.00s teardown tests/integration/geometric/test_spatial_queries.py::TestQueryOptimization::test_spatial_index_usage
+0.00s teardown tests/integration/geometric/test_spatial_queries.py::TestCoordinateLookups::test_query_atoms_in_bounding_box
+0.00s teardown tests/integration/geometric/test_spatial_queries.py::TestQueryOptimization::test_query_selectivity
+0.00s teardown tests/integration/geometric/test_safetensors_ingestion.py::TestFullModelIngestion::test_ingest_minilm_mock
+0.00s teardown tests/integration/geometric/test_safetensors_ingestion.py::TestDatabaseStorage::test_store_single_embedding
+0.00s teardown tests/integration/test_database.py::test_transaction_handling
+0.00s setup    tests/integration/test_code_atomizer_integration.py::TestCodeAtomizerIntegration::test_service_health
+0.00s teardown tests/integration/geometric/test_spatial_queries.py::TestDistanceCalculations::test_trajectory_to_trajectory_distance
+0.00s teardown tests/integration/geometric/test_gguf_ingestion.py::TestModelIngestion::test_ingest_mock_model
+0.00s teardown tests/integration/geometric/test_gguf_ingestion.py::TestDatabaseIngestion::test_store_multiple_chunks
+0.00s teardown tests/integration/geometric/test_spatial_queries.py::TestDistanceCalculations::test_st_distance_to_point
+0.00s teardown tests/integration/test_fractal_ingestion_pipeline.py::test_pipeline
+0.00s teardown tests/integration/geometric/test_spatial_queries.py::TestBasicSpatialQueries::test_st_length
+0.00s teardown tests/integration/geometric/test_spatial_queries.py::TestBasicSpatialQueries::test_st_numpoints
+0.00s call     tests/integration/test_database.py::test_database_version
+0.00s teardown tests/integration/geometric/test_gguf_ingestion.py::TestDatabaseIngestion::test_store_single_trajectory
+0.00s teardown tests/geometric/test_geometric_atomization.py::TestGeometricAtomizer::test_atomize_text
+0.00s teardown tests/integration/test_api.py::test_root_endpoint
+0.00s call     tests/integration/test_database.py::test_database_connection
+0.00s teardown tests/integration/test_api.py::test_cors_headers
+0.00s teardown tests/integration/test_gguf_atomizer.py::TestGGUFAtomizer::test_atomizer_initialization
+0.00s teardown tests/integration/test_database.py::test_database_extensions
+0.00s teardown tests/integration/test_api.py::test_health_endpoint
+0.00s setup    tests/integration/test_code_atomizer_integration.py::TestCodeAtomizerIntegration::test_atomize_simple_csharp
+0.00s teardown tests/integration/test_code_atomizer_integration.py::TestCodeParserClass::test_parser_initialization
+0.00s teardown tests/integration/geometric/test_gguf_ingestion.py::TestGGUFMetadataExtraction::test_read_gguf_header
+0.00s setup    tests/integration/test_code_atomizer_integration.py::TestCodeAtomizerIntegration::test_list_supported_languages
+0.00s teardown tests/geometric/test_geometric_atomization.py::TestGeometricAtomizer::test_atomize_tensor_small
+0.00s setup    tests/geometric/test_geometric_atomization.py::TestSpatialReconstructor::test_parse_wkt
+0.00s setup    tests/integration/test_code_atomizer_integration.py::TestCodeAtomizerIntegration::test_content_hash_format
+0.00s teardown tests/integration/test_database.py::test_schema_exists
+0.00s setup    tests/integration/test_code_atomizer_integration.py::TestCodeAtomizerIntegration::test_atomize_python_code
+0.00s teardown tests/integration/test_gguf_atomizer.py::TestGGUFAtomizer::test_atomizer_threshold
+0.00s setup    tests/integration/test_code_atomizer_integration.py::TestCodeAtomizerIntegration::test_relations_structure
+0.00s setup    tests/integration/test_code_atomizer_integration.py::TestCodeAtomizerIntegration::test_compositions_structure
+0.00s teardown tests/integration/test_database.py::test_database_connection
+0.00s setup    tests/integration/test_implementation.py::test_atomization
+0.00s setup    tests/geometric/test_geometric_atomization.py::TestGeometricAtomizer::test_roundtrip_text
+0.00s teardown tests/integration/geometric/test_gguf_ingestion.py::TestBasicTensorIngestion::test_atomize_small_tensor
+0.00s setup    tests/integration/test_code_atomizer_integration.py::TestCodeAtomizerIntegration::test_spatial_coordinates_present
+0.00s call     tests/integration/test_code_atomizer_integration.py::TestCodeParserClass::test_parser_initialization
+0.00s teardown tests/integration/test_code_atomizer_integration.py::TestCodeAtomizerIntegration::test_relations_structure
+0.00s teardown tests/integration/test_database.py::test_database_version
+0.00s call     tests/geometric/test_geometric_atomization.py::TestSpatialReconstructor::test_reconstruct_local
+0.00s call     tests/functional/test_positioning.py::test_spatial_positioning
+0.00s setup    tests/integration/test_code_parser.py::TestCodeParser::test_detect_language
+0.00s teardown tests/integration/test_code_atomizer_integration.py::TestCodeAtomizerIntegration::test_atomize_simple_csharp
+0.00s setup    tests/geometric/test_geometric_atomization.py::TestSpatialUtils::test_deterministic_coordinates
+0.00s setup    tests/functional/test_hilbert.py::test_hilbert_round_trip
+0.00s call     tests/geometric/test_geometric_atomization.py::TestSpatialReconstructor::test_parse_wkt
+0.00s teardown tests/integration/test_gguf_atomizer.py::TestGGUFAtomizer::test_weight_deduplication
+0.00s setup    tests/geometric/test_geometric_atomization.py::TestGeometricAtomizer::test_roundtrip_tensor
+0.00s setup    tests/geometric/test_fractal_edge_cases.py::TestPerformance::test_cache_effectiveness
+0.00s teardown tests/integration/test_code_atomizer_integration.py::TestCodeAtomizerIntegration::test_list_supported_languages
+0.00s call     tests/geometric/test_geometric_atomization.py::TestTrajectoryBuilder::test_hello_world_single_linestring
+0.00s call     tests/integration/test_gguf_atomizer.py::TestGGUFAtomizer::test_atomizer_initialization
+0.00s call     tests/integration/test_gguf_atomizer.py::TestGGUFAtomizer::test_atomizer_threshold
+0.00s setup    tests/geometric/test_bpe_integration.py::TestBPEIntegration::test_learn_repeated_phrase
+0.00s call     tests/functional/test_hilbert.py::test_hilbert_round_trip
+0.00s teardown tests/integration/test_code_atomizer_integration.py::TestCodeAtomizerIntegration::test_atomize_python_code
+0.00s setup    tests/geometric/test_fractal_atomization.py::TestFractalDeduplication::test_ellipsis_composition
+0.00s setup    tests/geometric/test_fractal_edge_cases.py::TestEdgeCases::test_large_composition_array
+0.00s setup    tests/geometric/test_geometric_atomization.py::TestTrajectoryBuilder::test_hello_world_single_linestring
+0.00s setup    tests/geometric/test_bpe_integration.py::TestBPEIntegration::test_recursive_merging
+0.00s teardown tests/integration/test_image_parser.py::TestImageParser::test_image_composition
+0.00s setup    tests/geometric/test_fractal_atomization.py::TestFractalDeduplication::test_hash_collision_detection
+0.00s setup    tests/geometric/test_fractal_edge_cases.py::TestEdgeCases::test_deep_nesting
+0.00s setup    tests/geometric/test_bpe_integration.py::TestOODALoop::test_observe_phase
+0.00s setup    tests/geometric/test_geometric_atomization.py::TestSpatialReconstructor::test_reconstruct_local
+0.00s setup    tests/geometric/test_fractal_atomization.py::TestFractalDeduplication::test_lorem_ipsum_compression
+0.00s teardown tests/integration/test_image_parser.py::TestImageParser::test_grayscale_image
+0.00s setup    tests/geometric/test_fractal_edge_cases.py::TestBPECrystallizer::test_observe_and_count
+0.00s setup    tests/functional/test_positioning.py::test_spatial_positioning
+0.00s setup    tests/geometric/test_bpe_integration.py::TestBPEIntegration::test_compression_improves_over_time
+0.00s teardown tests/integration/test_code_atomizer_integration.py::TestCodeAtomizerIntegration::test_spatial_coordinates_present
+0.00s setup    tests/geometric/test_bpe_integration.py::TestBPEIntegration::test_autonomous_discovery
+0.00s setup    tests/geometric/test_fractal_atomization.py::TestFractalDeduplication::test_hello_ellipsis_composition
+0.00s setup    tests/geometric/test_fractal_edge_cases.py::TestEdgeCases::test_empty_composition
+0.00s setup    tests/geometric/test_fractal_atomization.py::TestFractalDeduplication::test_coordinate_determinism
+0.00s setup    tests/geometric/test_bpe_integration.py::TestBPEIntegration::test_incremental_learning
+0.00s setup    tests/geometric/test_bpe_integration.py::TestOODALoop::test_act_phase
+0.00s setup    tests/geometric/test_fractal_edge_cases.py::TestEdgeCases::test_single_element_composition
+0.00s setup    tests/geometric/test_geometric_atomization.py::TestSpatialUtils::test_different_atoms_different_coords
+0.00s setup    tests/geometric/test_fractal_edge_cases.py::TestEdgeCases::test_duplicate_detection
+0.00s setup    tests/geometric/test_fractal_edge_cases.py::TestPerformance::test_coordinate_computation_speed
+0.00s setup    tests/geometric/test_bpe_integration.py::TestOODALoop::test_orient_phase
+0.00s setup    tests/geometric/test_fractal_edge_cases.py::TestBPECrystallizer::test_compression_ratio_calculation
+0.00s setup    tests/geometric/test_fractal_edge_cases.py::TestEdgeCases::test_coordinate_uniqueness
+0.00s setup    tests/geometric/test_fractal_atomization.py::TestFractalDeduplication::test_crystallize_sequence
+0.00s setup    tests/geometric/test_geometric_atomization.py::TestTrajectoryBuilder::test_large_tensor_chunking
+0.00s setup    tests/geometric/test_fractal_edge_cases.py::TestBPECrystallizer::test_recursive_merging
+0.00s teardown tests/geometric/test_geometric_atomization.py::TestTrajectoryBuilder::test_large_tensor_chunking
+0.00s setup    tests/geometric/test_geometric_atomization.py::TestSpatialUtils::test_hilbert_index
+0.00s teardown tests/integration/test_code_atomizer_integration.py::TestCodeAtomizerIntegration::test_compositions_structure
+0.00s setup    tests/geometric/test_fractal_edge_cases.py::TestBPECrystallizer::test_bpe_integration
+0.00s teardown tests/integration/test_image_parser.py::TestImageParser::test_parse_simple_image
+0.00s setup    tests/geometric/test_fractal_atomization.py::TestFractalDeduplication::test_primitive_deduplication
+0.00s setup    tests/geometric/test_bpe_integration.py::TestOODALoop::test_decide_phase
+0.00s teardown tests/integration/test_code_atomizer_integration.py::TestCodeAtomizerIntegration::test_content_hash_format
+0.00s setup    tests/geometric/test_geometric_atomization.py::TestTrajectoryBuilder::test_build_simple_trajectory
+0.00s setup    tests/geometric/test_fractal_edge_cases.py::TestBPECrystallizer::test_merge_candidate_selection
+0.00s setup    tests/geometric/test_geometric_atomization.py::TestSpatialUtils::test_coordinate_range
+0.00s teardown tests/integration/test_code_atomizer_integration.py::TestCodeAtomizerIntegration::test_service_health
+0.00s call     tests/geometric/test_geometric_atomization.py::TestTrajectoryBuilder::test_build_simple_trajectory
+0.00s teardown tests/geometric/test_fractal_edge_cases.py::TestEdgeCases::test_single_element_composition
+0.00s setup    tests/geometric/test_fractal_edge_cases.py::TestBPECrystallizer::test_apply_merges
+0.00s teardown tests/functional/test_compression.py::test_compression_functional
+0.00s call     tests/integration/test_implementation.py::test_atomization
+0.00s teardown tests/geometric/test_geometric_atomization.py::TestGeometricAtomizer::test_roundtrip_tensor
+0.00s teardown tests/geometric/test_geometric_atomization.py::TestTrajectoryBuilder::test_build_simple_trajectory
+0.00s teardown tests/geometric/test_fractal_edge_cases.py::TestPerformance::test_coordinate_computation_speed
+0.00s call     tests/geometric/test_geometric_atomization.py::TestSpatialUtils::test_deterministic_coordinates
+0.00s teardown tests/geometric/test_geometric_atomization.py::TestGeometricAtomizer::test_roundtrip_text
+0.00s teardown tests/geometric/test_fractal_edge_cases.py::TestEdgeCases::test_empty_composition
+0.00s teardown tests/geometric/test_fractal_edge_cases.py::TestPerformance::test_cache_effectiveness
+0.00s call     tests/geometric/test_geometric_atomization.py::TestSpatialUtils::test_different_atoms_different_coords
+0.00s teardown tests/geometric/test_fractal_atomization.py::TestFractalDeduplication::test_lorem_ipsum_compression
+0.00s call     tests/integration/test_code_parser.py::TestCodeParser::test_detect_language
+0.00s teardown tests/geometric/test_bpe_integration.py::TestBPEIntegration::test_learn_repeated_phrase
+0.00s teardown tests/geometric/test_bpe_integration.py::TestBPEIntegration::test_autonomous_discovery
+0.00s teardown tests/geometric/test_fractal_edge_cases.py::TestEdgeCases::test_coordinate_uniqueness
+0.00s teardown tests/geometric/test_fractal_atomization.py::TestFractalDeduplication::test_hello_ellipsis_composition
+0.00s teardown tests/geometric/test_fractal_atomization.py::TestFractalDeduplication::test_primitive_deduplication
+0.00s teardown tests/geometric/test_fractal_atomization.py::TestFractalDeduplication::test_crystallize_sequence
+0.00s teardown tests/geometric/test_fractal_edge_cases.py::TestEdgeCases::test_deep_nesting
+0.00s teardown tests/functional/test_hilbert.py::test_hilbert_round_trip
+0.00s teardown tests/geometric/test_fractal_edge_cases.py::TestBPECrystallizer::test_bpe_integration
+0.00s teardown tests/geometric/test_bpe_integration.py::TestOODALoop::test_decide_phase
+0.00s teardown tests/geometric/test_geometric_atomization.py::TestSpatialReconstructor::test_reconstruct_local
+0.00s teardown tests/geometric/test_bpe_integration.py::TestBPEIntegration::test_compression_improves_over_time
+0.00s teardown tests/geometric/test_fractal_edge_cases.py::TestEdgeCases::test_large_composition_array
+0.00s teardown tests/geometric/test_fractal_atomization.py::TestFractalDeduplication::test_coordinate_determinism
+0.00s teardown tests/geometric/test_bpe_integration.py::TestBPEIntegration::test_recursive_merging
+0.00s teardown tests/geometric/test_fractal_atomization.py::TestFractalDeduplication::test_ellipsis_composition
+0.00s call     tests/geometric/test_bpe_integration.py::TestOODALoop::test_orient_phase
+0.00s teardown tests/geometric/test_fractal_edge_cases.py::TestBPECrystallizer::test_compression_ratio_calculation
+0.00s teardown tests/geometric/test_fractal_edge_cases.py::TestEdgeCases::test_duplicate_detection
+0.00s call     tests/geometric/test_fractal_edge_cases.py::TestBPECrystallizer::test_merge_candidate_selection
+0.00s teardown tests/geometric/test_fractal_atomization.py::TestFractalDeduplication::test_hash_collision_detection
+0.00s teardown tests/geometric/test_bpe_integration.py::TestBPEIntegration::test_incremental_learning
+0.00s teardown tests/integration/test_code_parser.py::TestCodeParser::test_detect_language
+0.00s call     tests/geometric/test_bpe_integration.py::TestOODALoop::test_observe_phase
+0.00s teardown tests/functional/test_positioning.py::test_spatial_positioning
+0.00s teardown tests/geometric/test_geometric_atomization.py::TestSpatialReconstructor::test_parse_wkt
+0.00s call     tests/geometric/test_fractal_edge_cases.py::TestBPECrystallizer::test_observe_and_count
+0.00s teardown tests/geometric/test_geometric_atomization.py::TestTrajectoryBuilder::test_hello_world_single_linestring
+0.00s teardown tests/geometric/test_geometric_atomization.py::TestSpatialUtils::test_deterministic_coordinates
+0.00s call     tests/geometric/test_bpe_integration.py::TestOODALoop::test_act_phase
+0.00s teardown tests/geometric/test_bpe_integration.py::TestOODALoop::test_observe_phase
+0.00s call     tests/geometric/test_geometric_atomization.py::TestSpatialUtils::test_hilbert_index
+0.00s teardown tests/geometric/test_bpe_integration.py::TestOODALoop::test_orient_phase
+0.00s teardown tests/geometric/test_geometric_atomization.py::TestSpatialUtils::test_different_atoms_different_coords
+0.00s call     tests/geometric/test_fractal_edge_cases.py::TestBPECrystallizer::test_apply_merges
+0.00s teardown tests/geometric/test_bpe_integration.py::TestOODALoop::test_act_phase
+0.00s teardown tests/geometric/test_geometric_atomization.py::TestSpatialUtils::test_coordinate_range
+0.00s teardown tests/geometric/test_fractal_edge_cases.py::TestBPECrystallizer::test_observe_and_count
+0.00s teardown tests/geometric/test_fractal_edge_cases.py::TestBPECrystallizer::test_apply_merges
+0.00s teardown tests/geometric/test_fractal_edge_cases.py::TestBPECrystallizer::test_merge_candidate_selection
+0.00s call     tests/geometric/test_fractal_edge_cases.py::TestBPECrystallizer::test_recursive_merging
+0.00s teardown tests/geometric/test_geometric_atomization.py::TestSpatialUtils::test_hilbert_index
+0.00s teardown tests/geometric/test_fractal_edge_cases.py::TestBPECrystallizer::test_recursive_merging
+[36m[1m=========================== short test summary info ===========================[0m
+[31mERROR[0m tests/integration/test_gguf_atomizer.py::[1mTestGGUFAtomizer::test_weight_deduplication[0m - psycopg.errors.InFailedSqlTransaction: current transaction is aborted, commands ignored until end of transaction block
+[31mERROR[0m tests/integration/test_image_parser.py::[1mTestImageParser::test_parse_simple_image[0m - psycopg.errors.InFailedSqlTransaction: current transaction is aborted, commands ignored until end of transaction block
+[31mERROR[0m tests/integration/test_image_parser.py::[1mTestImageParser::test_image_composition[0m - psycopg.errors.InFailedSqlTransaction: current transaction is aborted, commands ignored until end of transaction block
+[31mERROR[0m tests/integration/test_image_parser.py::[1mTestImageParser::test_grayscale_image[0m - psycopg.errors.InFailedSqlTransaction: current transaction is aborted, commands ignored until end of transaction block
+[31mFAILED[0m tests/integration/test_end_to_end.py::[1mTestCompleteWorkflows::test_text_atomization_to_query_workflow[0m - psycopg.ProgrammingError: the query has 0 placeholders but 1 parameters were passed
+[31mFAILED[0m tests/integration/test_end_to_end.py::[1mTestCompleteWorkflows::test_image_to_atoms_workflow[0m - psycopg.errors.UndefinedTable: relation "atom_composition" does not exist
+LINE 1: SELECT COUNT(*) FROM atom_composition WHERE parent_atom_id =...
+                             ^
+[31mFAILED[0m tests/integration/test_gguf_atomizer.py::[1mTestGGUFAtomizer::test_atomizer_initialization[0m - AttributeError: 'GGUFAtomizer' object has no attribute 'cache'
+[31mFAILED[0m tests/integration/test_gguf_atomizer.py::[1mTestGGUFAtomizer::test_atomizer_threshold[0m - AttributeError: 'GGUFAtomizer' object has no attribute 'encoder'
+[31mFAILED[0m tests/integration/test_gguf_ingestion.py::[1mtest_gguf_ingestion[0m - TypeError: GGUFAtomizer.__init__() got an unexpected keyword argument 'parallel_processing'
+[31mFAILED[0m tests/integration/test_implementation.py::[1mtest_atomization[0m - TypeError: Atomizer.atomize_array() missing 1 required positional argument: 'modality'
+[31m!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 10 failures !!!!!!!!!!!!!!!!!!!!!!!!!![0m
+[31m============ [31m[1m6 failed[0m, [32m111 passed[0m, [33m2 warnings[0m, [31m[1m4 errors[0m[31m in 59.56s[0m[31m =============[0m

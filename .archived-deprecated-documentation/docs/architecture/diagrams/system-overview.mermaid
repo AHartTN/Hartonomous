@@ -1,0 +1,151 @@
+```mermaid
+graph TB
+    subgraph Input["?? Universal Input"]
+        A1[?? Text<br/>Characters, Words, Sentences]
+        A2[??? Images<br/>Pixels, Regions, Objects]
+        A3[?? Audio<br/>Samples, Frames, Tracks]
+        A4[?? 3D Data<br/>Voxels, Meshes, Point Clouds]
+        A5[?? Structured<br/>JSON, CSV, Tables]
+    end
+    
+    subgraph Atomization["?? Atomization Layer"]
+        B1[atomize_text]
+        B2[atomize_image_vectorized]
+        B3[atomize_audio_sparse]
+        B4[atomize_voxel]
+        B5[atomize_value]
+        B6[Content-Addressable<br/>SHA-256 Deduplication]
+    end
+    
+    subgraph Storage["?? Storage Layer"]
+        C1[atom Table<br/>Content Hash, Spatial Key]
+        C2[atom_composition<br/>Hierarchical Structure]
+        C3[atom_relation<br/>Semantic Connections]
+    end
+    
+    subgraph Indexing["??? Indexing Layer"]
+        D1[R-tree Spatial Index<br/>O log N KNN Queries]
+        D2[B-tree Hash Index<br/>Content Lookup]
+        D3[GIN Metadata Index<br/>JSON Queries]
+    end
+    
+    subgraph Intelligence["?? Intelligence Layer"]
+        E1[Spatial Semantics<br/>Position = Meaning]
+        E2[Hebbian Learning<br/>Synapse Reinforcement]
+        E3[Self-Attention<br/>Transformer Mechanisms]
+        E4[Truth Convergence<br/>Geometric Clustering]
+    end
+    
+    subgraph Provenance["?? Provenance Layer"]
+        F1[Apache AGE Graph<br/>50-hop < 10ms]
+        F2[Lineage Tracking<br/>Complete History]
+        F3[Error Detection<br/>Poison Atoms]
+        F4[Explainability<br/>Reasoning Chains]
+    end
+    
+    subgraph Operations["? Operations Layer"]
+        G1[Training<br/>Backpropagation]
+        G2[Inference<br/>Attention Queries]
+        G3[Generation<br/>Markov Chains]
+        G4[Export<br/>ONNX Models]
+        G5[Compression<br/>Pruning]
+    end
+    
+    subgraph Optimization["?? Optimization Layer"]
+        H1[Vectorization<br/>100x Speedup]
+        H2[Parallel Execution<br/>8-16 Workers]
+        H3[JIT Compilation<br/>LLVM Optimization]
+        H4[GPU Acceleration<br/>1000x Speedup]
+        H5[OODA Loop<br/>Autonomous Tuning]
+    end
+    
+    subgraph Output["?? Output Layer"]
+        I1[SQL Queries<br/>Standard Interface]
+        I2[REST API<br/>HTTP/JSON]
+        I3[GraphQL<br/>Flexible Queries]
+        I4[Direct Access<br/>psql, pgAdmin]
+    end
+    
+    A1 --> B1
+    A2 --> B2
+    A3 --> B3
+    A4 --> B4
+    A5 --> B5
+    
+    B1 --> B6
+    B2 --> B6
+    B3 --> B6
+    B4 --> B6
+    B5 --> B6
+    
+    B6 --> C1
+    C1 --> C2
+    C1 --> C3
+    
+    C1 --> D1
+    C1 --> D2
+    C1 --> D3
+    
+    D1 --> E1
+    D1 --> E2
+    E1 --> E3
+    E2 --> E4
+    
+    C3 --> F1
+    F1 --> F2
+    F2 --> F3
+    F3 --> F4
+    
+    E3 --> G1
+    E3 --> G2
+    E3 --> G3
+    G1 --> G4
+    G2 --> G5
+    
+    G1 --> H1
+    G2 --> H1
+    H1 --> H2
+    H2 --> H3
+    H3 --> H4
+    H4 --> H5
+    
+    G2 --> I1
+    G3 --> I2
+    G4 --> I3
+    F4 --> I4
+    
+    style Input fill:#e1f5ff
+    style Atomization fill:#fff4e1
+    style Storage fill:#f3e5f5
+    style Indexing fill:#e8f5e9
+    style Intelligence fill:#ffe1f5
+    style Provenance fill:#fff3e0
+    style Operations fill:#e3f2fd
+    style Optimization fill:#fce4ec
+    style Output fill:#e1ffe1
+```
+
+## System Overview Diagram
+
+**Complete Hartonomous architecture from input to output**
+
+### Data Flow
+
+1. **Input** ? Universal data types (text, images, audio, 3D, structured)
+2. **Atomization** ? Content-addressable decomposition (SHA-256)
+3. **Storage** ? Three tables (atom, atom_composition, atom_relation)
+4. **Indexing** ? R-tree spatial, B-tree hash, GIN metadata
+5. **Intelligence** ? Spatial semantics + Hebbian learning
+6. **Provenance** ? Apache AGE for lineage tracking
+7. **Operations** ? Training, inference, generation, export
+8. **Optimization** ? Vectorization, parallelization, GPU acceleration
+9. **Output** ? SQL, REST, GraphQL, direct access
+
+### Key Insights
+
+- **Multi-modal native**: All data types use same structure
+- **Multi-model native**: All models coexist in same space
+- **Content-addressable**: Global deduplication via SHA-256
+- **Spatially indexed**: Position in 3D space = semantic meaning
+- **Provenance tracked**: Complete lineage via Apache AGE
+- **Self-optimizing**: OODA loop continuously improves performance
