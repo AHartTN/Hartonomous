@@ -14,8 +14,6 @@ variables:
   buildConfiguration: 'Release'
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
   DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
-  keyVaultName: 'hartonomous-kv'
-  certName: 'HartIndustries-CodeSigning'
 
 stages:
   - stage: Build
@@ -25,16 +23,16 @@ stages:
         displayName: 'Build Solution'
         steps:
           - task: DotNetCoreCLI@2
-            displayName: 'Restore NuGet Packages'
+            displayName: 'Restore All Projects'
             inputs:
               command: 'restore'
-              projects: 'Hartonomous.sln'
+              projects: '**/*.csproj'
 
           - task: DotNetCoreCLI@2
-            displayName: 'Build Solution'
+            displayName: 'Build All Projects'
             inputs:
               command: 'build'
-              projects: 'Hartonomous.sln'
+              projects: '**/*.csproj'
               arguments: '--configuration $(buildConfiguration) --no-restore'
 
           - task: DotNetCoreCLI@2
@@ -57,22 +55,40 @@ stages:
     condition: and(succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/tags/v')))
     jobs:
       - job: Pack
-        displayName: 'Pack and Sign NuGet'
+        displayName: 'Pack NuGet Packages'
         steps:
           - task: DotNetCoreCLI@2
-            displayName: 'Pack NuGet Packages'
+            displayName: 'Pack Core Library'
             inputs:
               command: 'pack'
-              packagesToPack: |
-                Hartonomous.Core/Hartonomous.Core.csproj
-                Hartonomous.Data/Hartonomous.Data.csproj
-                Hartonomous.Infrastructure/Hartonomous.Infrastructure.csproj
+              packagesToPack: 'Hartonomous.Core/Hartonomous.Core.csproj'
               configuration: $(buildConfiguration)
               packDirectory: '$(Build.ArtifactStagingDirectory)/packages'
               nobuild: false
               includesymbols: true
               includesource: true
-              versioningScheme: 'off'
+
+          - task: DotNetCoreCLI@2
+            displayName: 'Pack Data Library'
+            inputs:
+              command: 'pack'
+              packagesToPack: 'Hartonomous.Data/Hartonomous.Data.csproj'
+              configuration: $(buildConfiguration)
+              packDirectory: '$(Build.ArtifactStagingDirectory)/packages'
+              nobuild: false
+              includesymbols: true
+              includesource: true
+
+          - task: DotNetCoreCLI@2
+            displayName: 'Pack Infrastructure Library'
+            inputs:
+              command: 'pack'
+              packagesToPack: 'Hartonomous.Infrastructure/Hartonomous.Infrastructure.csproj'
+              configuration: $(buildConfiguration)
+              packDirectory: '$(Build.ArtifactStagingDirectory)/packages'
+              nobuild: false
+              includesymbols: true
+              includesource: true
 
           - task: PublishBuildArtifacts@1
             displayName: 'Publish NuGet Artifacts'
