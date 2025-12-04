@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Sdk Name="Aspire.AppHost.Sdk" Version="9.5.0" />
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <UserSecretsId>486ccbcc-d012-4ff4-835c-170125356aad</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Aspire.Hosting.AppHost" Version="9.5.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Hartonomous.API\Hartonomous.API.csproj" />
+    <ProjectReference Include="..\Hartonomous.App\Hartonomous.App\Hartonomous.App.csproj">
+      <SetTargetFramework>TargetFramework=net10.0</SetTargetFramework>
+    </ProjectReference>
+    <ProjectReference Include="..\Hartonomous.App\Hartonomous.App.Web\Hartonomous.App.Web.csproj" />
+    <ProjectReference Include="..\Hartonomous.Worker\Hartonomous.Worker.csproj" />
+  </ItemGroup>
+
+</Project>

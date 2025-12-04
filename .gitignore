@@ -1,75 +1,37 @@
-## .NET
-*.swp
-*.*~
-project.lock.json
-.DS_Store
-*.pyc
-nupkg/
-
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-.Python
-.venv/
-venv/
-ENV/
-env/
-*.egg-info/
-dist/
-build/
-
-# Visual Studio Code
-.vscode/
-
-# User-specific files
-*.suo
+# Build outputs
+artifacts/
+obj/
+bin/
 *.user
-*.userosscache
-*.sln.docstates
+*.suo
+*.cache
 
-# Build results
-[Dd]ebug/
-[Dd]ebugPublic/
-[Rr]elease/
-[Rr]eleases/
-x64/
-x86/
-build/
-bld/
-[Bb]in/
-[Oo]bj/
-msbuild.log
-msbuild.err
-msbuild.wrn
+# NuGet
+*.nupkg
+*.snupkg
+packages/
 
 # Visual Studio
 .vs/
-
-# Environment files (keep examples)
-.env
-.env.local
-!.env.example
-!.env.localhost
-!.env.dev
-!.env.staging
-!.env.production
-
-# Database
-*.db
-*.db-shm
-*.db-wal
+*.suo
+*.user
 
 # Rider
 .idea/
 
-# macOS
-.DS_Store
+# Azure
+.azure/
 
-# Windows
-Thumbs.db
-ehthumbs.db
-Desktop.ini
+# Environment files
+appsettings.*.local.json
+*.env
 
-# Docker
-docker-compose.override.yml
+# Logs
+*.log
+logs/
+
+# Certificates (all managed in Azure Key Vault, none should be in repo)
+*.pfx
+*.cer
+*.p12
+HartIndustries.*

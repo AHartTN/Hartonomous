@@ -1,0 +1,59 @@
+<Project>
+  <PropertyGroup>
+    <!-- Common output base directory -->
+    <BaseOutputPath>$(SolutionDir)artifacts\</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(SolutionDir)obj\</BaseIntermediateOutputPath>
+    
+    <!-- Environment-specific output paths -->
+    <OutputPath Condition="'$(Configuration)' == 'Debug' OR '$(Configuration)' == 'Local'">$(BaseOutputPath)local\$(MSBuildProjectName)\</OutputPath>
+    <OutputPath Condition="'$(Configuration)' == 'Dev'">$(BaseOutputPath)dev\$(MSBuildProjectName)\</OutputPath>
+    <OutputPath Condition="'$(Configuration)' == 'Staging'">$(BaseOutputPath)staging\$(MSBuildProjectName)\</OutputPath>
+    <OutputPath Condition="'$(Configuration)' == 'Release' OR '$(Configuration)' == 'Production'">$(BaseOutputPath)production\$(MSBuildProjectName)\</OutputPath>
+    
+    <!-- Intermediate output -->
+    <IntermediateOutputPath>$(BaseIntermediateOutputPath)$(Configuration)\$(MSBuildProjectName)\</IntermediateOutputPath>
+    
+    <!-- Package output -->
+    <PackageOutputPath>$(BaseOutputPath)packages\</PackageOutputPath>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- Environment detection -->
+    <EnvironmentName Condition="'$(Configuration)' == 'Debug' OR '$(Configuration)' == 'Local'">Local</EnvironmentName>
+    <EnvironmentName Condition="'$(Configuration)' == 'Dev'">Development</EnvironmentName>
+    <EnvironmentName Condition="'$(Configuration)' == 'Staging'">Staging</EnvironmentName>
+    <EnvironmentName Condition="'$(Configuration)' == 'Release' OR '$(Configuration)' == 'Production'">Production</EnvironmentName>
+    
+    <!-- Default to Local if not set -->
+    <EnvironmentName Condition="'$(EnvironmentName)' == ''">Local</EnvironmentName>
+  </PropertyGroup>
+
+  <!-- Configuration-specific settings -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug' OR '$(Configuration)' == 'Local'">
+    <DefineConstants>$(DefineConstants);LOCAL</DefineConstants>
+    <Optimize>false</Optimize>
+    <DebugType>full</DebugType>
+    <DebugSymbols>true</DebugSymbols>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Dev'">
+    <DefineConstants>$(DefineConstants);DEV</DefineConstants>
+    <Optimize>false</Optimize>
+    <DebugType>portable</DebugType>
+    <DebugSymbols>true</DebugSymbols>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Staging'">
+    <DefineConstants>$(DefineConstants);STAGING</DefineConstants>
+    <Optimize>true</Optimize>
+    <DebugType>portable</DebugType>
+    <DebugSymbols>true</DebugSymbols>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release' OR '$(Configuration)' == 'Production'">
+    <DefineConstants>$(DefineConstants);PRODUCTION</DefineConstants>
+    <Optimize>true</Optimize>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+  </PropertyGroup>
+</Project>

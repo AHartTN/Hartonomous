@@ -1,0 +1,15 @@
+<Solution>
+  <Project Path="Hartonomous.API/Hartonomous.API.csproj" />
+  <Project Path="Hartonomous.App/Hartonomous.App.Shared/Hartonomous.App.Shared.csproj" />
+  <Project Path="Hartonomous.App/Hartonomous.App.Web.Client/Hartonomous.App.Web.Client.csproj" />
+  <Project Path="Hartonomous.App/Hartonomous.App.Web/Hartonomous.App.Web.csproj" />
+  <Project Path="Hartonomous.App/Hartonomous.App/Hartonomous.App.csproj">
+    <Deploy />
+  </Project>
+  <Project Path="Hartonomous.AppHost/Hartonomous.AppHost.csproj" />
+  <Project Path="Hartonomous.Core/Hartonomous.Core.csproj" />
+  <Project Path="Hartonomous.Data/Hartonomous.Data.csproj" />
+  <Project Path="Hartonomous.Infrastructure/Hartonomous.Infrastructure.csproj" />
+  <Project Path="Hartonomous.ServiceDefaults/Hartonomous.ServiceDefaults.csproj" />
+  <Project Path="Hartonomous.Worker/Hartonomous.Worker.csproj" />
+</Solution>

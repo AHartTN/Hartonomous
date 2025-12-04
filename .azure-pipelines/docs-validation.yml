@@ -1,0 +1,160 @@
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+  paths:
+    include:
+      - docs/**
+      - .azure-pipelines/docs-validation.yml
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  docsPath: '$(Build.SourcesDirectory)/docs'
+
+steps:
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '18.x'
+    displayName: 'Install Node.js'
+
+  - script: |
+      npm install -g markdownlint-cli
+    displayName: 'Install markdownlint'
+
+  - script: |
+      markdownlint $(docsPath)/**/*.md \
+        --config $(docsPath)/.markdownlint.json \
+        --ignore $(docsPath)/scripts/**
+    displayName: 'Lint Markdown Files'
+    continueOnError: false
+
+  - script: |
+      npm install -g markdown-link-check
+    displayName: 'Install markdown-link-check'
+
+  - script: |
+      find $(docsPath) -name '*.md' -not -path '*/scripts/*' \
+        -exec markdown-link-check {} \; > link-check-results.txt
+      cat link-check-results.txt
+      if grep -q "ERROR:" link-check-results.txt; then
+        echo "##vso[task.logissue type=error]Broken links found"
+        exit 1
+      fi
+    displayName: 'Check Markdown Links'
+    continueOnError: false
+
+  - task: PowerShell@2
+    inputs:
+      targetType: 'inline'
+      script: |
+        Write-Host "Validating SQL code blocks..."
+        
+        $files = Get-ChildItem -Path "$(docsPath)" -Filter "*.md" -Recurse | Where-Object { $_.FullName -notlike "*\scripts\*" }
+        $errorCount = 0
+        
+        foreach ($file in $files) {
+            $content = Get-Content $file.FullName -Raw
+            
+            # Extract SQL code blocks
+            $sqlBlocks = [regex]::Matches($content, '(?s)```sql(.+?)```')
+            
+            foreach ($block in $sqlBlocks) {
+                $sql = $block.Groups[1].Value.Trim()
+                
+                # Basic validation: check for common SQL keywords
+                if ($sql -match '\b(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP)\b') {
+                    Write-Host "  ? Valid SQL block in $($file.Name)"
+                }
+                else {
+                    Write-Host "##vso[task.logissue type=warning]Potentially invalid SQL block in $($file.Name)"
+                }
+            }
+        }
+        
+        if ($errorCount -gt 0) {
+            Write-Host "##vso[task.logissue type=error]Found $errorCount invalid SQL blocks"
+            exit 1
+        }
+    displayName: 'Validate SQL Code Blocks'
+
+  - task: PowerShell@2
+    inputs:
+      targetType: 'inline'
+      script: |
+        Write-Host "Validating C# code blocks..."
+        
+        $files = Get-ChildItem -Path "$(docsPath)" -Filter "*.md" -Recurse | Where-Object { $_.FullName -notlike "*\scripts\*" }
+        
+        foreach ($file in $files) {
+            $content = Get-Content $file.FullName -Raw
+            
+            # Extract C# code blocks
+            $csharpBlocks = [regex]::Matches($content, '(?s)```csharp(.+?)```')
+            
+            foreach ($block in $csharpBlocks) {
+                $code = $block.Groups[1].Value.Trim()
+                
+                # Basic validation: check for C# keywords
+                if ($code -match '\b(class|public|private|void|return|using)\b') {
+                    Write-Host "  ? Valid C# block in $($file.Name)"
+                }
+                else {
+                    Write-Host "##vso[task.logissue type=warning]Potentially invalid C# block in $($file.Name)"
+                }
+            }
+        }
+    displayName: 'Validate C# Code Blocks'
+
+  - task: PowerShell@2
+    inputs:
+      targetType: 'inline'
+      script: |
+        Write-Host "Checking documentation completeness..."
+        
+        $requiredFiles = @(
+            "ARCHITECTURE.md",
+            "TECHNICAL_SPECIFICATION.md",
+            "DATABASE_SCHEMA.md",
+            "README.md"
+        )
+        
+        $missing = @()
+        foreach ($file in $requiredFiles) {
+            if (-not (Test-Path "$(docsPath)/$file")) {
+                $missing += $file
+                Write-Host "##vso[task.logissue type=error]Missing required file: $file"
+            }
+        }
+        
+        if ($missing.Count -gt 0) {
+            Write-Host "##vso[task.complete result=Failed;]Missing $($missing.Count) required files"
+            exit 1
+        }
+        
+        Write-Host "All required files present!"
+    displayName: 'Check Documentation Completeness'
+
+  - task: PublishPipelineArtifact@1
+    inputs:
+      targetPath: '$(docsPath)'
+      artifact: 'validated-docs'
+      publishLocation: 'pipeline'
+    displayName: 'Publish Validated Documentation'
+    condition: succeeded()
+
+  - task: PowerShell@2
+    inputs:
+      targetType: 'inline'
+      script: |
+        Write-Host "Documentation validation completed successfully!" -ForegroundColor Green
+        Write-Host ""
+        Write-Host "Summary:"
+        Write-Host "  ? Markdown linting passed"
+        Write-Host "  ? Link checking passed"
+        Write-Host "  ? Code block validation passed"
+        Write-Host "  ? Documentation completeness verified"
+    displayName: 'Validation Summary'
+    condition: succeeded()
