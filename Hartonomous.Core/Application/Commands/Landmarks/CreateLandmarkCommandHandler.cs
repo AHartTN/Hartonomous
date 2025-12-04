@@ -27,7 +27,11 @@ public sealed class CreateLandmarkCommandHandler : IRequestHandler<CreateLandmar
         }
 
         // Create spatial coordinate
-        var center = SpatialCoordinate.Create(request.CenterX, request.CenterY, request.CenterZ);
+        var center = SpatialCoordinate.FromUniversalProperties(
+            (uint)request.CenterX, 
+            1_048_576, // placeholder entropy
+            1_048_576, // placeholder compressibility
+            0);        // no connectivity yet
 
         // Create landmark
         var landmark = Landmark.Create(

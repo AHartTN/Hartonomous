@@ -18,7 +18,11 @@ public sealed class GetNearbyConstantsQueryHandler : IRequestHandler<GetNearbyCo
     {
         try
         {
-            var coordinate = SpatialCoordinate.Create(request.X, request.Y, request.Z);
+            var coordinate = SpatialCoordinate.FromUniversalProperties(
+                (uint)request.X,
+                1_048_576, // placeholder entropy
+                1_048_576, // placeholder compressibility
+                0);        // no connectivity yet
             var constants = await _repository.GetKNearestConstantsAsync(coordinate, request.K, cancellationToken);
 
             var dtos = constants.Select(c => new ConstantDto
