@@ -1,9 +1,12 @@
+using Hartonomous.API.Configuration;
+using Hartonomous.API.Middleware;
+using Hartonomous.Core.Application.Extensions;
+using Hartonomous.Data.Extensions;
+using Hartonomous.Infrastructure.Extensions;
 using Hartonomous.Infrastructure.Health;
 using Hartonomous.Infrastructure.Security;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
-using Microsoft.Identity.Web;
 
 namespace Hartonomous.API;
 
@@ -15,6 +18,15 @@ public class Program
         
         // Add Aspire service defaults (OpenTelemetry, health checks, etc.)
         builder.AddServiceDefaults();
+
+        // Add application layer (MediatR, FluentValidation)
+        builder.Services.AddApplicationLayer();
+
+        // Add data layer (EF Core, repositories)
+        builder.Services.AddDataLayer(builder.Configuration);
+
+        // Add infrastructure services (GPU, caching, current user, etc.)
+        builder.Services.AddInfrastructureServices(builder.Configuration);
 
         // Configure forwarded headers for reverse proxy (Nginx)
         builder.Services.Configure<ForwardedHeadersOptions>(options =>
@@ -30,36 +42,49 @@ public class Program
         builder.Services.AddClaimsTransformation();
 
         // Add rate limiting
-        builder.Services.AddApiRateLimiting(builder.Configuration);
+        builder.Services.AddRateLimitingConfiguration(builder.Configuration);
 
         // Add comprehensive health checks
         builder.Services.AddComprehensiveHealthChecks(builder.Configuration);
 
-        // Add CORS policy
-        builder.Services.AddCors(options =>
-        {
-            options.AddDefaultPolicy(policy =>
-            {
-                var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
-                
-                policy.WithOrigins(allowedOrigins)
-                    .AllowAnyMethod()
-                    .AllowAnyHeader()
-                    .AllowCredentials();
-            });
-        });
+        // Add CORS
+        builder.Services.AddCorsConfiguration(builder.Configuration);
 
-        // Add controllers
-        builder.Services.AddControllers();
-        
-        // Add OpenAPI/Swagger
-        builder.Services.AddOpenApi();
+        // Add exception handling
+        builder.Services.AddExceptionHandlingConfiguration();
+
+        // Add API versioning
+        builder.Services.AddApiVersioningConfiguration();
+
+        // Add Swagger/OpenAPI
+        builder.Services.AddSwaggerConfiguration();
+
+        // Add controllers with JSON options
+        builder.Services.AddControllers()
+            .AddJsonOptions(options =>
+            {
+                options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+                options.JsonSerializerOptions.DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull;
+            });
         
         // Add response compression
         builder.Services.AddResponseCompression(options =>
         {
             options.EnableForHttps = true;
+            options.MimeTypes = new[]
+            {
+                "application/json",
+                "application/xml",
+                "text/plain",
+                "text/html",
+                "text/css",
+                "text/javascript",
+                "application/javascript"
+            };
         });
+
+        // Add response caching
+        builder.Services.AddResponseCaching();
 
         var app = builder.Build();
 
@@ -71,11 +96,26 @@ public class Program
         // Map Aspire default endpoints (health, etc.)
         app.MapDefaultEndpoints();
 
+        // Exception handling
+        app.UseExceptionHandlingConfiguration(app.Environment);
+
         // Enable response compression
         app.UseResponseCompression();
 
+        // Enable response caching
+        app.UseResponseCaching();
+
+        // Correlation ID middleware (before request logging)
+        app.UseCorrelationId();
+
+        // Request logging middleware
+        app.UseMiddleware<RequestLoggingMiddleware>();
+
+        // Security headers middleware
+        app.UseSecurityHeaders();
+
         // Enable CORS
-        app.UseCors();
+        app.UseCorsConfiguration();
 
         // Enable rate limiting
         app.UseRateLimiter();
@@ -86,27 +126,10 @@ public class Program
             app.UseHttpsRedirection();
         }
 
-        // Security headers
-        app.Use(async (context, next) =>
-        {
-            context.Response.Headers.Append("X-Content-Type-Options", "nosniff");
-            context.Response.Headers.Append("X-Frame-Options", "DENY");
-            context.Response.Headers.Append("X-XSS-Protection", "1; mode=block");
-            context.Response.Headers.Append("Referrer-Policy", "strict-origin-when-cross-origin");
-            context.Response.Headers.Append("Permissions-Policy", "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()");
-            
-            if (!app.Environment.IsDevelopment())
-            {
-                context.Response.Headers.Append("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
-            }
-            
-            await next();
-        });
-
-        // OpenAPI in development only
+        // Swagger/OpenAPI
         if (app.Environment.IsDevelopment())
         {
-            app.MapOpenApi();
+            app.UseSwaggerConfiguration();
         }
 
         // Authentication & Authorization
@@ -130,7 +153,8 @@ public class Program
 
         app.MapHealthChecks("/health", new HealthCheckOptions
         {
-            Predicate = _ => true
+            Predicate = _ => true,
+            ResponseWriter = HealthCheckResponseWriter.WriteDetailedResponse
         });
 
         app.Run();

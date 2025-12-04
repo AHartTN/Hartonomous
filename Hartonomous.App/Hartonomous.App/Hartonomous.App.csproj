@@ -24,6 +24,11 @@
 
     <!-- Disable NuGet package generation for MAUI app -->
     <IsPackable>false</IsPackable>
+    
+    <!-- Exclude from default build to avoid parallel build file locks -->
+    <!-- Build explicitly with: dotnet build Hartonomous.App/Hartonomous.App/Hartonomous.App.csproj -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);**/*.exclude</DefaultItemExcludes>
+    <IsPublishable>false</IsPublishable>
 
     <!-- Display name -->
     <ApplicationTitle>Hartonomous.App</ApplicationTitle>

@@ -1,5 +1,7 @@
+using Azure.Identity;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging;
@@ -20,6 +22,9 @@ public static class Extensions
 
     public static TBuilder AddServiceDefaults<TBuilder>(this TBuilder builder) where TBuilder : IHostApplicationBuilder
     {
+        // Add Azure App Configuration and Key Vault
+        builder.ConfigureAzureConfiguration();
+
         builder.ConfigureOpenTelemetry();
 
         builder.AddDefaultHealthChecks();
@@ -38,8 +43,35 @@ public static class Extensions
         // Uncomment the following to restrict the allowed schemes for service discovery.
         // builder.Services.Configure<ServiceDiscoveryOptions>(options =>
         // {
-        //     options.AllowedSchemes = ["https"];
-        // });
+        return builder;
+    }
+
+    private static TBuilder ConfigureAzureConfiguration<TBuilder>(this TBuilder builder) where TBuilder : IHostApplicationBuilder
+    {
+        // Only configure Azure services in non-development environments
+        if (builder.Environment.IsDevelopment())
+        {
+            return builder;
+        }
+
+        var keyVaultUri = builder.Configuration["KeyVault:Uri"];
+        if (!string.IsNullOrEmpty(keyVaultUri))
+        {
+            var credential = new DefaultAzureCredential();
+            builder.Configuration.AddAzureKeyVault(new Uri(keyVaultUri), credential);
+        }
+
+        var appConfigEndpoint = builder.Configuration["AppConfiguration:Endpoint"];
+        if (!string.IsNullOrEmpty(appConfigEndpoint))
+        {
+            var credential = new DefaultAzureCredential();
+            builder.Configuration.AddAzureAppConfiguration(options =>
+            {
+                options.Connect(new Uri(appConfigEndpoint), credential)
+                    .ConfigureKeyVault(kv => kv.SetCredential(credential))
+                    .Select("*", builder.Environment.EnvironmentName);
+            });
+        }
 
         return builder;
     }

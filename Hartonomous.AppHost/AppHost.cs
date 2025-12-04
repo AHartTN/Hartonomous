@@ -1,6 +1,6 @@
 var builder = DistributedApplication.CreateBuilder(args);
 
-builder.AddProject<Projects.Hartonomous_API>("hartonomous-api");
+builder.AddProject<Projects.Hartonomous_Api>("hartonomous-api");
 
 builder.AddProject<Projects.Hartonomous_Worker>("hartonomous-worker");
 

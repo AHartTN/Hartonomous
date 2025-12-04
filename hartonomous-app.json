@@ -1,0 +1,216 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#applications/$entity",
+  "addIns": [],
+  "api": {
+    "acceptMappedClaims": null,
+    "knownClientApplications": [],
+    "oauth2PermissionScopes": [
+      {
+        "adminConsentDescription": "Access As User",
+        "adminConsentDisplayName": "Access As User",
+        "id": "78aa69a7-ce36-4253-9d01-410d51c438b4",
+        "isEnabled": true,
+        "type": "User",
+        "userConsentDescription": "Access As User",
+        "userConsentDisplayName": "Access As User",
+        "value": "access_as_user"
+      }
+    ],
+    "preAuthorizedApplications": [
+      {
+        "appId": "03f90183-d9e5-40ec-ad48-92e73b008514",
+        "delegatedPermissionIds": [
+          "78aa69a7-ce36-4253-9d01-410d51c438b4"
+        ]
+      }
+    ],
+    "requestedAccessTokenVersion": 2
+  },
+  "appId": "c25ed11d-c712-4574-8897-6a3a0c8dbb7f",
+  "appRoles": [
+    {
+      "allowedMemberTypes": [
+        "User"
+      ],
+      "description": "Data scientists have access to advanced AI model analysis and pipeline features",
+      "displayName": "DataScientist",
+      "id": "c3d4e5f6-a7b8-4901-c234-567890123456",
+      "isEnabled": true,
+      "origin": "Application",
+      "value": "DataScientist"
+    },
+    {
+      "allowedMemberTypes": [
+        "User"
+      ],
+      "description": "Standard users can access basic Hartonomous features",
+      "displayName": "User",
+      "id": "b2c3d4e5-f6a7-4890-b123-456789012345",
+      "isEnabled": true,
+      "origin": "Application",
+      "value": "User"
+    },
+    {
+      "allowedMemberTypes": [
+        "User"
+      ],
+      "description": "Administrators have full access to all Hartonomous features and data",
+      "displayName": "Admin",
+      "id": "a1b2c3d4-e5f6-4789-a012-345678901234",
+      "isEnabled": true,
+      "origin": "Application",
+      "value": "Admin"
+    }
+  ],
+  "applicationTemplateId": null,
+  "certification": null,
+  "createdDateTime": "2025-08-31T20:20:12Z",
+  "defaultRedirectUri": null,
+  "deletedDateTime": null,
+  "description": null,
+  "disabledByMicrosoftStatus": null,
+  "displayName": "Hartonomous",
+  "groupMembershipClaims": null,
+  "id": "825c9aff-4de8-4e27-8c0f-4948c4302678",
+  "identifierUris": [
+    "api://c25ed11d-c712-4574-8897-6a3a0c8dbb7f"
+  ],
+  "info": {
+    "logoUrl": null,
+    "marketingUrl": null,
+    "privacyStatementUrl": null,
+    "supportUrl": null,
+    "termsOfServiceUrl": null
+  },
+  "isDeviceOnlyAuthSupported": null,
+  "isFallbackPublicClient": null,
+  "keyCredentials": [],
+  "nativeAuthenticationApisEnabled": null,
+  "notes": null,
+  "optionalClaims": null,
+  "parentalControlSettings": {
+    "countriesBlockedForMinors": [],
+    "legalAgeGroupRule": "Allow"
+  },
+  "passwordCredentials": [
+    {
+      "customKeyIdentifier": null,
+      "displayName": "Password created by the provisioning tool",
+      "endDateTime": "2027-12-03T22:28:49.0983753Z",
+      "hint": "WdF",
+      "keyId": "9156a233-423c-4255-81e0-8a2dee3e27a1",
+      "secretText": null,
+      "startDateTime": "2025-12-03T22:28:49.0983753Z"
+    },
+    {
+      "customKeyIdentifier": null,
+      "displayName": "CIAM Client Secret - Rotated 2025-11-19",
+      "endDateTime": "2027-11-20T02:08:03Z",
+      "hint": "kz6",
+      "keyId": "5c3eb161-956d-44e5-8edf-ce412b5f7b7b",
+      "secretText": null,
+      "startDateTime": "2025-11-20T02:08:03Z"
+    }
+  ],
+  "publicClient": {
+    "redirectUris": []
+  },
+  "publisherDomain": "aharttngmail710.onmicrosoft.com",
+  "requestSignatureVerification": null,
+  "requiredResourceAccess": [
+    {
+      "resourceAccess": [
+        {
+          "id": "ee69721e-6c3a-468f-a9ec-302d16a4c599",
+          "type": "Scope"
+        }
+      ],
+      "resourceAppId": "499b84ac-1321-427f-aa17-267ca6975798"
+    },
+    {
+      "resourceAccess": [
+        {
+          "id": "e1fe6dd8-ba31-4d61-89e7-88639da4683d",
+          "type": "Scope"
+        },
+        {
+          "id": "b340eb25-3456-403f-be2f-af7a0d370277",
+          "type": "Scope"
+        }
+      ],
+      "resourceAppId": "00000003-0000-0000-c000-000000000000"
+    }
+  ],
+  "samlMetadataUrl": null,
+  "serviceManagementReference": null,
+  "servicePrincipalLockConfiguration": null,
+  "signInAudience": "AzureADandPersonalMicrosoftAccount",
+  "spa": {
+    "redirectUris": []
+  },
+  "tags": [],
+  "tokenEncryptionKeyId": null,
+  "uniqueName": null,
+  "verifiedPublisher": {
+    "addedDateTime": null,
+    "displayName": null,
+    "verifiedPublisherId": null
+  },
+  "web": {
+    "homePageUrl": null,
+    "implicitGrantSettings": {
+      "enableAccessTokenIssuance": true,
+      "enableIdTokenIssuance": true
+    },
+    "logoutUrl": null,
+    "redirectUriSettings": [
+      {
+        "index": null,
+        "uri": "http://localhost:5065/signin-oidc"
+      },
+      {
+        "index": null,
+        "uri": "https://localhost:7001/signin-oidc"
+      },
+      {
+        "index": null,
+        "uri": "http://localhost:5108/signin-oidc"
+      },
+      {
+        "index": null,
+        "uri": "https://localhost:7070/signin-oidc"
+      },
+      {
+        "index": null,
+        "uri": "https://www.hartonomous.com/signin-oidc"
+      },
+      {
+        "index": null,
+        "uri": "https://hartonomous.com/signin-oidc"
+      },
+      {
+        "index": null,
+        "uri": "https://localhost:61701/signin-oidc"
+      },
+      {
+        "index": null,
+        "uri": "http://localhost:5128/signin-oidc"
+      },
+      {
+        "index": null,
+        "uri": "https://localhost:7271/signin-oidc"
+      }
+    ],
+    "redirectUris": [
+      "http://localhost:5065/signin-oidc",
+      "https://localhost:7001/signin-oidc",
+      "http://localhost:5108/signin-oidc",
+      "https://localhost:7070/signin-oidc",
+      "https://www.hartonomous.com/signin-oidc",
+      "https://hartonomous.com/signin-oidc",
+      "https://localhost:61701/signin-oidc",
+      "http://localhost:5128/signin-oidc",
+      "https://localhost:7271/signin-oidc"
+    ]
+  }
+}

@@ -1,0 +1,101 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Run API",
+			"type": "shell",
+			"command": "dotnet run --project Hartonomous.API",
+			"isBackground": true,
+			"problemMatcher": [
+				"$msCompile"
+			]
+		},
+		{
+			"label": "Run API",
+			"type": "shell",
+			"command": "dotnet run --project Hartonomous.API",
+			"isBackground": true,
+			"problemMatcher": [
+				"$msCompile"
+			]
+		},
+		{
+			"label": "Run API",
+			"type": "shell",
+			"command": "dotnet run --project Hartonomous.API --no-build",
+			"isBackground": true,
+			"problemMatcher": [
+				"$msCompile"
+			]
+		},
+		{
+			"label": "Run API (Updated)",
+			"type": "shell",
+			"command": "dotnet run --project Hartonomous.API --no-build",
+			"isBackground": true,
+			"problemMatcher": [
+				"$msCompile"
+			]
+		},
+		{
+			"label": "Run API",
+			"type": "shell",
+			"command": "dotnet run --project Hartonomous.API",
+			"isBackground": true,
+			"problemMatcher": [
+				"$msCompile"
+			]
+		},
+		{
+			"label": "Run API (HTTPS)",
+			"type": "shell",
+			"command": "dotnet run --project Hartonomous.API/Hartonomous.Api.csproj",
+			"isBackground": true,
+			"problemMatcher": []
+		},
+		{
+			"label": "API-HTTPS",
+			"type": "shell",
+			"command": "dotnet run --project Hartonomous.API/Hartonomous.Api.csproj --no-build",
+			"isBackground": true,
+			"problemMatcher": [
+				"$msCompile"
+			]
+		},
+		{
+			"label": "API-Run",
+			"type": "shell",
+			"command": "dotnet run --project Hartonomous.API/Hartonomous.Api.csproj --no-build",
+			"isBackground": true,
+			"problemMatcher": []
+		},
+		{
+			"label": "API-Dev",
+			"type": "shell",
+			"command": "dotnet run --project Hartonomous.API/Hartonomous.Api.csproj --no-build",
+			"isBackground": true,
+			"problemMatcher": []
+		},
+		{
+			"label": "API-Fixed",
+			"type": "shell",
+			"command": "dotnet run --project Hartonomous.API/Hartonomous.Api.csproj --no-build",
+			"isBackground": true,
+			"problemMatcher": []
+		},
+		{
+			"label": "API-Rebuilt",
+			"type": "shell",
+			"command": "dotnet run --project Hartonomous.API/Hartonomous.Api.csproj --no-build",
+			"isBackground": true,
+			"problemMatcher": []
+		},
+		{
+			"label": "API-Logged",
+			"type": "shell",
+			"command": "dotnet run --project Hartonomous.API/Hartonomous.Api.csproj --no-build",
+			"isBackground": true,
+			"problemMatcher": []
+		}
+	]
+}

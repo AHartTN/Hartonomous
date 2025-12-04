@@ -4,6 +4,7 @@ using StackExchange.Redis;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Hosting;
+using Hartonomous.Infrastructure.Extensions;
 
 namespace Hartonomous.Infrastructure.Health;
 
@@ -21,8 +22,7 @@ public static class HealthCheckConfiguration
     {
         var healthChecksBuilder = services.AddHealthChecks();
 
-        // Self health check - always healthy if app is running
-        healthChecksBuilder.AddCheck("self", () => HealthCheckResult.Healthy("API is running"), tags: new[] { "live" });
+        // Self health check handled by ServiceDefaults (removed duplicate)
 
         // Database health check
         var connectionString = configuration.GetConnectionString("DefaultConnection");
@@ -82,6 +82,9 @@ public static class HealthCheckConfiguration
             "responsetime",
             failureStatus: HealthStatus.Degraded,
             tags: new[] { "ready", "performance" });
+
+        // Infrastructure services health checks (blob storage, message queue)
+        healthChecksBuilder.AddInfrastructureHealthChecks(configuration);
 
         return services;
     }

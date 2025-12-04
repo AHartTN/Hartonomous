@@ -10,6 +10,9 @@
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <AnalysisMode>Default</AnalysisMode>
     
+    <!-- Skip MAUI projects in parallel builds to avoid file lock issues -->
+    <BuildInParallel Condition="'$(UseMaui)' == 'true'">false</BuildInParallel>
+    
     <!-- Ensure proper obj/bin folder isolation -->
     <BaseIntermediateOutputPath>obj\</BaseIntermediateOutputPath>
     <IntermediateOutputPath>$(BaseIntermediateOutputPath)$(Configuration)\</IntermediateOutputPath>

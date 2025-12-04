@@ -4,6 +4,7 @@ using Hartonomous.Data.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 
 namespace Hartonomous.Data.Extensions;
 
@@ -16,13 +17,26 @@ public static class DataLayerExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        // Register DbContext with PostgreSQL
+        // Register DbContext with PostgreSQL + production optimizations
         services.AddDbContext<ApplicationDbContext>(options =>
         {
             var connectionString = configuration.GetConnectionString("DefaultConnection")
                 ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
 
-            options.UseNpgsql(connectionString, npgsqlOptions =>
+            // Add connection pooling parameters to connection string
+            var builder = new Npgsql.NpgsqlConnectionStringBuilder(connectionString)
+            {
+                Pooling = true,
+                MinPoolSize = 10,
+                MaxPoolSize = 100,
+                ConnectionIdleLifetime = 300,
+                ConnectionPruningInterval = 10,
+                Timeout = 30,
+                CommandTimeout = 60,
+                ApplicationName = "Hartonomous.API"
+            };
+
+            options.UseNpgsql(builder.ConnectionString, npgsqlOptions =>
             {
                 npgsqlOptions.EnableRetryOnFailure(
                     maxRetryCount: 5,
@@ -37,7 +51,15 @@ public static class DataLayerExtensions
 
                 // Migrations assembly
                 npgsqlOptions.MigrationsAssembly(typeof(ApplicationDbContext).Assembly.FullName);
+                
+                // Batch optimization for bulk operations
+                npgsqlOptions.MaxBatchSize(100);
+                npgsqlOptions.MinBatchSize(1);
             });
+
+            // Query behavior optimization
+            options.UseQueryTrackingBehavior(QueryTrackingBehavior.TrackAll);
+            options.EnableThreadSafetyChecks(true);
 
             // Enable sensitive data logging in development
             var enableSensitiveDataLogging = configuration["Logging:EnableSensitiveDataLogging"];
@@ -59,6 +81,12 @@ public static class DataLayerExtensions
 
         // Register generic repository
         services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
+
+        // Register specific repositories
+        services.AddScoped<IConstantRepository, ConstantRepository>();
+        services.AddScoped<ILandmarkRepository, LandmarkRepository>();
+        services.AddScoped<IBPETokenRepository, BPETokenRepository>();
+        services.AddScoped<IContentIngestionRepository, ContentIngestionRepository>();
 
         return services;
     }
