@@ -39,6 +39,13 @@
     <TargetPlatformMinVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</TargetPlatformMinVersion>
   </PropertyGroup>
 
+  <!-- Fix static web assets parallel build issue -->
+  <PropertyGroup>
+    <StaticWebAssetBasePath>_content/$(MSBuildProjectName)/$(TargetFramework)</StaticWebAssetBasePath>
+    <IntermediateOutputPath>obj\$(TargetFramework)\</IntermediateOutputPath>
+    <BaseIntermediateOutputPath>obj\</BaseIntermediateOutputPath>
+  </PropertyGroup>
+
   <ItemGroup>
     <!-- App Icon -->
     <MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#512BD4" />
@@ -55,6 +62,12 @@
 
     <!-- Raw Assets (also remove the "Resources\Raw" prefix) -->
     <MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <!-- Exclude iOS asset catalog from Android builds -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-android'">
+    <AndroidResource Remove="obj\**\resizetizer\r\Assets.xcassets\**" />
+    <None Include="obj\**\resizetizer\r\Assets.xcassets\**" />
   </ItemGroup>
 
   <ItemGroup>

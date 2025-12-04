@@ -2,8 +2,6 @@
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>dotnet-Hartonomous.Worker-b3041471-d1e0-49d1-853a-4e26bece4a7e</UserSecretsId>
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
   </PropertyGroup>

@@ -2,12 +2,11 @@
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\Hartonomous.ServiceDefaults\Hartonomous.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\Hartonomous.App.Shared\Hartonomous.App.Shared.csproj" />
     <ProjectReference Include="..\Hartonomous.App.Web.Client\Hartonomous.App.Web.Client.csproj" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="10.0.0" />
   </ItemGroup>

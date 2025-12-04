@@ -2,6 +2,13 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Identity.Web;
 using Microsoft.IdentityModel.Tokens;
 using System.Security.Claims;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Authorization;
 
 namespace Hartonomous.Infrastructure.Security;
 
@@ -49,18 +56,20 @@ public static class AuthenticationConfiguration
                     OnAuthenticationFailed = context =>
                     {
                         var logger = context.HttpContext.RequestServices
-                            .GetRequiredService<ILogger<Program>>();
+                            .GetRequiredService<ILoggerFactory>()
+                            .CreateLogger("Authentication");
                         
                         logger.LogError(context.Exception,
                             "Authentication failed. Token: {Token}",
-                            context.Request.Headers.Authorization);
+                            context.Request.Headers.Authorization.ToString());
                         
                         return Task.CompletedTask;
                     },
                     OnTokenValidated = context =>
                     {
                         var logger = context.HttpContext.RequestServices
-                            .GetRequiredService<ILogger<Program>>();
+                            .GetRequiredService<ILoggerFactory>()
+                            .CreateLogger("Authentication");
                         
                         var claimsIdentity = context.Principal?.Identity as ClaimsIdentity;
                         logger.LogInformation(
@@ -75,7 +84,8 @@ public static class AuthenticationConfiguration
                     OnChallenge = context =>
                     {
                         var logger = context.HttpContext.RequestServices
-                            .GetRequiredService<ILogger<Program>>();
+                            .GetRequiredService<ILoggerFactory>()
+                            .CreateLogger("Authentication");
                         
                         logger.LogWarning(
                             "Challenge issued. Error: {Error}, Description: {Description}",
@@ -87,7 +97,8 @@ public static class AuthenticationConfiguration
                     OnForbidden = context =>
                     {
                         var logger = context.HttpContext.RequestServices
-                            .GetRequiredService<ILogger<Program>>();
+                            .GetRequiredService<ILoggerFactory>()
+                            .CreateLogger("Authentication");
                         
                         logger.LogWarning(
                             "Forbidden access attempt by user: {User} to resource: {Path}",
@@ -113,9 +124,6 @@ public static class AuthenticationConfiguration
                 options.TenantId = configuration["Authentication:TenantId"];
                 options.Instance = configuration["Authentication:Instance"] ?? 
                     "https://login.microsoftonline.com/";
-                
-                // Enable caching of tokens
-                options.EnableCachingForBearerTokens = true;
             });
 
         return services;
@@ -129,27 +137,35 @@ public static class AuthenticationConfiguration
     {
         services.AddAuthorizationBuilder()
             // Fallback policy - require authentication for all endpoints by default
-            .SetFallbackPolicy(policy => policy
+            .SetFallbackPolicy(new AuthorizationPolicyBuilder()
                 .RequireAuthenticatedUser()
                 .Build())
             
             // Admin policy - requires Admin role
-            .AddPolicy("AdminPolicy", policy => policy
-                .RequireRole("Admin", "Administrator")
-                .RequireClaim("scope", "api.admin"))
+            .AddPolicy("AdminPolicy", policy =>
+            {
+                policy.RequireRole("Admin", "Administrator");
+                policy.RequireClaim("scope", "api.admin");
+            })
             
             // User policy - requires User role
-            .AddPolicy("UserPolicy", policy => policy
-                .RequireRole("User", "Reader")
-                .RequireClaim("scope", "api.read"))
+            .AddPolicy("UserPolicy", policy =>
+            {
+                policy.RequireRole("User", "Reader");
+                policy.RequireClaim("scope", "api.read");
+            })
             
             // Write policy - requires write permissions
-            .AddPolicy("WritePolicy", policy => policy
-                .RequireClaim("scope", "api.write"))
+            .AddPolicy("WritePolicy", policy =>
+            {
+                policy.RequireClaim("scope", "api.write");
+            })
             
             // API Scope policy - requires specific API scope
-            .AddPolicy("ApiScopePolicy", policy => policy
-                .RequireClaim("scope", "api.access"));
+            .AddPolicy("ApiScopePolicy", policy =>
+            {
+                policy.RequireClaim("scope", "api.access");
+            });
 
         return services;
     }

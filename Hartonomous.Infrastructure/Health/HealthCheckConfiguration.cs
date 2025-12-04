@@ -1,6 +1,9 @@
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Npgsql;
 using StackExchange.Redis;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.AspNetCore.Hosting;
 
 namespace Hartonomous.Infrastructure.Health;
 

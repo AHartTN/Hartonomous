@@ -1,5 +1,8 @@
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.Http;
 using System.Threading.RateLimiting;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Hartonomous.Infrastructure.Security;
 
@@ -16,10 +19,10 @@ public static class RateLimitingConfiguration
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        services.AddRateLimiter(options =>
+        services.AddRateLimiter(limiterOptions =>
         {
             // Global rate limit - applies to all requests
-            options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+            limiterOptions.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
             {
                 var userId = context.User?.Identity?.Name ?? context.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
                 
@@ -35,10 +38,10 @@ public static class RateLimitingConfiguration
             });
 
             // Rejection status code
-            options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+            limiterOptions.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 
             // Custom rejection response
-            options.OnRejected = async (context, cancellationToken) =>
+            limiterOptions.OnRejected = async (context, cancellationToken) =>
             {
                 if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
                 {
@@ -52,52 +55,52 @@ public static class RateLimitingConfiguration
                 {
                     error = "rate_limit_exceeded",
                     message = "Too many requests. Please try again later.",
-                    retryAfter = retryAfter?.TotalSeconds
+                    retryAfter = retryAfter.TotalSeconds
                 };
 
                 await context.HttpContext.Response.WriteAsJsonAsync(response, cancellationToken: cancellationToken);
             };
 
             // Fixed Window Limiter - simple time-based limiting
-            options.AddFixedWindowLimiter("fixed", limiterOptions =>
+            limiterOptions.AddFixedWindowLimiter("fixed", fixedOptions =>
             {
-                limiterOptions.PermitLimit = configuration.GetValue<int>("RateLimiting:Fixed:PermitLimit", 100);
-                limiterOptions.Window = TimeSpan.FromMinutes(1);
-                limiterOptions.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
-                limiterOptions.QueueLimit = configuration.GetValue<int>("RateLimiting:Fixed:QueueLimit", 10);
+                fixedOptions.PermitLimit = configuration.GetValue<int>("RateLimiting:Fixed:PermitLimit", 100);
+                fixedOptions.Window = TimeSpan.FromMinutes(1);
+                fixedOptions.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+                fixedOptions.QueueLimit = configuration.GetValue<int>("RateLimiting:Fixed:QueueLimit", 10);
             });
 
             // Sliding Window Limiter - smoother rate limiting
-            options.AddSlidingWindowLimiter("sliding", limiterOptions =>
+            limiterOptions.AddSlidingWindowLimiter("sliding", slidingOptions =>
             {
-                limiterOptions.PermitLimit = configuration.GetValue<int>("RateLimiting:Sliding:PermitLimit", 100);
-                limiterOptions.Window = TimeSpan.FromMinutes(1);
-                limiterOptions.SegmentsPerWindow = 6; // 10-second segments
-                limiterOptions.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
-                limiterOptions.QueueLimit = configuration.GetValue<int>("RateLimiting:Sliding:QueueLimit", 10);
+                slidingOptions.PermitLimit = configuration.GetValue<int>("RateLimiting:Sliding:PermitLimit", 100);
+                slidingOptions.Window = TimeSpan.FromMinutes(1);
+                slidingOptions.SegmentsPerWindow = 6; // 10-second segments
+                slidingOptions.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+                slidingOptions.QueueLimit = configuration.GetValue<int>("RateLimiting:Sliding:QueueLimit", 10);
             });
 
             // Token Bucket Limiter - allows bursts
-            options.AddTokenBucketLimiter("token", limiterOptions =>
+            limiterOptions.AddTokenBucketLimiter("token", tokenOptions =>
             {
-                limiterOptions.TokenLimit = configuration.GetValue<int>("RateLimiting:Token:TokenLimit", 100);
-                limiterOptions.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
-                limiterOptions.QueueLimit = configuration.GetValue<int>("RateLimiting:Token:QueueLimit", 10);
-                limiterOptions.ReplenishmentPeriod = TimeSpan.FromSeconds(10);
-                limiterOptions.TokensPerPeriod = configuration.GetValue<int>("RateLimiting:Token:TokensPerPeriod", 10);
-                limiterOptions.AutoReplenishment = true;
+                tokenOptions.TokenLimit = configuration.GetValue<int>("RateLimiting:Token:TokenLimit", 100);
+                tokenOptions.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+                tokenOptions.QueueLimit = configuration.GetValue<int>("RateLimiting:Token:QueueLimit", 10);
+                tokenOptions.ReplenishmentPeriod = TimeSpan.FromSeconds(10);
+                tokenOptions.TokensPerPeriod = configuration.GetValue<int>("RateLimiting:Token:TokensPerPeriod", 10);
+                tokenOptions.AutoReplenishment = true;
             });
 
             // Concurrency Limiter - limits concurrent requests
-            options.AddConcurrencyLimiter("concurrency", limiterOptions =>
+            limiterOptions.AddConcurrencyLimiter("concurrency", concurrencyOptions =>
             {
-                limiterOptions.PermitLimit = configuration.GetValue<int>("RateLimiting:Concurrency:PermitLimit", 50);
-                limiterOptions.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
-                limiterOptions.QueueLimit = configuration.GetValue<int>("RateLimiting:Concurrency:QueueLimit", 20);
+                concurrencyOptions.PermitLimit = configuration.GetValue<int>("RateLimiting:Concurrency:PermitLimit", 50);
+                concurrencyOptions.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+                concurrencyOptions.QueueLimit = configuration.GetValue<int>("RateLimiting:Concurrency:QueueLimit", 20);
             });
 
             // Per-user rate limiter - different limits per authenticated user
-            options.AddPolicy("per-user", context =>
+            limiterOptions.AddPolicy("per-user", context =>
             {
                 var username = context.User?.Identity?.Name;
                 
@@ -122,7 +125,7 @@ public static class RateLimitingConfiguration
             });
 
             // Per-IP rate limiter
-            options.AddPolicy("per-ip", context =>
+            limiterOptions.AddPolicy("per-ip", context =>
             {
                 var ipAddress = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
                 
@@ -136,7 +139,7 @@ public static class RateLimitingConfiguration
             });
 
             // API endpoint specific limiter
-            options.AddPolicy("api-endpoints", context =>
+            limiterOptions.AddPolicy("api-endpoints", context =>
             {
                 var endpoint = context.GetEndpoint();
                 var routePattern = endpoint?.Metadata.GetMetadata<Microsoft.AspNetCore.Routing.RouteEndpoint>()?.RoutePattern.RawText ?? "default";
@@ -144,7 +147,7 @@ public static class RateLimitingConfiguration
                 var partitionKey = $"{userId}:{routePattern}";
 
                 return RateLimitPartition.GetTokenBucketLimiter(partitionKey,
-                    _ => new TokenBucketLimiterOptions
+                    _ => new TokenBucketRateLimiterOptions
                     {
                         TokenLimit = 50,
                         TokensPerPeriod = 10,

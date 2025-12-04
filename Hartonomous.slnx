@@ -1,15 +1,38 @@
 <Solution>
-  <Project Path="Hartonomous.API/Hartonomous.API.csproj" />
-  <Project Path="Hartonomous.App/Hartonomous.App.Shared/Hartonomous.App.Shared.csproj" />
-  <Project Path="Hartonomous.App/Hartonomous.App.Web.Client/Hartonomous.App.Web.Client.csproj" />
-  <Project Path="Hartonomous.App/Hartonomous.App.Web/Hartonomous.App.Web.csproj" />
-  <Project Path="Hartonomous.App/Hartonomous.App/Hartonomous.App.csproj">
-    <Deploy />
-  </Project>
-  <Project Path="Hartonomous.AppHost/Hartonomous.AppHost.csproj" />
-  <Project Path="Hartonomous.Core/Hartonomous.Core.csproj" />
-  <Project Path="Hartonomous.Data/Hartonomous.Data.csproj" />
-  <Project Path="Hartonomous.Infrastructure/Hartonomous.Infrastructure.csproj" />
-  <Project Path="Hartonomous.ServiceDefaults/Hartonomous.ServiceDefaults.csproj" />
-  <Project Path="Hartonomous.Worker/Hartonomous.Worker.csproj" />
+  
+  <!-- Core & Data Layer -->
+  <Folder Name="/Core/">
+    <Project Path="Hartonomous.Core/Hartonomous.Core.csproj" />
+    <Project Path="Hartonomous.Data/Hartonomous.Data.csproj" />
+    <Project Path="Hartonomous.Infrastructure/Hartonomous.Infrastructure.csproj" />
+  </Folder>
+  
+  <!-- API & Services -->
+  <Folder Name="/Services/">
+    <Project Path="Hartonomous.API/Hartonomous.API.csproj" />
+    <Project Path="Hartonomous.Worker/Hartonomous.Worker.csproj" />
+  </Folder>
+  
+  <!-- Client Apps -->
+  <Folder Name="/Apps/">
+    <Project Path="Hartonomous.App/Hartonomous.App/Hartonomous.App.csproj" />
+    <Project Path="Hartonomous.App/Hartonomous.App.Shared/Hartonomous.App.Shared.csproj" />
+    <Project Path="Hartonomous.App/Hartonomous.App.Web.Client/Hartonomous.App.Web.Client.csproj" />
+    <Project Path="Hartonomous.App/Hartonomous.App.Web/Hartonomous.App.Web.csproj" />
+  </Folder>
+  
+  <!-- Aspire Orchestration -->
+  <Folder Name="/Aspire/">
+    <Project Path="Hartonomous.AppHost/Hartonomous.AppHost.csproj" />
+    <Project Path="Hartonomous.ServiceDefaults/Hartonomous.ServiceDefaults.csproj" />
+  </Folder>
+  
+  <!-- Solution Items -->
+  <Folder Name="/Solution Items/">
+    <File Path="README.md" />
+    <File Path="ARCHITECTURE.md" />
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Build.targets" />
+    <File Path="azure-pipelines.yml" />
+  </Folder>
 </Solution>

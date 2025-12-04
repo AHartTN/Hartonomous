@@ -20,6 +20,12 @@ public class WeatherForecastController : ControllerBase
         "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
     ];
 
+    public WeatherForecastController(IDownstreamApi downstreamApi, GraphServiceClient graphServiceClient)
+    {
+        _downstreamApi = downstreamApi;
+        _graphServiceClient = graphServiceClient;
+    }
+
     [HttpGet(Name = "GetWeatherForecast")]
     public async Task<IEnumerable<WeatherForecast>> Get()
     {
