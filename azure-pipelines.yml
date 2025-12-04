@@ -277,21 +277,21 @@ stages:
                         --timeout-in-seconds 600
                 
                 - task: AzureCLI@2
-                  displayName: 'Setup SSL Certificates (Let''s Encrypt)'
+                  displayName: 'Sync SSL Certificates from Router'
                   inputs:
                     azureSubscription: 'Azure-Service-Connection'
                     scriptType: 'pscore'
                     scriptLocation: 'inlineScript'
                     addSpnToEnvironment: true
                     inlineScript: |
-                      $setupScript = Get-Content "$(Build.SourcesDirectory)/deploy/setup-letsencrypt.sh" -Raw
+                      $syncScript = Get-Content "$(Build.SourcesDirectory)/scripts/setup-sync-certificates.sh" -Raw
                       
                       az connectedmachine run-command create `
                         --resource-group rg-hartonomous `
                         --machine-name "$(deployHost)" `
-                        --name "setup-ssl-${{ parameters.deploymentEnvironment }}-$(Build.BuildId)" `
-                        --script "$setupScript ${{ parameters.deploymentEnvironment }}" `
-                        --timeout-in-seconds 900
+                        --name "sync-certs-${{ parameters.deploymentEnvironment }}-$(Build.BuildId)" `
+                        --script "$syncScript" `
+                        --timeout-in-seconds 600
                 
                 - task: AzureCLI@2
                   displayName: 'Validate Infrastructure'
