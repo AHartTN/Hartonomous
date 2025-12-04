@@ -53,9 +53,10 @@ public sealed class ConstantProjectedEventHandler : INotificationHandler<Constan
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
-                "Constant {ConstantId} projected with Hilbert index {HilbertIndex}",
+                "Constant {ConstantId} projected with Hilbert4D index ({HilbertHigh}, {HilbertLow})",
                 constant.Id,
-                constant.Coordinate!.HilbertIndex);
+                constant.Coordinate!.HilbertHigh,
+                constant.Coordinate!.HilbertLow);
         }
         catch (Exception ex)
         {

@@ -105,14 +105,21 @@ public class Constant : BaseEntity
             throw new InvalidOperationException($"Cannot project constant in status {Status}");
         }
         
-        // Compute deterministic spatial coordinate from hash
-        Coordinate = SpatialCoordinate.FromHash(Hash);
+        // TODO: Compute actual quantized values from data
+        // For now: use placeholder values (will be implemented in Phase 3)
+        const int placeholderEntropy = 1_048_576; // Mid-range
+        const int placeholderCompressibility = 1_048_576; // Mid-range
+        const int placeholderConnectivity = 0; // No references yet
         
-        // Create PostGIS point for spatial indexing
-        Location = new Point(Coordinate.X, Coordinate.Y, Coordinate.Z)
-        {
-            SRID = 0 // Cartesian coordinate system
-        };
+        // Compute deterministic spatial coordinate from hash + metadata
+        Coordinate = SpatialCoordinate.FromHash(
+            Hash,
+            placeholderEntropy,
+            placeholderCompressibility,
+            placeholderConnectivity);
+        
+        // Create PostGIS POINTZM for spatial indexing
+        Location = Coordinate.ToPoint();
         
         Status = ConstantStatus.Projected;
         ProjectedAt = DateTime.UtcNow;
