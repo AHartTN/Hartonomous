@@ -9,7 +9,7 @@ trigger:
       - .azure-pipelines/docs-validation.yml
 
 pool:
-  vmImage: 'ubuntu-latest'
+  name: 'Local Agent Pool'
 
 variables:
   docsPath: '$(Build.SourcesDirectory)/docs'

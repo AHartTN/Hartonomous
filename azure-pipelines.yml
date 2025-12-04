@@ -8,7 +8,7 @@ trigger:
       - v*
 
 pool:
-  vmImage: 'windows-latest'
+  name: 'Local Agent Pool'
 
 variables:
   buildConfiguration: 'Release'

@@ -7,7 +7,7 @@ trigger:
       - docs/**
 
 pool:
-  vmImage: 'ubuntu-latest'
+  name: 'Local Agent Pool'
 
 variables:
   - group: AzureDevOps-Secrets  # Create this variable group with AZURE_DEVOPS_PAT
@@ -37,13 +37,22 @@ jobs:
 
       - task: PowerShell@2
         inputs:
-          targetType: 'filePath'
-          filePath: '$(Build.SourcesDirectory)/docs/scripts/sync-to-wiki.ps1'
-          arguments: >
-            -Organization "$(System.CollectionUri)"
-            -Project "$(System.TeamProject)"
-            -PAT "$(AZURE_DEVOPS_PAT)"
-        displayName: 'Sync Documentation to Wiki'
+          targetType: 'inline'
+          script: |
+            $env:AZURE_DEVOPS_EXT_PAT = "$(AZURE_DEVOPS_PAT)"
+            
+            Write-Host "Syncing documentation to Azure DevOps Wiki..."
+            Write-Host "Organization: $(System.CollectionUri)"
+            Write-Host "Project: $(System.TeamProject)"
+            
+            # List all markdown files in docs
+            $docFiles = Get-ChildItem -Path "$(Build.SourcesDirectory)/docs" -Filter "*.md" -Recurse
+            Write-Host "Found $($docFiles.Count) documentation files"
+            
+            foreach ($file in $docFiles) {
+              Write-Host "  - $($file.Name)"
+            }
+        displayName: 'List Documentation Files'
         env:
           AZURE_DEVOPS_EXT_PAT: $(AZURE_DEVOPS_PAT)
 
@@ -69,16 +78,9 @@ jobs:
             [View Build]($(System.TeamFoundationCollectionUri)$(System.TeamProject)/_build/results?buildId=$(Build.BuildId))
             "@
             
-            # Save to file
-            $releaseNote | Out-File -FilePath release-note.md -Encoding UTF8
-            
-            # Create wiki page
-            az devops wiki page create `
-              --path "/Release-Notes/$(Build.BuildNumber)" `
-              --file-path release-note.md `
-              --org "$(System.CollectionUri)" `
-              --project "$(System.TeamProject)"
-        displayName: 'Create Release Note in Wiki'
+            Write-Host "Release note prepared for build $(Build.BuildNumber)"
+            Write-Host $releaseNote
+        displayName: 'Prepare Release Note'
         env:
           AZURE_DEVOPS_EXT_PAT: $(AZURE_DEVOPS_PAT)
         condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
