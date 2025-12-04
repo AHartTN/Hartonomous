@@ -7,6 +7,36 @@ trigger:
     include:
       - v*
 
+parameters:
+  - name: deploymentTarget
+    displayName: 'Deployment Target'
+    type: string
+    default: 'Default'
+    values:
+      - 'Default'
+      - 'None'
+      - 'hart-server-linux'
+      - 'hart-server-windows'
+      - 'hart-desktop-linux'
+      - 'hart-desktop-windows'
+      - 'azure-linux'
+      - 'azure-windows'
+  - name: deploymentOS
+    displayName: 'Target OS'
+    type: string
+    default: 'Linux'
+    values:
+      - 'Linux'
+      - 'Windows'
+  - name: deploymentEnvironment
+    displayName: 'Environment'
+    type: string
+    default: 'Production'
+    values:
+      - 'Development'
+      - 'Staging'
+      - 'Production'
+
 pool:
   name: 'Local Agent Pool'
 
@@ -14,6 +44,41 @@ variables:
   buildConfiguration: 'Release'
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
   DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+  # Deployment configuration based on target and environment
+  # Default: Production/Staging -> HART-SERVER, Development -> HART-DESKTOP
+  ${{ if eq(parameters.deploymentTarget, 'Default') }}:
+    ${{ if eq(parameters.deploymentEnvironment, 'Development') }}:
+      deployHost: 'hart-desktop'
+      deployUser: '${{ if eq(parameters.deploymentOS, ''Linux'') }}:www-data${{ else }}:Administrator'
+      deployMethod: '${{ if eq(parameters.deploymentOS, ''Linux'') }}:SSH${{ else }}:WinRM'
+    ${{ else }}:
+      deployHost: 'hart-server'
+      deployUser: '${{ if eq(parameters.deploymentOS, ''Linux'') }}:www-data${{ else }}:Administrator'
+      deployMethod: '${{ if eq(parameters.deploymentOS, ''Linux'') }}:SSH${{ else }}:WinRM'
+  ${{ if eq(parameters.deploymentTarget, 'hart-server-linux') }}:
+    deployHost: 'hart-server'
+    deployUser: 'www-data'
+    deployMethod: 'SSH'
+  ${{ if eq(parameters.deploymentTarget, 'hart-server-windows') }}:
+    deployHost: 'hart-server'
+    deployUser: 'Administrator'
+    deployMethod: 'WinRM'
+  ${{ if eq(parameters.deploymentTarget, 'hart-desktop-linux') }}:
+    deployHost: 'hart-desktop'
+    deployUser: 'www-data'
+    deployMethod: 'SSH'
+  ${{ if eq(parameters.deploymentTarget, 'hart-desktop-windows') }}:
+    deployHost: 'hart-desktop'
+    deployUser: 'Administrator'
+    deployMethod: 'WinRM'
+  ${{ if eq(parameters.deploymentTarget, 'azure-linux') }}:
+    deployHost: '$(AZURE_LINUX_HOST)'
+    deployUser: 'azureuser'
+    deployMethod: 'SSH'
+  ${{ if eq(parameters.deploymentTarget, 'azure-windows') }}:
+    deployHost: '$(AZURE_WINDOWS_HOST)'
+    deployUser: 'azureuser'
+    deployMethod: 'WinRM'
 
 stages:
   - stage: Build
@@ -125,15 +190,29 @@ stages:
         displayName: 'Pack NuGet Packages'
         steps:
           - task: DotNetCoreCLI@2
+            displayName: 'Restore All Dependencies'
+            inputs:
+              command: 'restore'
+              projects: 'Hartonomous.slnx'
+
+          - task: DotNetCoreCLI@2
+            displayName: 'Build Solution'
+            inputs:
+              command: 'build'
+              projects: 'Hartonomous.slnx'
+              arguments: '--configuration $(buildConfiguration) --no-restore'
+
+          - task: DotNetCoreCLI@2
             displayName: 'Pack Core Library'
             inputs:
               command: 'pack'
               packagesToPack: 'Hartonomous.Core/Hartonomous.Core.csproj'
               configuration: $(buildConfiguration)
               packDirectory: '$(Build.ArtifactStagingDirectory)/packages'
-              nobuild: false
+              nobuild: true
               includesymbols: true
               includesource: true
+              versioningScheme: 'off'
 
           - task: DotNetCoreCLI@2
             displayName: 'Pack Data Library'
@@ -142,9 +221,10 @@ stages:
               packagesToPack: 'Hartonomous.Data/Hartonomous.Data.csproj'
               configuration: $(buildConfiguration)
               packDirectory: '$(Build.ArtifactStagingDirectory)/packages'
-              nobuild: false
+              nobuild: true
               includesymbols: true
               includesource: true
+              versioningScheme: 'off'
 
           - task: DotNetCoreCLI@2
             displayName: 'Pack Infrastructure Library'
@@ -153,9 +233,10 @@ stages:
               packagesToPack: 'Hartonomous.Infrastructure/Hartonomous.Infrastructure.csproj'
               configuration: $(buildConfiguration)
               packDirectory: '$(Build.ArtifactStagingDirectory)/packages'
-              nobuild: false
+              nobuild: true
               includesymbols: true
               includesource: true
+              versioningScheme: 'off'
 
           - task: PublishBuildArtifacts@1
             displayName: 'Publish NuGet Artifacts'
@@ -166,8 +247,91 @@ stages:
   - stage: Deploy
     displayName: 'Deploy Applications'
     dependsOn: Build
-    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    condition: and(succeeded(), and(ne('${{ parameters.deploymentTarget }}', 'None'), or(eq('${{ parameters.deploymentTarget }}', 'Default'), eq(variables['Build.SourceBranch'], 'refs/heads/main'))))
     jobs:
+      - deployment: DeployLinux
+        displayName: 'Deploy to Linux Server'
+        condition: eq('${{ parameters.deploymentOS }}', 'Linux')
+        environment: '${{ parameters.deploymentEnvironment }}'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                
+                - download: current
+                  artifact: api-drop
+                
+                - download: current
+                  artifact: worker-drop
+                
+                - download: current
+                  artifact: web-drop
+                
+                - task: CopyFilesOverSSH@0
+                  displayName: 'Copy API to Linux Server'
+                  inputs:
+                    sshEndpoint: '$(deployHost)'
+                    sourceFolder: '$(Pipeline.Workspace)/api-drop'
+                    contents: '**'
+                    targetFolder: '/tmp/hartonomous-deploy/api'
+                    cleanTargetFolder: true
+                
+                - task: CopyFilesOverSSH@0
+                  displayName: 'Copy Worker to Linux Server'
+                  inputs:
+                    sshEndpoint: '$(deployHost)'
+                    sourceFolder: '$(Pipeline.Workspace)/worker-drop'
+                    contents: '**'
+                    targetFolder: '/tmp/hartonomous-deploy/worker'
+                    cleanTargetFolder: true
+                
+                - task: CopyFilesOverSSH@0
+                  displayName: 'Copy Web to Linux Server'
+                  inputs:
+                    sshEndpoint: '$(deployHost)'
+                    sourceFolder: '$(Pipeline.Workspace)/web-drop'
+                    contents: '**'
+                    targetFolder: '/tmp/hartonomous-deploy/web'
+                    cleanTargetFolder: true
+                
+                - task: SSH@0
+                  displayName: 'Execute Deployment Script'
+                  inputs:
+                    sshEndpoint: '$(deployHost)'
+                    runOptions: 'inline'
+                    inline: |
+                      chmod +x /tmp/hartonomous-deploy/deploy-app.sh
+                      sudo /tmp/hartonomous-deploy/deploy-app.sh ${{ parameters.deploymentEnvironment }} all
+      
+      - deployment: DeployWindows
+        displayName: 'Deploy to Windows Server'
+        condition: eq('${{ parameters.deploymentOS }}', 'Windows')
+        environment: '${{ parameters.deploymentEnvironment }}'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                
+                - download: current
+                  artifact: api-drop
+                
+                - download: current
+                  artifact: worker-drop
+                
+                - download: current
+                  artifact: web-drop
+                
+                - task: PowerShellOnTargetMachines@3
+                  displayName: 'Deploy to Windows Server'
+                  inputs:
+                    Machines: '$(deployHost)'
+                    UserName: '$(deployUser)'
+                    UserPassword: '$(DEPLOY_PASSWORD)'
+                    ScriptType: 'FilePath'
+                    ScriptPath: '$(Build.SourcesDirectory)/deploy/Deploy-App.ps1'
+                    ScriptArguments: '-Environment ${{ parameters.deploymentEnvironment }} -Component all -ApiArtifact "$(Pipeline.Workspace)/api-drop" -WorkerArtifact "$(Pipeline.Workspace)/worker-drop" -WebArtifact "$(Pipeline.Workspace)/web-drop"'
       - job: PublishAPI
         displayName: 'Publish API'
         steps:

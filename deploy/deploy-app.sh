@@ -13,9 +13,10 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-# Configuration
-REMOTE_HOST="${REMOTE_HOST:-hart-server}"
+# Configuration - Accept from environment or use defaults
+REMOTE_HOST="${REMOTE_HOST:-localhost}"
 REMOTE_USER="${REMOTE_USER:-www-data}"
+REMOTE_DEPLOY="${REMOTE_DEPLOY:-false}"  # Set to "true" for remote deployment via SSH
 
 # Environment (first argument)
 ENVIRONMENT="${1:-production}"
@@ -88,34 +89,63 @@ deploy_component() {
     
     echo -e "${YELLOW}Deploying $component to $ENVIRONMENT...${NC}"
     
-    # Stop service
-    ssh "$REMOTE_USER@$REMOTE_HOST" "sudo systemctl stop $service_name" 2>/dev/null || true
-    
-    # Backup current version
-    ssh "$REMOTE_USER@$REMOTE_HOST" "sudo cp -r $DEPLOY_DIR/$component $DEPLOY_DIR/${component}.backup.$(date +%Y%m%d-%H%M%S)" 2>/dev/null || true
-    
-    # Create temporary directory on remote
-    ssh "$REMOTE_USER@$REMOTE_HOST" "mkdir -p /tmp/hartonomous-$component"
-    
-    # Copy files
-    echo -e "${YELLOW}Copying files to $REMOTE_HOST...${NC}"
-    scp -r "$BUILD_DIR/$component/"* "$REMOTE_USER@$REMOTE_HOST:/tmp/hartonomous-$component/"
-    
-    # Move files to deployment directory
-    ssh "$REMOTE_USER@$REMOTE_HOST" "sudo rm -rf $DEPLOY_DIR/$component/*"
-    ssh "$REMOTE_USER@$REMOTE_HOST" "sudo mv /tmp/hartonomous-$component/* $DEPLOY_DIR/$component/"
-    ssh "$REMOTE_USER@$REMOTE_HOST" "sudo rm -rf /tmp/hartonomous-$component"
-    
-    # Set permissions
-    ssh "$REMOTE_USER@$REMOTE_HOST" "sudo chown -R www-data:www-data $DEPLOY_DIR/$component"
-    ssh "$REMOTE_USER@$REMOTE_HOST" "sudo chmod -R 755 $DEPLOY_DIR/$component"
-    
-    # Start service
-    ssh "$REMOTE_USER@$REMOTE_HOST" "sudo systemctl start $service_name"
-    
-    # Check status
-    sleep 5
-    ssh "$REMOTE_USER@$REMOTE_HOST" "sudo systemctl status $service_name --no-pager" || true
+    if [ "$REMOTE_DEPLOY" = "true" ]; then
+        # Remote deployment via SSH
+        echo -e "${YELLOW}Deploying to remote host: $REMOTE_HOST${NC}"
+        
+        # Stop service
+        ssh "$REMOTE_USER@$REMOTE_HOST" "sudo systemctl stop $service_name" 2>/dev/null || true
+        
+        # Backup current version
+        ssh "$REMOTE_USER@$REMOTE_HOST" "sudo cp -r $DEPLOY_DIR/$component $DEPLOY_DIR/${component}.backup.$(date +%Y%m%d-%H%M%S)" 2>/dev/null || true
+        
+        # Create temporary directory on remote
+        ssh "$REMOTE_USER@$REMOTE_HOST" "mkdir -p /tmp/hartonomous-$component"
+        
+        # Copy files
+        echo -e "${YELLOW}Copying files to $REMOTE_HOST...${NC}"
+        scp -r "$BUILD_DIR/$component/"* "$REMOTE_USER@$REMOTE_HOST:/tmp/hartonomous-$component/"
+        
+        # Move files to deployment directory
+        ssh "$REMOTE_USER@$REMOTE_HOST" "sudo rm -rf $DEPLOY_DIR/$component/*"
+        ssh "$REMOTE_USER@$REMOTE_HOST" "sudo mv /tmp/hartonomous-$component/* $DEPLOY_DIR/$component/"
+        ssh "$REMOTE_USER@$REMOTE_HOST" "sudo rm -rf /tmp/hartonomous-$component"
+        
+        # Set permissions
+        ssh "$REMOTE_USER@$REMOTE_HOST" "sudo chown -R www-data:www-data $DEPLOY_DIR/$component"
+        ssh "$REMOTE_USER@$REMOTE_HOST" "sudo chmod -R 755 $DEPLOY_DIR/$component"
+        
+        # Start service
+        ssh "$REMOTE_USER@$REMOTE_HOST" "sudo systemctl start $service_name"
+        
+        # Check status
+        sleep 5
+        ssh "$REMOTE_USER@$REMOTE_HOST" "sudo systemctl status $service_name --no-pager" || true
+    else
+        # Local deployment
+        echo -e "${YELLOW}Deploying locally to $DEPLOY_DIR${NC}"
+        
+        # Stop service
+        sudo systemctl stop $service_name 2>/dev/null || true
+        
+        # Backup current version
+        sudo cp -r "$DEPLOY_DIR/$component" "$DEPLOY_DIR/${component}.backup.$(date +%Y%m%d-%H%M%S)" 2>/dev/null || true
+        
+        # Clear and copy files
+        sudo rm -rf "$DEPLOY_DIR/$component/"*
+        sudo cp -r "$BUILD_DIR/$component/"* "$DEPLOY_DIR/$component/"
+        
+        # Set permissions
+        sudo chown -R www-data:www-data "$DEPLOY_DIR/$component"
+        sudo chmod -R 755 "$DEPLOY_DIR/$component"
+        
+        # Start service
+        sudo systemctl start $service_name
+        
+        # Check status
+        sleep 5
+        sudo systemctl status $service_name --no-pager || true
+    fi
     
     echo -e "${GREEN}? $component deployed to $ENVIRONMENT${NC}"
 }
