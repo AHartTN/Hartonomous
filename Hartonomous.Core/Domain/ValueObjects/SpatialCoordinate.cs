@@ -74,22 +74,22 @@ public sealed class SpatialCoordinate : ValueObject
     public double X => GetDecodedCoordinates().X;
     
     /// <summary>
-    /// Y coordinate: Shannon entropy (dequantized from QuantizedEntropy).
-    /// Range: [0, 8] bits of entropy
+    /// Y coordinate: Shannon entropy (quantized integer from Hilbert decode).
+    /// Range: [0, 2^Precision - 1]
     /// </summary>
-    public double Y => DequantizeEntropy(QuantizedEntropy);
-    
+    public double Y => GetDecodedCoordinates().Y;
+
     /// <summary>
-    /// Z coordinate: Kolmogorov complexity (dequantized from QuantizedCompressibility).
-    /// Range: [0, 1] compression ratio
+    /// Z coordinate: Kolmogorov complexity (quantized integer from Hilbert decode).
+    /// Range: [0, 2^Precision - 1]
     /// </summary>
-    public double Z => DequantizeCompressibility(QuantizedCompressibility);
-    
+    public double Z => GetDecodedCoordinates().Z;
+
     /// <summary>
-    /// M coordinate: Graph connectivity (dequantized from QuantizedConnectivity).
-    /// Range: [0, 21] log2 of reference count
+    /// M coordinate: Graph connectivity (quantized integer from Hilbert decode).
+    /// Range: [0, 2^Precision - 1]
     /// </summary>
-    public double M => DequantizeConnectivity(QuantizedConnectivity);
+    public double M => GetDecodedCoordinates().M;
     
     private SpatialCoordinate()
     {
@@ -217,25 +217,20 @@ public sealed class SpatialCoordinate : ValueObject
 
         var targetPrecision = precision ?? coordList[0].Precision;
 
-        // Decode all coordinates and average ALL decoded Cartesian values
+        // Average all 4D quantized integer coordinates
         double sumX = 0, sumY = 0, sumZ = 0, sumM = 0;
         foreach (var coord in coordList)
         {
-            var (x, y, z, m) = HilbertCurve4D.Decode(
-                coord.HilbertHigh, 
-                coord.HilbertLow, 
-                coord.Precision);
-            
-            sumX += x;
-            sumY += y;  // Use decoded Y not quantized
-            sumZ += z;  // Use decoded Z not quantized  
-            sumM += m;  // Use decoded M not quantized
+            sumX += coord.X;  // Decoded quantized X
+            sumY += coord.Y;  // Decoded quantized Y (entropy)
+            sumZ += coord.Z;  // Decoded quantized Z (compressibility)
+            sumM += coord.M;  // Decoded quantized M (connectivity)
         }
 
-        var avgX = (uint)(sumX / coordList.Count);
-        var avgY = (int)(sumY / coordList.Count);
-        var avgZ = (int)(sumZ / coordList.Count);
-        var avgM = (int)(sumM / coordList.Count);
+        var avgX = (uint)Math.Round(sumX / coordList.Count);
+        var avgY = (int)Math.Round(sumY / coordList.Count);
+        var avgZ = (int)Math.Round(sumZ / coordList.Count);
+        var avgM = (int)Math.Round(sumM / coordList.Count);
 
         return FromUniversalProperties(
             avgX,
@@ -320,12 +315,11 @@ public sealed class SpatialCoordinate : ValueObject
     {
         _decodedCoordinates = new Lazy<(double, double, double, double)>(() =>
         {
-            // Decode 4D Hilbert index back to coordinates
+            // Decode 4D Hilbert index back to all 4 quantized integer coordinates
             var (x, y, z, m) = HilbertCurve4D.Decode(HilbertHigh, HilbertLow, Precision);
-            
-            // X is spatial (keep as-is)
-            // Y, Z, M are dequantized from redundant storage (more accurate)
-            return ((double)x, Y, Z, M);
+
+            // Return all dimensions as quantized integers [0, 2^Precision-1]
+            return ((double)x, (double)y, (double)z, (double)m);
         });
     }
     

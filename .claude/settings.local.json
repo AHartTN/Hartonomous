@@ -3,7 +3,10 @@
     "allow": [
       "Bash(az ad app:*)",
       "Bash(dotnet build:*)",
-      "Bash(taskkill:*)"
+      "Bash(taskkill:*)",
+      "Bash(npm test:*)",
+      "Bash(dir:*)",
+      "Bash(dotnet test:*)"
     ],
     "deny": [],
     "ask": []
