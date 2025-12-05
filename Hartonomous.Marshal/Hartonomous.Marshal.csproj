@@ -18,11 +18,29 @@
     <PackageTags>native;cpp;hilbert;spatial;geometry;pinvoke;marshal</PackageTags>
   </PropertyGroup>
 
-  <!-- Include native DLL in package -->
+  <!-- Copy native artifacts before packing -->
+  <Target Name="PrepareNativeArtifacts" BeforeTargets="GenerateNuspec">
+    <PropertyGroup>
+      <NativeSourceDir>$(MSBuildThisFileDirectory)..\Hartonomous.Native\build</NativeSourceDir>
+      <NativeStagingDir>$(MSBuildProjectDirectory)\runtimes\win-x64\native</NativeStagingDir>
+    </PropertyGroup>
+    
+    <ItemGroup>
+      <NativeFiles Include="$(NativeSourceDir)\bin\Hartonomous.Native.dll" />
+      <NativeFiles Include="$(NativeSourceDir)\bin\Hartonomous.Native.pdb" Condition="Exists('$(NativeSourceDir)\bin\Hartonomous.Native.pdb')" />
+      <NativeFiles Include="$(NativeSourceDir)\lib\Hartonomous.Native.lib" Condition="Exists('$(NativeSourceDir)\lib\Hartonomous.Native.lib')" />
+    </ItemGroup>
+    
+    <MakeDir Directories="$(NativeStagingDir)" />
+    <Copy SourceFiles="@(NativeFiles)" DestinationFolder="$(NativeStagingDir)" SkipUnchangedFiles="true" />
+    <Message Importance="high" Text="Copied native artifacts to staging directory: $(NativeStagingDir)" />
+  </Target>
+
+  <!-- Include native artifacts from staging directory -->
   <ItemGroup>
-    <Content Include="..\Hartonomous.Native\build\bin\Hartonomous.Native.dll" Pack="true" PackagePath="runtimes\win-x64\native\" />
-    <Content Include="..\Hartonomous.Native\build\lib\Hartonomous.Native.lib" Pack="true" PackagePath="runtimes\win-x64\native\" Condition="Exists('..\Hartonomous.Native\build\lib\Hartonomous.Native.lib')" />
-    <Content Include="..\Hartonomous.Native\build\bin\Hartonomous.Native.pdb" Pack="true" PackagePath="runtimes\win-x64\native\" Condition="Exists('..\Hartonomous.Native\build\bin\Hartonomous.Native.pdb')" />
+    <Content Include="runtimes\win-x64\native\*.dll" Pack="true" PackagePath="runtimes\win-x64\native\" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="runtimes\win-x64\native\*.pdb" Pack="true" PackagePath="runtimes\win-x64\native\" />
+    <Content Include="runtimes\win-x64\native\*.lib" Pack="true" PackagePath="runtimes\win-x64\native\" />
     <Content Include="Hartonomous.Marshal.targets" Pack="true" PackagePath="build\Hartonomous.Marshal.targets" />
   </ItemGroup>
 

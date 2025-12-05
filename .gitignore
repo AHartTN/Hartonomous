@@ -10,6 +10,9 @@ bin/
 Hartonomous.Native/build/
 !Hartonomous.Native/build/.gitkeep
 
+# Marshal staging directory for native artifacts
+Hartonomous.Marshal/runtimes/
+
 # NuGet
 *.nupkg
 *.snupkg

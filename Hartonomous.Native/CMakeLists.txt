@@ -81,3 +81,14 @@ endif()
 # Enable Google Test discovery for Visual Studio Test Explorer and CTest
 include(GoogleTest)
 gtest_discover_tests(Hartonomous.Native.Tests)
+
+# CLI executable for manual function testing
+add_executable(Hartonomous.Native.CLI src/cli_native.cpp)
+target_include_directories(Hartonomous.Native.CLI PRIVATE include)
+target_link_libraries(Hartonomous.Native.CLI PRIVATE Hartonomous.Native)
+
+if(WIN32)
+    set_target_properties(Hartonomous.Native.CLI PROPERTIES 
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+    )
+endif()
