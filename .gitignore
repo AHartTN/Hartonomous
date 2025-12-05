@@ -35,3 +35,6 @@ logs/
 *.cer
 *.p12
 HartIndustries.*
+
+# Model files (static test assets, not tracked)
+.models/
