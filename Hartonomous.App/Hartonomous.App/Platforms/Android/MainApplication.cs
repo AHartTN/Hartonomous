@@ -1,7 +1,7 @@
 ﻿using Android.App;
 using Android.Runtime;
 
-namespace Hartonomous.App;
+namespace Hartonomous.App.Platforms.Android;
 
 [Application]
 public class MainApplication : MauiApplication

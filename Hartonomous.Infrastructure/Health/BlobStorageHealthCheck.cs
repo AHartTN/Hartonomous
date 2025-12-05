@@ -1,7 +1,7 @@
 using Hartonomous.Infrastructure.Storage;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
-namespace Hartonomous.Infrastructure.Caching;
+namespace Hartonomous.Infrastructure.Health;
 
 /// <summary>
 /// Health check for blob storage service.

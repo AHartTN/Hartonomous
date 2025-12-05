@@ -1,5 +1,6 @@
 using Hartonomous.Data.Extensions;
 using Hartonomous.Infrastructure.Extensions;
+using Hartonomous.ServiceDefaults;
 using Hartonomous.Worker.Configuration;
 using Hartonomous.Worker.Jobs;
 using Hartonomous.Worker.Services;

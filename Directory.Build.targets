@@ -59,12 +59,18 @@
   </Target>
 
   <!-- ======================================
-       Clean Build Artifacts
+       Clean Build Artifacts (resilient)
        ====================================== -->
   <Target Name="CleanArtifacts" AfterTargets="Clean">
     <Message Importance="high" Text="Cleaning build artifacts for $(MSBuildProjectName)..." />
-    <RemoveDir Directories="$(BaseIntermediateOutputPath)$(MSBuildProjectName)" />
-    <RemoveDir Directories="$(OutputPath)" />
+    <RemoveDir 
+      Directories="$(BaseIntermediateOutputPath)$(MSBuildProjectName)" 
+      Condition="Exists('$(BaseIntermediateOutputPath)$(MSBuildProjectName)')" 
+      ContinueOnError="true" />
+    <RemoveDir 
+      Directories="$(OutputPath)" 
+      Condition=" '$(OutputPath)' != '' AND Exists('$(OutputPath)') " 
+      ContinueOnError="true" />
   </Target>
 
   <!-- ======================================

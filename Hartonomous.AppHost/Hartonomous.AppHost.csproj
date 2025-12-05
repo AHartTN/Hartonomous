@@ -16,7 +16,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Hartonomous.Api\Hartonomous.Api.csproj" />
-    <ProjectReference Include="..\Hartonomous.App\Hartonomous.App\Hartonomous.App.csproj" />
     <ProjectReference Include="..\Hartonomous.App\Hartonomous.App.Web\Hartonomous.App.Web.csproj" />
     <ProjectReference Include="..\Hartonomous.Worker\Hartonomous.Worker.csproj" />
   </ItemGroup>

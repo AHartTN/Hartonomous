@@ -1,7 +1,7 @@
 ﻿using ObjCRuntime;
 using UIKit;
 
-namespace Hartonomous.App;
+namespace Hartonomous.App.Platforms.iOS;
 
 public class Program
 {

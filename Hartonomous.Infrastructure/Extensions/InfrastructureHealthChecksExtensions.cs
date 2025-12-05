@@ -1,4 +1,4 @@
-using Hartonomous.Infrastructure.Caching;
+using Hartonomous.Infrastructure.Health;
 using Hartonomous.Infrastructure.Messaging;
 using Hartonomous.Infrastructure.Storage;
 using Microsoft.Extensions.Configuration;

@@ -17,6 +17,7 @@
   <Folder Name="/Apps/">
     <Project Path="Hartonomous.App/Hartonomous.App/Hartonomous.App.csproj">
       <Configuration Solution="*" Project="*" Build="false" Deploy="false" />
+      <Deploy Solution="Debug|*" />
     </Project>
     <Project Path="Hartonomous.App/Hartonomous.App.Shared/Hartonomous.App.Shared.csproj" />
     <Project Path="Hartonomous.App/Hartonomous.App.Web.Client/Hartonomous.App.Web.Client.csproj" />
@@ -37,8 +38,10 @@
     <File Path="Directory.Build.targets" />
     <File Path="azure-pipelines.yml" />
   </Folder>
-  <Project Path="Hartonomous.API.Tests/Hartonomous.API.Tests.csproj" />
-  <Project Path="Hartonomous.Core.Tests/Hartonomous.Core.Tests.csproj" />
-  <Project Path="Hartonomous.Data.Tests/Hartonomous.Data.Tests.csproj" />
-  <Project Path="Hartonomous.Infrastructure.Tests/Hartonomous.Infrastructure.Tests.csproj" />
+  <Folder Name="/Tests/">
+    <Project Path="Hartonomous.API.Tests/Hartonomous.API.Tests.csproj" />
+    <Project Path="Hartonomous.Core.Tests/Hartonomous.Core.Tests.csproj" />
+    <Project Path="Hartonomous.Data.Tests/Hartonomous.Data.Tests.csproj" />
+    <Project Path="Hartonomous.Infrastructure.Tests/Hartonomous.Infrastructure.Tests.csproj" />
+  </Folder>
 </Solution>

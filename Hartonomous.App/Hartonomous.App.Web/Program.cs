@@ -1,6 +1,7 @@
 using Hartonomous.App.Web.Components;
 using Hartonomous.App.Shared.Services;
 using Hartonomous.App.Web.Services;
+using Hartonomous.ServiceDefaults;
 
 namespace Hartonomous.App.Web;
 

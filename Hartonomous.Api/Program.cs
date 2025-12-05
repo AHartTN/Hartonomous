@@ -5,6 +5,7 @@ using Hartonomous.Data.Extensions;
 using Hartonomous.Infrastructure.Extensions;
 using Hartonomous.Infrastructure.Health;
 using Hartonomous.Infrastructure.Security;
+using Hartonomous.ServiceDefaults;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
 

@@ -1,6 +1,6 @@
 ﻿using Foundation;
 
-namespace Hartonomous.App;
+namespace Hartonomous.App.Platforms.iOS;
 
 [Register("AppDelegate")]
 public class AppDelegate : MauiUIApplicationDelegate
