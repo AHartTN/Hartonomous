@@ -22,31 +22,31 @@
     </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{3820F56F-0A2B-3B2C-8541-ECCD0D777E40}</ProjectGuid>
+    <ProjectGuid>{0B5CDDBA-11DE-3DD9-B117-FA1B5EA57708}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <WindowsTargetPlatformVersion>10.0.26100.0</WindowsTargetPlatformVersion>
     <Platform>x64</Platform>
-    <ProjectName>Hartonomous.Native</ProjectName>
+    <ProjectName>Hartonomous.Native.Tests</ProjectName>
     <VCProjectUpgraderObjectName>NoUpgrade</VCProjectUpgraderObjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <ConfigurationType>Application</ConfigurationType>
     <CharacterSet>MultiByte</CharacterSet>
     <PlatformToolset>v145</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <ConfigurationType>Application</ConfigurationType>
     <CharacterSet>MultiByte</CharacterSet>
     <PlatformToolset>v145</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'" Label="Configuration">
-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <ConfigurationType>Application</ConfigurationType>
     <CharacterSet>MultiByte</CharacterSet>
     <PlatformToolset>v145</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'" Label="Configuration">
-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <ConfigurationType>Application</ConfigurationType>
     <CharacterSet>MultiByte</CharacterSet>
     <PlatformToolset>v145</PlatformToolset>
   </PropertyGroup>
@@ -60,31 +60,30 @@
   <PropertyGroup>
     <_ProjectFileVersion>10.0.20506.1</_ProjectFileVersion>
     <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">D:\Repositories\Hartonomous\Hartonomous.Native\build\bin\</OutDir>
-    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Hartonomous.Native.dir\Debug\</IntDir>
-    <TargetName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Hartonomous.Native</TargetName>
-    <TargetExt Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">.dll</TargetExt>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Hartonomous.Native.Tests.dir\Debug\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Hartonomous.Native.Tests</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">.exe</TargetExt>
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</LinkIncremental>
     <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</GenerateManifest>
     <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">D:\Repositories\Hartonomous\Hartonomous.Native\build\bin\</OutDir>
-    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Hartonomous.Native.dir\Release\</IntDir>
-    <TargetName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Hartonomous.Native</TargetName>
-    <TargetExt Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.dll</TargetExt>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Hartonomous.Native.Tests.dir\Release\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Hartonomous.Native.Tests</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.exe</TargetExt>
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkIncremental>
     <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</GenerateManifest>
     <OutDir Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">D:\Repositories\Hartonomous\Hartonomous.Native\build\bin\</OutDir>
-    <IntDir Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">Hartonomous.Native.dir\MinSizeRel\</IntDir>
-    <TargetName Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">Hartonomous.Native</TargetName>
-    <TargetExt Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">.dll</TargetExt>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">Hartonomous.Native.Tests.dir\MinSizeRel\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">Hartonomous.Native.Tests</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">.exe</TargetExt>
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">false</LinkIncremental>
     <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">true</GenerateManifest>
     <OutDir Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">D:\Repositories\Hartonomous\Hartonomous.Native\build\bin\</OutDir>
-    <IntDir Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">Hartonomous.Native.dir\RelWithDebInfo\</IntDir>
-    <TargetName Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">Hartonomous.Native</TargetName>
-    <TargetExt Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">.dll</TargetExt>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">Hartonomous.Native.Tests.dir\RelWithDebInfo\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">Hartonomous.Native.Tests</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">.exe</TargetExt>
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">true</LinkIncremental>
     <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">true</GenerateManifest>
   </PropertyGroup>
-  <PropertyGroup />
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
       <AdditionalIncludeDirectories>D:\Repositories\Hartonomous\Hartonomous.Native\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
@@ -108,12 +107,12 @@
       <TreatWChar_tAsBuiltInType></TreatWChar_tAsBuiltInType>
       <UseFullPaths>false</UseFullPaths>
       <WarningLevel>Level3</WarningLevel>
-      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;CMAKE_INTDIR="Debug";Hartonomous_Native_EXPORTS</PreprocessorDefinitions>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;CMAKE_INTDIR="Debug"</PreprocessorDefinitions>
       <ObjectFileName>$(IntDir)</ObjectFileName>
       <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
     </ClCompile>
     <ResourceCompile>
-      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_DEBUG;_WINDOWS;CMAKE_INTDIR=\"Debug\";Hartonomous_Native_EXPORTS</PreprocessorDefinitions>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_DEBUG;_WINDOWS;CMAKE_INTDIR=\"Debug\"</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>D:\Repositories\Hartonomous\Hartonomous.Native\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Midl>
@@ -124,37 +123,19 @@
       <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
       <ProxyFileName>%(Filename)_p.c</ProxyFileName>
     </Midl>
-    <PreLinkEvent>
-      <UseUtf8Encoding>Always</UseUtf8Encoding>
-      <Message>Auto build dll exports</Message>
-      <Command>setlocal
-cd D:\Repositories\Hartonomous\Hartonomous.Native\build
-if %errorlevel% neq 0 goto :cmEnd
-D:
-if %errorlevel% neq 0 goto :cmEnd
-"C:\Program Files\CMake\bin\cmake.exe" -E __create_def D:/Repositories/Hartonomous/Hartonomous.Native/build/Hartonomous.Native.dir/Debug/exports.def D:/Repositories/Hartonomous/Hartonomous.Native/build/Hartonomous.Native.dir/Debug//objects.txt
-if %errorlevel% neq 0 goto :cmEnd
-:cmEnd
-endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
-:cmErrorLevel
-exit /b %1
-:cmDone
-if %errorlevel% neq 0 goto :VCEnd</Command>
-    </PreLinkEvent>
     <Link>
-      <AdditionalDependencies>kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalDependencies>lib\Hartonomous.Native.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
       <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
       <DataExecutionPrevention></DataExecutionPrevention>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
       <ImageHasSafeExceptionHandlers></ImageHasSafeExceptionHandlers>
-      <ImportLibrary>D:/Repositories/Hartonomous/Hartonomous.Native/build/lib/Hartonomous.Native.lib</ImportLibrary>
+      <ImportLibrary>D:/Repositories/Hartonomous/Hartonomous.Native/build/lib/Hartonomous.Native.Tests.lib</ImportLibrary>
       <LinkErrorReporting></LinkErrorReporting>
-      <ModuleDefinitionFile>D:/Repositories/Hartonomous/Hartonomous.Native/build/Hartonomous.Native.dir/Debug/exports.def</ModuleDefinitionFile>
-      <ProgramDataBaseFile>D:/Repositories/Hartonomous/Hartonomous.Native/build/bin/Hartonomous.Native.pdb</ProgramDataBaseFile>
+      <ProgramDataBaseFile>D:/Repositories/Hartonomous/Hartonomous.Native/build/bin/Hartonomous.Native.Tests.pdb</ProgramDataBaseFile>
       <RandomizedBaseAddress></RandomizedBaseAddress>
-      <SubSystem></SubSystem>
+      <SubSystem>Console</SubSystem>
     </Link>
     <ProjectReference>
       <LinkLibraryDependencies>false</LinkLibraryDependencies>
@@ -183,12 +164,12 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <TreatWChar_tAsBuiltInType></TreatWChar_tAsBuiltInType>
       <UseFullPaths>false</UseFullPaths>
       <WarningLevel>Level3</WarningLevel>
-      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;CMAKE_INTDIR="Release";Hartonomous_Native_EXPORTS</PreprocessorDefinitions>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;CMAKE_INTDIR="Release"</PreprocessorDefinitions>
       <ObjectFileName>$(IntDir)</ObjectFileName>
       <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
     </ClCompile>
     <ResourceCompile>
-      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;CMAKE_INTDIR=\"Release\";Hartonomous_Native_EXPORTS</PreprocessorDefinitions>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;CMAKE_INTDIR=\"Release\"</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>D:\Repositories\Hartonomous\Hartonomous.Native\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Midl>
@@ -199,39 +180,19 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
       <ProxyFileName>%(Filename)_p.c</ProxyFileName>
     </Midl>
-    <PreLinkEvent>
-      <UseUtf8Encoding>Always</UseUtf8Encoding>
-      <Message>Auto build dll exports</Message>
-      <Command>setlocal
-cd D:\Repositories\Hartonomous\Hartonomous.Native\build
-if %errorlevel% neq 0 goto :cmEnd
-D:
-if %errorlevel% neq 0 goto :cmEnd
-"C:\Program Files\CMake\bin\cmake.exe" -E __create_def D:/Repositories/Hartonomous/Hartonomous.Native/build/Hartonomous.Native.dir/Release/exports.def D:/Repositories/Hartonomous/Hartonomous.Native/build/Hartonomous.Native.dir/Release//objects.txt
-if %errorlevel% neq 0 goto :cmEnd
-:cmEnd
-endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
-:cmErrorLevel
-exit /b %1
-:cmDone
-if %errorlevel% neq 0 goto :VCEnd</Command>
-    </PreLinkEvent>
     <Link>
-      <AdditionalDependencies>kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalDependencies>lib\Hartonomous.Native.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
       <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
       <DataExecutionPrevention></DataExecutionPrevention>
-      <EnableCOMDATFolding>true</EnableCOMDATFolding>
-      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
       <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
       <ImageHasSafeExceptionHandlers></ImageHasSafeExceptionHandlers>
-      <ImportLibrary>D:/Repositories/Hartonomous/Hartonomous.Native/build/lib/Hartonomous.Native.lib</ImportLibrary>
+      <ImportLibrary>D:/Repositories/Hartonomous/Hartonomous.Native/build/lib/Hartonomous.Native.Tests.lib</ImportLibrary>
       <LinkErrorReporting></LinkErrorReporting>
-      <ModuleDefinitionFile>D:/Repositories/Hartonomous/Hartonomous.Native/build/Hartonomous.Native.dir/Release/exports.def</ModuleDefinitionFile>
-      <OptimizeReferences>true</OptimizeReferences>
-      <ProgramDataBaseFile>D:/Repositories/Hartonomous/Hartonomous.Native/build/bin/Hartonomous.Native.pdb</ProgramDataBaseFile>
+      <ProgramDataBaseFile>D:/Repositories/Hartonomous/Hartonomous.Native/build/bin/Hartonomous.Native.Tests.pdb</ProgramDataBaseFile>
       <RandomizedBaseAddress></RandomizedBaseAddress>
-      <SubSystem></SubSystem>
+      <SubSystem>Console</SubSystem>
     </Link>
     <ProjectReference>
       <LinkLibraryDependencies>false</LinkLibraryDependencies>
@@ -259,14 +220,14 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <TreatWChar_tAsBuiltInType></TreatWChar_tAsBuiltInType>
       <UseFullPaths>false</UseFullPaths>
       <WarningLevel>Level3</WarningLevel>
-      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;CMAKE_INTDIR="MinSizeRel";Hartonomous_Native_EXPORTS</PreprocessorDefinitions>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;CMAKE_INTDIR="MinSizeRel"</PreprocessorDefinitions>
       <ObjectFileName>$(IntDir)</ObjectFileName>
       <DebugInformationFormat>
       </DebugInformationFormat>
       <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
     </ClCompile>
     <ResourceCompile>
-      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;CMAKE_INTDIR=\"MinSizeRel\";Hartonomous_Native_EXPORTS</PreprocessorDefinitions>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;CMAKE_INTDIR=\"MinSizeRel\"</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>D:\Repositories\Hartonomous\Hartonomous.Native\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Midl>
@@ -277,37 +238,19 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
       <ProxyFileName>%(Filename)_p.c</ProxyFileName>
     </Midl>
-    <PreLinkEvent>
-      <UseUtf8Encoding>Always</UseUtf8Encoding>
-      <Message>Auto build dll exports</Message>
-      <Command>setlocal
-cd D:\Repositories\Hartonomous\Hartonomous.Native\build
-if %errorlevel% neq 0 goto :cmEnd
-D:
-if %errorlevel% neq 0 goto :cmEnd
-"C:\Program Files\CMake\bin\cmake.exe" -E __create_def D:/Repositories/Hartonomous/Hartonomous.Native/build/Hartonomous.Native.dir/MinSizeRel/exports.def D:/Repositories/Hartonomous/Hartonomous.Native/build/Hartonomous.Native.dir/MinSizeRel//objects.txt
-if %errorlevel% neq 0 goto :cmEnd
-:cmEnd
-endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
-:cmErrorLevel
-exit /b %1
-:cmDone
-if %errorlevel% neq 0 goto :VCEnd</Command>
-    </PreLinkEvent>
     <Link>
-      <AdditionalDependencies>kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalDependencies>lib\Hartonomous.Native.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
       <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
       <DataExecutionPrevention></DataExecutionPrevention>
       <GenerateDebugInformation>false</GenerateDebugInformation>
       <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
       <ImageHasSafeExceptionHandlers></ImageHasSafeExceptionHandlers>
-      <ImportLibrary>D:/Repositories/Hartonomous/Hartonomous.Native/build/lib/Hartonomous.Native.lib</ImportLibrary>
+      <ImportLibrary>D:/Repositories/Hartonomous/Hartonomous.Native/build/lib/Hartonomous.Native.Tests.lib</ImportLibrary>
       <LinkErrorReporting></LinkErrorReporting>
-      <ModuleDefinitionFile>D:/Repositories/Hartonomous/Hartonomous.Native/build/Hartonomous.Native.dir/MinSizeRel/exports.def</ModuleDefinitionFile>
-      <ProgramDataBaseFile>D:/Repositories/Hartonomous/Hartonomous.Native/build/bin/Hartonomous.Native.pdb</ProgramDataBaseFile>
+      <ProgramDataBaseFile>D:/Repositories/Hartonomous/Hartonomous.Native/build/bin/Hartonomous.Native.Tests.pdb</ProgramDataBaseFile>
       <RandomizedBaseAddress></RandomizedBaseAddress>
-      <SubSystem></SubSystem>
+      <SubSystem>Console</SubSystem>
     </Link>
     <ProjectReference>
       <LinkLibraryDependencies>false</LinkLibraryDependencies>
@@ -336,12 +279,12 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <TreatWChar_tAsBuiltInType></TreatWChar_tAsBuiltInType>
       <UseFullPaths>false</UseFullPaths>
       <WarningLevel>Level3</WarningLevel>
-      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;CMAKE_INTDIR="RelWithDebInfo";Hartonomous_Native_EXPORTS</PreprocessorDefinitions>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;CMAKE_INTDIR="RelWithDebInfo"</PreprocessorDefinitions>
       <ObjectFileName>$(IntDir)</ObjectFileName>
       <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
     </ClCompile>
     <ResourceCompile>
-      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;CMAKE_INTDIR=\"RelWithDebInfo\";Hartonomous_Native_EXPORTS</PreprocessorDefinitions>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;CMAKE_INTDIR=\"RelWithDebInfo\"</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>D:\Repositories\Hartonomous\Hartonomous.Native\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Midl>
@@ -352,37 +295,19 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
       <ProxyFileName>%(Filename)_p.c</ProxyFileName>
     </Midl>
-    <PreLinkEvent>
-      <UseUtf8Encoding>Always</UseUtf8Encoding>
-      <Message>Auto build dll exports</Message>
-      <Command>setlocal
-cd D:\Repositories\Hartonomous\Hartonomous.Native\build
-if %errorlevel% neq 0 goto :cmEnd
-D:
-if %errorlevel% neq 0 goto :cmEnd
-"C:\Program Files\CMake\bin\cmake.exe" -E __create_def D:/Repositories/Hartonomous/Hartonomous.Native/build/Hartonomous.Native.dir/RelWithDebInfo/exports.def D:/Repositories/Hartonomous/Hartonomous.Native/build/Hartonomous.Native.dir/RelWithDebInfo//objects.txt
-if %errorlevel% neq 0 goto :cmEnd
-:cmEnd
-endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
-:cmErrorLevel
-exit /b %1
-:cmDone
-if %errorlevel% neq 0 goto :VCEnd</Command>
-    </PreLinkEvent>
     <Link>
-      <AdditionalDependencies>kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalDependencies>lib\Hartonomous.Native.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
       <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
       <DataExecutionPrevention></DataExecutionPrevention>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
       <ImageHasSafeExceptionHandlers></ImageHasSafeExceptionHandlers>
-      <ImportLibrary>D:/Repositories/Hartonomous/Hartonomous.Native/build/lib/Hartonomous.Native.lib</ImportLibrary>
+      <ImportLibrary>D:/Repositories/Hartonomous/Hartonomous.Native/build/lib/Hartonomous.Native.Tests.lib</ImportLibrary>
       <LinkErrorReporting></LinkErrorReporting>
-      <ModuleDefinitionFile>D:/Repositories/Hartonomous/Hartonomous.Native/build/Hartonomous.Native.dir/RelWithDebInfo/exports.def</ModuleDefinitionFile>
-      <ProgramDataBaseFile>D:/Repositories/Hartonomous/Hartonomous.Native/build/bin/Hartonomous.Native.pdb</ProgramDataBaseFile>
+      <ProgramDataBaseFile>D:/Repositories/Hartonomous/Hartonomous.Native/build/bin/Hartonomous.Native.Tests.pdb</ProgramDataBaseFile>
       <RandomizedBaseAddress></RandomizedBaseAddress>
-      <SubSystem></SubSystem>
+      <SubSystem>Console</SubSystem>
     </Link>
     <ProjectReference>
       <LinkLibraryDependencies>false</LinkLibraryDependencies>
@@ -446,8 +371,7 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     </CustomBuild>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="D:\Repositories\Hartonomous\Hartonomous.Native\src\hartonomous_native.cpp" />
-    <ClCompile Include="D:\Repositories\Hartonomous\Hartonomous.Native\src\Hilbert\skilling.cpp" />
+    <ClCompile Include="D:\Repositories\Hartonomous\Hartonomous.Native\src\test_native.cpp" />
   </ItemGroup>
   <ItemGroup />
   <ItemGroup>
@@ -456,6 +380,10 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <Name>ZERO_CHECK</Name>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Repositories\Hartonomous\Hartonomous.Native\build\Hartonomous.Native.vcxproj">
+      <Project>{3820F56F-0A2B-3B2C-8541-ECCD0D777E40}</Project>
+      <Name>Hartonomous.Native</Name>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

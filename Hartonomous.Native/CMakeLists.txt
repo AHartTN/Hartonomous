@@ -5,6 +5,10 @@ project(Hartonomous.Native VERSION 1.0.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Enable debug symbols for all configurations
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Zi")
+set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} /DEBUG /OPT:REF /OPT:ICF")
+
 # Statically link the MSVC runtime
 if(MSVC)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
@@ -47,11 +51,11 @@ install(TARGETS Hartonomous.Native
 )
 
 # Test Executable
-add_executable(TestNative src/test_native.cpp)
-target_include_directories(TestNative PRIVATE include)
-target_link_libraries(TestNative PRIVATE Hartonomous.Native)
+add_executable(Hartonomous.Native.Tests src/test_native.cpp)
+target_include_directories(Hartonomous.Native.Tests PRIVATE include)
+target_link_libraries(Hartonomous.Native.Tests PRIVATE Hartonomous.Native)
 if(WIN32)
-    set_target_properties(TestNative PROPERTIES 
+    set_target_properties(Hartonomous.Native.Tests PROPERTIES 
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
     )
 endif()

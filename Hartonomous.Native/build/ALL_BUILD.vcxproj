@@ -178,9 +178,9 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <Project>{3820F56F-0A2B-3B2C-8541-ECCD0D777E40}</Project>
       <Name>Hartonomous.Native</Name>
     </ProjectReference>
-    <ProjectReference Include="D:\Repositories\Hartonomous\Hartonomous.Native\build\TestNative.vcxproj">
-      <Project>{C03824D2-739E-3893-B561-690C279E99B9}</Project>
-      <Name>TestNative</Name>
+    <ProjectReference Include="D:\Repositories\Hartonomous\Hartonomous.Native\build\Hartonomous.Native.Tests.vcxproj">
+      <Project>{0B5CDDBA-11DE-3DD9-B117-FA1B5EA57708}</Project>
+      <Name>Hartonomous.Native.Tests</Name>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
