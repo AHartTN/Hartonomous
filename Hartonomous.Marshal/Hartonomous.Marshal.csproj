@@ -1,0 +1,29 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <IncludeSymbols>false</IncludeSymbols>
+    <IncludeBuildOutput>true</IncludeBuildOutput>
+    
+    <!-- Package Metadata -->
+    <PackageId>Hartonomous.Marshal</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>Anthony Hart</Authors>
+    <Company>Hartonomous</Company>
+    <Product>Hartonomous Geometric Knowledge Substrate</Product>
+    <Description>P/Invoke marshal wrapper for Hartonomous native C++ library (Hilbert curves, spatial algorithms)</Description>
+    <PackageTags>native;cpp;hilbert;spatial;geometry;pinvoke;marshal</PackageTags>
+  </PropertyGroup>
+
+  <!-- Include native DLL in package -->
+  <ItemGroup>
+    <Content Include="..\Hartonomous.Native\build\bin\Hartonomous.Native.dll" Pack="true" PackagePath="runtimes\win-x64\native\" />
+    <Content Include="..\Hartonomous.Native\build\lib\Hartonomous.Native.lib" Pack="true" PackagePath="runtimes\win-x64\native\" Condition="Exists('..\Hartonomous.Native\build\lib\Hartonomous.Native.lib')" />
+    <Content Include="..\Hartonomous.Native\build\bin\Hartonomous.Native.pdb" Pack="true" PackagePath="runtimes\win-x64\native\" Condition="Exists('..\Hartonomous.Native\build\bin\Hartonomous.Native.pdb')" />
+    <Content Include="Hartonomous.Marshal.targets" Pack="true" PackagePath="build\Hartonomous.Marshal.targets" />
+  </ItemGroup>
+
+</Project>

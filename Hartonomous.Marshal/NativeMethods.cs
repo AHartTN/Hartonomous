@@ -1,7 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace Hartonomous.Core.Domain.Utilities;
+namespace Hartonomous.Marshal;
 
 // No longer needed if we pass an array/IntPtr directly
 // public struct HilbertCoordinates
@@ -12,7 +12,7 @@ namespace Hartonomous.Core.Domain.Utilities;
 //     public uint M;
 // }
 
-internal static class NativeMethods
+public static class NativeMethods
 {
     private const string DllName = "Hartonomous.Native.dll";
 

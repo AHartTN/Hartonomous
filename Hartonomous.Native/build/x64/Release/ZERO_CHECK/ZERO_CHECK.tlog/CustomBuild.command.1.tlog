@@ -1,6 +1,6 @@
 ^D:\REPOSITORIES\HARTONOMOUS\HARTONOMOUS.NATIVE\BUILD\CMAKEFILES\444BDAE0BF564047664D88CF5C1919D0\GENERATE.STAMP.RULE
 setlocal
-"C:\Program Files\CMake\bin\cmake.exe" -SD:/Repositories/Hartonomous/Hartonomous.Native -BD:/Repositories/Hartonomous/Hartonomous.Native/build --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file D:/Repositories/Hartonomous/Hartonomous.Native/build/HartonomousNative.slnx
+"C:\Program Files\CMake\bin\cmake.exe" -SD:/Repositories/Hartonomous/Hartonomous.Native -BD:/Repositories/Hartonomous/Hartonomous.Native/build --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file D:/Repositories/Hartonomous/Hartonomous.Native/build/Hartonomous.Native.slnx
 if %errorlevel% neq 0 goto :cmEnd
 :cmEnd
 endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone

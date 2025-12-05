@@ -2,48 +2,40 @@
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
+    <IsPackable>true</IsPackable>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     
-    <!-- Package Metadata -->
+    <!-- Package metadata -->
     <PackageId>Hartonomous.Native</PackageId>
     <Version>1.0.0</Version>
     <Authors>Anthony Hart</Authors>
     <Company>Hartonomous</Company>
-    <Product>Hartonomous Geometric Knowledge Substrate</Product>
-    <Description>Native high-performance C++ geometry engine for Hartonomous providing Hilbert curve calculations, spatial algorithms, and POINTZM operations via P/Invoke.</Description>
-    <PackageTags>geometry;spatial;hilbert;cpp;native;postgis;pointzm</PackageTags>
+    <Description>Native C++ library for Hartonomous providing Hilbert curves, spatial algorithms via P/Invoke</Description>
+    <PackageTags>native cpp hilbert spatial geometry</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <IsPackable>true</IsPackable>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
     
-    <!-- No C# code to compile, just native assets -->
+    <!-- Native-only package (no managed code) -->
     <IncludeBuildOutput>false</IncludeBuildOutput>
-    <ContentTargetFolders>contentFiles;content</ContentTargetFolders>
     <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+    <IncludeSymbols>false</IncludeSymbols>
+    <ContentTargetFolders>build</ContentTargetFolders>
   </PropertyGroup>
 
+  <!-- Static package content -->
   <ItemGroup>
-    <!-- Include README -->
     <None Include="README.md" Pack="true" PackagePath="\" />
-    
-    <!-- Windows x64 native library -->
-    <Content Include="build\bin\Release\HartonomousNative.dll" Condition="Exists('build\bin\Release\HartonomousNative.dll')">
-      <PackagePath>runtimes\win-x64\native</PackagePath>
-      <Pack>true</Pack>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Visible>false</Visible>
-    </Content>
-    
-    <!-- Linux x64 native library -->
-    <Content Include="build\bin\Release\libHartonomousNative.so" Condition="Exists('build\bin\Release\libHartonomousNative.so')">
-      <PackagePath>runtimes\linux-x64\native</PackagePath>
-      <Pack>true</Pack>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Visible>false</Visible>
-    </Content>
-    
-    <!-- Build props file for automatic native library copying -->
-    <None Include="Hartonomous.Native.props" Pack="true" PackagePath="build" />
+    <None Include="..\LICENSE" Pack="true" PackagePath="\" />
+    <None Include="Hartonomous.Native.targets" Pack="true" PackagePath="build\Hartonomous.Native.targets" />
   </ItemGroup>
+
+  <!-- Collect native binaries dynamically before pack -->
+  <Target Name="AddNativeBinariesToPackage" BeforeTargets="GenerateNuspec">
+    <ItemGroup>
+      <None Include="build\bin\*.dll" Pack="true" PackagePath="runtimes\win-x64\native\" Visible="false" />
+      <None Include="build\bin\*.so" Pack="true" PackagePath="runtimes\linux-x64\native\" Visible="false" Condition="Exists('build\bin\*.so')" />
+    </ItemGroup>
+    <Message Importance="High" Text="Adding native binaries to package from build\bin\" />
+  </Target>
 
 </Project>

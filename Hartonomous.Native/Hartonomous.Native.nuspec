@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2012/06/nuspec.xsd">
+  <metadata>
+    <id>Hartonomous.Native</id>
+    <version>1.0.0</version>
+    <authors>Anthony Hart</authors>
+    <owners>Hartonomous</owners>
+    <requireLicenseAcceptance>true</requireLicenseAcceptance>
+    <license type="file">LICENSE</license>
+    <projectUrl>https://dev.azure.com/aharttn/Hartonomous</projectUrl>
+    <description>Native high-performance C++ geometry engine for Hartonomous providing Hilbert curve calculations, spatial algorithms, and POINTZM operations via P/Invoke.</description>
+    <releaseNotes>Initial release of native library wrapper</releaseNotes>
+    <copyright>Copyright © 2025 Anthony Hart</copyright>
+    <tags>geometry spatial hilbert cpp native postgis pointzm</tags>
+    <repository type="git" url="https://dev.azure.com/aharttn/Hartonomous/_git/Hartonomous" />
+  </metadata>
+  <files>
+    <!-- README -->
+    <file src="README.md" target="" />
+    
+    <!-- License -->
+    <file src="..\LICENSE" target="" />
+    
+    <!-- Build props for automatic native library copying -->
+    <file src="Hartonomous.Native.props" target="build\" />
+    
+    <!-- Windows x64 native library -->
+    <file src="build\bin\HartonomousNative.dll" target="runtimes\win-x64\native\" />
+  </files>
+</package>
