@@ -4,6 +4,15 @@
     <TargetFramework>net10.0</TargetFramework>
     <OutputType>Library</OutputType>
     <IsPackable>true</IsPackable>
+    
+    <!-- Package Metadata -->
+    <PackageId>Hartonomous.Infrastructure</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>Anthony Hart</Authors>
+    <Company>Hartonomous</Company>
+    <Product>Hartonomous Geometric Knowledge Substrate</Product>
+    <Description>Infrastructure services for Hartonomous including QuantizationService (21-bit universal properties), Azure Key Vault integration, Redis caching, authentication, and health checks.</Description>
+    <PackageTags>infrastructure;azure;redis;authentication;caching;quantization</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>

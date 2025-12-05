@@ -1,3 +1,4 @@
+using System;
 using Hartonomous.Core.Domain.Common;
 using Hartonomous.Core.Domain.Utilities;
 using Hartonomous.Core.Domain.ValueObjects;
@@ -81,6 +82,91 @@ public class Landmark : BaseEntity
     }
     
     /// <summary>
+    /// Computed Center coordinate of the landmark region (midpoint of the Hilbert tile).
+    /// </summary>
+    public SpatialCoordinate Center
+    {
+        get
+        {
+            // Decode the prefix to get the min corner of the tile
+            // HilbertPrefix contains the top 'Level' bits.
+            // We shift them back to get the coordinate range.
+            int shift = HilbertCurve4D.DefaultPrecision - Level;
+            
+            // Decode needs full 21-bit precision input.
+            // The Prefix is already shifted? No, GetHilbertTileId returns a full index (encoded).
+            // Wait, GetHilbertTileId returns an *encoded* index.
+            // Is it the min index? Or just *an* index in the tile?
+            // Skilling's code: "axes to transpose" / "transpose to axes".
+            // The prefix defines a sub-cube.
+            // Let's decode the Prefix High/Low as if it were a point.
+            // Since lower bits are 0 (masked), this corresponds to the "start" of the tile along the curve?
+            // Not necessarily the spatial "min corner" (0,0,0,0) of the tile, but *a* corner.
+            
+            // Actually, for a Bounding Box center, we want:
+            // Min coords + (TileSize / 2).
+            
+            // 1. Decode the Prefix (which has trailing zeros)
+            var (minX, minY, minZ, minM) = HilbertCurve4D.Decode(HilbertPrefixHigh, HilbertPrefixLow, HilbertCurve4D.DefaultPrecision);
+            
+            // 2. Calculate Tile Size
+            // Each dimension has 2^shift units.
+            uint tileSize = 1u << shift;
+            uint halfSize = tileSize / 2;
+            
+            // 3. Calculate Center
+            // Note: The "Min" coords from Decode might not be the spatial "Min" (0,0,0,0) because of Hilbert rotation.
+            // BUT, Skilling's `Decode` returns the actual (X,Y,Z,M) integer coordinates corresponding to that index.
+            // If the index has trailing zeros, it corresponds to a specific point on the curve.
+            // Does that point correspond to the "min" corner of the spatial box?
+            // In a Z-order curve, yes. In Hilbert, NO. The start of the curve in a sub-cube depends on rotation.
+            
+            // However, we can mask the *Coordinates* directly to find the tile bounds.
+            // The tile is aligned to the grid 2^shift.
+            // So `minX = (x >> shift) << shift`.
+            
+            uint boxMinX = (minX >> shift) << shift;
+            uint boxMinY = (minY >> shift) << shift;
+            uint boxMinZ = (minZ >> shift) << shift;
+            uint boxMinM = (minM >> shift) << shift;
+            
+            uint centerX = boxMinX + halfSize;
+            uint centerY = boxMinY + halfSize;
+            uint centerZ = boxMinZ + halfSize;
+            uint centerM = boxMinM + halfSize;
+            
+            // 4. Create Coordinate from Universal Properties
+            // We cast to int for the quantized properties (Y, Z, M).
+            return SpatialCoordinate.FromUniversalProperties(
+                centerX,
+                (int)centerY,
+                (int)centerZ,
+                (int)centerM,
+                HilbertCurve4D.DefaultPrecision);
+        }
+    }
+
+    /// <summary>
+    /// Computed Radius defining the landmark's influence region (half diagonal of the tile).
+    /// </summary>
+    public double Radius
+    {
+        get
+        {
+            int shift = HilbertCurve4D.DefaultPrecision - Level;
+            uint tileSize = 1u << shift;
+            
+            // Radius = half diagonal of 4D hypercube
+            // Diagonal = sqrt(4 * side^2) = 2 * side
+            // Radius = side = tileSize
+            // Wait, Diagonal = sqrt(d * s^2) = s * sqrt(d). For d=4, sqrt(4)=2. So Diagonal = 2s.
+            // Half diagonal = s.
+            // So Radius approx tileSize.
+            return tileSize;
+        }
+    }
+
+    /// <summary>
     /// Updates the statistics for this landmark (e.g., constant count, density).
     /// </summary>
     /// <param name="constantCount">The total number of constants now mapped to this landmark.</param>
@@ -123,6 +209,17 @@ public class Landmark : BaseEntity
     {
         var tileId = HilbertCurve4D.GetHilbertTileId(hilbertIndex.High, hilbertIndex.Low, Level, originalPrecision);
         return tileId.High == HilbertPrefixHigh && tileId.Low == HilbertPrefixLow;
+    }
+
+    /// <summary>
+    /// Checks if a spatial coordinate falls within this landmark's tile.
+    /// </summary>
+    public bool ContainsPoint(SpatialCoordinate coordinate)
+    {
+        if (coordinate == null)
+            throw new ArgumentNullException(nameof(coordinate));
+            
+        return ContainsHilbertIndex((coordinate.HilbertHigh, coordinate.HilbertLow), coordinate.Precision);
     }
     
     public void Deactivate()

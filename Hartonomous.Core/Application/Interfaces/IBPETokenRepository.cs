@@ -97,4 +97,12 @@ public interface IBPETokenRepository : IRepository<BPEToken>
     /// Get all tokens (including inactive)
     /// </summary>
     new Task<List<BPEToken>> GetAllAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Find k-nearest tokens based on geometric similarity (LINESTRINGZM distance)
+    /// </summary>
+    Task<List<BPEToken>> GetNearestNeighborsAsync(
+        BPEToken sourceToken, 
+        int k, 
+        CancellationToken cancellationToken = default);
 }

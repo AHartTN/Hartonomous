@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <!-- Automatically copy native libraries to output directory when package is referenced -->
+    
+    <!-- Windows x64 -->
+    <Content Include="$(MSBuildThisFileDirectory)..\runtimes\win-x64\native\HartonomousNative.dll"
+             Condition="'$(RuntimeIdentifier)' == 'win-x64' OR ('$(RuntimeIdentifier)' == '' AND $([MSBuild]::IsOsPlatform('Windows')))"
+             Link="HartonomousNative.dll"
+             CopyToOutputDirectory="PreserveNewest"
+             Visible="false" />
+    
+    <!-- Linux x64 -->
+    <Content Include="$(MSBuildThisFileDirectory)..\runtimes\linux-x64\native\libHartonomousNative.so"
+             Condition="'$(RuntimeIdentifier)' == 'linux-x64' OR ('$(RuntimeIdentifier)' == '' AND $([MSBuild]::IsOsPlatform('Linux')))"
+             Link="libHartonomousNative.so"
+             CopyToOutputDirectory="PreserveNewest"
+             Visible="false" />
+  </ItemGroup>
+</Project>

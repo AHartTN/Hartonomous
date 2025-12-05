@@ -3,6 +3,15 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>true</IsPackable>
+    
+    <!-- Package Metadata -->
+    <PackageId>Hartonomous.Data</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>Anthony Hart</Authors>
+    <Company>Hartonomous</Company>
+    <Product>Hartonomous Geometric Knowledge Substrate</Product>
+    <Description>Data access layer for Hartonomous with EF Core 10, PostgreSQL/PostGIS integration, POINTZM geometry support, Hilbert indexing, and spatial algorithms (Voronoi, Delaunay, MST).</Description>
+    <PackageTags>efcore;postgresql;postgis;spatial;geometry;hilbert;repository</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>

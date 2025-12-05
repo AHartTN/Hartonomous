@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 
 namespace Hartonomous.Core.Domain.Utilities;
 
@@ -32,7 +33,7 @@ public static class HilbertCurve4D
     public const int Dimensions = 4;
     
     /// <summary>
-    /// Encodes 4D coordinates to Hilbert curve index.
+    /// Encodes 4D coordinates to Hilbert curve index using the native implementation.
     /// </summary>
     /// <param name="x">X coordinate [0, 2^precision - 1]</param>
     /// <param name="y">Y coordinate [0, 2^precision - 1]</param>
@@ -47,55 +48,20 @@ public static class HilbertCurve4D
         if (precision < 1 || precision > MaxPrecision)
             throw new ArgumentException($"Precision must be between 1 and {MaxPrecision}", nameof(precision));
         
-        // 1. Binary to Gray Code
-        x ^= x >> 1;
-        y ^= y >> 1;
-        z ^= z >> 1;
-        m ^= m >> 1;
+        // Clamp coordinates to the maximum value for the given precision
+        uint maxCoordValue = (1u << precision) - 1;
+        x = System.Math.Min(x, maxCoordValue);
+        y = System.Math.Min(y, maxCoordValue);
+        z = System.Math.Min(z, maxCoordValue);
+        m = System.Math.Min(m, maxCoordValue);
 
-        // 2. Transpose (Skilling's Transform)
-        // Rotates the coordinate system to align with the curve traversal
-        (x, y, z, m) = Transpose(x, y, z, m, precision);
-
-        // 3. Interleave bits into 1D index (84 bits total)
-        // High ulong gets bits 42-83 (42 bits)
-        // Low ulong gets bits 0-41 (42 bits)
-        ulong high = 0;
-        ulong low = 0;
-
-        for (int i = precision - 1; i >= 0; i--)
-        {
-            // We pack 4 bits per iteration (one from each dimension)
-            // Total bits processed so far: (precision - 1 - i) * 4
-            
-            // Bit values at position i
-            ulong bx = (x >> i) & 1;
-            ulong by = (y >> i) & 1;
-            ulong bz = (z >> i) & 1;
-            ulong bm = (m >> i) & 1;
-
-            int bitPos = i * 4; // Position in the full 84-bit stream (0 = LSB)
-            
-            // Map to High/Low ulongs
-            // Split point is bit 42.
-            // Bits 0-41 -> Low
-            // Bits 42-83 -> High
-            
-            // Bit 0 (M):
-            SetBit(ref high, ref low, bitPos + 0, bm);
-            // Bit 1 (Z):
-            SetBit(ref high, ref low, bitPos + 1, bz);
-            // Bit 2 (Y):
-            SetBit(ref high, ref low, bitPos + 2, by);
-            // Bit 3 (X):
-            SetBit(ref high, ref low, bitPos + 3, bx);
-        }
-
-        return (high, low);
+        ulong resultHigh, resultLow;
+        NativeMethods.HilbertEncode4D(x, y, z, m, precision, out resultHigh, out resultLow);
+        return (resultHigh, resultLow);
     }
     
     /// <summary>
-    /// Decodes Hilbert curve index back to 4D coordinates.
+    /// Decodes Hilbert curve index back to 4D coordinates using the native implementation.
     /// </summary>
     /// <param name="high">Upper 42 bits of Hilbert index</param>
     /// <param name="low">Lower 42 bits of Hilbert index</param>
@@ -108,90 +74,30 @@ public static class HilbertCurve4D
         if (precision < 1 || precision > MaxPrecision)
             throw new ArgumentException($"Precision must be between 1 and {MaxPrecision}", nameof(precision));
         
-        uint x = 0, y = 0, z = 0, m = 0;
-
-        // 1. De-interleave bits
-        for (int i = 0; i < precision; i++)
-        {
-            int bitPos = i * 4;
-            
-            uint bm = (uint)GetBit(high, low, bitPos + 0);
-            uint bz = (uint)GetBit(high, low, bitPos + 1);
-            uint by = (uint)GetBit(high, low, bitPos + 2);
-            uint bx = (uint)GetBit(high, low, bitPos + 3);
-
-            x |= bx << i;
-            y |= by << i;
-            z |= bz << i;
-            m |= bm << i;
-        }
-
-        // 2. Untranspose (Inverse Skilling's Transform)
-        (x, y, z, m) = Transpose(x, y, z, m, precision);
-
-        // 3. Gray Code to Binary
-        x = GrayToBinary(x);
-        y = GrayToBinary(y);
-        z = GrayToBinary(z);
-        m = GrayToBinary(m);
-
-        return (x, y, z, m);
-    }
-
-    /// <summary>
-    /// Skilling's "Transpose" operation.
-    /// Swaps bits between dimensions based on higher-order bits to effect the rotation/reflection.
-    /// This implements the 384 symmetries algebraically.
-    /// </summary>
-    private static (uint x, uint y, uint z, uint m) Transpose(uint x, uint y, uint z, uint m, int precision)
-    {
-        uint[] X = { x, y, z, m };
+        // Allocate an array to hold the decoded coordinates
+        uint[] decodedCoords = new uint[Dimensions];
         
-        // Standard Skilling Loop
-        for (int b = precision - 1; b >= 0; b--)
+        // Pin the array to prevent the garbage collector from moving it
+        GCHandle gcHandle = GCHandle.Alloc(decodedCoords, GCHandleType.Pinned);
+        try
         {
-            uint P = 1u << b;
+            // Pass the pointer to the native function
+            NativeMethods.HilbertDecode4D(high, low, precision, gcHandle.AddrOfPinnedObject());
             
-            // Inverse X[i] if X[n-1] (last dim, 'm') has bit b set
-            if ((X[3] & P) != 0)
+            // Extract the decoded coordinates from the array
+            return (decodedCoords[0], decodedCoords[1], decodedCoords[2], decodedCoords[3]);
+        }
+        finally
+        {
+            // Free the GCHandle
+            if (gcHandle.IsAllocated)
             {
-                X[0] ^= (P - 1); // Invert lower bits
-                X[1] ^= (P - 1);
-                X[2] ^= (P - 1);
-            }
-            
-            // Rotate/Swap if X[n-2] (z) has bit b set
-            if ((X[2] & P) != 0)
-            {
-                uint temp = X[0];
-                X[0] = X[3];
-                X[3] = temp;
-                
-                X[0] ^= (P - 1);
-                X[1] ^= (P - 1);
-            }
-            
-            // Rotate/Swap if X[n-3] (y) has bit b set
-            if ((X[1] & P) != 0)
-            {
-                uint temp = X[0];
-                X[0] = X[2];
-                X[2] = temp;
-                
-                X[0] ^= (P - 1);
-            }
-            
-            // Rotate/Swap if X[0] (x) bit set
-            if ((X[0] & P) != 0)
-            {
-                uint temp = X[0];
-                X[0] = X[1];
-                X[1] = temp;
+                gcHandle.Free();
             }
         }
-
-        return (X[0], X[1], X[2], X[3]);
     }
+    
+    // Moved helper methods here for organization
 
     private static uint GrayToBinary(uint gray)
     {
@@ -206,28 +112,33 @@ public static class HilbertCurve4D
 
     private static void SetBit(ref ulong high, ref ulong low, int bitPos, ulong bitVal)
     {
+        int shift;
         if (bitPos >= 42)
         {
-            int shift = bitPos - 42;
+            shift = bitPos - 42;
             if (bitVal == 1) high |= (1UL << shift);
             else high &= ~(1UL << shift);
         }
         else
         {
-            if (bitVal == 1) low |= (1UL << bitPos);
-            else low &= ~(1UL << bitPos);
+            shift = bitPos;
+            if (bitVal == 1) low |= (1UL << shift);
+            else low &= ~(1UL << shift);
         }
     }
 
     private static ulong GetBit(ulong high, ulong low, int bitPos)
     {
+        int shift;
         if (bitPos >= 42)
         {
-            return (high >> (bitPos - 42)) & 1;
+            shift = bitPos - 42;
+            return (high >> shift) & 1;
         }
         else
         {
-            return (low >> bitPos) & 1;
+            shift = bitPos;
+            return (low >> shift) & 1;
         }
     }
 
@@ -268,23 +179,9 @@ public static class HilbertCurve4D
         if (tilePrecision < 1 || tilePrecision > originalPrecision || tilePrecision > MaxPrecision)
             throw new ArgumentException($"Tile precision must be between 1 and {originalPrecision} (max {MaxPrecision})", nameof(tilePrecision));
 
-        // Calculate how many bits to keep from the highest precision (originalPrecision)
-        // Each dimension contributes 'originalPrecision' bits.
-        // We want to keep 'tilePrecision' bits from each dimension.
-        // So, we need to mask out (originalPrecision - tilePrecision) bits from each dimension.
-        
         // Decode to get the coordinates at the original precision
         var (x, y, z, m) = Decode(high, low, originalPrecision);
 
-        // Mask off the lower bits of each coordinate to get the tile's coordinates
-        // The mask should keep only the top 'tilePrecision' bits.
-        // E.g., if originalPrecision=21, tilePrecision=10, we keep top 10 bits.
-        uint mask = (1u << tilePrecision) - 1; // Creates 0b11...1 (tilePrecision times)
-        
-        // This is wrong. It should be: (coord >> (originalPrecision - tilePrecision)) << (originalPrecision - tilePrecision)
-        // No, just truncate and re-encode. The effect of masking bits in the coordinate
-        // is re-encoding with lower precision.
-        
         // Re-encode using the lower tilePrecision.
         // This creates a new Hilbert index that represents the "tile" or prefix.
         return Encode(x >> (originalPrecision - tilePrecision),
@@ -293,6 +190,9 @@ public static class HilbertCurve4D
                       m >> (originalPrecision - tilePrecision),
                       tilePrecision);
     }
+
+    /// <summary>
+    /// Get range of Hilbert indices covering a 4D radius.
     /// </summary>
     public static (ulong MinHigh, ulong MinLow, ulong MaxHigh, ulong MaxLow) GetRangeForRadius(
         ulong centerHigh, ulong centerLow,
@@ -300,17 +200,22 @@ public static class HilbertCurve4D
         int precision = DefaultPrecision)
     {
         var (cx, cy, cz, cm) = Decode(centerHigh, centerLow, precision);
-        uint r = (uint)Math.Ceiling(radius);
-        ulong maxVal = (1UL << precision) - 1;
+        uint r = (uint)System.Math.Ceiling(radius);
+        long maxVal = (1L << precision) - 1;
 
-        uint minX = (uint)Math.Max(0, (long)cx - r);
-        uint maxX = (uint)Math.Min(maxVal, (long)cx + r);
-        uint minY = (uint)Math.Max(0, (long)cy - r);
-        uint maxY = (uint)Math.Min(maxVal, (long)cy + r);
-        uint minZ = (uint)Math.Max(0, (long)cz - r);
-        uint maxZ = (uint)Math.Min(maxVal, (long)cz + r);
-        uint minM = (uint)Math.Max(0, (long)cm - r);
-        uint maxM = (uint)Math.Min(maxVal, (long)cm + r);
+        // Cast everything to long for safe arithmetic and comparison
+        // Use System.Math explicitly
+        uint minX = (uint)System.Math.Max(0L, (long)cx - r);
+        uint maxX = (uint)System.Math.Min(maxVal, (long)cx + r);
+        
+        uint minY = (uint)System.Math.Max(0L, (long)cy - r);
+        uint maxY = (uint)System.Math.Min(maxVal, (long)cy + r);
+        
+        uint minZ = (uint)System.Math.Max(0L, (long)cz - r);
+        uint maxZ = (uint)System.Math.Min(maxVal, (long)cz + r);
+        
+        uint minM = (uint)System.Math.Max(0L, (long)cm - r);
+        uint maxM = (uint)System.Math.Min(maxVal, (long)cm + r);
 
         var start = Encode(minX, minY, minZ, minM, precision);
         var end = Encode(maxX, maxY, maxZ, maxM, precision);

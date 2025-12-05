@@ -3,6 +3,15 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>true</IsPackable>
+    
+    <!-- Package Metadata -->
+    <PackageId>Hartonomous.Core</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>Anthony Hart</Authors>
+    <Company>Hartonomous</Company>
+    <Product>Hartonomous Geometric Knowledge Substrate</Product>
+    <Description>Core domain logic and application layer for Hartonomous - universal geometric knowledge substrate with CQRS, MediatR, and domain events. Includes atomic deduplication, POINTZM entities, and geometric composition primitives.</Description>
+    <PackageTags>cqrs;ddd;domain;geometry;pointzm;mediatr;spatial</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>
@@ -11,6 +20,9 @@
     <PackageReference Include="MediatR" Version="12.4.1" />
     <PackageReference Include="NetTopologySuite" Version="2.5.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+    
+    <!-- Native Library via NuGet Package -->
+    <PackageReference Include="Hartonomous.Native" Version="1.0.0" />
   </ItemGroup>
 
 </Project>

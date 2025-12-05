@@ -44,6 +44,11 @@ variables:
   buildConfiguration: 'Release'
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
   DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+  # Variable group containing KeyVaultName, AppConfigName
+  - group: 'Hartonomous-Infrastructure'
+  # Default artifacts feed name
+  - name: ArtifactsFeedName
+    value: 'Hartonomous'
   # Default: Production/Staging -> HART-SERVER, Development -> HART-DESKTOP
   ${{ if eq(parameters.deploymentTarget, 'Default') }}:
     ${{ if eq(parameters.deploymentEnvironment, 'Development') }}:
@@ -88,13 +93,61 @@ stages:
                 Write-Host ".NET SDK Version:"
                 dotnet --version
                 Write-Host ""
-                Write-Host ".NET SDKs Installed:"
-                dotnet --list-sdks
-                Write-Host ""
-                Write-Host ".NET Runtimes Installed:"
-                dotnet --list-runtimes
+                Write-Host "CMake Version:"
+                cmake --version
                 Write-Host ""
                 Write-Host "========================================"
+
+          - task: CMake@1
+            displayName: 'Configure Native Library (Windows)'
+            condition: eq(variables['Agent.OS'], 'Windows_NT')
+            inputs:
+              cmakeArgs: '-S Hartonomous.Native -B Hartonomous.Native/build -DCMAKE_BUILD_TYPE=$(buildConfiguration)'
+
+          - task: CMake@1
+            displayName: 'Build Native Library (Windows)'
+            condition: eq(variables['Agent.OS'], 'Windows_NT')
+            inputs:
+              cmakeArgs: '--build Hartonomous.Native/build --config $(buildConfiguration)'
+
+          - task: CMake@1
+            displayName: 'Configure Native Library (Linux)'
+            condition: eq(variables['Agent.OS'], 'Linux')
+            inputs:
+              cmakeArgs: '-S Hartonomous.Native -B Hartonomous.Native/build -DCMAKE_BUILD_TYPE=$(buildConfiguration)'
+
+          - task: CMake@1
+            displayName: 'Build Native Library (Linux)'
+            condition: eq(variables['Agent.OS'], 'Linux')
+            inputs:
+              cmakeArgs: '--build Hartonomous.Native/build --config $(buildConfiguration)'
+
+          - task: PowerShell@2
+            displayName: 'Copy Native Binaries to Package Location'
+            inputs:
+              targetType: 'inline'
+              script: |
+                Write-Host "Copying native binaries for packaging..."
+                $buildBinPath = "$(Build.SourcesDirectory)/Hartonomous.Native/build/bin"
+                $packageBinPath = "$(Build.SourcesDirectory)/Hartonomous.Native/build/bin/$(buildConfiguration)"
+                
+                if (Test-Path $buildBinPath) {
+                  New-Item -Path $packageBinPath -ItemType Directory -Force | Out-Null
+                  
+                  # Copy all native libraries
+                  Get-ChildItem -Path $buildBinPath -Include "*.dll","*.so","*.dylib" -Recurse | ForEach-Object {
+                    Write-Host "Copying $($_.Name) to $packageBinPath"
+                    Copy-Item $_.FullName -Destination $packageBinPath -Force
+                  }
+                  
+                  # Also copy to test binaries directory
+                  Copy-Item -Path "$buildBinPath/*" -Destination "$(Build.BinariesDirectory)" -Recurse -Force -ErrorAction SilentlyContinue
+                  
+                  Write-Host "Native binaries copied successfully"
+                  Get-ChildItem $packageBinPath
+                } else {
+                  Write-Warning "Build bin path not found: $buildBinPath"
+                }
 
           - task: DotNetCoreCLI@2
             displayName: 'Restore All Server Projects'
@@ -172,17 +225,126 @@ stages:
       - job: Pack
         displayName: 'Pack NuGet Packages'
         steps:
+          - task: AzureKeyVault@2
+            displayName: 'Get Secrets from Key Vault'
+            inputs:
+              azureSubscription: 'Azure-Service-Connection'
+              KeyVaultName: '$(KeyVaultName)'
+              SecretsFilter: 'NuGetFeedUrl,AzureDevOpsOrgUrl,AzureDevOpsProject'
+              RunAsPreJob: false
+
+          - task: PowerShell@2
+            displayName: 'Configure NuGet Authentication via Managed Identity'
+            inputs:
+              targetType: 'inline'
+              script: |
+                Write-Host "Configuring NuGet authentication using Azure managed identity..."
+                
+                # Install Azure Artifacts Credential Provider
+                if (-not (Test-Path "$env:USERPROFILE\.nuget\plugins\netcore")) {
+                  Write-Host "Installing Azure Artifacts Credential Provider..."
+                  Invoke-Expression "& { $(Invoke-RestMethod https://aka.ms/install-artifacts-credprovider.ps1) }"
+                }
+                
+                # Configure VSS_NUGET_EXTERNAL_FEED_ENDPOINTS for managed identity auth
+                $feedUrl = "$(NuGetFeedUrl)"
+                
+                # Get managed identity token for Azure DevOps
+                $token = az account get-access-token --resource 499b84ac-1321-427f-aa17-267ca6975798 --query accessToken -o tsv
+                
+                $feedEndpoint = @{
+                  endpointCredentials = @(
+                    @{
+                      endpoint = $feedUrl
+                      username = "VssSessionToken"
+                      password = $token
+                    }
+                  )
+                } | ConvertTo-Json -Compress
+                
+                [Environment]::SetEnvironmentVariable("VSS_NUGET_EXTERNAL_FEED_ENDPOINTS", $feedEndpoint)
+                Write-Host "##vso[task.setvariable variable=VSS_NUGET_EXTERNAL_FEED_ENDPOINTS]$feedEndpoint"
+                
+                Write-Host "✓ NuGet authentication configured"
+
+          - task: PowerShell@2
+            displayName: 'Display Package Environment Info'
+            inputs:
+              targetType: 'inline'
+              script: |
+                Write-Host "========================================"
+                Write-Host "NuGet Package Build Information"
+                Write-Host "========================================"
+                Write-Host "Build Configuration: $(buildConfiguration)"
+                Write-Host "Source Branch: $(Build.SourceBranch)"
+                Write-Host "Build ID: $(Build.BuildId)"
+                Write-Host "Artifact Staging Directory: $(Build.ArtifactStagingDirectory)"
+                Write-Host "========================================"
+
+          - task: CMake@1
+            displayName: 'Configure Native Library (Package)'
+            inputs:
+              cmakeArgs: '-S Hartonomous.Native -B Hartonomous.Native/build -DCMAKE_BUILD_TYPE=$(buildConfiguration)'
+
+          - task: CMake@1
+            displayName: 'Build Native Library (Package)'
+            inputs:
+              cmakeArgs: '--build Hartonomous.Native/build --config $(buildConfiguration)'
+
+          - task: PowerShell@2
+            displayName: 'Prepare Native Binaries for NuGet'
+            inputs:
+              targetType: 'inline'
+              script: |
+                Write-Host "Preparing native binaries for NuGet packaging..."
+                $buildBinPath = "$(Build.SourcesDirectory)/Hartonomous.Native/build/bin"
+                $packageBinPath = "$(Build.SourcesDirectory)/Hartonomous.Native/build/bin/$(buildConfiguration)"
+                
+                if (Test-Path $buildBinPath) {
+                  New-Item -Path $packageBinPath -ItemType Directory -Force | Out-Null
+                  
+                  # Copy all native libraries with proper structure
+                  Get-ChildItem -Path $buildBinPath -Include "*.dll","*.so","*.dylib" -Recurse | ForEach-Object {
+                    Write-Host "Copying $($_.Name) to $packageBinPath"
+                    Copy-Item $_.FullName -Destination $packageBinPath -Force
+                  }
+                  
+                  Write-Host "Native binaries prepared for packaging:"
+                  Get-ChildItem $packageBinPath | Format-Table Name, Length
+                } else {
+                  Write-Error "Build bin path not found: $buildBinPath"
+                  exit 1
+                }
+
           - task: DotNetCoreCLI@2
             displayName: 'Restore All Dependencies'
             inputs:
               command: 'restore'
-              projects: 'Hartonomous.slnx'
+              projects: |
+                Hartonomous.Native/Hartonomous.Native.csproj
+                Hartonomous.Core/Hartonomous.Core.csproj
+                Hartonomous.Data/Hartonomous.Data.csproj
+                Hartonomous.Infrastructure/Hartonomous.Infrastructure.csproj
+              feedsToUse: 'config'
+              nugetConfigPath: 'NuGet.config'
 
           - task: DotNetCoreCLI@2
-            displayName: 'Build Solution'
+            displayName: 'Pack Native Library'
+            inputs:
+              command: 'pack'
+              packagesToPack: 'Hartonomous.Native/Hartonomous.Native.csproj'
+              configuration: $(buildConfiguration)
+              packDirectory: '$(Build.ArtifactStagingDirectory)/packages'
+              nobuild: false
+              includesymbols: false
+              includesource: false
+              versioningScheme: 'off'
+
+          - task: DotNetCoreCLI@2
+            displayName: 'Build Core for Packaging'
             inputs:
               command: 'build'
-              projects: 'Hartonomous.slnx'
+              projects: 'Hartonomous.Core/Hartonomous.Core.csproj'
               arguments: '--configuration $(buildConfiguration) --no-restore'
 
           - task: DotNetCoreCLI@2
@@ -198,6 +360,13 @@ stages:
               versioningScheme: 'off'
 
           - task: DotNetCoreCLI@2
+            displayName: 'Build Data for Packaging'
+            inputs:
+              command: 'build'
+              projects: 'Hartonomous.Data/Hartonomous.Data.csproj'
+              arguments: '--configuration $(buildConfiguration) --no-restore'
+
+          - task: DotNetCoreCLI@2
             displayName: 'Pack Data Library'
             inputs:
               command: 'pack'
@@ -210,6 +379,13 @@ stages:
               versioningScheme: 'off'
 
           - task: DotNetCoreCLI@2
+            displayName: 'Build Infrastructure for Packaging'
+            inputs:
+              command: 'build'
+              projects: 'Hartonomous.Infrastructure/Hartonomous.Infrastructure.csproj'
+              arguments: '--configuration $(buildConfiguration) --no-restore'
+
+          - task: DotNetCoreCLI@2
             displayName: 'Pack Infrastructure Library'
             inputs:
               command: 'pack'
@@ -220,6 +396,42 @@ stages:
               includesymbols: true
               includesource: true
               versioningScheme: 'off'
+
+          - task: PowerShell@2
+            displayName: 'List Generated Packages'
+            inputs:
+              targetType: 'inline'
+              script: |
+                Write-Host "========================================"
+                Write-Host "Generated NuGet Packages:"
+                Write-Host "========================================"
+                Get-ChildItem -Path "$(Build.ArtifactStagingDirectory)/packages" -Filter "*.nupkg" | ForEach-Object {
+                  Write-Host "$($_.Name) - $([math]::Round($_.Length / 1KB, 2)) KB"
+                }
+                Write-Host "========================================"
+
+          - task: NuGetCommand@2
+            displayName: 'Push Packages to Azure Artifacts'
+            inputs:
+              command: 'push'
+              packagesToPush: '$(Build.ArtifactStagingDirectory)/packages/**/*.nupkg;!$(Build.ArtifactStagingDirectory)/packages/**/*.symbols.nupkg'
+              nuGetFeedType: 'internal'
+              publishVstsFeed: '$(AzureDevOpsProject)/$(ArtifactsFeedName)'
+              allowPackageConflicts: false
+            env:
+              VSS_NUGET_EXTERNAL_FEED_ENDPOINTS: $(VSS_NUGET_EXTERNAL_FEED_ENDPOINTS)
+
+          - task: NuGetCommand@2
+            displayName: 'Push Symbol Packages to Azure Artifacts'
+            inputs:
+              command: 'push'
+              packagesToPush: '$(Build.ArtifactStagingDirectory)/packages/**/*.symbols.nupkg'
+              nuGetFeedType: 'internal'
+              publishVstsFeed: '$(AzureDevOpsProject)/$(ArtifactsFeedName)'
+              allowPackageConflicts: false
+            env:
+              VSS_NUGET_EXTERNAL_FEED_ENDPOINTS: $(VSS_NUGET_EXTERNAL_FEED_ENDPOINTS)
+            continueOnError: true
 
           - task: PublishBuildArtifacts@1
             displayName: 'Publish NuGet Artifacts'

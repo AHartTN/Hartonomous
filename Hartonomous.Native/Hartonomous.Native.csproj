@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    
+    <!-- Package Metadata -->
+    <PackageId>Hartonomous.Native</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>Anthony Hart</Authors>
+    <Company>Hartonomous</Company>
+    <Product>Hartonomous Geometric Knowledge Substrate</Product>
+    <Description>Native high-performance C++ geometry engine for Hartonomous providing Hilbert curve calculations, spatial algorithms, and POINTZM operations via P/Invoke.</Description>
+    <PackageTags>geometry;spatial;hilbert;cpp;native;postgis;pointzm</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IsPackable>true</IsPackable>
+    
+    <!-- No C# code to compile, just native assets -->
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <ContentTargetFolders>contentFiles;content</ContentTargetFolders>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Include README -->
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    
+    <!-- Windows x64 native library -->
+    <Content Include="build\bin\Release\HartonomousNative.dll" Condition="Exists('build\bin\Release\HartonomousNative.dll')">
+      <PackagePath>runtimes\win-x64\native</PackagePath>
+      <Pack>true</Pack>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </Content>
+    
+    <!-- Linux x64 native library -->
+    <Content Include="build\bin\Release\libHartonomousNative.so" Condition="Exists('build\bin\Release\libHartonomousNative.so')">
+      <PackagePath>runtimes\linux-x64\native</PackagePath>
+      <Pack>true</Pack>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </Content>
+    
+    <!-- Build props file for automatic native library copying -->
+    <None Include="Hartonomous.Native.props" Pack="true" PackagePath="build" />
+  </ItemGroup>
+
+</Project>

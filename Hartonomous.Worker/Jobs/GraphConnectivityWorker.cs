@@ -74,11 +74,11 @@ public class GraphConnectivityWorker : BackgroundService
             // Fetch batch of constants
             // We ideally want those where Projected M != Calculated M
             // But strictly speaking, we can just iterate all active ones for now to "fix" the placeholder values.
-            var constants = await constantRepo.GetPagedAsync(page, pageSize, cancellationToken);
+            var constants = await constantRepo.GetPagedAsync(page, pageSize, null, cancellationToken);
             
-            if (!constants.Any()) break;
+            if (!constants.Items.Any()) break;
 
-            foreach (var constant in constants)
+            foreach (var constant in constants.Items)
             {
                 if (constant.Coordinate == null) continue;
 

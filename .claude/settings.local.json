@@ -6,7 +6,10 @@
       "Bash(taskkill:*)",
       "Bash(npm test:*)",
       "Bash(dir:*)",
-      "Bash(dotnet test:*)"
+      "Bash(dotnet test:*)",
+      "Bash(dotnet run:*)",
+      "Bash(build_native.bat)",
+      "Bash(cmake --build:*)"
     ],
     "deny": [],
     "ask": []

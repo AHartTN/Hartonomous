@@ -1,8 +1,9 @@
 using System.Security.Cryptography;
 using System.Text;
 using Hartonomous.Core.Domain.Common;
+using Hartonomous.Core.Domain.ValueObjects;
 
-namespace Hartonomous.Core.Domain.Math;
+namespace Hartonomous.Core.Domain.Mathematics;
 
 /// <summary>
 /// Projects high-dimensional content hashes (256-bit) into scalar spatial coordinates

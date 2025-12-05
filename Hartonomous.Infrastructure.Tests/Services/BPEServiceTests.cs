@@ -29,17 +29,17 @@ public class BPEServiceTests
         _unitOfWorkMock = new Mock<IUnitOfWork>();
         _loggerMock = new Mock<ILogger<BPEService>>();
         
-        var voronoiTessellator = new VoronoiTessellator(NullLogger<VoronoiTessellator>.Instance);
-        var mstComputer = new MinimumSpanningTreeComputer(NullLogger<MinimumSpanningTreeComputer>.Instance);
+        var voronoi = new VoronoiTessellator();
+        var mstLogger = new Mock<ILogger<MinimumSpanningTreeComputer>>();
+        var mst = new MinimumSpanningTreeComputer(mstLogger.Object);
         
         _sut = new BPEService(
             _constantRepositoryMock.Object,
             _tokenRepositoryMock.Object,
             _unitOfWorkMock.Object,
             _loggerMock.Object,
-            voronoiTessellator,
-            mstComputer
-        );
+            voronoi,
+            mst);
     }
 
     [Fact]

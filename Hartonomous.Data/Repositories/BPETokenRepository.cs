@@ -181,10 +181,31 @@ public class BPETokenRepository : Repository<BPEToken>, IBPETokenRepository
         // Note: SaveChanges must be called by UnitOfWork
     }
 
+    /// <summary>
+    /// Find k-nearest tokens based on geometric similarity (LINESTRINGZM distance)
+    /// </summary>
+    public async Task<List<BPEToken>> GetNearestNeighborsAsync(
+        BPEToken sourceToken, 
+        int k, 
+        CancellationToken cancellationToken = default)
+    {
+        if (sourceToken == null || sourceToken.CompositionGeometry == null)
+            return new List<BPEToken>();
+
+        // Use PostGIS distance query on the CompositionGeometry (LINESTRINGZM)
+        // We exclude the source token itself
+        return await _dbSet
+            .Where(t => t.Id != sourceToken.Id && t.CompositionGeometry != null)
+            .OrderBy(t => t.CompositionGeometry!.Distance(sourceToken.CompositionGeometry))
+            .Take(k)
+            .ToListAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Get all tokens (including inactive)
+    /// </summary>
     public new async Task<List<BPEToken>> GetAllAsync(CancellationToken cancellationToken = default)
     {
-        return await _dbSet
-            .OrderBy(t => t.TokenId)
-            .ToListAsync(cancellationToken);
+        return await _dbSet.IgnoreQueryFilters().ToListAsync(cancellationToken);
     }
 }

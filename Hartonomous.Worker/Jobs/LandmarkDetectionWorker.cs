@@ -9,6 +9,7 @@ using NCrontab;
 using System.Collections.Concurrent;
 using Hartonomous.Data.Context;
 using Microsoft.EntityFrameworkCore;
+using Hartonomous.Core.Domain.Enums; // Added missing using directive
 
 namespace Hartonomous.Worker.Jobs;
 
@@ -149,7 +150,7 @@ public class LandmarkDetectionWorker : BackgroundService
                 else
                 {
                     existingLandmark.UpdateStatistics(constantCount);
-                    await landmarkRepo.UpdateAsync(existingLandmark, cancellationToken);
+                    landmarkRepo.Update(existingLandmark);
                     updatedCount++;
                 }
             }

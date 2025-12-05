@@ -281,7 +281,7 @@ public class BPEService : IBPEService
         using var ms = new MemoryStream();
         foreach (var tokenId in tokens)
         {
-            var token = await _tokenRepository.GetByIdAsync(tokenId, cancellationToken);
+            var token = await _tokenRepository.GetByTokenIdAsync(tokenId, cancellationToken);
             if (token == null) continue;
 
             // If token has raw data (it's a constant/atom), write it.
@@ -318,7 +318,7 @@ public class BPEService : IBPEService
 
     public async Task<List<BPEToken>> FindSimilarTokensAsync(int tokenId, int topK = 10, CancellationToken cancellationToken = default)
     {
-        var sourceToken = await _tokenRepository.GetByIdAsync(tokenId, cancellationToken);
+        var sourceToken = await _tokenRepository.GetByTokenIdAsync(tokenId, cancellationToken);
         if (sourceToken == null || sourceToken.CompositionGeometry == null)
             return new List<BPEToken>();
 

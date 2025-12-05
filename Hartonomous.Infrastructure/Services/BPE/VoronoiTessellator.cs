@@ -1,90 +1,141 @@
 using Hartonomous.Core.Domain.Entities;
-using Microsoft.Extensions.Logging;
+using Hartonomous.Core.Domain.ValueObjects;
 using NetTopologySuite.Geometries;
+using NetTopologySuite.Triangulate;
 
 namespace Hartonomous.Infrastructure.Services.BPE;
 
 /// <summary>
-/// Computes Voronoi tessellation and identifies neighboring constants using PostGIS
-/// NOTE: This is a placeholder implementation. Full PostGIS integration requires database context.
-/// For now, uses NetTopologySuite's built-in Voronoi computation.
+/// Computes natural geometric neighbors using Voronoi Tessellation.
+/// Projects 4D constants to 2D (X, Y) for planar tessellation using NetTopologySuite.
+/// This provides a "natural neighborhood" graph for BPE vocabulary learning.
 /// </summary>
 public class VoronoiTessellator
 {
-    private readonly ILogger<VoronoiTessellator> _logger;
     private readonly GeometryFactory _geometryFactory;
 
-    public VoronoiTessellator(ILogger<VoronoiTessellator> logger)
+    public VoronoiTessellator()
     {
-        _logger = logger;
-        _geometryFactory = new GeometryFactory(new PrecisionModel(), 0); // SRID 0 for Hilbert space
+        _geometryFactory = new GeometryFactory();
     }
 
-    /// <summary>
-    /// Compute Voronoi neighbors for a segment of constants
-    /// Uses NetTopologySuite for now, will be upgraded to PostGIS for production
-    /// </summary>
     public Task<List<ConstantPair>> ComputeNeighborsAsync(
-        IReadOnlyList<Constant> constants,
+        List<Constant> constants,
         CancellationToken cancellationToken = default)
     {
         if (constants == null || constants.Count < 2)
             return Task.FromResult(new List<ConstantPair>());
 
-        _logger.LogDebug("Computing Voronoi tessellation for {Count} constants", constants.Count);
+        // 1. Prepare sites for Voronoi
+        // We project 4D (X, Y, Z, M) to 2D (X, Y) for NTS tessellation.
+        // In our architecture, X is Spatial, Y is Entropy.
+        // This clustering effectively groups items that are "spatially close" and "entropically similar".
+        
+        var sites = new List<Coordinate>(constants.Count);
+        var constantMap = new Dictionary<Coordinate, Constant>();
 
-        // Create coordinate array from constant locations
-        var coordinates = constants
-            .Where(c => c.Location != null)
-            .Select(c => c.Location!.Coordinate)
-            .ToArray();
-
-        if (coordinates.Length < 2)
+        foreach (var constant in constants)
         {
-            _logger.LogWarning("Insufficient points with locations for Voronoi tessellation");
-            return Task.FromResult(new List<ConstantPair>());
+            if (constant.Coordinate == null) continue;
+
+            var coord = new Coordinate(constant.Coordinate.X, constant.Coordinate.Y);
+            
+            // Handle collisions (rare but possible with integer coords)
+            // If multiple constants map to same X,Y, shift slightly or ignore?
+            // We'll jitter slightly to ensure unique sites for tessellation.
+            if (constantMap.ContainsKey(coord))
+            {
+                coord.X += 0.0001; 
+                coord.Y += 0.0001;
+            }
+
+            sites.Add(coord);
+            constantMap[coord] = constant;
         }
 
-        // Use NetTopologySuite's Voronoi builder
-        var voronoiBuilder = new NetTopologySuite.Triangulate.VoronoiDiagramBuilder();
-        voronoiBuilder.SetSites(coordinates);
+        if (sites.Count < 2)
+            return Task.FromResult(new List<ConstantPair>());
 
-        var diagram = voronoiBuilder.GetDiagram(_geometryFactory);
-
-        // Extract neighbor relationships from Voronoi cells
-        // Neighbors are constants whose cells share an edge
-        var pairs = new List<ConstantPair>();
-
-        // For simplicity in Phase 2, use spatial proximity as proxy for Voronoi neighbors
-        // This will be replaced with proper Delaunay triangulation in production
-        for (int i = 0; i < constants.Count - 1; i++)
+        // 2. Build Voronoi Diagram
+        var builder = new VoronoiDiagramBuilder();
+        builder.SetSites(sites);
+        
+        // 3. Extract Adjacency Graph
+        // NTS returns a GeometryCollection of Polygons.
+        // Each Polygon's UserData is the generator Coordinate (site).
+        var diagram = builder.GetDiagram(_geometryFactory);
+        
+        var polygons = new List<Polygon>();
+        for (int i = 0; i < diagram.NumGeometries; i++)
         {
-            for (int j = i + 1; j < Math.Min(i + 5, constants.Count); j++) // Limit to 4 nearest
+            if (diagram.GetGeometryN(i) is Polygon poly && poly.UserData is Coordinate site)
             {
-                var c1 = constants[i];
-                var c2 = constants[j];
-
-                if (c1.Location != null && c2.Location != null)
-                {
-                    var distance = c1.Location.Distance(c2.Location);
-
-                    var hilbertDist = c1.Coordinate != null && c2.Coordinate != null
-                        ? Math.Abs((long)c1.Coordinate.HilbertHigh - (long)c2.Coordinate.HilbertHigh)
-                        : 0;
-
-                    pairs.Add(new ConstantPair
-                    {
-                        ConstantId1 = c1.Id,
-                        ConstantId2 = c2.Id,
-                        Distance3D = distance,
-                        HilbertDistance = (ulong)hilbertDist,
-                        IsVoronoiNeighbor = true
-                    });
-                }
+                polygons.Add(poly);
             }
         }
 
-        _logger.LogDebug("Found {PairCount} Voronoi neighbor pairs", pairs.Count);
+        // 4. Find Neighbors (Adjacent Polygons)
+        // Two polygons are neighbors if they intersect (share an edge)
+        // Complexity: O(N^2) naive, but NTS spatial index makes it faster?
+        // Better: Use Delaunay Triangulation which is the dual graph.
+        // Delaunay edges directly represent Voronoi adjacency.
+        
+        var neighbors = ExtractNeighborsViaDelaunay(sites);
+        
+        // 5. Map back to ConstantPair
+        var pairs = new List<ConstantPair>();
+        var seenPairs = new HashSet<string>();
+
+        foreach (var (siteA, siteB) in neighbors)
+        {
+            if (!constantMap.TryGetValue(siteA, out var constA) || 
+                !constantMap.TryGetValue(siteB, out var constB))
+                continue;
+
+            // Ensure consistent ordering for unique pair ID
+            var id1 = constA.Id;
+            var id2 = constB.Id;
+            if (id1.CompareTo(id2) > 0) (id1, id2) = (id2, id1);
+
+            var pairKey = $"{id1}-{id2}";
+            if (seenPairs.Contains(pairKey)) continue;
+            seenPairs.Add(pairKey);
+
+            // Calculate true 4D distance for the graph weight
+            // (Voronoi found the topology, but physics uses 4D)
+            double dist3D = constA.Coordinate!.DistanceTo(constB.Coordinate!);
+            ulong hilbertDist = constA.Coordinate!.HilbertDistanceTo(constB.Coordinate!);
+
+            pairs.Add(new ConstantPair
+            {
+                ConstantId1 = constA.Id,
+                ConstantId2 = constB.Id,
+                Distance3D = dist3D,
+                HilbertDistance = hilbertDist
+            });
+        }
+
         return Task.FromResult(pairs);
+    }
+
+    private List<(Coordinate, Coordinate)> ExtractNeighborsViaDelaunay(List<Coordinate> sites)
+    {
+        var delaunayBuilder = new DelaunayTriangulationBuilder();
+        delaunayBuilder.SetSites(sites);
+        
+        // Get edges of triangulation (these are the adjacency links)
+        var edges = delaunayBuilder.GetEdges(_geometryFactory);
+        var neighborPairs = new List<(Coordinate, Coordinate)>();
+
+        for (int i = 0; i < edges.NumGeometries; i++)
+        {
+            if (edges.GetGeometryN(i) is LineString edge)
+            {
+                // A Delaunay edge connects two natural neighbors
+                neighborPairs.Add((edge.Coordinates[0], edge.Coordinates[1]));
+            }
+        }
+
+        return neighborPairs;
     }
 }

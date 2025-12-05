@@ -126,34 +126,22 @@ public class QuantizationServiceTests
     }
 
     [Fact]
-    public void CalculateGraphConnectivity_NoTransitions_ReturnsLowValue()
+    public void CalculateGraphConnectivity_FromReferenceCount_ReturnsLogarithmicValue()
     {
-        // Arrange: All same byte (no transitions)
-        var data = new byte[100];
-        Array.Fill(data, (byte)0x42);
+        // Arrange
+        long lowRefs = 10;
+        long medRefs = 1000;
+        long highRefs = 1_000_000;
 
         // Act
-        var result = _service.CalculateGraphConnectivity(data);
+        var lowVal = _service.CalculateGraphConnectivity(lowRefs);
+        var medVal = _service.CalculateGraphConnectivity(medRefs);
+        var highVal = _service.CalculateGraphConnectivity(highRefs);
 
-        // Assert: Should have low connectivity
-        Assert.True(result < MaxQuantizedValue * 0.2, $"Expected low connectivity, got {result}");
-    }
-
-    [Fact]
-    public void CalculateGraphConnectivity_HighTransitions_ReturnsHighValue()
-    {
-        // Arrange: Alternating pattern (maximum transitions)
-        var data = new byte[100];
-        for (int i = 0; i < data.Length; i++)
-        {
-            data[i] = (byte)(i % 2);
-        }
-
-        // Act
-        var result = _service.CalculateGraphConnectivity(data);
-
-        // Assert: Should have high connectivity
-        Assert.True(result > MaxQuantizedValue * 0.5, $"Expected high connectivity, got {result}");
+        // Assert: Should be increasing
+        Assert.True(lowVal < medVal);
+        Assert.True(medVal < highVal);
+        Assert.InRange(highVal, 0, MaxQuantizedValue);
     }
 
     [Fact]

@@ -1,5 +1,5 @@
 using Hartonomous.Core.Domain.Common;
-using Hartonomous.Core.Domain.Math;
+using Hartonomous.Core.Domain.Mathematics;
 using Hartonomous.Core.Domain.Utilities;
 using NetTopologySuite.Geometries;
 
