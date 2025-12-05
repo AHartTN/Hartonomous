@@ -11,13 +11,3 @@ public sealed class GetAllConstantsQuery : IRequest<Result<IEnumerable<AllConsta
     public bool IncludeLocation { get; set; } = true;
     public int? Limit { get; set; }
 }
-
-public sealed class AllConstantDto
-{
-    public Guid Id { get; set; }
-    public string Hash { get; set; } = string.Empty;
-    public double X { get; set; }
-    public double Y { get; set; }
-    public double Z { get; set; }
-    public DateTime CreatedAt { get; set; }
-}

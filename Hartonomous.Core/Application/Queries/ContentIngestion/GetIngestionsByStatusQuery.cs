@@ -13,13 +13,3 @@ public sealed class GetIngestionsByStatusQuery : IRequest<Result<PaginatedResult
     public int PageNumber { get; set; } = 1;
     public int PageSize { get; set; } = 10;
 }
-
-public sealed class IngestionDto
-{
-    public Guid Id { get; set; }
-    public IngestionStatus Status { get; set; }
-    public string? ContentHash { get; set; }
-    public long ContentSize { get; set; }
-    public DateTime CreatedAt { get; set; }
-    public DateTime? CompletedAt { get; set; }
-}

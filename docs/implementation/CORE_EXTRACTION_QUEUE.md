@@ -12,12 +12,14 @@
 These are tightly coupled response/request objects. Strategy: Create dedicated DTO folders.
 
 #### 1. Commands - Response Types
-- [ ] `LearnBPEVocabularyCommandResult` from LearnBPEVocabularyCommand.cs
-- [ ] `MergeBPETokensResponse` from MergeBPETokensCommand.cs
-- [ ] `MergeBytePairCommandResult` from MergeBytePairCommand.cs
-- [ ] `IngestContentResponse` from IngestContentCommand.cs
-- [ ] `IngestRepositoryResponse` from IngestRepositoryCommand.cs
-- [ ] `CreateLandmarkResponse` from CreateLandmarkCommand.cs
+- [x] `LearnBPEVocabularyCommandResult` from LearnBPEVocabularyCommand.cs ?
+- [x] `MergeBPETokensResponse` from MergeBPETokensCommand.cs ?
+- [x] `MergeBytePairCommandResult` from MergeBytePairCommand.cs ?
+- [x] `IngestContentResponse` from IngestContentCommand.cs ?
+- [x] `IngestRepositoryResponse` from IngestRepositoryCommand.cs ?
+- [x] `CreateLandmarkResponse` from CreateLandmarkCommand.cs ?
+
+**Status**: COMPLETE (6/6) - Committed: 3735344
 
 **Target Location**: `Hartonomous.Core/Application/Commands/{Feature}/DTOs/`
 
