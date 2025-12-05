@@ -1,5 +1,0 @@
-HilbertCurveTest.DiagnosticKnownValues 1 0.0088681
-HilbertCurveTest.InterleaveBitsIsolation 1 0.010125
-HilbertCurveTest.FullRoundTripRandomValues 1 0.0093129
-HilbertCurveTest.BoundaryValues 1 0.0103551
----

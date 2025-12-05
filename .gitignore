@@ -6,6 +6,10 @@ bin/
 *.suo
 *.cache
 
+# CMake build artifacts
+Hartonomous.Native/build/
+!Hartonomous.Native/build/.gitkeep
+
 # NuGet
 *.nupkg
 *.snupkg

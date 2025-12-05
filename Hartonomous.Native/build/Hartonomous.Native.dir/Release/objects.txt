@@ -1,2 +1,0 @@
-D:/Repositories/Hartonomous/Hartonomous.Native/build/Hartonomous.Native.dir/Release/hartonomous_native.obj
-D:/Repositories/Hartonomous/Hartonomous.Native/build/Hartonomous.Native.dir/Release/skilling.obj

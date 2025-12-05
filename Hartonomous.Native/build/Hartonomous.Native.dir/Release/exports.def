@@ -1,8 +1,0 @@
-EXPORTS 
-	_Avx2WmemEnabledWeakValue 	 DATA
-	?DeinterleaveBits4D@@YAX_K0HPEAI@Z
-	?InterleaveBits4D@@YAXPEAIHPEA_K1@Z
-	AxesToTranspose
-	HilbertDecode4D
-	HilbertEncode4D
-	TransposeToAxes
