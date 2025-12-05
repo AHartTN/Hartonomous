@@ -2,6 +2,7 @@ using System;
 using Hartonomous.Core.Domain.Common;
 using Hartonomous.Core.Domain.Utilities;
 using Hartonomous.Core.Domain.ValueObjects;
+using Hartonomous.Marshal; // TODO: Remove - Core should not depend on Marshal (infrastructure)
 using NetTopologySuite.Geometries;
 
 namespace Hartonomous.Core.Domain.Entities;

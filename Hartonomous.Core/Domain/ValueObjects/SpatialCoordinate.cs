@@ -1,6 +1,7 @@
 using Hartonomous.Core.Domain.Common;
 using Hartonomous.Core.Domain.Mathematics;
 using Hartonomous.Core.Domain.Utilities;
+using Hartonomous.Marshal; // TODO: Remove - Core should not depend on Marshal (infrastructure)
 using NetTopologySuite.Geometries;
 
 namespace Hartonomous.Core.Domain.ValueObjects;
@@ -296,7 +297,9 @@ public sealed class SpatialCoordinate : ValueObject
     /// </summary>
     public (ulong MinHigh, ulong MinLow, ulong MaxHigh, ulong MaxLow) GetHilbertRangeForRadius(double radius)
     {
-        return HilbertCurve4D.GetRangeForRadius(HilbertHigh, HilbertLow, radius, Precision);
+        var ((minHigh, minLow), (maxHigh, maxLow)) = HilbertCurve4D.GetRangeForRadius(
+            HilbertHigh, HilbertLow, (ulong)radius, Precision);
+        return (minHigh, minLow, maxHigh, maxLow);
     }
     
     #region Private Helpers

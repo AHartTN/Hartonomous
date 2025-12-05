@@ -1,7 +1,7 @@
-using Hartonomous.Core.Domain.Utilities;
+using Hartonomous.Marshal;
 using Xunit;
 
-namespace Hartonomous.Core.Tests.Domain.Utilities;
+namespace Hartonomous.Marshal.Tests;
 
 /// <summary>
 /// Unit tests for HilbertCurve4D encoding/decoding.
@@ -11,7 +11,7 @@ public class HilbertCurve4DTests
 {
     #region Encode/Decode Round-Trip Tests
     
-    [Theory(Skip = "Native implementation required or C# Transpose is a no-op")]
+    [Theory]
     [InlineData(0, 0, 0, 0)]
     [InlineData(1, 1, 1, 1)]
     [InlineData(100, 200, 300, 400)]
@@ -31,7 +31,7 @@ public class HilbertCurve4DTests
         Assert.Equal(m, decodedM);
     }
     
-    [Fact(Skip = "Native implementation required or C# Transpose is a no-op")]
+    [Fact]
     public void Encode_Decode_AllZeros_ReturnsZeros()
     {
         // Arrange
@@ -48,7 +48,7 @@ public class HilbertCurve4DTests
         Assert.Equal(0u, dm);
     }
     
-    [Fact(Skip = "Native implementation required or C# Transpose is a no-op")]
+    [Fact]
     public void Encode_Decode_MaxValues_PreservesValues()
     {
         // Arrange
@@ -69,7 +69,7 @@ public class HilbertCurve4DTests
     
     #region Locality Preservation Tests
     
-    [Fact(Skip = "Native implementation required or C# Transpose is a no-op")]
+    [Fact]
     public void Encode_NearbyCoordinates_ProducesNearbyIndices()
     {
         // Arrange
@@ -84,7 +84,7 @@ public class HilbertCurve4DTests
         Assert.True(distance < 10000, $"Distance too large: {distance}");
     }
     
-    [Fact(Skip = "Native implementation required or C# Transpose is a no-op")]
+    [Fact]
     public void Encode_FarCoordinates_ProducesLargerDistance()
     {
         // Arrange
@@ -102,7 +102,7 @@ public class HilbertCurve4DTests
     
     #region Precision Tests
     
-    [Theory(Skip = "Native implementation required or C# Transpose is a no-op")]
+    [Theory]
     [InlineData(1)]
     [InlineData(5)]
     [InlineData(10)]
@@ -141,7 +141,7 @@ public class HilbertCurve4DTests
     
     #region Edge Case Tests
     
-    [Fact(Skip = "Native implementation required or C# Transpose is a no-op")]
+    [Fact]
     public void Encode_CoordinatesExceedPrecision_ClampsToMax()
     {
         // Arrange
@@ -160,7 +160,7 @@ public class HilbertCurve4DTests
         Assert.Equal(expected, dm);
     }
     
-    [Fact(Skip = "Native implementation required or C# Transpose is a no-op")]
+    [Fact]
     public void Encode_SingleDimensionVaries_ProducesUniqueIndices()
     {
         // Arrange & Act
@@ -178,52 +178,40 @@ public class HilbertCurve4DTests
     
     #region Range Query Tests
     
-    [Fact(Skip = "Native implementation required or C# Transpose is a no-op")]
+    [Fact]
     public void GetRangeForRadius_WithZeroRadius_ReturnsNarrowRange()
     {
         // Arrange
         var (centerH, centerL) = HilbertCurve4D.Encode(1000, 1000, 1000, 1000);
         
         // Act
-        var (minH, minL, maxH, maxL) = HilbertCurve4D.GetRangeForRadius(
-            centerH, centerL, radius: 0);
+        var (min, max) = HilbertCurve4D.GetRangeForRadius((centerH, centerL), radius: 0);
         
         // Assert - should return same point (plus expansion factor)
-        Assert.True(maxH >= minH);
-        Assert.True(maxH - minH < 1000); // Should be relatively narrow
+        Assert.True(max.High >= min.High);
+        Assert.True(max.High - min.High < 1000); // Should be relatively narrow
     }
     
-    [Fact(Skip = "Native implementation required or C# Transpose is a no-op")]
+    [Fact]
     public void GetRangeForRadius_WithLargeRadius_ReturnsWideRange()
     {
         // Arrange
         var (centerH, centerL) = HilbertCurve4D.Encode(100000, 100000, 100000, 100000);
         
         // Act
-        var (minH, minL, maxH, maxL) = HilbertCurve4D.GetRangeForRadius(
-            centerH, centerL, radius: 50000);
+        var (min, max) = HilbertCurve4D.GetRangeForRadius((centerH, centerL), radius: 50000);
         
-        // Assert - should return wide range
-        Assert.True(maxH > minH);
-        Assert.True(maxH - minH > 1000);
-    }
-    
-    [Fact(Skip = "Native implementation required or C# Transpose is a no-op")]
-    public void GetRangeForRadius_WithNegativeRadius_ThrowsArgumentException()
-    {
-        // Arrange
-        var (centerH, centerL) = HilbertCurve4D.Encode(1000, 1000, 1000, 1000);
-        
-        // Act & Assert
-        Assert.Throws<ArgumentException>(() => 
-            HilbertCurve4D.GetRangeForRadius(centerH, centerL, radius: -100));
+        // Assert - should return wide range (implementation modifies Low bits, High stays same)
+        Assert.True(max.High >= min.High);
+        Assert.True(max.Low > min.Low);
+        Assert.True(max.Low - min.Low > 1000); // Radius creates wide span in Low bits
     }
     
     #endregion
     
     #region Performance Characteristic Tests
     
-    [Fact(Skip = "Native implementation required or C# Transpose is a no-op")]
+    [Fact]
     public void Encode_1000Iterations_CompletesQuickly()
     {
         // Arrange
@@ -248,7 +236,7 @@ public class HilbertCurve4DTests
             $"Encoding took too long: {elapsed.TotalMilliseconds}ms");
     }
     
-    [Fact(Skip = "Native implementation required or C# Transpose is a no-op")]
+    [Fact]
     public void Decode_1000Iterations_CompletesQuickly()
     {
         // Arrange

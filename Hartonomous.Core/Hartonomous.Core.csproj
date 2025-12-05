@@ -20,7 +20,12 @@
     <PackageReference Include="MediatR" Version="12.4.1" />
     <PackageReference Include="NetTopologySuite" Version="2.5.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
-    <PackageReference Include="Hartonomous.Marshal" Version="1.0.0" />
+  </ItemGroup>
+
+  <!-- TODO: Remove this dependency - Core should not depend on infrastructure -->
+  <!-- Need to create IHilbertEncoder interface in Core and implement in Infrastructure -->
+  <ItemGroup>
+    <ProjectReference Include="..\Hartonomous.Marshal\Hartonomous.Marshal.csproj" />
   </ItemGroup>
 
 </Project>

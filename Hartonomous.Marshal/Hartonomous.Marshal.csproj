@@ -4,6 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <IncludeSymbols>false</IncludeSymbols>
     <IncludeBuildOutput>true</IncludeBuildOutput>
@@ -14,34 +15,37 @@
     <Authors>Anthony Hart</Authors>
     <Company>Hartonomous</Company>
     <Product>Hartonomous Geometric Knowledge Substrate</Product>
-    <Description>P/Invoke marshal wrapper for Hartonomous native C++ library (Hilbert curves, spatial algorithms)</Description>
-    <PackageTags>native;cpp;hilbert;spatial;geometry;pinvoke;marshal</PackageTags>
+    <Description>P/Invoke marshal wrapper for Hartonomous native C++ library using LibraryImport source generation (.NET 7+). Includes custom DllImportResolver for ProjectReference and NuGet scenarios.</Description>
+    <PackageTags>native;cpp;hilbert;spatial;geometry;pinvoke;marshal;libraryimport;sourcegeneration</PackageTags>
   </PropertyGroup>
 
-  <!-- Copy native artifacts before packing -->
-  <Target Name="PrepareNativeArtifacts" BeforeTargets="GenerateNuspec">
-    <PropertyGroup>
-      <NativeSourceDir>$(MSBuildThisFileDirectory)..\Hartonomous.Native\build</NativeSourceDir>
-      <NativeStagingDir>$(MSBuildProjectDirectory)\runtimes\win-x64\native</NativeStagingDir>
-    </PropertyGroup>
-    
-    <ItemGroup>
-      <NativeFiles Include="$(NativeSourceDir)\bin\Hartonomous.Native.dll" />
-      <NativeFiles Include="$(NativeSourceDir)\bin\Hartonomous.Native.pdb" Condition="Exists('$(NativeSourceDir)\bin\Hartonomous.Native.pdb')" />
-      <NativeFiles Include="$(NativeSourceDir)\lib\Hartonomous.Native.lib" Condition="Exists('$(NativeSourceDir)\lib\Hartonomous.Native.lib')" />
-    </ItemGroup>
-    
-    <MakeDir Directories="$(NativeStagingDir)" />
-    <Copy SourceFiles="@(NativeFiles)" DestinationFolder="$(NativeStagingDir)" SkipUnchangedFiles="true" />
-    <Message Importance="high" Text="Copied native artifacts to staging directory: $(NativeStagingDir)" />
-  </Target>
-
-  <!-- Include native artifacts from staging directory -->
+  <!-- Include native DLL as content that flows to consumers (ProjectReference scenario) -->
   <ItemGroup>
-    <Content Include="runtimes\win-x64\native\*.dll" Pack="true" PackagePath="runtimes\win-x64\native\" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="runtimes\win-x64\native\*.pdb" Pack="true" PackagePath="runtimes\win-x64\native\" />
-    <Content Include="runtimes\win-x64\native\*.lib" Pack="true" PackagePath="runtimes\win-x64\native\" />
-    <Content Include="Hartonomous.Marshal.targets" Pack="true" PackagePath="build\Hartonomous.Marshal.targets" />
+    <None Include="..\Hartonomous.Native\build\bin\Hartonomous.Native.dll" 
+          Link="Hartonomous.Native.dll" 
+          CopyToOutputDirectory="PreserveNewest" 
+          Pack="false">
+      <!-- This ensures the DLL is copied to Marshal's output AND to any project that references Marshal -->
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <!-- For NuGet package: include native artifacts in runtimes/{rid}/native/ -->
+  <ItemGroup>
+    <!-- Windows x64 -->
+    <Content Include="..\Hartonomous.Native\build\bin\Hartonomous.Native.dll" 
+             Pack="true" 
+             PackagePath="runtimes\win-x64\native\" 
+             Link="runtimes\win-x64\native\Hartonomous.Native.dll" 
+             CopyToOutputDirectory="Never" />
+    
+    <!-- TODO: Add other RIDs when native library is built for multiple platforms
+    <Content Include="..\Hartonomous.Native\build\bin\Hartonomous.Native.dll" Pack="true" PackagePath="runtimes\win-arm64\native\" />
+    <Content Include="..\Hartonomous.Native\build\bin\libHartonomous.Native.so" Pack="true" PackagePath="runtimes\linux-x64\native\" />
+    <Content Include="..\Hartonomous.Native\build\bin\libHartonomous.Native.so" Pack="true" PackagePath="runtimes\linux-arm64\native\" />
+    <Content Include="..\Hartonomous.Native\build\bin\libHartonomous.Native.dylib" Pack="true" PackagePath="runtimes\osx-x64\native\" />
+    <Content Include="..\Hartonomous.Native\build\bin\libHartonomous.Native.dylib" Pack="true" PackagePath="runtimes\osx-arm64\native\" />
+    -->
   </ItemGroup>
 
 </Project>

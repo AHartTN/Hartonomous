@@ -1,6 +1,7 @@
 using Hartonomous.Core.Domain.Mathematics;
 using Hartonomous.Core.Domain.Utilities;
 using Hartonomous.Core.Domain.ValueObjects;
+using Hartonomous.Marshal;
 using NetTopologySuite.Geometries;
 using Xunit;
 
@@ -56,7 +57,7 @@ public class GeometricTests
         Assert.NotEqual(pText, pImage);
     }
 
-    [Fact(Skip = "Native implementation required or C# Interpolate uses C# Encode/Decode")]
+    [Fact]
     public void SpatialCoordinate_Interpolate_AveragesCorrectly()
     {
         var c1 = SpatialCoordinate.FromUniversalProperties(100, 100, 100, 100, 21);

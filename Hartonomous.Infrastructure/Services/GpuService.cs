@@ -316,7 +316,11 @@ public sealed class GpuService : IGpuService
             var list = results.Select(r => new LandmarkCandidate
             {
                 ClusterId = r.ClusterId,
-                Centroid = SpatialCoordinate.Create(r.CentroidX, r.CentroidY, r.CentroidZ),
+                Centroid = SpatialCoordinate.FromUniversalProperties(
+                    (uint)r.CentroidX,
+                    (int)r.CentroidY,    // Already quantized entropy
+                    (int)r.CentroidZ,    // Already quantized compressibility
+                    0),                   // Connectivity = 0 for cluster centroids
                 MemberCount = r.MemberCount,
                 SuggestedName = r.SuggestedName
             }).ToList();

@@ -10,6 +10,7 @@ using System.Collections.Concurrent;
 using Hartonomous.Data.Context;
 using Microsoft.EntityFrameworkCore;
 using Hartonomous.Core.Domain.Enums; // Added missing using directive
+using Hartonomous.Marshal;
 
 namespace Hartonomous.Worker.Jobs;
 

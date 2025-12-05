@@ -3,6 +3,7 @@ using Hartonomous.Core.Application.Interfaces;
 using Hartonomous.Core.Domain.Entities;
 using Hartonomous.Core.Domain.Utilities;
 using Hartonomous.Core.Domain.ValueObjects;
+using Hartonomous.Marshal;
 using MediatR;
 
 namespace Hartonomous.Core.Application.Commands.Landmarks;
@@ -36,7 +37,7 @@ public sealed class CreateLandmarkCommandHandler : IRequestHandler<CreateLandmar
         // For "manual" creation, let's assume Level 10 (coarse).
         int level = 10;
         
-        var (prefixHigh, prefixLow) = Hartonomous.Core.Domain.Utilities.HilbertCurve4D.GetHilbertTileId(
+        var (prefixHigh, prefixLow) = HilbertCurve4D.GetHilbertTileId(
             center.HilbertHigh, center.HilbertLow, level);
 
         // Check if this specific tile landmark already exists

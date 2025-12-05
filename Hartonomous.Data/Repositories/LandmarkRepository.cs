@@ -3,6 +3,7 @@ using Hartonomous.Core.Domain.Entities;
 using Hartonomous.Core.Domain.ValueObjects;
 using Hartonomous.Data.Context;
 using Hartonomous.Data.Extensions; // Assuming this contains WhereHilbertRange and OrderByHilbertDistance if still needed
+using Hartonomous.Marshal;
 using Microsoft.EntityFrameworkCore;
 
 namespace Hartonomous.Data.Repositories;
@@ -49,7 +50,7 @@ public class LandmarkRepository : Repository<Landmark>, ILandmarkRepository
         // Let's assume a fixed level for now (e.g., Level 15 as a representative granularity).
         int queryLevel = 15; // This could be configurable or determined dynamically
 
-        var (tileHigh, tileLow) = Hartonomous.Core.Domain.Utilities.HilbertCurve4D.GetHilbertTileId(
+        var (tileHigh, tileLow) = HilbertCurve4D.GetHilbertTileId(
             coordinate.HilbertHigh, coordinate.HilbertLow, queryLevel, coordinate.Precision);
 
         // Query for landmarks that exactly match this tile ID and level
