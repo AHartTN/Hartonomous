@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="18.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="D:\Repositories\Hartonomous\Hartonomous.Native\build\CMakeFiles\695734d68c123f85776804958a9909cb\RUN_TESTS_force.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{C95D7CC8-7C6A-3AF5-B343-D3F6050269E5}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

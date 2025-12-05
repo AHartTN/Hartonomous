@@ -1,0 +1,5 @@
+if(EXISTS "D:/Repositories/Hartonomous/Hartonomous.Native/build/Hartonomous.Native.Tests[1]_tests.cmake")
+  include("D:/Repositories/Hartonomous/Hartonomous.Native/build/Hartonomous.Native.Tests[1]_tests.cmake")
+else()
+  add_test(Hartonomous.Native.Tests_NOT_BUILT Hartonomous.Native.Tests_NOT_BUILT)
+endif()

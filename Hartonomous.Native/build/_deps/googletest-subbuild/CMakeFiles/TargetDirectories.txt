@@ -1,0 +1,3 @@
+D:/Repositories/Hartonomous/Hartonomous.Native/build/_deps/googletest-subbuild/CMakeFiles/googletest-populate.dir
+D:/Repositories/Hartonomous/Hartonomous.Native/build/_deps/googletest-subbuild/CMakeFiles/ALL_BUILD.dir
+D:/Repositories/Hartonomous/Hartonomous.Native/build/_deps/googletest-subbuild/CMakeFiles/ZERO_CHECK.dir
