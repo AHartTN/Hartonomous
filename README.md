@@ -14,7 +14,7 @@ Hartonomous transforms all digital content into geometric atoms in 4D space wher
 - **Multi-level atomization** (bytes→repositories, all deduplicated)
 - **Spatial queries = knowledge queries** (PostGIS operations answer semantic questions)
 
-See **[ARCHITECTURE.md](ARCHITECTURE.md)** for paradigm explanation.
+See **[Azure DevOps Wiki](https://dev.azure.com/aharttn/Hartonomous/_wiki/wikis/Hartonomous.wiki)** for comprehensive documentation.
 
 ## Quick Start
 
@@ -26,9 +26,14 @@ dotnet run --project Hartonomous.AppHost  # Starts all services via Aspire
 
 ## Documentation
 
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Core paradigm and geometric substrate explanation
-- **[POINTZM_MASTER_IMPLEMENTATION_PLAN.md](POINTZM_MASTER_IMPLEMENTATION_PLAN.md)** - 8-phase implementation roadmap
-- **[docs/](docs/)** - Complete technical documentation (architecture, implementation, API, database, deployment)
+**Complete documentation is in the [Azure DevOps Wiki](https://dev.azure.com/aharttn/Hartonomous/_wiki/wikis/Hartonomous.wiki)**:
+- Getting Started - Developer onboarding and setup
+- Architecture - POINTZM paradigm, solution design, decision records
+- Implementation - 8-phase roadmap with detailed guides
+- Technical Reference - API, database schema, deployment procedures
+
+**Repository-specific:**
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Quick paradigm overview
 - **[.github/copilot-instructions.md](.github/copilot-instructions.md)** - AI agent coding guidelines
 
 ## License

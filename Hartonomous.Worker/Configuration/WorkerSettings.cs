@@ -96,27 +96,13 @@ public class ConstantIndexingSettings
 public class LandmarkDetectionSettings
 {
     /// <summary>
-    /// How often to run landmark detection (cron expression). Default: Every 6 hours.
+    /// How often to run landmark statistics update (cron expression). Default: Every 6 hours.
     /// </summary>
     public string Schedule { get; set; } = "0 */6 * * *";
 
     /// <summary>
-    /// Minimum number of constants in a cluster to be considered a landmark.
+    /// List of Hilbert precision levels at which to define and maintain landmarks.
+    /// Example: [10, 15, 20] would create landmarks at three different granularities.
     /// </summary>
-    public int MinClusterSize { get; set; } = 100;
-
-    /// <summary>
-    /// DBSCAN epsilon parameter (distance threshold in coordinate units).
-    /// </summary>
-    public double EpsilonDistance { get; set; } = 0.1;
-
-    /// <summary>
-    /// Whether to update existing landmarks or only create new ones.
-    /// </summary>
-    public bool UpdateExistingLandmarks { get; set; } = true;
-
-    /// <summary>
-    /// Maximum radius for landmark area calculation (in coordinate units).
-    /// </summary>
-    public double MaxLandmarkRadius { get; set; } = 1.0;
+    public int[] DetectionLevels { get; set; } = { 10, 15, 20 };
 }

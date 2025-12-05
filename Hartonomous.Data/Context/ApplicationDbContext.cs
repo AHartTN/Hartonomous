@@ -198,8 +198,9 @@ public class ApplicationDbContext : DbContext
     }
 
     /// <summary>
-    /// Create PostgreSQL table partitioning by Hilbert index range
-    /// Improves query performance 10-100x for spatial proximity searches
+    /// Create PostgreSQL table partitioning by Hilbert High index range.
+    /// Improves query performance 10-100x for spatial proximity searches.
+    /// Partitions based on the upper 42 bits of the Hilbert index.
     /// </summary>
     public async Task CreateTablePartitioningAsync(CancellationToken cancellationToken = default)
     {
@@ -207,21 +208,30 @@ public class ApplicationDbContext : DbContext
             -- Convert constants table to partitioned table
             ALTER TABLE constants RENAME TO constants_old;
             
+            -- Create partitioned table with new schema
             CREATE TABLE constants (
                 LIKE constants_old INCLUDING ALL
-            ) PARTITION BY RANGE (hilbert_index);
+            ) PARTITION BY RANGE (hilbert_high);
             
-            -- Create partitions for Hilbert curve ranges (2^63 total space, 64 partitions)
+            -- Create partitions for Hilbert curve ranges (2^42 total space in High, 64 partitions)
             DO $$
             DECLARE
-                partition_size BIGINT := 144115188075855872; -- 2^63 / 64
-                start_val BIGINT := -9223372036854775808; -- INT64 MIN
+                -- Total range of ulong (High) is 0 to 2^64 - 1? No, High is 42 bits?
+                -- Wait, SpatialCoordinate.HilbertHigh is ulong (64-bit type) but effectively uses 42 bits.
+                -- Range is 0 to 2^42 - 1 = 4,398,046,511,103.
+                -- We want 64 partitions.
+                -- Partition size = 2^42 / 64 = 2^36 = 68,719,476,736.
+                
+                partition_size BIGINT := 68719476736; 
+                start_val BIGINT := 0;
                 end_val BIGINT;
                 partition_name TEXT;
             BEGIN
                 FOR i IN 0..63 LOOP
                     end_val := start_val + partition_size;
                     partition_name := 'constants_p' || LPAD(i::TEXT, 2, '0');
+                    
+                    -- Check if end_val exceeds max (just in case of rounding), though exact power of 2 is safe.
                     
                     EXECUTE format(
                         'CREATE TABLE %I PARTITION OF constants FOR VALUES FROM (%L) TO (%L)',
@@ -230,6 +240,9 @@ public class ApplicationDbContext : DbContext
                     
                     start_val := end_val;
                 END LOOP;
+                
+                -- Catch-all partition for anything outside (should not happen if logic is correct)
+                CREATE TABLE constants_p_default PARTITION OF constants DEFAULT;
             END $$;
             
             -- Copy data from old table
@@ -256,10 +269,12 @@ public class ApplicationDbContext : DbContext
                 data,
                 size,
                 content_type,
-                hilbert_index,
-                coordinate_x,
-                coordinate_y,
-                coordinate_z,
+                hilbert_high,
+                hilbert_low,
+                hilbert_precision,
+                quantized_entropy,
+                quantized_compressibility,
+                quantized_connectivity,
                 location,
                 reference_count,
                 frequency,
@@ -277,7 +292,7 @@ public class ApplicationDbContext : DbContext
             LIMIT 10000;
             
             CREATE UNIQUE INDEX IF NOT EXISTS idx_hot_atoms_id ON hot_atoms(id);
-            CREATE INDEX IF NOT EXISTS idx_hot_atoms_hilbert ON hot_atoms USING btree(hilbert_index);
+            CREATE INDEX IF NOT EXISTS idx_hot_atoms_hilbert ON hot_atoms USING btree(hilbert_high, hilbert_low);
             CREATE INDEX IF NOT EXISTS idx_hot_atoms_location ON hot_atoms USING gist(location);
         ";
 

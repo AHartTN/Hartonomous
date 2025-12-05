@@ -1,15 +1,21 @@
-using Hartonomous.Core.Application.Commands.Landmarks;
-using Hartonomous.Core.Application.Queries.Constants;
+using Hartonomous.Core.Application.Interfaces;
+using Hartonomous.Core.Domain.Entities;
+using Hartonomous.Core.Domain.Utilities;
+using Hartonomous.Core.Domain.ValueObjects;
 using Hartonomous.Worker.Configuration;
 using MediatR;
 using Microsoft.Extensions.Options;
 using NCrontab;
+using System.Collections.Concurrent;
+using Hartonomous.Data.Context;
+using Microsoft.EntityFrameworkCore;
 
 namespace Hartonomous.Worker.Jobs;
 
 /// <summary>
-/// Background service that performs periodic DBSCAN clustering to detect landmarks.
-/// Analyzes spatial distribution of constants and creates/updates landmark entities.
+/// Background service that periodically maintains statistics for Deterministic Hilbert Landmarks.
+/// It counts constants within predefined Hilbert tiles and updates/creates Landmark entities.
+/// Replaces heuristic DBSCAN clustering with a fixed, hierarchical grid approach.
 /// </summary>
 public class LandmarkDetectionWorker : BackgroundService
 {
@@ -45,8 +51,8 @@ public class LandmarkDetectionWorker : BackgroundService
             return;
         }
 
-        _logger.LogInformation("LandmarkDetectionWorker started. Schedule: {Schedule}, Min cluster size: {MinSize}",
-            _settings.Schedule, _settings.MinClusterSize);
+        _logger.LogInformation("LandmarkDetectionWorker started. Schedule: {Schedule}, Levels: {Levels}",
+            _settings.Schedule, string.Join(", ", _settings.DetectionLevels));
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -55,7 +61,7 @@ public class LandmarkDetectionWorker : BackgroundService
 
             if (delay > TimeSpan.Zero)
             {
-                _logger.LogInformation("Next landmark detection run scheduled for {NextRun} UTC ({Delay} from now)",
+                _logger.LogInformation("Next landmark statistics update scheduled for {NextRun} UTC ({Delay} from now)",
                     nextRun, delay);
 
                 await Task.Delay(delay, stoppingToken);
@@ -66,65 +72,95 @@ public class LandmarkDetectionWorker : BackgroundService
 
             try
             {
-                await DetectLandmarksAsync(stoppingToken);
+                await UpdateLandmarkStatisticsAsync(stoppingToken);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error during landmark detection execution");
+                _logger.LogError(ex, "Error during landmark statistics update execution");
             }
         }
 
         _logger.LogInformation("LandmarkDetectionWorker stopped");
     }
 
-    private async Task DetectLandmarksAsync(CancellationToken cancellationToken)
+    private async Task UpdateLandmarkStatisticsAsync(CancellationToken cancellationToken)
     {
         using var scope = _serviceProvider.CreateScope();
-        var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
+        var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>(); // Direct access for efficiency
+        var landmarkRepo = scope.ServiceProvider.GetRequiredService<ILandmarkRepository>();
+        var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
 
-        _logger.LogInformation("Starting landmark detection via DBSCAN clustering");
+        _logger.LogInformation("Starting deterministic Hilbert landmark statistics update");
 
         try
         {
-            // Get all constants for clustering (in production, this might be batched or use spatial filtering)
-            var constantsQuery = new GetAllConstantsQuery
-            {
-                IncludeLocation = true
-            };
+            // Group constants by their Hilbert tiles for each configured detection level
+            var tileCounts = new ConcurrentDictionary<string, long>(); // Key: "High-Low-Level"
 
-            var constantsResult = await mediator.Send(constantsQuery, cancellationToken);
-            if (!constantsResult.IsSuccess || constantsResult.Value == null || !constantsResult.Value.Any())
+            await foreach (var constant in dbContext.Constants
+                                .Where(c => c.Coordinate != null && c.Status == ConstantStatus.Active)
+                                .AsNoTracking() // Read-only for efficiency
+                                .AsAsyncEnumerable()
+                                .WithCancellation(cancellationToken))
             {
-                _logger.LogInformation("No constants available for landmark detection");
-                return;
+                if (constant.Coordinate == null) continue;
+
+                foreach (var level in _settings.DetectionLevels)
+                {
+                    var (tileHigh, tileLow) = HilbertCurve4D.GetHilbertTileId(
+                        constant.Coordinate.HilbertHigh,
+                        constant.Coordinate.HilbertLow,
+                        level,
+                        constant.Coordinate.Precision); // Use constant's original precision
+
+                    var tileKey = $"{tileHigh}-{tileLow}-{level}";
+                    tileCounts.AddOrUpdate(tileKey, 1, (key, count) => count + 1);
+                }
             }
 
-            _logger.LogInformation("Analyzing {Count} constants for landmarks", constantsResult.Value.Count());
+            _logger.LogInformation("Processed {ConstantCount} constants across {TileCount} unique tiles",
+                dbContext.Constants.Count(), tileCounts.Count);
 
-            // Run DBSCAN clustering command
-            var clusterCommand = new DetectLandmarksCommand
+            // Update or create Landmark entities
+            var createdCount = 0;
+            var updatedCount = 0;
+
+            foreach (var entry in tileCounts)
             {
-                MinClusterSize = _settings.MinClusterSize,
-                EpsilonDistance = _settings.EpsilonDistance,
-                MaxLandmarkRadius = _settings.MaxLandmarkRadius,
-                UpdateExisting = _settings.UpdateExistingLandmarks
-            };
+                cancellationToken.ThrowIfCancellationRequested();
 
-            var result = await mediator.Send(clusterCommand, cancellationToken);
+                var parts = entry.Key.Split('-');
+                var hilbertPrefixHigh = ulong.Parse(parts[0]);
+                var hilbertPrefixLow = ulong.Parse(parts[1]);
+                var level = int.Parse(parts[2]);
+                var constantCount = entry.Value;
 
-            if (result.IsSuccess)
-            {
-                _logger.LogInformation("Landmark detection completed. Landmarks detected: {Count}", result.Value);
+                var landmarkName = $"H:{hilbertPrefixHigh:X}-{hilbertPrefixLow:X}_L{level}";
+
+                var existingLandmark = await landmarkRepo.GetByNameAsync(landmarkName, cancellationToken);
+
+                if (existingLandmark == null)
+                {
+                    var newLandmark = Landmark.Create(hilbertPrefixHigh, hilbertPrefixLow, level);
+                    newLandmark.UpdateStatistics(constantCount);
+                    await landmarkRepo.AddAsync(newLandmark, cancellationToken);
+                    createdCount++;
+                }
+                else
+                {
+                    existingLandmark.UpdateStatistics(constantCount);
+                    await landmarkRepo.UpdateAsync(existingLandmark, cancellationToken);
+                    updatedCount++;
+                }
             }
-            else
-            {
-                _logger.LogWarning("Landmark detection completed with errors: {Errors}",
-                    string.Join(", ", result.Errors));
-            }
+
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+            
+            _logger.LogInformation("Landmark statistics update completed. Created: {Created}, Updated: {Updated} landmarks.", createdCount, updatedCount);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to execute landmark detection");
+            _logger.LogError(ex, "Failed to execute deterministic Hilbert landmark statistics update");
             throw;
         }
     }

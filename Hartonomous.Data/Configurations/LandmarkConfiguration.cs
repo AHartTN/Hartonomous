@@ -1,12 +1,11 @@
 using Hartonomous.Core.Domain.Entities;
-using Hartonomous.Core.Domain.ValueObjects;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace Hartonomous.Data.Configurations;
 
 /// <summary>
-/// EF Core configuration for Landmark entity
+/// EF Core configuration for Deterministic Hilbert Landmark entity.
 /// </summary>
 public class LandmarkConfiguration : IEntityTypeConfiguration<Landmark>
 {
@@ -17,72 +16,39 @@ public class LandmarkConfiguration : IEntityTypeConfiguration<Landmark>
         // Primary key
         builder.HasKey(l => l.Id);
 
-        // Name
+        // Name (now derived from HilbertPrefix and Level)
         builder.Property(l => l.Name)
             .HasColumnName("name")
-            .HasMaxLength(200)
+            .HasMaxLength(256) // Increased length for derived name
             .IsRequired();
 
         // Create unique index on name
         builder.HasIndex(l => l.Name)
             .IsUnique()
-            .HasDatabaseName("ix_landmarks_name");
+            .HasDatabaseName("uq_landmarks_name"); // Changed name for clarity
 
         builder.Property(l => l.Description)
             .HasColumnName("description")
             .HasMaxLength(1000)
             .IsRequired(false);
 
-        // SpatialCoordinate value object for center - Hilbert-first architecture
-        builder.OwnsOne(l => l.Center, coord =>
-        {
-            coord.Property(sc => sc.HilbertHigh)
-                .HasColumnName("center_hilbert_high")
-                .IsRequired();
-
-            coord.Property(sc => sc.HilbertLow)
-                .HasColumnName("center_hilbert_low")
-                .IsRequired();
-
-            coord.Property(sc => sc.Precision)
-                .HasColumnName("center_precision")
-                .IsRequired();
-
-            coord.Property(sc => sc.QuantizedEntropy)
-                .HasColumnName("center_quantized_entropy")
-                .IsRequired();
-
-            coord.Property(sc => sc.QuantizedCompressibility)
-                .HasColumnName("center_quantized_compressibility")
-                .IsRequired();
-
-            coord.Property(sc => sc.QuantizedConnectivity)
-                .HasColumnName("center_quantized_connectivity")
-                .IsRequired();
-            
-            // B-tree index on composite Hilbert index for fast landmark proximity queries
-            coord.HasIndex("HilbertHigh", "HilbertLow")
-                .HasDatabaseName("ix_landmarks_center_hilbert_index")
-                .HasMethod("btree");
-        });
-
-        // PostGIS Point for spatial queries (materialized view)
-        builder.Property(l => l.Location)
-            .HasColumnName("location")
-            .HasColumnType("geometry(PointZ)")
+        // Hilbert Tile Definition
+        builder.Property(l => l.HilbertPrefixHigh)
+            .HasColumnName("hilbert_prefix_high")
             .IsRequired();
 
-        // Spatial index on location (secondary, for PostGIS-specific operations)
-        builder.HasIndex(l => l.Location)
-            .HasMethod("gist")
-            .HasDatabaseName("ix_landmarks_location_spatial");
-
-        builder.Property(l => l.Radius)
-            .HasColumnName("radius")
+        builder.Property(l => l.HilbertPrefixLow)
+            .HasColumnName("hilbert_prefix_low")
             .IsRequired();
 
-        builder.HasIndex(l => l.Radius)
-            .HasDatabaseName("ix_landmarks_radius");
+        builder.Property(l => l.Level)
+            .HasColumnName("level")
+            .IsRequired();
+
+        // Composite unique index for the Hilbert tile itself
+        builder.HasIndex(l => new { l.HilbertPrefixHigh, l.HilbertPrefixLow, l.Level })
+            .IsUnique()
+            .HasDatabaseName("uq_landmarks_hilbert_tile");
 
         // Statistics
         builder.Property(l => l.ConstantCount)
@@ -105,8 +71,12 @@ public class LandmarkConfiguration : IEntityTypeConfiguration<Landmark>
 
         builder.HasIndex(l => l.IsActive)
             .HasDatabaseName("ix_landmarks_is_active");
+        
+        builder.Property(l => l.LastStatisticsUpdate)
+            .HasColumnName("last_statistics_update")
+            .IsRequired();
 
-        // Audit fields from BaseEntity
+        // Audit fields from BaseEntity (assuming they are still needed, removed AverageDistance from original spec)
         builder.Property(l => l.CreatedAt)
             .HasColumnName("created_at")
             .IsRequired();
