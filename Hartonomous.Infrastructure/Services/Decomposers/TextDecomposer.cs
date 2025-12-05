@@ -14,14 +14,18 @@ namespace Hartonomous.Infrastructure.Services.Decomposers;
 public sealed class TextDecomposer : IContentDecomposer
 {
     private readonly ILogger<TextDecomposer> _logger;
+    private readonly IQuantizationService _quantizationService;
     private static readonly char[] _wordSeparators = new[] { ' ', '\t', '\n', '\r', ',', '.', ';', ':', '!', '?', '-', '(', ')', '[', ']', '{', '}', '"', '\'', '/', '\\' };
     private static readonly char[] _sentenceSeparators = new[] { '.', '!', '?' };
     
     public ContentType SupportedContentType => ContentType.Text;
 
-    public TextDecomposer(ILogger<TextDecomposer> logger)
+    public TextDecomposer(
+        ILogger<TextDecomposer> logger,
+        IQuantizationService quantizationService)
     {
         _logger = logger;
+        _quantizationService = quantizationService;
     }
 
     public async Task<List<Constant>> DecomposeAsync(byte[] data, CancellationToken cancellationToken = default)
@@ -48,27 +52,58 @@ public sealed class TextDecomposer : IContentDecomposer
         }
 
         // 1. Byte-level constants (for raw deduplication)
-        var byteConstants = DecomposeBytes(data, cancellationToken);
-        constants.AddRange(byteConstants);
-
-        // 2. Character-level constants (UTF-8 multi-byte handling)
-        var charConstants = DecomposeCharacters(text, cancellationToken);
-        constants.AddRange(charConstants);
-
-        // 3. Word-level constants
-        var wordConstants = DecomposeWords(text, cancellationToken);
-        constants.AddRange(wordConstants);
-
-        // 4. Sentence-level constants (optional, for larger context)
-        if (text.Length > 100) // Only for sufficiently large texts
+        foreach (var b in data)
         {
-            var sentenceConstants = DecomposeSentences(text, cancellationToken);
-            constants.AddRange(sentenceConstants);
+            cancellationToken.ThrowIfCancellationRequested();
+            
+            var byteData = new byte[] { b };
+            var constant = Constant.Create(byteData, ContentType.Text);
+            var (y, z, m) = _quantizationService.Quantize(byteData);
+            constant.ProjectWithQuantization((int)y, (int)z, (int)m);
+            constants.Add(constant);
+        }
+
+        // 2. Character-level constants (for text similarity)
+        foreach (var ch in text)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            
+            var charBytes = Encoding.UTF8.GetBytes(new[] { ch });
+            var constant = Constant.Create(charBytes, ContentType.Text);
+            var (y, z, m) = _quantizationService.Quantize(charBytes);
+            constant.ProjectWithQuantization((int)y, (int)z, (int)m);
+            constants.Add(constant);
+        }
+
+        // 3. Word-level constants (for semantic similarity)
+        var words = text.Split(_wordSeparators, StringSplitOptions.RemoveEmptyEntries);
+        foreach (var word in words)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            
+            var wordBytes = Encoding.UTF8.GetBytes(word);
+            var constant = Constant.Create(wordBytes, ContentType.Text);
+            var (y, z, m) = _quantizationService.Quantize(wordBytes);
+            constant.ProjectWithQuantization((int)y, (int)z, (int)m);
+            constants.Add(constant);
+        }
+
+        // 4. Sentence-level constants (for document structure)
+        var sentences = text.Split(_sentenceSeparators, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        foreach (var sentence in sentences.Where(s => !string.IsNullOrWhiteSpace(s) && s.Length >= 10))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            
+            var sentenceBytes = Encoding.UTF8.GetBytes(sentence);
+            var constant = Constant.Create(sentenceBytes, ContentType.Text);
+            var (y, z, m) = _quantizationService.Quantize(sentenceBytes);
+            constant.ProjectWithQuantization((int)y, (int)z, (int)m);
+            constants.Add(constant);
         }
 
         _logger.LogInformation(
-            "Text decomposition complete: {ConstantCount} constants ({ByteCount} bytes, {CharCount} chars, {WordCount} words)",
-            constants.Count, byteConstants.Count, charConstants.Count, wordConstants.Count);
+            "Text decomposition complete: {ConstantCount} constants (multi-granularity decomposition)",
+            constants.Count);
         
         return constants;
     }
@@ -100,7 +135,8 @@ public sealed class TextDecomposer : IContentDecomposer
             
             var charBytes = Encoding.UTF8.GetBytes(new[] { ch });
             var constant = Constant.Create(charBytes, ContentType.Text);
-            constant.Project();
+            var (y, z, m) = _quantizationService.Quantize(charBytes);
+            constant.ProjectWithQuantization((int)y, (int)z, (int)m);
             constants.Add(constant);
         }
         
@@ -109,18 +145,17 @@ public sealed class TextDecomposer : IContentDecomposer
 
     private List<Constant> DecomposeWords(string text, CancellationToken cancellationToken)
     {
-        var words = text.Split(_wordSeparators, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var words = text.Split(_wordSeparators, StringSplitOptions.RemoveEmptyEntries);
         var constants = new List<Constant>(words.Length);
         
         foreach (var word in words)
         {
             cancellationToken.ThrowIfCancellationRequested();
             
-            if (string.IsNullOrWhiteSpace(word)) continue;
-            
             var wordBytes = Encoding.UTF8.GetBytes(word);
             var constant = Constant.Create(wordBytes, ContentType.Text);
-            constant.Project();
+            var (y, z, m) = _quantizationService.Quantize(wordBytes);
+            constant.ProjectWithQuantization((int)y, (int)z, (int)m);
             constants.Add(constant);
         }
         
@@ -149,7 +184,8 @@ public sealed class TextDecomposer : IContentDecomposer
 
     private async Task<List<Constant>> DecomposeBinaryFallbackAsync(byte[] data, CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Using binary fallback for text decomposition");
+        _logger.LogInformation("Falling back to binary decomposition for {Size} bytes", data.Length);
+        
         var constants = new List<Constant>(data.Length);
         
         for (int i = 0; i < data.Length; i++)
@@ -158,11 +194,12 @@ public sealed class TextDecomposer : IContentDecomposer
             
             var byteData = new byte[] { data[i] };
             var constant = Constant.Create(byteData, ContentType.Binary);
-            constant.Project();
+            var (y, z, m) = _quantizationService.Quantize(byteData);
+            constant.ProjectWithQuantization((int)y, (int)z, (int)m);
             constants.Add(constant);
         }
         
-        return await Task.FromResult(constants);
+        return constants;
     }
 
     public bool CanDecompose(byte[] data, ContentType declaredType)

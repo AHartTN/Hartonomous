@@ -1,63 +1,39 @@
 # Hartonomous
 
-**Atomic Content-Addressable Storage System**
+**Universal Geometric Knowledge Substrate**
 
-Copyright © 2025 Anthony Hart. All Rights Reserved.
+Copyright Â© 2025 Anthony Hart. All Rights Reserved.
 
-## Overview
+> Everything is geometry in 4D POINTZM space. Position IS meaning. Distance IS similarity. The database IS the model.
 
-Universal atomic decomposition and content-addressable storage for all digital content through deterministic spatial projection and Hilbert curve indexing.
+## What Is This?
 
-## Features
+Hartonomous transforms all digital content into geometric atoms in 4D space where:
+- **99%+ deduplication** via Hash256 content-addressing
+- **Emergent intelligence** from spatial clustering (no ML needed)
+- **Multi-level atomization** (bytesâ†’repositories, all deduplicated)
+- **Spatial queries = knowledge queries** (PostGIS operations answer semantic questions)
 
-- **Universal Deduplication**: All constants across all modalities stored once
-- **Landmark Projection**: Hash-based deterministic 3D coordinate mapping
-- **PostGIS Geometric Queries**: Spatial operations (k-NN, convex hulls, clustering)
-- **BPE Composition**: Automatic pattern learning through Byte Pair Encoding
-- **Cross-Modal**: Unified storage for text, images, audio, video, AI models
-- **SIMD/AVX Optimized**: 4-8x performance improvement
-- **GPU Acceleration**: Optional CUDA support for massive batches
-
-## Architecture
-
-- **Constants as Landmarks**: Hash ? (X,Y,Z) ? Hilbert ID
-- **Graph Structure**: BPE creates compositional relationships
-- **Database IS the Model**: Intelligence emerges from graph patterns
-- **PostgreSQL + PostGIS**: 3D spatial queries and indexing
-
-## Projects
-
-- **Hartonomous.Core**: Domain models and interfaces
-- **Hartonomous.Data**: EF Core + PostGIS data access
-- **Hartonomous.Infrastructure**: Caching, storage, external services
-- **Hartonomous.API**: REST API for ingestion and queries
-- **Hartonomous.Worker**: Background BPE processing
-- **Hartonomous.App**: Blazor + MAUI cross-platform UI
+See **[ARCHITECTURE.md](ARCHITECTURE.md)** for paradigm explanation.
 
 ## Quick Start
 
 ```bash
-# Clone repository
 git clone git@ssh.dev.azure.com:v3/aharttn/Hartonomous/Hartonomous
-
-# Build
-dotnet build --configuration Release
-
-# Run API
-dotnet run --project Hartonomous.API
+dotnet build
+dotnet run --project Hartonomous.AppHost  # Starts all services via Aspire
 ```
 
 ## Documentation
 
-- [Architecture](docs/ARCHITECTURE.md)
-- [Technical Specification](docs/TECHNICAL_SPECIFICATION.md)
-- [Database Schema](docs/DATABASE_SCHEMA.md)
-- [Azure DevOps Integration](docs/AZURE_DEVOPS_INTEGRATION.md)
-- [Azure Arc Integration](docs/AZURE_ARC_INTEGRATION.md)
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Core paradigm and geometric substrate explanation
+- **[POINTZM_MASTER_IMPLEMENTATION_PLAN.md](POINTZM_MASTER_IMPLEMENTATION_PLAN.md)** - 8-phase implementation roadmap
+- **[docs/](docs/)** - Complete technical documentation (architecture, implementation, API, database, deployment)
+- **[.github/copilot-instructions.md](.github/copilot-instructions.md)** - AI agent coding guidelines
 
 ## License
 
-Copyright © 2025 Anthony Hart. All Rights Reserved.
+Copyright ï¿½ 2025 Anthony Hart. All Rights Reserved.
 
 This software and associated documentation files may not be used, copied, modified, merged, published, distributed, sublicensed, or sold without express written permission from the copyright holder.
 

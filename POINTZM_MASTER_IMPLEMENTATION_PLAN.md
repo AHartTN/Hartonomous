@@ -354,17 +354,27 @@ If critical issues arise:
 
 ## References
 
-### Archived Documentation (Original Vision)
-- `.archived-deprecated-documentation/docs/PHILOSOPHY.md` - "Everything is atomizable"
-- `.archived-deprecated-documentation/docs/concepts/UNIVERSAL_ATOMIZATION_PATTERN.md`
-- `.archived-deprecated-documentation/docs/concepts/GEOMETRIC_ATOMIZATION_GUIDE.md`
-- `.archived-deprecated-documentation/docs/implementation/BORSUK_ULAM_IMPLEMENTATION.md`
-- `.archived-deprecated-documentation/docs/implementation/MATHEMATICAL_ANALYSIS_FRAMEWORK_PART01.md`
+### Core Documentation
+- `ARCHITECTURE.md` - High-level geometric paradigm overview
+- `docs/architecture/ENTERPRISE_ARCHITECTURE.md` - Complete solution structure and DDD patterns
+- `docs/architecture/PHASE1_4D_SPATIAL_ARCHITECTURE_DECISION.md` - ADR for 4D geometry
+- `docs/SYSTEM_ARCHITECTURE.md` - Component design and data flow
+- `docs/HILBERT_ARCHITECTURE.md` - Hilbert curve indexing
+- `.github/copilot-instructions.md` - Comprehensive AI coding guidelines
 
-### Current Documentation (To Be Updated)
-- `ARCHITECTURE.md` - Will be refactored with POINTZM design
-- `IMPLEMENTATION_ROADMAP.md` - Superseded by this document
-- `docs/DATABASE_SETUP.md` - Will add PostGIS 3.3+ requirements
+### Implementation Documentation
+- `docs/implementation/PHASE1_CORE_GEOMETRY.md` through `PHASE8_PRODUCTION.md`
+- `docs/implementation/GEOMETRIC_COMPOSITION_TYPES.md`
+
+### Technical References
+- `docs/api/API_REFERENCE.md` - REST API and WebSocket endpoints
+- `docs/database/DATABASE_SETUP.md` - PostgreSQL/PostGIS 3.3+ setup
+- `docs/deployment/` - Deployment guides and infrastructure
+
+### Archived Documentation (Original Vision)
+- `docs/.archive/deprecated/` - Historical architecture docs
+- `docs/.archive/status-updates/` - Implementation progress reports
+- `.archived-deprecated-documentation/` - Original philosophy and concepts
 
 ### Mathematical Foundations
 - Borsuk-Ulam Theorem (1933) - Antipodal collision analysis

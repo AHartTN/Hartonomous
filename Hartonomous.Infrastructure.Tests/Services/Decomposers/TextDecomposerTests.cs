@@ -1,21 +1,29 @@
 using FluentAssertions;
+using Hartonomous.Core.Application.Interfaces;
 using Hartonomous.Core.Domain.Enums;
 using Hartonomous.Infrastructure.Services.Decomposers;
 using Microsoft.Extensions.Logging;
 using Moq;
 using System.Text;
+using Xunit;
 
 namespace Hartonomous.Infrastructure.Tests.Services.Decomposers;
 
 public class TextDecomposerTests
 {
-    private readonly TextDecomposer _sut;
     private readonly Mock<ILogger<TextDecomposer>> _mockLogger;
+    private readonly TextDecomposer _sut;
 
     public TextDecomposerTests()
     {
         _mockLogger = new Mock<ILogger<TextDecomposer>>();
-        _sut = new TextDecomposer(_mockLogger.Object);
+        var mockQuantization = new Mock<IQuantizationService>();
+        
+        // Setup quantization to return valid values
+        mockQuantization.Setup(q => q.Quantize(It.IsAny<byte[]>()))
+            .Returns((1_000_000.0, 1_000_000.0, 500_000.0));
+        
+        _sut = new TextDecomposer(_mockLogger.Object, mockQuantization.Object);
     }
 
     #region CanDecompose Tests

@@ -1,20 +1,28 @@
 using FluentAssertions;
+using Hartonomous.Core.Application.Interfaces;
 using Hartonomous.Core.Domain.Enums;
 using Hartonomous.Infrastructure.Services.Decomposers;
 using Microsoft.Extensions.Logging;
 using Moq;
+using Xunit;
 
 namespace Hartonomous.Infrastructure.Tests.Services.Decomposers;
 
 public class BinaryDecomposerTests
 {
-    private readonly BinaryDecomposer _sut;
     private readonly Mock<ILogger<BinaryDecomposer>> _mockLogger;
+    private readonly BinaryDecomposer _sut;
 
     public BinaryDecomposerTests()
     {
         _mockLogger = new Mock<ILogger<BinaryDecomposer>>();
-        _sut = new BinaryDecomposer(_mockLogger.Object);
+        var mockQuantization = new Mock<IQuantizationService>();
+        
+        // Setup quantization to return valid values
+        mockQuantization.Setup(q => q.Quantize(It.IsAny<byte[]>()))
+            .Returns((1_000_000.0, 1_000_000.0, 500_000.0));
+        
+        _sut = new BinaryDecomposer(_mockLogger.Object, mockQuantization.Object);
     }
 
     [Fact]

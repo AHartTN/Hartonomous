@@ -3,17 +3,6 @@ using System.Text.Json;
 
 namespace Hartonomous.Infrastructure.Caching;
 
-/// <summary>
-/// Distributed cache service wrapper with generic support
-/// </summary>
-public interface ICacheService
-{
-    Task<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default);
-    Task SetAsync<T>(string key, T value, TimeSpan? expiration = null, CancellationToken cancellationToken = default);
-    Task RemoveAsync(string key, CancellationToken cancellationToken = default);
-    Task<T> GetOrSetAsync<T>(string key, Func<Task<T>> factory, TimeSpan? expiration = null, CancellationToken cancellationToken = default);
-}
-
 public class CacheService : ICacheService
 {
     private readonly IDistributedCache _cache;

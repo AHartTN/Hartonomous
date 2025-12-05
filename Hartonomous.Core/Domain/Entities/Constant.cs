@@ -105,8 +105,8 @@ public class Constant : BaseEntity
             throw new InvalidOperationException($"Cannot project constant in status {Status}");
         }
         
-        // TODO: Compute actual quantized values from data
-        // For now: use placeholder values (will be implemented in Phase 3)
+        // Use placeholder values for backward compatibility
+        // Applications should use ProjectWithQuantization for actual quantization
         const int placeholderEntropy = 1_048_576; // Mid-range
         const int placeholderCompressibility = 1_048_576; // Mid-range
         const int placeholderConnectivity = 0; // No references yet
@@ -117,6 +117,28 @@ public class Constant : BaseEntity
             placeholderEntropy,
             placeholderCompressibility,
             placeholderConnectivity);
+        
+        // Create PostGIS POINTZM for spatial indexing
+        Location = Coordinate.ToPoint();
+        
+        Status = ConstantStatus.Projected;
+        ProjectedAt = DateTime.UtcNow;
+        UpdatedAt = DateTime.UtcNow;
+    }
+    
+    public void ProjectWithQuantization(int quantizedEntropy, int quantizedCompressibility, int quantizedConnectivity)
+    {
+        if (Status != ConstantStatus.Pending)
+        {
+            throw new InvalidOperationException($"Cannot project constant in status {Status}");
+        }
+        
+        // Compute deterministic spatial coordinate from hash + actual quantized metadata
+        Coordinate = SpatialCoordinate.FromHash(
+            Hash,
+            quantizedEntropy,
+            quantizedCompressibility,
+            quantizedConnectivity);
         
         // Create PostGIS POINTZM for spatial indexing
         Location = Coordinate.ToPoint();

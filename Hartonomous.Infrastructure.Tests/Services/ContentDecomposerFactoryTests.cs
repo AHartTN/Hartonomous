@@ -22,11 +22,16 @@ public class ContentDecomposerFactoryTests
         _mockBinaryLogger = new Mock<ILogger<BinaryDecomposer>>();
         _mockTextLogger = new Mock<ILogger<TextDecomposer>>();
         _mockFactoryLogger = new Mock<ILogger<ContentDecomposerFactory>>();
+        var mockQuantization = new Mock<IQuantizationService>();
+        
+        // Setup quantization to return valid values
+        mockQuantization.Setup(q => q.Quantize(It.IsAny<byte[]>()))
+            .Returns((1_000_000.0, 1_000_000.0, 500_000.0));
 
         _decomposers = new List<IContentDecomposer>
         {
-            new BinaryDecomposer(_mockBinaryLogger.Object),
-            new TextDecomposer(_mockTextLogger.Object)
+            new BinaryDecomposer(_mockBinaryLogger.Object, mockQuantization.Object),
+            new TextDecomposer(_mockTextLogger.Object, mockQuantization.Object)
         };
 
         _sut = new ContentDecomposerFactory(_decomposers, _mockFactoryLogger.Object);

@@ -57,11 +57,11 @@ public class ContentBoundaryConfiguration : IEntityTypeConfiguration<ContentBoun
             bbox.Property(bb => bb.MaxZ).HasColumnName("max_z").HasPrecision(18, 6).IsRequired();
             bbox.Property(bb => bb.MinM).HasColumnName("min_m").HasPrecision(18, 6).IsRequired();
             bbox.Property(bb => bb.MaxM).HasColumnName("max_m").HasPrecision(18, 6).IsRequired();
+            
+            // Composite index for bounding box queries
+            bbox.HasIndex("MinX", "MaxX", "MinY", "MaxY")
+                .HasDatabaseName("ix_content_boundaries_bbox");
         });
-        
-        // Composite index for bounding box queries
-        builder.HasIndex("BoundingBox_MinX", "BoundingBox_MaxX", "BoundingBox_MinY", "BoundingBox_MaxY")
-            .HasDatabaseName("ix_content_boundaries_bbox");
         
         // Boundary statistics
         builder.Property(b => b.BoundaryArea)

@@ -2,8 +2,10 @@ using Azure.Storage.Blobs;
 using Azure.Storage.Queues;
 using Hartonomous.Core.Application.Interfaces;
 using Hartonomous.Infrastructure.Caching;
+using Hartonomous.Infrastructure.Health;
 using Hartonomous.Infrastructure.Messaging;
 using Hartonomous.Infrastructure.Services;
+using Hartonomous.Infrastructure.Services.BPE;
 using Hartonomous.Infrastructure.Services.Decomposers;
 using Hartonomous.Infrastructure.Storage;
 using Microsoft.Extensions.Configuration;
@@ -91,8 +93,13 @@ public static class InfrastructureServicesExtensions
         // Add other infrastructure services here
         // services.AddScoped<ICurrentUserService, CurrentUserService>();
 
-        // Register BPE service
+        // Register BPE service and dependencies
+        services.AddScoped<VoronoiTessellator>();
+        services.AddScoped<MinimumSpanningTreeComputer>();
         services.AddScoped<IBPEService, BPEService>();
+
+        // Register quantization service
+        services.AddSingleton<IQuantizationService, QuantizationService>();
 
         // Register content decomposers
         services.AddScoped<IContentDecomposer, BinaryDecomposer>();

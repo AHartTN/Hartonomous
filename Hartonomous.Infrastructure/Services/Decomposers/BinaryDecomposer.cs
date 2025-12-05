@@ -13,12 +13,16 @@ namespace Hartonomous.Infrastructure.Services.Decomposers;
 public sealed class BinaryDecomposer : IContentDecomposer
 {
     private readonly ILogger<BinaryDecomposer> _logger;
+    private readonly IQuantizationService _quantizationService;
     
     public ContentType SupportedContentType => ContentType.Binary;
 
-    public BinaryDecomposer(ILogger<BinaryDecomposer> logger)
+    public BinaryDecomposer(
+        ILogger<BinaryDecomposer> logger,
+        IQuantizationService quantizationService)
     {
         _logger = logger;
+        _quantizationService = quantizationService;
     }
 
     public Task<List<Constant>> DecomposeAsync(byte[] data, CancellationToken cancellationToken = default)
@@ -40,8 +44,9 @@ public sealed class BinaryDecomposer : IContentDecomposer
             var byteData = new byte[] { data[i] };
             var constant = Constant.Create(byteData, ContentType.Binary);
             
-            // Project to spatial coordinates
-            constant.Project();
+            // Quantize and project to 4D spatial coordinates
+            var (y, z, m) = _quantizationService.Quantize(byteData);
+            constant.ProjectWithQuantization((int)y, (int)z, (int)m);
             
             constants.Add(constant);
         }

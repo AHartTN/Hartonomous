@@ -59,12 +59,12 @@ public class LandmarkConfiguration : IEntityTypeConfiguration<Landmark>
             coord.Property(sc => sc.QuantizedConnectivity)
                 .HasColumnName("center_quantized_connectivity")
                 .IsRequired();
+            
+            // B-tree index on composite Hilbert index for fast landmark proximity queries
+            coord.HasIndex("HilbertHigh", "HilbertLow")
+                .HasDatabaseName("ix_landmarks_center_hilbert_index")
+                .HasMethod("btree");
         });
-
-        // B-tree index on Hilbert index for fast landmark proximity queries
-        builder.OwnsOne(l => l.Center).HasIndex("HilbertIndex")
-            .HasDatabaseName("ix_landmarks_center_hilbert_index")
-            .HasMethod("btree");
 
         // PostGIS Point for spatial queries (materialized view)
         builder.Property(l => l.Location)
