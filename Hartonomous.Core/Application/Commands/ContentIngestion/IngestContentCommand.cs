@@ -28,13 +28,3 @@ public sealed record IngestContentCommand : ICommand<Result<IngestContentRespons
     /// </summary>
     public Dictionary<string, string>? Metadata { get; init; }
 }
-
-public sealed record IngestContentResponse
-{
-    public required Guid IngestionId { get; init; }
-    public required string ContentHash { get; init; }
-    public required int TotalConstantsCreated { get; init; }
-    public required int UniqueConstantsCreated { get; init; }
-    public required double DeduplicationRatio { get; init; }
-    public required long ProcessingTimeMs { get; init; }
-}

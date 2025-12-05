@@ -14,9 +14,3 @@ public sealed record CreateLandmarkCommand : ICommand<Result<CreateLandmarkRespo
     public required double CenterZ { get; init; }
     public required double Radius { get; init; }
 }
-
-public sealed record CreateLandmarkResponse
-{
-    public required Guid LandmarkId { get; init; }
-    public required string Name { get; init; }
-}
