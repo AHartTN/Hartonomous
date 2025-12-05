@@ -217,7 +217,7 @@ public sealed class SpatialCoordinate : ValueObject
 
         var targetPrecision = precision ?? coordList[0].Precision;
 
-        // Decode all coordinates and average Cartesian values
+        // Decode all coordinates and average ALL decoded Cartesian values
         double sumX = 0, sumY = 0, sumZ = 0, sumM = 0;
         foreach (var coord in coordList)
         {
@@ -227,9 +227,9 @@ public sealed class SpatialCoordinate : ValueObject
                 coord.Precision);
             
             sumX += x;
-            sumY += coord.QuantizedEntropy;
-            sumZ += coord.QuantizedCompressibility;
-            sumM += coord.QuantizedConnectivity;
+            sumY += y;  // Use decoded Y not quantized
+            sumZ += z;  // Use decoded Z not quantized  
+            sumM += m;  // Use decoded M not quantized
         }
 
         var avgX = (uint)(sumX / coordList.Count);
