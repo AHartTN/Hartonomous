@@ -38,6 +38,7 @@ public class Program
         builder.Services.AddHostedService<ConstantIndexingWorker>();
         builder.Services.AddHostedService<LandmarkDetectionWorker>();
         builder.Services.AddHostedService<MaterializedViewRefreshJob>();
+        builder.Services.AddHostedService<GraphConnectivityWorker>();
 
         // Add health checks
         builder.Services.AddHealthChecks()

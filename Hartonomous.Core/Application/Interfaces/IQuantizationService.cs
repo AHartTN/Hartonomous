@@ -33,5 +33,13 @@ namespace Hartonomous.Core.Application.Interfaces
         /// <param name="data">The byte array representing the data for which to calculate connectivity.</param>
         /// <returns>The Graph Connectivity value.</returns>
         double CalculateGraphConnectivity(byte[] data);
+
+        /// <summary>
+        /// Calculates the Graph Connectivity (M dimension) based on the reference count.
+        /// Uses logarithmic scaling to map power-law distributed counts to the quantized linear M-dimension.
+        /// </summary>
+        /// <param name="referenceCount">The number of references to the constant.</param>
+        /// <returns>The quantized M dimension value [0, 2^21-1].</returns>
+        int CalculateGraphConnectivity(long referenceCount);
     }
 }

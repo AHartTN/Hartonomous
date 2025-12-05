@@ -1,4 +1,5 @@
 using Hartonomous.Core.Domain.Common;
+using Hartonomous.Core.Domain.Math;
 using Hartonomous.Core.Domain.Utilities;
 using NetTopologySuite.Geometries;
 
@@ -157,21 +158,22 @@ public sealed class SpatialCoordinate : ValueObject
     }
     
     /// <summary>
-    /// Creates spatial coordinate from hash using deterministic projection.
-    /// Maps hash bytes to spatial dimension, then combines with metadata.
+    /// Creates spatial coordinate from hash using deterministic Gram-Schmidt projection.
+    /// Maps hash bytes + modality to spatial dimension, then combines with metadata.
     /// </summary>
     public static SpatialCoordinate FromHash(
         Hash256 hash,
         int quantizedEntropy,
         int quantizedCompressibility,
         int quantizedConnectivity,
+        string? modality = null,
         int precision = HilbertCurve4D.DefaultPrecision)
     {
         if (hash == null)
             throw new ArgumentNullException(nameof(hash));
         
-        // Project hash to spatial dimension using first 8 bytes
-        var spatialX = ProjectHashToSpatial(hash, precision);
+        // Project hash to spatial dimension using Gram-Schmidt orthonormalization
+        var spatialX = GramSchmidtProjector.Project(hash, modality, precision);
         
         return FromUniversalProperties(
             spatialX, quantizedEntropy, quantizedCompressibility, quantizedConnectivity, precision);
@@ -238,18 +240,6 @@ public sealed class SpatialCoordinate : ValueObject
             avgZ,
             avgM,
             targetPrecision);
-    }
-    
-    private static uint ProjectHashToSpatial(Hash256 hash, int precision)
-    {
-        var bytes = hash.Bytes;
-        
-        // Use first 8 bytes for spatial projection
-        var value = BitConverter.ToUInt64(bytes, 0);
-        
-        // Map [0, UInt64.MaxValue] to [0, 2^precision - 1]
-        ulong maxValue = (1UL << precision) - 1;
-        return (uint)((value / (double)ulong.MaxValue) * maxValue);
     }
     
     /// <summary>

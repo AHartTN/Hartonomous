@@ -86,33 +86,29 @@ public class QuantizationService : IQuantizationService
 
     public double CalculateGraphConnectivity(byte[] data)
     {
-        if (data == null || data.Length == 0)
-            return 0;
+        // Initial connectivity for new data is always 0.
+        // Connectivity (M-dimension) is an emergent property of usage (reference count),
+        // which is calculated dynamically via CalculateGraphConnectivity(long referenceCount).
+        return 0.0;
+    }
 
-        // For now, use a simple heuristic based on data patterns
-        // This is a placeholder for future graph-based metrics
-        // We'll use byte transition frequency as a proxy for connectivity
+    /// <summary>
+    /// Quantizes graph connectivity (reference count) to 21-bit integer [0, 2^21-1].
+    /// Uses logarithmic scaling to map power-law distributed counts to the quantized linear M-dimension.
+    /// </summary>
+    public int CalculateGraphConnectivity(long referenceCount)
+    {
+        if (referenceCount <= 0) return 0;
+
+        // Logarithmic scaling for power-law distribution
+        // We want to map reasonable reference counts (0 to ~1B) to [0, 2^21-1]
+        // log2(1B) ~= 30. Max value 2^21 is roughly 2 million.
+        // We map log2(refCount) * scalar to get meaningful spatial separation.
         
-        var transitionCount = 0;
-        for (int i = 1; i < data.Length; i++)
-        {
-            if (data[i] != data[i - 1])
-            {
-                transitionCount++;
-            }
-        }
-
-        // Normalize transition frequency to [0, 1]
-        // Maximum transitions = length - 1 (alternating pattern)
-        var transitionRatio = data.Length > 1 
-            ? (double)transitionCount / (data.Length - 1)
-            : 0.0;
-
-        // Apply logarithmic scaling for better distribution
-        // More transitions suggest higher connectivity potential
-        var scaledConnectivity = Math.Log(1 + transitionRatio * 19) / Math.Log(20); // log base 20
-
-        // Scale to [0, MaxQuantizedValue]
-        return Math.Clamp(scaledConnectivity, 0.0, 1.0) * MaxQuantizedValue;
+        double logVal = Math.Log2(referenceCount + 1);
+        // Scalar: 2,097,151 / 40 (approx max log2 of huge ref counts) ~= 50,000
+        int quantized = (int)(logVal * 50_000);
+        
+        return Math.Clamp(quantized, 0, MaxQuantizedValue);
     }
 }
