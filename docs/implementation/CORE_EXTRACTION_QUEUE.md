@@ -24,21 +24,23 @@ These are tightly coupled response/request objects. Strategy: Create dedicated D
 **Target Location**: `Hartonomous.Core/Application/Commands/{Feature}/DTOs/`
 
 #### 2. Queries - DTO Types
-- [ ] `BPEStatisticsDto` from GetBPEStatisticsQuery.cs
-- [ ] `BPEVocabularyResponse` from GetBPEVocabularyQuery.cs
-- [ ] `BPETokenDto` from GetBPEVocabularyQuery.cs
-- [ ] `NearestConstantDto` from FindNearestNeighborsQuery.cs
-- [ ] `AllConstantDto` from GetAllConstantsQuery.cs
-- [ ] `ConstantDto` from GetConstantByHashQuery.cs
-- [ ] `SpatialCoordinateDto` from GetConstantByHashQuery.cs (appears twice!)
-- [ ] `ConstantStatisticsDto` from GetConstantStatisticsQuery.cs
-- [ ] `RecentConstantDto` from GetRecentConstantsQuery.cs
-- [ ] `ContentIngestionDto` from GetContentIngestionByIdQuery.cs
-- [ ] `IngestionMetricsDto` from GetIngestionMetricsQuery.cs
-- [ ] `IngestionDto` from GetIngestionsByStatusQuery.cs
-- [ ] `IngestionStatisticsDto` from GetIngestionStatisticsQuery.cs
-- [ ] `LandmarkCandidateDto` from DetectLandmarkCandidatesQuery.cs
-- [ ] `LandmarkDto` from GetLandmarkByNameQuery.cs
+- [x] `BPEStatisticsDto` from GetBPEStatisticsQuery.cs ?
+- [x] `BPEVocabularyResponse` from GetBPEVocabularyQuery.cs ?
+- [x] `BPETokenDto` from GetBPEVocabularyQuery.cs ?
+- [x] `NearestConstantDto` from FindNearestNeighborsQuery.cs ?
+- [x] `AllConstantDto` from GetAllConstantsQuery.cs ?
+- [x] `ConstantDto` from GetConstantByHashQuery.cs ?
+- [x] `SpatialCoordinateDto` from GetConstantByHashQuery.cs (shared) ?
+- [x] `ConstantStatisticsDto` from GetConstantStatisticsQuery.cs ?
+- [x] `RecentConstantDto` from GetRecentConstantsQuery.cs ?
+- [x] `ContentIngestionDto` from GetContentIngestionByIdQuery.cs ?
+- [x] `IngestionMetricsDto` from GetIngestionMetricsQuery.cs ?
+- [x] `IngestionDto` from GetIngestionsByStatusQuery.cs ?
+- [x] `IngestionStatisticsDto` from GetIngestionStatisticsQuery.cs ?
+- [x] `LandmarkCandidateDto` from DetectLandmarkCandidatesQuery.cs ?
+- [x] `LandmarkDto` from GetLandmarkByNameQuery.cs ?
+
+**Status**: COMPLETE (15/15) - Committed: f0d0c78
 
 **Target Location**: `Hartonomous.Core/Application/Queries/{Feature}/DTOs/`
 

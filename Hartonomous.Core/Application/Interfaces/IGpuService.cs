@@ -7,28 +7,28 @@ using System.Threading.Tasks;
 namespace Hartonomous.Core.Application.Interfaces;
 
 /// <summary>
-/// Interface for GPU-accelerated spatial and computational operations.
-/// Provides high-performance alternatives to standard CPU-based operations.
+/// GPU-accelerated operations for spatial computations, embeddings, and machine learning.
+/// All operations use PL/Python with CuPy/CuML for PostgreSQL GPU offloading.
 /// </summary>
 public interface IGpuService
 {
     /// <summary>
-    /// Find k-nearest neighbors to target coordinate using GPU acceleration.
+    /// Compute k-nearest neighbors using GPU-accelerated spatial queries.
     /// </summary>
-    /// <param name="targetCoordinate">Target spatial coordinate</param>
-    /// <param name="k">Number of nearest neighbors to find</param>
+    /// <param name="target">Target coordinate</param>
+    /// <param name="k">Number of neighbors to find</param>
     /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Collection of constant IDs with distances, sorted by distance ascending</returns>
+    /// <returns>Collection of constant IDs with distances, sorted ascending</returns>
     Task<IReadOnlyList<(Guid ConstantId, double Distance)>> FindNearestNeighborsAsync(
-        SpatialCoordinate targetCoordinate,
+        SpatialCoordinate target,
         int k,
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Perform DBSCAN clustering on active constants to detect spatial landmarks.
+    /// Perform DBSCAN spatial clustering using GPU.
     /// </summary>
-    /// <param name="epsilon">Maximum distance for neighborhood (typically 0.05 to 0.2)</param>
-    /// <param name="minSamples">Minimum points to form cluster (typically 5-20)</param>
+    /// <param name="epsilon">Maximum distance for neighborhood</param>
+    /// <param name="minSamples">Minimum number of samples for core point</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Dictionary mapping constant IDs to cluster IDs (-1 for noise)</returns>
     Task<IReadOnlyDictionary<Guid, int>> PerformSpatialClusteringAsync(
@@ -94,29 +94,4 @@ public interface IGpuService
         int minSamples,
         int minClusterSize,
         CancellationToken cancellationToken = default);
-}
-
-/// <summary>
-/// GPU capability information.
-/// </summary>
-public sealed record GpuCapabilities
-{
-    public bool HasCuPy { get; init; }
-    public bool HasCuMl { get; init; }
-    public int GpuCount { get; init; }
-    public long GpuMemoryMb { get; init; }
-    public string? ErrorMessage { get; init; }
-    
-    public bool IsAvailable => HasCuPy && GpuCount > 0;
-}
-
-/// <summary>
-/// Landmark candidate detected from spatial clustering.
-/// </summary>
-public sealed record LandmarkCandidate
-{
-    public required int ClusterId { get; init; }
-    public required SpatialCoordinate Centroid { get; init; }
-    public required int MemberCount { get; init; }
-    public required string SuggestedName { get; init; }
 }

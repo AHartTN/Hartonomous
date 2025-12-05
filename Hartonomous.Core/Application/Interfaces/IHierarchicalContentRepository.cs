@@ -4,14 +4,14 @@ using NetTopologySuite.Geometries;
 namespace Hartonomous.Core.Application.Interfaces;
 
 /// <summary>
-/// Repository interface for HierarchicalContent entity with tree navigation
+/// Repository interface for HierarchicalContent entity with tree traversal queries
 /// </summary>
 public interface IHierarchicalContentRepository : IRepository<HierarchicalContent>
 {
     /// <summary>
-    /// Get root content for an ingestion (hierarchy level 0)
+    /// Get root-level content for an ingestion
     /// </summary>
-    Task<HierarchicalContent?> GetRootByIngestionIdAsync(
+    Task<List<HierarchicalContent>> GetRootContentAsync(
         Guid contentIngestionId,
         CancellationToken cancellationToken = default);
     
@@ -105,30 +105,4 @@ public interface IHierarchicalContentRepository : IRepository<HierarchicalConten
     Task<HierarchyStatistics> GetStatisticsAsync(
         Guid contentIngestionId,
         CancellationToken cancellationToken = default);
-}
-
-/// <summary>
-/// Tree structure representation of hierarchical content
-/// </summary>
-public record HierarchicalContentTree
-{
-    public HierarchicalContent Root { get; init; } = null!;
-    public Dictionary<Guid, List<HierarchicalContent>> ChildrenByParent { get; init; } = new();
-    public int MaxDepth { get; init; }
-    public int TotalNodes { get; init; }
-}
-
-/// <summary>
-/// Aggregate statistics for hierarchical content
-/// </summary>
-public record HierarchyStatistics
-{
-    public Guid ContentIngestionId { get; init; }
-    public int TotalNodes { get; init; }
-    public int MaxDepth { get; init; }
-    public int LeafNodeCount { get; init; }
-    public Dictionary<int, int> NodeCountByLevel { get; init; } = new();
-    public Dictionary<string, int> NodeCountByLabel { get; init; } = new();
-    public double AverageChildrenPerNode { get; init; }
-    public double AverageAtomCount { get; init; }
 }
