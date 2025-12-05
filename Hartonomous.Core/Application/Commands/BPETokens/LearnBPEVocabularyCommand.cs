@@ -12,14 +12,3 @@ public sealed record LearnBPEVocabularyCommand : ICommand<Result<LearnBPEVocabul
     public required int SampleSize { get; init; }
     public required bool UseGpu { get; init; }
 }
-
-/// <summary>
-/// Result of BPE vocabulary learning
-/// </summary>
-public sealed record LearnBPEVocabularyCommandResult
-{
-    public required int TokensLearned { get; init; }
-    public required long TotalPairsAnalyzed { get; init; }
-    public required long ProcessingTimeMs { get; init; }
-    public required bool UsedGpu { get; init; }
-}
