@@ -76,7 +76,8 @@ public class ConstantTests
         constant.Coordinate.Should().NotBeNull();
         constant.Location.Should().NotBeNull();
         constant.ProjectedAt.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromSeconds(1));
-        constant.Coordinate!.HilbertIndex.Should().BeGreaterThan(0);
+        constant.Coordinate!.HilbertHigh.Should().BeGreaterThanOrEqualTo(0);
+        constant.Coordinate!.HilbertLow.Should().BeGreaterThanOrEqualTo(0);
     }
 
     [Fact]

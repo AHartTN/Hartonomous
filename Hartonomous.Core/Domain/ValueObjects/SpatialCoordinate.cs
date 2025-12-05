@@ -202,7 +202,7 @@ public sealed class SpatialCoordinate : ValueObject
     /// <summary>
     /// Interpolates multiple spatial coordinates to create a centroid.
     /// Used for BPE token spatial representation from constituent constants.
-    /// Averages the 4D Hilbert indices and metadata values.
+    /// Averages Cartesian coordinates (X, Y, Z, M) then re-encodes to 4D Hilbert.
     /// </summary>
     public static SpatialCoordinate Interpolate(
         IEnumerable<SpatialCoordinate> coordinates,
@@ -217,25 +217,31 @@ public sealed class SpatialCoordinate : ValueObject
 
         var targetPrecision = precision ?? coordList[0].Precision;
 
-        // Average the quantized metadata values
-        var avgEntropy = (int)coordList.Average(c => c.QuantizedEntropy);
-        var avgCompressibility = (int)coordList.Average(c => c.QuantizedCompressibility);
-        var avgConnectivity = (int)coordList.Average(c => c.QuantizedConnectivity);
+        // Decode all coordinates and average Cartesian values
+        double sumX = 0, sumY = 0, sumZ = 0, sumM = 0;
+        foreach (var coord in coordList)
+        {
+            var (x, y, z, m) = HilbertCurve4D.Decode(
+                coord.HilbertHigh, 
+                coord.HilbertLow, 
+                coord.Precision);
+            
+            sumX += x;
+            sumY += coord.QuantizedEntropy;
+            sumZ += coord.QuantizedCompressibility;
+            sumM += coord.QuantizedConnectivity;
+        }
 
-        // Decode first coordinate to get spatial X, then average
-        var (firstX, _, _, _) = HilbertCurve4D.Decode(
-            coordList[0].HilbertHigh, 
-            coordList[0].HilbertLow, 
-            coordList[0].Precision);
-        
-        // For simplicity, use first coordinate's X (could average decoded X values)
-        var avgX = firstX;
+        var avgX = (uint)(sumX / coordList.Count);
+        var avgY = (int)(sumY / coordList.Count);
+        var avgZ = (int)(sumZ / coordList.Count);
+        var avgM = (int)(sumM / coordList.Count);
 
         return FromUniversalProperties(
             avgX,
-            avgEntropy,
-            avgCompressibility,
-            avgConnectivity,
+            avgY,
+            avgZ,
+            avgM,
             targetPrecision);
     }
     

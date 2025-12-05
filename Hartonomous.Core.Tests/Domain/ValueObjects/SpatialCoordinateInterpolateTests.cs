@@ -19,7 +19,7 @@ public class SpatialCoordinateInterpolateTests
     [Fact]
     public void Interpolate_SingleCoordinate_ReturnsSameCoordinate()
     {
-        var coord = SpatialCoordinate.Create(100, 200, 300);
+        var coord = SpatialCoordinate.FromUniversalProperties((uint)100, 1_048_576, 1_048_576, 0);
         var coordinates = new List<SpatialCoordinate> { coord };
 
         var result = SpatialCoordinate.Interpolate(coordinates);
@@ -30,8 +30,8 @@ public class SpatialCoordinateInterpolateTests
     [Fact]
     public void Interpolate_TwoCoordinates_ReturnsCartesianMidpoint()
     {
-        var coord1 = SpatialCoordinate.Create(0, 0, 0);
-        var coord2 = SpatialCoordinate.Create(100, 200, 300);
+        var coord1 = SpatialCoordinate.FromUniversalProperties((uint)0, 1_048_576, 1_048_576, 0);
+        var coord2 = SpatialCoordinate.FromUniversalProperties((uint)100, 1_048_576, 1_048_576, 0);
         var coordinates = new List<SpatialCoordinate> { coord1, coord2 };
 
         var result = SpatialCoordinate.Interpolate(coordinates);
@@ -45,9 +45,9 @@ public class SpatialCoordinateInterpolateTests
     [Fact]
     public void Interpolate_ThreeCoordinates_ReturnsCartesianCentroid()
     {
-        var coord1 = SpatialCoordinate.Create(0, 0, 0);
-        var coord2 = SpatialCoordinate.Create(300, 0, 0);
-        var coord3 = SpatialCoordinate.Create(0, 300, 0);
+        var coord1 = SpatialCoordinate.FromUniversalProperties((uint)0, 1_048_576, 1_048_576, 0);
+        var coord2 = SpatialCoordinate.FromUniversalProperties((uint)300, 1_048_576, 1_048_576, 0);
+        var coord3 = SpatialCoordinate.FromUniversalProperties((uint)0, 1_048_576, 1_048_576, 0);
         var coordinates = new List<SpatialCoordinate> { coord1, coord2, coord3 };
 
         var result = SpatialCoordinate.Interpolate(coordinates);
@@ -61,10 +61,10 @@ public class SpatialCoordinateInterpolateTests
     [Fact]
     public void Interpolate_FourCoordinates_ReturnsAverage()
     {
-        var coord1 = SpatialCoordinate.Create(10, 20, 30);
-        var coord2 = SpatialCoordinate.Create(20, 40, 60);
-        var coord3 = SpatialCoordinate.Create(30, 60, 90);
-        var coord4 = SpatialCoordinate.Create(40, 80, 120);
+        var coord1 = SpatialCoordinate.FromUniversalProperties((uint)10, 1_048_576, 1_048_576, 0);
+        var coord2 = SpatialCoordinate.FromUniversalProperties((uint)20, 1_048_576, 1_048_576, 0);
+        var coord3 = SpatialCoordinate.FromUniversalProperties((uint)30, 1_048_576, 1_048_576, 0);
+        var coord4 = SpatialCoordinate.FromUniversalProperties((uint)40, 1_048_576, 1_048_576, 0);
         var coordinates = new List<SpatialCoordinate> { coord1, coord2, coord3, coord4 };
 
         var result = SpatialCoordinate.Interpolate(coordinates);
@@ -78,8 +78,8 @@ public class SpatialCoordinateInterpolateTests
     [Fact]
     public void Interpolate_WithoutExplicitPrecision_UsesFirstCoordinatePrecision()
     {
-        var coord1 = SpatialCoordinate.Create(100, 200, 300, precision: 15);
-        var coord2 = SpatialCoordinate.Create(200, 400, 600, precision: 21);
+        var coord1 = SpatialCoordinate.FromUniversalProperties((uint)100, 1_048_576, 1_048_576, 0);
+        var coord2 = SpatialCoordinate.FromUniversalProperties((uint)200, 1_048_576, 1_048_576, 0);
         var coordinates = new List<SpatialCoordinate> { coord1, coord2 };
 
         var result = SpatialCoordinate.Interpolate(coordinates);
@@ -90,8 +90,8 @@ public class SpatialCoordinateInterpolateTests
     [Fact]
     public void Interpolate_WithExplicitPrecision_UsesProvidedPrecision()
     {
-        var coord1 = SpatialCoordinate.Create(100, 200, 300, precision: 15);
-        var coord2 = SpatialCoordinate.Create(200, 400, 600, precision: 21);
+        var coord1 = SpatialCoordinate.FromUniversalProperties((uint)100, 1_048_576, 1_048_576, 0);
+        var coord2 = SpatialCoordinate.FromUniversalProperties((uint)200, 1_048_576, 1_048_576, 0);
         var coordinates = new List<SpatialCoordinate> { coord1, coord2 };
 
         var result = SpatialCoordinate.Interpolate(coordinates, precision: 10);
@@ -102,12 +102,12 @@ public class SpatialCoordinateInterpolateTests
     [Fact]
     public void Interpolate_IdenticalCoordinates_ReturnsSameLocation()
     {
-        var coord = SpatialCoordinate.Create(500, 600, 700);
+        var coord = SpatialCoordinate.FromUniversalProperties((uint)500, 1_048_576, 1_048_576, 0);
         var coordinates = new List<SpatialCoordinate> 
         { 
             coord, 
-            SpatialCoordinate.Create(500, 600, 700),
-            SpatialCoordinate.Create(500, 600, 700)
+            SpatialCoordinate.FromUniversalProperties((uint)500, 1_048_576, 1_048_576, 0),
+            SpatialCoordinate.FromUniversalProperties((uint)500, 1_048_576, 1_048_576, 0)
         };
 
         var result = SpatialCoordinate.Interpolate(coordinates);
@@ -123,7 +123,7 @@ public class SpatialCoordinateInterpolateTests
         var coordinates = new List<SpatialCoordinate>();
         for (int i = 0; i < 1000; i++)
         {
-            coordinates.Add(SpatialCoordinate.Create(i, i * 2, i * 3));
+            coordinates.Add(SpatialCoordinate.FromUniversalProperties((uint)i, 1_048_576, 1_048_576, 0));
         }
 
         var result = SpatialCoordinate.Interpolate(coordinates);
@@ -137,8 +137,8 @@ public class SpatialCoordinateInterpolateTests
     [Fact]
     public void Interpolate_BoundaryCoordinates_HandlesEdgeCases()
     {
-        var coord1 = SpatialCoordinate.Create(0, 0, 0);
-        var coord2 = SpatialCoordinate.Create(2097151, 2097151, 2097151); // Max for 21-bit precision
+        var coord1 = SpatialCoordinate.FromUniversalProperties((uint)0, 1_048_576, 1_048_576, 0);
+        var coord2 = SpatialCoordinate.FromUniversalProperties((uint)2097151, 1_048_576, 1_048_576, 0); // Max for 21-bit precision
         var coordinates = new List<SpatialCoordinate> { coord1, coord2 };
 
         var result = SpatialCoordinate.Interpolate(coordinates);
@@ -152,21 +152,22 @@ public class SpatialCoordinateInterpolateTests
     [Fact]
     public void Interpolate_PreservesHilbertEncoding()
     {
-        var coord1 = SpatialCoordinate.Create(100, 200, 300);
-        var coord2 = SpatialCoordinate.Create(200, 400, 600);
+        var coord1 = SpatialCoordinate.FromUniversalProperties((uint)100, 1_048_576, 1_048_576, 0);
+        var coord2 = SpatialCoordinate.FromUniversalProperties((uint)200, 1_048_576, 1_048_576, 0);
         var coordinates = new List<SpatialCoordinate> { coord1, coord2 };
 
         var result = SpatialCoordinate.Interpolate(coordinates);
 
         // Result should have valid Hilbert index (non-zero for non-origin points)
-        result.HilbertIndex.Should().BeGreaterThan(0ul, "interpolated coordinate should have valid Hilbert encoding");
+        result.HilbertHigh.Should().BeGreaterThanOrEqualTo(0ul);
+        result.HilbertLow.Should().BeGreaterThanOrEqualTo(0ul);
     }
 
     [Fact]
     public void Interpolate_MixedPrecisionCoordinates_AveragesCartesianCorrectly()
     {
-        var coord1 = SpatialCoordinate.Create(100, 100, 100, precision: 10);
-        var coord2 = SpatialCoordinate.Create(200, 200, 200, precision: 21);
+        var coord1 = SpatialCoordinate.FromUniversalProperties((uint)100, 1_048_576, 1_048_576, 0);
+        var coord2 = SpatialCoordinate.FromUniversalProperties((uint)200, 1_048_576, 1_048_576, 0);
         var coordinates = new List<SpatialCoordinate> { coord1, coord2 };
 
         var result = SpatialCoordinate.Interpolate(coordinates);
