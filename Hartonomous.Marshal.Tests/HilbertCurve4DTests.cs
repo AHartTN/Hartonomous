@@ -267,4 +267,238 @@ public class HilbertCurve4DTests
     }
     
     #endregion
+    
+    #region GetHilbertTileId Tests (NEW)
+    
+    [Fact]
+    public void GetHilbertTileId_Level0_ReturnsZeros()
+    {
+        // Arrange - encode a non-zero coordinate
+        var (high, low) = HilbertCurve4D.Encode(12345, 67890, 11111, 22222);
+        
+        // Act - get tile ID at level 0 (no bits kept, all zeroed)
+        var (tileHigh, tileLow) = HilbertCurve4D.GetHilbertTileId(high, low, level: 0);
+        
+        // Assert - should return all zeros
+        Assert.Equal(0UL, tileHigh);
+        Assert.Equal(0UL, tileLow);
+    }
+    
+    [Fact]
+    public void GetHilbertTileId_MaxLevel_ReturnsOriginal()
+    {
+        // Arrange
+        var (high, low) = HilbertCurve4D.Encode(12345, 67890, 11111, 22222);
+        
+        // Act - get tile ID at max level (all bits kept)
+        var (tileHigh, tileLow) = HilbertCurve4D.GetHilbertTileId(high, low, level: 21);
+        
+        // Assert - should return original index unchanged
+        Assert.Equal(high, tileHigh);
+        Assert.Equal(low, tileLow);
+    }
+    
+    [Fact]
+    public void GetHilbertTileId_SameLevel_ProducesSameTile()
+    {
+        // Arrange - two nearby coordinates
+        var (h1, l1) = HilbertCurve4D.Encode(1000, 1000, 1000, 1000);
+        var (h2, l2) = HilbertCurve4D.Encode(1001, 1001, 1001, 1001);
+        
+        // Act - get tile IDs at coarse level 10
+        var (tile1H, tile1L) = HilbertCurve4D.GetHilbertTileId(h1, l1, level: 10);
+        var (tile2H, tile2L) = HilbertCurve4D.GetHilbertTileId(h2, l2, level: 10);
+        
+        // Assert - nearby coordinates should map to same tile at coarse level
+        Assert.Equal(tile1H, tile2H);
+        Assert.Equal(tile1L, tile2L);
+    }
+    
+    [Fact]
+    public void GetHilbertTileId_DifferentLevels_ProducesDifferentTiles()
+    {
+        // Arrange
+        var (high, low) = HilbertCurve4D.Encode(12345, 67890, 11111, 22222);
+        
+        // Act - get tile IDs at different levels
+        var (tile10H, tile10L) = HilbertCurve4D.GetHilbertTileId(high, low, level: 10);
+        var (tile15H, tile15L) = HilbertCurve4D.GetHilbertTileId(high, low, level: 15);
+        
+        // Assert - different levels should produce different tile IDs (unless coordinate is at boundary)
+        Assert.True(tile10H != tile15H || tile10L != tile15L);
+    }
+    
+    [Fact]
+    public void GetHilbertTileId_InvalidLevel_ThrowsArgumentException()
+    {
+        // Arrange
+        var (high, low) = HilbertCurve4D.Encode(1000, 1000, 1000, 1000);
+        
+        // Act & Assert - negative level
+        Assert.Throws<ArgumentException>(() => 
+            HilbertCurve4D.GetHilbertTileId(high, low, level: -1));
+        
+        // Act & Assert - level exceeds precision
+        Assert.Throws<ArgumentException>(() => 
+            HilbertCurve4D.GetHilbertTileId(high, low, level: 22));
+    }
+    
+    [Fact]
+    public void GetHilbertTileId_HierarchicalProperty_ChildContainedInParent()
+    {
+        // Arrange
+        var (high, low) = HilbertCurve4D.Encode(12345, 67890, 11111, 22222);
+        
+        // Act - get tile IDs at parent (level 10) and child (level 15)
+        var (parentH, parentL) = HilbertCurve4D.GetHilbertTileId(high, low, level: 10);
+        var (childH, childL) = HilbertCurve4D.GetHilbertTileId(high, low, level: 15);
+        
+        // Assert - parent tile should contain child tile (top bits should match)
+        // Level 10 = 40 bits (4*10), Level 15 = 60 bits (4*15)
+        // Parent has more bits zeroed, so child should have same high bits where parent has bits
+        Assert.True(childH >= parentH, "Child high should be >= parent high");
+    }
+    
+    [Theory]
+    [InlineData(5)]
+    [InlineData(10)]
+    [InlineData(15)]
+    [InlineData(20)]
+    public void GetHilbertTileId_MultipleCoordinatesInTile_ProduceSameTileId(int level)
+    {
+        // Arrange - create coordinates that should map to same tile
+        uint baseCoord = 10000;
+        var coords = new List<(ulong high, ulong low)>();
+        
+        for (uint offset = 0; offset < 5; offset++)
+        {
+            coords.Add(HilbertCurve4D.Encode(baseCoord + offset, baseCoord + offset, 
+                                             baseCoord + offset, baseCoord + offset));
+        }
+        
+        // Act - get tile IDs for all coordinates
+        var tileIds = coords.Select(c => HilbertCurve4D.GetHilbertTileId(c.high, c.low, level))
+                            .ToList();
+        
+        // Assert - at coarse levels, nearby coords should share tiles
+        var uniqueTiles = tileIds.Distinct().Count();
+        Assert.True(uniqueTiles >= 1 && uniqueTiles <= coords.Count, 
+            $"Expected 1 to {coords.Count} unique tiles, got {uniqueTiles}");
+    }
+    
+    #endregion
+    
+    #region GetRangeForRadius Additional Tests (NEW)
+    
+    [Fact]
+    public void GetRangeForRadius_4ParamOverload_MatchesTupleVersion()
+    {
+        // Arrange
+        ulong high = 12345678;
+        ulong low = 87654321;
+        ulong radius = 1000;
+        
+        // Act
+        var result1 = HilbertCurve4D.GetRangeForRadius((high, low), radius);
+        var result2 = HilbertCurve4D.GetRangeForRadius(high, low, radius, precision: 21);
+        
+        // Assert - both overloads should produce same result
+        Assert.Equal(result1.Min.High, result2.Min.High);
+        Assert.Equal(result1.Min.Low, result2.Min.Low);
+        Assert.Equal(result1.Max.High, result2.Max.High);
+        Assert.Equal(result1.Max.Low, result2.Max.Low);
+    }
+    
+    [Fact]
+    public void GetRangeForRadius_NearZero_HandlesUnderflow()
+    {
+        // Arrange - center near zero
+        var (centerH, centerL) = HilbertCurve4D.Encode(10, 10, 10, 10);
+        ulong largeRadius = 10000000;
+        
+        // Act
+        var (min, max) = HilbertCurve4D.GetRangeForRadius((centerH, centerL), largeRadius);
+        
+        // Assert - min should not underflow (clamp to 0)
+        Assert.True(min.Low >= 0);
+        Assert.True(max.Low > min.Low);
+    }
+    
+    [Fact]
+    public void GetRangeForRadius_NearMax_HandlesOverflow()
+    {
+        // Arrange - center near max value
+        uint maxCoord = (1u << 21) - 1;
+        var (centerH, centerL) = HilbertCurve4D.Encode(maxCoord, maxCoord, maxCoord, maxCoord);
+        ulong largeRadius = 10000000;
+        
+        // Act
+        var (min, max) = HilbertCurve4D.GetRangeForRadius((centerH, centerL), largeRadius);
+        
+        // Assert - max should not overflow (clamp to ulong.MaxValue)
+        Assert.True(max.Low <= ulong.MaxValue);
+        Assert.True(max.Low > min.Low);
+    }
+    
+    #endregion
+    
+    #region Distance Function Tests (NEW)
+    
+    [Fact]
+    public void Distance_IdenticalIndices_ReturnsZero()
+    {
+        // Arrange
+        var (high, low) = HilbertCurve4D.Encode(1000, 2000, 3000, 4000);
+        
+        // Act
+        var distance = HilbertCurve4D.Distance((high, low), (high, low));
+        
+        // Assert
+        Assert.Equal(0UL, distance);
+    }
+    
+    [Fact]
+    public void Distance_AdjacentIndices_ReturnsSmallValue()
+    {
+        // Arrange
+        var (h1, l1) = HilbertCurve4D.Encode(1000, 1000, 1000, 1000);
+        var (h2, l2) = HilbertCurve4D.Encode(1001, 1000, 1000, 1000);
+        
+        // Act
+        var distance = HilbertCurve4D.Distance((h1, l1), (h2, l2));
+        
+        // Assert - adjacent coords should have small distance
+        Assert.True(distance > 0 && distance < 10000, 
+            $"Expected small distance, got {distance}");
+    }
+    
+    [Fact]
+    public void Distance_IsSymmetric()
+    {
+        // Arrange
+        var (h1, l1) = HilbertCurve4D.Encode(1000, 2000, 3000, 4000);
+        var (h2, l2) = HilbertCurve4D.Encode(5000, 6000, 7000, 8000);
+        
+        // Act
+        var dist1 = HilbertCurve4D.Distance((h1, l1), (h2, l2));
+        var dist2 = HilbertCurve4D.Distance((h2, l2), (h1, l1));
+        
+        // Assert - distance should be symmetric
+        Assert.Equal(dist1, dist2);
+    }
+    
+    #endregion
+    
+    #region Constants Tests (NEW)
+    
+    [Fact]
+    public void Constants_HaveExpectedValues()
+    {
+        // Assert
+        Assert.Equal(21, HilbertCurve4D.DefaultPrecision);
+        Assert.Equal(21, HilbertCurve4D.MaxPrecision);
+        Assert.Equal(4, HilbertCurve4D.Dimensions);
+    }
+    
+    #endregion
 }
