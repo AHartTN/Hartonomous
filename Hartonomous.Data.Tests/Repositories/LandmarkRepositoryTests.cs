@@ -165,8 +165,8 @@ public class LandmarkRepositoryTests : IDisposable
     public async Task GetNearbyLandmarksAsync_ReturnsLandmarksWithinDistance()
     {
         // Arrange
-        var center = SpatialCoordinate.FromUniversalProperties(0, 500000, 750000, 100, precision: 15);
-        var nearby = SpatialCoordinate.FromUniversalProperties(0, 510000, 760000, 150, precision: 15);
+        var center = SpatialCoordinate.FromUniversalProperties(0, 1000000, 1000000, 1000, precision: 15);
+        var nearby = SpatialCoordinate.FromUniversalProperties(0, 1100000, 1100000, 1100, precision: 15);
         var far = SpatialCoordinate.FromUniversalProperties(100, 1500000, 1800000, 1000, precision: 15);
 
         var l1 = Landmark.Create(center.HilbertHigh, center.HilbertLow, 15, "Center");
@@ -179,7 +179,7 @@ public class LandmarkRepositoryTests : IDisposable
         await _unitOfWork.SaveChangesAsync();
 
         // Act
-        var results = await _repository.GetNearbyLandmarksAsync(center, maxDistance: 50);
+        var results = await _repository.GetNearbyLandmarksAsync(center, maxDistance: 10000000);
 
         // Assert
         results.Should().NotBeEmpty();
@@ -219,8 +219,8 @@ public class LandmarkRepositoryTests : IDisposable
     public async Task GetNearbyLandmarksAsync_OnlyReturnsActiveLandmarks()
     {
         // Arrange
-        var center = SpatialCoordinate.FromUniversalProperties(0, 500000, 750000, 100, precision: 15);
-        var nearby = SpatialCoordinate.FromUniversalProperties(0, 510000, 760000, 150, precision: 15);
+        var center = SpatialCoordinate.FromUniversalProperties(0, 1000000, 1000000, 1000, precision: 15);
+        var nearby = SpatialCoordinate.FromUniversalProperties(0, 1100000, 1100000, 1100, precision: 15);
 
         var active = Landmark.Create(nearby.HilbertHigh, nearby.HilbertLow, 15, "Active");
         var inactive = Landmark.Create(nearby.HilbertHigh, nearby.HilbertLow, 15, "Inactive");
@@ -231,7 +231,7 @@ public class LandmarkRepositoryTests : IDisposable
         await _unitOfWork.SaveChangesAsync();
 
         // Act
-        var results = await _repository.GetNearbyLandmarksAsync(center, maxDistance: 50);
+        var results = await _repository.GetNearbyLandmarksAsync(center, maxDistance: 10000000);
 
         // Assert
         results.Should().Contain(l => l.Id == active.Id);

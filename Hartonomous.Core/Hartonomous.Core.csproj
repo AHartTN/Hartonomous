@@ -14,6 +14,12 @@
     <PackageTags>cqrs;ddd;domain;geometry;pointzm;mediatr;spatial</PackageTags>
   </PropertyGroup>
 
+  <!-- Expose internal members to test projects -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Hartonomous.Core.Tests" />
+    <InternalsVisibleTo Include="Hartonomous.Data.Tests" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="FluentValidation" Version="11.11.0" />
     <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="11.11.0" />

@@ -228,4 +228,33 @@ public class Constant : BaseEntity
         Status = ConstantStatus.Archived;
         UpdatedAt = DateTime.UtcNow;
     }
+
+    #region Test Helpers
+    
+    /// <summary>
+    /// Sets coordinate explicitly for testing purposes only.
+    /// DO NOT USE in production code - coordinates must be computed deterministically via Project().
+    /// </summary>
+    /// <param name="coordinate">The test coordinate to assign</param>
+    internal void SetCoordinateForTesting(SpatialCoordinate coordinate)
+    {
+        Coordinate = coordinate ?? throw new ArgumentNullException(nameof(coordinate));
+        Location = coordinate.ToPoint();
+        Status = ConstantStatus.Projected;
+        ProjectedAt = DateTime.UtcNow;
+        UpdatedAt = DateTime.UtcNow;
+    }
+    
+    /// <summary>
+    /// Activates constant for testing without requiring Projected state.
+    /// DO NOT USE in production code - use Activate() which enforces state transitions.
+    /// </summary>
+    internal void ActivateForTesting()
+    {
+        Status = ConstantStatus.Active;
+        ActivatedAt = DateTime.UtcNow;
+        UpdatedAt = DateTime.UtcNow;
+    }
+    
+    #endregion
 }

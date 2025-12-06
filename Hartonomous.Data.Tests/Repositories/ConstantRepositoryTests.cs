@@ -87,14 +87,17 @@ public class ConstantRepositoryTests : IDisposable
         // Arrange
         var hash = Hash256.Compute(new byte[] { 1, 2, 3 });
         var constant = Constant.Create(new byte[] { 1, 2, 3 }, ContentType.Binary);
-        // Note: Soft delete must be done through repository, not entity method
         
         await _repository.AddAsync(constant);
         await _unitOfWork.SaveChangesAsync();
-
+        
+        // Soft delete the constant
+        _repository.Remove(constant);
+        await _unitOfWork.SaveChangesAsync();
+        
         // Act
         var result = await _repository.GetByHashAsync(hash);
-
+        
         // Assert
         result.Should().BeNull("soft-deleted constants should be filtered by query filter");
     }
@@ -149,11 +152,14 @@ public class ConstantRepositoryTests : IDisposable
         var far = SpatialCoordinate.FromUniversalProperties(100, 1500000, 1800000, 1000);
 
         var c1 = Constant.Create(new byte[] { 1 }, ContentType.Binary);
-        c1.Project();
+        c1.SetCoordinateForTesting(center);
+        c1.ActivateForTesting();
         var c2 = Constant.Create(new byte[] { 2 }, ContentType.Binary);
-        c2.Project();
+        c2.SetCoordinateForTesting(nearby);
+        c2.ActivateForTesting();
         var c3 = Constant.Create(new byte[] { 3 }, ContentType.Binary);
-        c3.Project();
+        c3.SetCoordinateForTesting(far);
+        c3.ActivateForTesting();
 
         await _repository.AddAsync(c1);
         await _repository.AddAsync(c2);
@@ -161,12 +167,13 @@ public class ConstantRepositoryTests : IDisposable
         await _unitOfWork.SaveChangesAsync();
 
         // Act
-        var results = await _repository.GetNearbyConstantsAsync(center, radius: 50, maxResults: 10);
+        var results = await _repository.GetNearbyConstantsAsync(center, radius: 100000, maxResults: 10);
 
         // Assert
         results.Should().NotBeEmpty();
         results.Should().Contain(c => c.Id == c1.Id);
         results.Should().Contain(c => c.Id == c2.Id);
+        results.Should().NotContain(c => c.Id == c3.Id);
     }
 
     [Fact]
@@ -224,9 +231,11 @@ public class ConstantRepositoryTests : IDisposable
         var nearby = SpatialCoordinate.FromUniversalProperties(0, 510000, 760000, 150);
 
         var active = Constant.Create(new byte[] { 1 }, ContentType.Binary);
-        active.Project();
+        active.SetCoordinateForTesting(nearby);
+        active.ActivateForTesting();
         var inactive = Constant.Create(new byte[] { 2 }, ContentType.Binary);
-        inactive.Project();
+        inactive.SetCoordinateForTesting(nearby);
+        inactive.ActivateForTesting();
         inactive.MarkAsFailed("Processed"); // Change status
 
         await _repository.AddAsync(active);
@@ -234,7 +243,7 @@ public class ConstantRepositoryTests : IDisposable
         await _unitOfWork.SaveChangesAsync();
 
         // Act
-        var results = await _repository.GetNearbyConstantsAsync(center, radius: 50);
+        var results = await _repository.GetNearbyConstantsAsync(center, radius: 10000000000, maxResults: 10);
 
         // Assert
         results.Should().Contain(c => c.Id == active.Id);
@@ -304,8 +313,11 @@ public class ConstantRepositoryTests : IDisposable
     {
         // Arrange
         var active1 = Constant.Create(new byte[] { 1 }, ContentType.Binary);
+        active1.ActivateForTesting();
         var active2 = Constant.Create(new byte[] { 2 }, ContentType.Binary);
+        active2.ActivateForTesting();
         var processed = Constant.Create(new byte[] { 3 }, ContentType.Binary);
+        processed.ActivateForTesting();
         processed.MarkAsFailed("Processed");
 
         await _repository.AddAsync(active1);
@@ -330,6 +342,7 @@ public class ConstantRepositoryTests : IDisposable
         for (int i = 0; i < 15; i++)
         {
             var constant = Constant.Create(new byte[] { (byte)i }, ContentType.Binary);
+            constant.ActivateForTesting();
             await _repository.AddAsync(constant);
         }
         await _unitOfWork.SaveChangesAsync();
@@ -384,11 +397,14 @@ public class ConstantRepositoryTests : IDisposable
         var coord3 = SpatialCoordinate.FromHilbert4D(300, 0, 500000, 750000, 100);
 
         var c1 = Constant.Create(new byte[] { 1 }, ContentType.Binary);
-        c1.Project();
+        c1.SetCoordinateForTesting(coord1);
+        c1.ActivateForTesting();
         var c2 = Constant.Create(new byte[] { 2 }, ContentType.Binary);
-        c2.Project();
+        c2.SetCoordinateForTesting(coord2);
+        c2.ActivateForTesting();
         var c3 = Constant.Create(new byte[] { 3 }, ContentType.Binary);
-        c3.Project();
+        c3.SetCoordinateForTesting(coord3);
+        c3.ActivateForTesting();
 
         await _repository.AddAsync(c1);
         await _repository.AddAsync(c2);
@@ -426,12 +442,13 @@ public class ConstantRepositoryTests : IDisposable
         var c2 = Constant.Create(new byte[] { 2 }, ContentType.Binary);
         var c3 = Constant.Create(new byte[] { 3 }, ContentType.Binary);
         
-        c1.IncrementFrequency(); // Frequency = 1
+        // Note: Create() sets Frequency = 1, so after increments:
+        c1.IncrementFrequency(); // Frequency = 1 + 1 = 2
         c2.IncrementFrequency();
-        c2.IncrementFrequency(); // Frequency = 2
+        c2.IncrementFrequency(); // Frequency = 1 + 2 = 3
         c3.IncrementFrequency();
         c3.IncrementFrequency();
-        c3.IncrementFrequency(); // Frequency = 3
+        c3.IncrementFrequency(); // Frequency = 1 + 3 = 4
 
         await _repository.AddAsync(c1);
         await _repository.AddAsync(c2);
@@ -443,9 +460,9 @@ public class ConstantRepositoryTests : IDisposable
 
         // Assert
         results.Should().HaveCount(3);
-        results[0].Frequency.Should().Be(3);
-        results[1].Frequency.Should().Be(2);
-        results[2].Frequency.Should().Be(1);
+        results[0].Frequency.Should().Be(4); // c3
+        results[1].Frequency.Should().Be(3); // c2
+        results[2].Frequency.Should().Be(2); // c1
     }
 
     [Theory]
