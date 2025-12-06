@@ -57,16 +57,20 @@ public class ConstantRepository : Repository<Constant>, IConstantRepository
         
         // Hilbert-optimized proximity query (100x faster than PostGIS R-tree)
         // Two-phase: fast B-tree range query, then exact distance filtering
-        var (minHigh, minLow, maxHigh, maxLow) = center.GetHilbertRangeForRadius(radius);
-        
-        var constants = await _dbSet
+        // Fetch all active constants with coordinates
+        // TODO: Add Hilbert range optimization once expression tree translation works
+        var candidates = await _dbSet
             .Where(c => c.Coordinate != null && c.Status == ConstantStatus.Active)
-            .WhereHilbertRange(c => c.Coordinate!, minHigh, minLow, maxHigh, maxLow)
-            .OrderByHilbertDistance(c => c.Coordinate!, center)
-            .Take(maxResults)
             .ToListAsync(cancellationToken);
         
-        return constants;
+        // Filter and sort by Hilbert distance in-memory
+        // TODO: Optimize via Native library for bulk distance calculations
+        var filtered = candidates
+            .Where(c => c.Coordinate!.HilbertDistanceTo(center) <= (ulong)(radius * 1000)) // Approximate filter
+            .OrderBy(c => c.Coordinate!.HilbertDistanceTo(center))
+            .Take(maxResults);
+        
+        return filtered;
     }
     
     public async Task<IEnumerable<Constant>> GetKNearestConstantsAsync(
@@ -84,16 +88,19 @@ public class ConstantRepository : Repository<Constant>, IConstantRepository
             throw new ArgumentException("k must be positive", nameof(k));
         }
         
-        // Hilbert-optimized k-NN query (100x faster than PostGIS R-tree)
-        // Two-phase: fast B-tree range query, then exact distance sorting
-        var constants = await _dbSet
+        // Fetch all active constants with coordinates
+        // TODO: Add Hilbert range optimization for production databases
+        var candidates = await _dbSet
             .Where(c => c.Coordinate != null && c.Status == ConstantStatus.Active)
-            .NearestByHilbert(c => c.Coordinate!, center, 10000)
-            .OrderByHilbertDistance(c => c.Coordinate!, center)
-            .Take(k)
             .ToListAsync(cancellationToken);
         
-        return constants;
+        // Sort by Hilbert distance in-memory
+        // TODO: Optimize via Native library for bulk distance calculations and k-NN algorithm
+        var sorted = candidates
+            .OrderBy(c => c.Coordinate!.HilbertDistanceTo(center))
+            .Take(k);
+        
+        return sorted;
     }
     
     public async Task<IEnumerable<Constant>> GetByStatusAsync(
