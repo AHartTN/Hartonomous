@@ -1,5 +1,6 @@
 using Hartonomous.Core.Domain.Entities;
 using Hartonomous.Core.Domain.Enums;
+using Hartonomous.Core.Domain.ValueObjects;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -35,19 +36,18 @@ public class ConstantConfiguration : IEntityTypeConfiguration<Constant>
             .HasColumnName("id")
             .IsRequired();
 
-        // Content hash - store as simple byte array
-        // Hash256 is a value object wrapping byte[], we extract for storage
-        builder.Property<byte[]>("_hashBytes")
+        // Content hash - store Hash256 value object as byte array
+        builder.Property(c => c.Hash)
             .HasColumnName("hash")
             .IsRequired()
+            .HasConversion(
+                h => h.Bytes,
+                b => Hash256.FromBytes(b))
             .HasMaxLength(32);
 
-        builder.HasIndex("_hashBytes")
+        builder.HasIndex(c => c.Hash)
             .HasDatabaseName("uq_constants_hash")
             .IsUnique();
-        
-        // Ignore the Hash navigation since we're storing backing data
-        builder.Ignore(c => c.Hash);
 
         // Content type
         builder.Property(c => c.ContentType)
