@@ -13,8 +13,11 @@ namespace Hartonomous.Data.Repositories;
 /// </summary>
 public class ConstantRepository : Repository<Constant>, IConstantRepository
 {
+    private readonly ApplicationDbContext _dbContext;
+
     public ConstantRepository(ApplicationDbContext context) : base(context)
     {
+        _dbContext = context;
     }
     
     public async Task<Constant?> GetByHashAsync(Hash256 hash, CancellationToken cancellationToken = default)
@@ -55,22 +58,19 @@ public class ConstantRepository : Repository<Constant>, IConstantRepository
             throw new ArgumentException("Radius must be positive", nameof(radius));
         }
         
-        // Hilbert-optimized proximity query (100x faster than PostGIS R-tree)
-        // Two-phase: fast B-tree range query, then exact distance filtering
-        // Fetch all active constants with coordinates
-        // TODO: Add Hilbert range optimization once expression tree translation works
-        var candidates = await _dbSet
-            .Where(c => c.Coordinate != null && c.Status == ConstantStatus.Active)
+        // Use PostgreSQL function for spatial radius query via HasDbFunction
+        // Leverages spatial YZM indexes for efficient filtering
+        // Pattern enables LINQ composition: .Where(), .OrderBy(), etc.
+        var results = await _dbContext
+            .GetNearbyConstants(
+                center.QuantizedEntropy,
+                center.QuantizedCompressibility,
+                center.QuantizedConnectivity,
+                radius,
+                maxResults)
             .ToListAsync(cancellationToken);
         
-        // Filter and sort by Hilbert distance in-memory
-        // TODO: Optimize via Native library for bulk distance calculations
-        var filtered = candidates
-            .Where(c => c.Coordinate!.HilbertDistanceTo(center) <= (ulong)(radius * 1000)) // Approximate filter
-            .OrderBy(c => c.Coordinate!.HilbertDistanceTo(center))
-            .Take(maxResults);
-        
-        return filtered;
+        return results;
     }
     
     public async Task<IEnumerable<Constant>> GetKNearestConstantsAsync(
@@ -88,19 +88,18 @@ public class ConstantRepository : Repository<Constant>, IConstantRepository
             throw new ArgumentException("k must be positive", nameof(k));
         }
         
-        // Fetch all active constants with coordinates
-        // TODO: Add Hilbert range optimization for production databases
-        var candidates = await _dbSet
-            .Where(c => c.Coordinate != null && c.Status == ConstantStatus.Active)
+        // Use PostgreSQL function for k-nearest neighbors query via HasDbFunction
+        // Returns top k by Euclidean distance in YZM space
+        // Type-safe, LINQ-composable, automatically mapped to all entity columns
+        var results = await _dbContext
+            .GetKNearestConstants(
+                center.QuantizedEntropy,
+                center.QuantizedCompressibility,
+                center.QuantizedConnectivity,
+                k)
             .ToListAsync(cancellationToken);
         
-        // Sort by Hilbert distance in-memory
-        // TODO: Optimize via Native library for bulk distance calculations and k-NN algorithm
-        var sorted = candidates
-            .OrderBy(c => c.Coordinate!.HilbertDistanceTo(center))
-            .Take(k);
-        
-        return sorted;
+        return results;
     }
     
     public async Task<IEnumerable<Constant>> GetByStatusAsync(
@@ -138,12 +137,19 @@ public class ConstantRepository : Repository<Constant>, IConstantRepository
             throw new ArgumentException("Start ID must be <= end ID");
         }
         
-        return await _dbSet
-            .Where(c => c.Coordinate != null && c.Coordinate.HilbertHigh > 0)
-            .Where(c => c.Coordinate!.HilbertHigh >= startId && c.Coordinate!.HilbertHigh <= endId)
-            .OrderBy(c => c.Coordinate!.HilbertLow)
-            .Take(maxResults)
+        // Use PostgreSQL function for Hilbert range query via HasDbFunction
+        // Leverages composite B-tree index on (hilbert_high, hilbert_low)
+        // Note: startId/endId represent high part; low part is 0 to max for range
+        var results = await _dbContext
+            .GetByHilbertRange(
+                (long)startId,
+                0L,
+                (long)endId,
+                long.MaxValue,
+                maxResults)
             .ToListAsync(cancellationToken);
+        
+        return results;
     }
     
     public async Task<IEnumerable<Constant>> GetTopByFrequencyAsync(
@@ -155,10 +161,14 @@ public class ConstantRepository : Repository<Constant>, IConstantRepository
             throw new ArgumentException("Count must be positive", nameof(count));
         }
         
-        return await _dbSet
-            .OrderByDescending(c => c.Frequency)
-            .Take(count)
+        // Use PostgreSQL function for frequency-based sorting
+        var results = await _dbSet
+            .FromSqlRaw(@"
+                SELECT * FROM get_top_by_frequency({0})
+            ", count)
             .ToListAsync(cancellationToken);
+        
+        return results;
     }
     
     public async Task<IEnumerable<Constant>> GetStaleConstantsAsync(
@@ -166,12 +176,14 @@ public class ConstantRepository : Repository<Constant>, IConstantRepository
         int maxResults = 1000,
         CancellationToken cancellationToken = default)
     {
-        return await _dbSet
-            .Where(c => c.LastAccessedAt < olderThan)
-            .Where(c => c.ReferenceCount == 0)
-            .OrderBy(c => c.LastAccessedAt)
-            .Take(maxResults)
+        // Use PostgreSQL function for temporal query
+        var results = await _dbSet
+            .FromSqlRaw(@"
+                SELECT * FROM get_stale_constants({0}, {1})
+            ", olderThan, maxResults)
             .ToListAsync(cancellationToken);
+        
+        return results;
     }
     
     public async Task<bool> ExistsByHashAsync(Hash256 hash, CancellationToken cancellationToken = default)
@@ -186,22 +198,40 @@ public class ConstantRepository : Repository<Constant>, IConstantRepository
     
     public async Task<long> GetTotalStorageSizeAsync(CancellationToken cancellationToken = default)
     {
-        return await _dbSet
-            .Where(c => c.Status != ConstantStatus.Deduplicated)
-            .SumAsync(c => (long)c.Size, cancellationToken);
+        // Use PostgreSQL function for storage aggregation
+        var result = await _dbContext.Database
+            .SqlQueryRaw<long>(@"SELECT get_total_storage_size()")
+            .FirstOrDefaultAsync(cancellationToken);
+        
+        return result;
     }
     
     public async Task<(int TotalConstants, int UniqueConstants, double DeduplicationRatio)> GetDeduplicationStatsAsync(
         CancellationToken cancellationToken = default)
     {
-        var totalConstants = await _dbSet.CountAsync(cancellationToken);
-        var uniqueConstants = await _dbSet
-            .Where(c => c.Status != ConstantStatus.Deduplicated)
-            .CountAsync(cancellationToken);
+        // Use PostgreSQL function for analytics aggregation
+        var result = await _dbContext.Database
+            .SqlQueryRaw<DeduplicationStatsResult>(@"
+                SELECT total_constants as TotalConstants, 
+                       unique_constants as UniqueConstants, 
+                       deduplication_ratio as DeduplicationRatio 
+                FROM get_deduplication_stats()
+            ")
+            .FirstOrDefaultAsync(cancellationToken);
         
-        var deduplicationRatio = totalConstants > 0 ? (double)uniqueConstants / totalConstants : 0.0;
+        if (result == null)
+        {
+            return (0, 0, 0.0);
+        }
         
-        return (totalConstants, uniqueConstants, deduplicationRatio);
+        return (result.TotalConstants, result.UniqueConstants, result.DeduplicationRatio);
+    }
+    
+    private class DeduplicationStatsResult
+    {
+        public int TotalConstants { get; set; }
+        public int UniqueConstants { get; set; }
+        public double DeduplicationRatio { get; set; }
     }
     
     public async Task<long> GetTotalConstantsAsync(CancellationToken cancellationToken = default)

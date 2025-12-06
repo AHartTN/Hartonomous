@@ -14,8 +14,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Hartonomous.Data.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20251205024642_Update4DHilbertBoundingBoxConfigurations")]
-    partial class Update4DHilbertBoundingBoxConfigurations
+    [Migration("20251206060929_AddSpatialQueryFunctions")]
+    partial class AddSpatialQueryFunctions
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -25,7 +25,6 @@ namespace Hartonomous.Data.Migrations
                 .HasAnnotation("ProductVersion", "10.0.0")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
-            NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "plpython3u");
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "postgis");
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "uuid-ossp");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -253,6 +252,12 @@ namespace Hartonomous.Data.Migrations
                         .HasDefaultValue(0L)
                         .HasColumnName("frequency");
 
+                    b.Property<byte[]>("Hash")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("bytea")
+                        .HasColumnName("hash");
+
                     b.Property<bool>("IsDeleted")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
@@ -305,12 +310,6 @@ namespace Hartonomous.Data.Migrations
                         .HasColumnType("character varying(256)")
                         .HasColumnName("updated_by");
 
-                    b.Property<byte[]>("_hashBytes")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("bytea")
-                        .HasColumnName("hash");
-
                     b.Property<Guid?>("canonical_constant_id")
                         .HasColumnType("uuid");
 
@@ -323,6 +322,10 @@ namespace Hartonomous.Data.Migrations
                         .HasDatabaseName("ix_constants_frequency_hot")
                         .HasFilter("frequency > 0.001");
 
+                    b.HasIndex("Hash")
+                        .IsUnique()
+                        .HasDatabaseName("uq_constants_hash");
+
                     b.HasIndex("IsDeleted")
                         .HasDatabaseName("ix_constants_is_deleted")
                         .HasFilter("is_deleted = false");
@@ -334,8 +337,7 @@ namespace Hartonomous.Data.Migrations
                     b.HasIndex("LandmarkId");
 
                     b.HasIndex("LastAccessedAt")
-                        .HasDatabaseName("ix_constants_last_accessed_recent")
-                        .HasFilter("last_accessed_at > NOW() - INTERVAL '7 days'");
+                        .HasDatabaseName("ix_constants_last_accessed_recent");
 
                     b.HasIndex("Location")
                         .HasDatabaseName("ix_constants_location_gist");
@@ -347,10 +349,6 @@ namespace Hartonomous.Data.Migrations
 
                     b.HasIndex("Status")
                         .HasDatabaseName("ix_constants_status");
-
-                    b.HasIndex("_hashBytes")
-                        .IsUnique()
-                        .HasDatabaseName("uq_constants_hash");
 
                     b.HasIndex("canonical_constant_id");
 
@@ -885,9 +883,6 @@ namespace Hartonomous.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<double>("AverageDistance")
-                        .HasColumnType("double precision");
-
                     b.Property<long>("ConstantCount")
                         .HasColumnType("bigint")
                         .HasColumnName("constant_count");
@@ -920,6 +915,14 @@ namespace Hartonomous.Data.Migrations
                         .HasColumnType("character varying(1000)")
                         .HasColumnName("description");
 
+                    b.Property<decimal>("HilbertPrefixHigh")
+                        .HasColumnType("numeric(20,0)")
+                        .HasColumnName("hilbert_prefix_high");
+
+                    b.Property<decimal>("HilbertPrefixLow")
+                        .HasColumnType("numeric(20,0)")
+                        .HasColumnName("hilbert_prefix_low");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean")
                         .HasColumnName("is_active");
@@ -929,22 +932,18 @@ namespace Hartonomous.Data.Migrations
                         .HasColumnName("is_deleted");
 
                     b.Property<DateTime>("LastStatisticsUpdate")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_statistics_update");
 
-                    b.Property<Point>("Location")
-                        .IsRequired()
-                        .HasColumnType("geometry(PointZ)")
-                        .HasColumnName("location");
+                    b.Property<int>("Level")
+                        .HasColumnType("integer")
+                        .HasColumnName("level");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
                         .HasColumnName("name");
-
-                    b.Property<double>("Radius")
-                        .HasColumnType("double precision")
-                        .HasColumnName("radius");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -969,17 +968,13 @@ namespace Hartonomous.Data.Migrations
                     b.HasIndex("IsDeleted")
                         .HasDatabaseName("ix_landmarks_is_deleted");
 
-                    b.HasIndex("Location")
-                        .HasDatabaseName("ix_landmarks_location_spatial");
-
-                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("Location"), "gist");
-
                     b.HasIndex("Name")
                         .IsUnique()
-                        .HasDatabaseName("ix_landmarks_name");
+                        .HasDatabaseName("uq_landmarks_name");
 
-                    b.HasIndex("Radius")
-                        .HasDatabaseName("ix_landmarks_radius");
+                    b.HasIndex("HilbertPrefixHigh", "HilbertPrefixLow", "Level")
+                        .IsUnique()
+                        .HasDatabaseName("uq_landmarks_hilbert_tile");
 
                     b.ToTable("landmarks", (string)null);
                 });
@@ -1402,54 +1397,6 @@ namespace Hartonomous.Data.Migrations
                     b.Navigation("ContentIngestion");
 
                     b.Navigation("Parent");
-                });
-
-            modelBuilder.Entity("Hartonomous.Core.Domain.Entities.Landmark", b =>
-                {
-                    b.OwnsOne("Hartonomous.Core.Domain.ValueObjects.SpatialCoordinate", "Center", b1 =>
-                        {
-                            b1.Property<Guid>("LandmarkId")
-                                .HasColumnType("uuid");
-
-                            b1.Property<decimal>("HilbertHigh")
-                                .HasColumnType("numeric(20,0)")
-                                .HasColumnName("center_hilbert_high");
-
-                            b1.Property<decimal>("HilbertLow")
-                                .HasColumnType("numeric(20,0)")
-                                .HasColumnName("center_hilbert_low");
-
-                            b1.Property<int>("Precision")
-                                .HasColumnType("integer")
-                                .HasColumnName("center_precision");
-
-                            b1.Property<int>("QuantizedCompressibility")
-                                .HasColumnType("integer")
-                                .HasColumnName("center_quantized_compressibility");
-
-                            b1.Property<int>("QuantizedConnectivity")
-                                .HasColumnType("integer")
-                                .HasColumnName("center_quantized_connectivity");
-
-                            b1.Property<int>("QuantizedEntropy")
-                                .HasColumnType("integer")
-                                .HasColumnName("center_quantized_entropy");
-
-                            b1.HasKey("LandmarkId");
-
-                            b1.HasIndex("HilbertHigh", "HilbertLow")
-                                .HasDatabaseName("ix_landmarks_center_hilbert_index");
-
-                            NpgsqlIndexBuilderExtensions.HasMethod(b1.HasIndex("HilbertHigh", "HilbertLow"), "btree");
-
-                            b1.ToTable("landmarks");
-
-                            b1.WithOwner()
-                                .HasForeignKey("LandmarkId");
-                        });
-
-                    b.Navigation("Center")
-                        .IsRequired();
                 });
 
             modelBuilder.Entity("Hartonomous.Core.Domain.Entities.HierarchicalContent", b =>

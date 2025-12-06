@@ -5,6 +5,7 @@ using Hartonomous.Core.Domain.Utilities;
 using Hartonomous.Core.Domain.ValueObjects;
 using Hartonomous.Marshal;
 using MediatR;
+using HilbertCurve4D = Hartonomous.Core.Domain.Utilities.HilbertCurve4D;
 
 namespace Hartonomous.Core.Application.Commands.Landmarks;
 

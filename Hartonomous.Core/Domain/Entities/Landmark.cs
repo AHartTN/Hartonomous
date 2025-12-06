@@ -4,6 +4,7 @@ using Hartonomous.Core.Domain.Utilities;
 using Hartonomous.Core.Domain.ValueObjects;
 using Hartonomous.Marshal; // TODO: Remove - Core should not depend on Marshal (infrastructure)
 using NetTopologySuite.Geometries;
+using HilbertCurve4D = Hartonomous.Core.Domain.Utilities.HilbertCurve4D;
 
 namespace Hartonomous.Core.Domain.Entities;
 

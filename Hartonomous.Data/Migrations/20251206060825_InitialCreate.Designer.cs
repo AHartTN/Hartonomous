@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using Hartonomous.Data.Context;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NetTopologySuite.Geometries;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -13,9 +14,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Hartonomous.Data.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251206060825_InitialCreate")]
+    partial class InitialCreate
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -202,8 +205,7 @@ namespace Hartonomous.Data.Migrations
                         .HasColumnName("activated_at");
 
                     b.Property<Guid?>("CanonicalConstantId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("canonical_constant_id");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("ContentType")
                         .IsRequired()
@@ -239,9 +241,7 @@ namespace Hartonomous.Data.Migrations
                         .HasColumnName("deleted_by");
 
                     b.Property<string>("ErrorMessage")
-                        .HasMaxLength(4000)
-                        .HasColumnType("character varying(4000)")
-                        .HasColumnName("error_message");
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("FirstSeenAt")
                         .HasColumnType("timestamp with time zone");
@@ -310,9 +310,10 @@ namespace Hartonomous.Data.Migrations
                         .HasColumnType("character varying(256)")
                         .HasColumnName("updated_by");
 
-                    b.HasKey("Id");
+                    b.Property<Guid?>("canonical_constant_id")
+                        .HasColumnType("uuid");
 
-                    b.HasIndex("CanonicalConstantId");
+                    b.HasKey("Id");
 
                     b.HasIndex("ContentType")
                         .HasDatabaseName("ix_constants_content_type");
@@ -348,6 +349,8 @@ namespace Hartonomous.Data.Migrations
 
                     b.HasIndex("Status")
                         .HasDatabaseName("ix_constants_status");
+
+                    b.HasIndex("canonical_constant_id");
 
                     b.ToTable("constants", (string)null);
                 });
@@ -1157,14 +1160,14 @@ namespace Hartonomous.Data.Migrations
 
             modelBuilder.Entity("Hartonomous.Core.Domain.Entities.Constant", b =>
                 {
-                    b.HasOne("Hartonomous.Core.Domain.Entities.Constant", "CanonicalConstant")
-                        .WithMany()
-                        .HasForeignKey("CanonicalConstantId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
                     b.HasOne("Hartonomous.Core.Domain.Entities.Landmark", null)
                         .WithMany("Constants")
                         .HasForeignKey("LandmarkId");
+
+                    b.HasOne("Hartonomous.Core.Domain.Entities.Constant", "CanonicalConstant")
+                        .WithMany()
+                        .HasForeignKey("canonical_constant_id")
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.OwnsOne("Hartonomous.Core.Domain.ValueObjects.SpatialCoordinate", "Coordinate", b1 =>
                         {

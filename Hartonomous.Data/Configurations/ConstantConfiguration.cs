@@ -188,13 +188,30 @@ public class ConstantConfiguration : IEntityTypeConfiguration<Constant>
             .HasColumnName("activated_at")
             .IsRequired(false);
 
+        builder.Property(c => c.ErrorMessage)
+            .HasColumnName("error_message")
+            .IsRequired(false)
+            .HasMaxLength(4000);
+
+        builder.Property(c => c.FirstSeenAt)
+            .HasColumnName("first_seen_at")
+            .IsRequired();
+
+        builder.Property(c => c.LandmarkId)
+            .HasColumnName("landmark_id")
+            .IsRequired(false);
+
         // ====================================================================
         // DEDUPLICATION
         // ====================================================================
         
+        builder.Property(c => c.CanonicalConstantId)
+            .HasColumnName("canonical_constant_id")
+            .IsRequired(false);
+        
         builder.HasOne(c => c.CanonicalConstant)
             .WithMany()
-            .HasForeignKey("canonical_constant_id")
+            .HasForeignKey(c => c.CanonicalConstantId)
             .IsRequired(false)
             .OnDelete(DeleteBehavior.SetNull);
 
@@ -235,10 +252,10 @@ public class ConstantConfiguration : IEntityTypeConfiguration<Constant>
             .HasColumnName("last_accessed_at")
             .IsRequired();
 
-        // Partial index: recently accessed constants (for cache eviction)
+        // Index: recently accessed constants (for cache eviction)
+        // Note: Cannot use NOW() in partial index predicate (VOLATILE function)
         builder.HasIndex(c => c.LastAccessedAt)
-            .HasDatabaseName("ix_constants_last_accessed_recent")
-            .HasFilter("last_accessed_at > NOW() - INTERVAL '7 days'");
+            .HasDatabaseName("ix_constants_last_accessed_recent");
 
         // ====================================================================
         // RELATIONSHIPS

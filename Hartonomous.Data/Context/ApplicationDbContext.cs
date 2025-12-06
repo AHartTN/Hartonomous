@@ -34,6 +34,65 @@ public class ApplicationDbContext : DbContext
     public DbSet<BPEToken> BPETokens => Set<BPEToken>();
     public DbSet<ContentIngestion> ContentIngestions => Set<ContentIngestion>();
 
+    // ====================================================================
+    // TABLE-VALUED FUNCTIONS (POSTGRESQL SPATIAL QUERIES)
+    // ====================================================================
+    // These methods map to PostgreSQL functions via HasDbFunction in OnModelCreating
+    // Pattern: FromExpression(() => MethodName(...)) enables LINQ composition
+    // Usage: context.GetNearbyConstants(...).Where(c => c.Size > 1000).ToListAsync()
+    
+    /// <summary>
+    /// Returns constants within specified radius in YZM (entropy/compressibility/connectivity) subspace.
+    /// Uses Euclidean distance for similarity measurement.
+    /// </summary>
+    /// <param name="entropy">Quantized Shannon entropy [0, 2^21-1]</param>
+    /// <param name="compressibility">Quantized Kolmogorov complexity [0, 2^21-1]</param>
+    /// <param name="connectivity">Quantized graph connectivity [0, 2^21-1]</param>
+    /// <param name="radius">Maximum Euclidean distance in YZM space</param>
+    /// <param name="maxResults">Maximum number of results to return</param>
+    /// <returns>Queryable of constants within radius, ordered by distance</returns>
+    public IQueryable<Constant> GetNearbyConstants(
+        int entropy,
+        int compressibility,
+        int connectivity,
+        double radius,
+        int maxResults)
+        => FromExpression(() => GetNearbyConstants(entropy, compressibility, connectivity, radius, maxResults));
+
+    /// <summary>
+    /// Returns k nearest neighbors in YZM subspace using Euclidean distance.
+    /// Optimized for small k (typically k=10-100).
+    /// </summary>
+    /// <param name="entropy">Quantized Shannon entropy [0, 2^21-1]</param>
+    /// <param name="compressibility">Quantized Kolmogorov complexity [0, 2^21-1]</param>
+    /// <param name="connectivity">Quantized graph connectivity [0, 2^21-1]</param>
+    /// <param name="k">Number of nearest neighbors to return</param>
+    /// <returns>Queryable of k nearest constants, ordered by distance</returns>
+    public IQueryable<Constant> GetKNearestConstants(
+        int entropy,
+        int compressibility,
+        int connectivity,
+        int k)
+        => FromExpression(() => GetKNearestConstants(entropy, compressibility, connectivity, k));
+
+    /// <summary>
+    /// Returns constants within Hilbert index range for sequential scanning.
+    /// Uses 128-bit Hilbert comparison (high, low) for efficient 4D range queries.
+    /// </summary>
+    /// <param name="startHigh">Start Hilbert index (high 64 bits)</param>
+    /// <param name="startLow">Start Hilbert index (low 64 bits)</param>
+    /// <param name="endHigh">End Hilbert index (high 64 bits)</param>
+    /// <param name="endLow">End Hilbert index (low 64 bits)</param>
+    /// <param name="maxResults">Maximum number of results to return</param>
+    /// <returns>Queryable of constants in range, ordered by Hilbert index</returns>
+    public IQueryable<Constant> GetByHilbertRange(
+        long startHigh,
+        long startLow,
+        long endHigh,
+        long endLow,
+        int maxResults)
+        => FromExpression(() => GetByHilbertRange(startHigh, startLow, endHigh, endLow, maxResults));
+
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         base.OnConfiguring(optionsBuilder);
@@ -53,7 +112,33 @@ public class ApplicationDbContext : DbContext
         // Configure PostgreSQL conventions
         modelBuilder.HasPostgresExtension("postgis");
         modelBuilder.HasPostgresExtension("uuid-ossp");
-        modelBuilder.HasPostgresExtension("plpython3u");
+        // Note: plpython3u removed - not needed for current spatial functions (pure plpgsql)
+
+        // ====================================================================
+        // TABLE-VALUED FUNCTION MAPPINGS (EF CORE HASDBFUNCTION)
+        // ====================================================================
+        // Map C# methods to PostgreSQL functions for type-safe, LINQ-composable spatial queries
+        
+        modelBuilder.HasDbFunction(
+            typeof(ApplicationDbContext).GetMethod(
+                nameof(GetNearbyConstants),
+                new[] { typeof(int), typeof(int), typeof(int), typeof(double), typeof(int) })!)
+            .HasName("get_nearby_constants")
+            .HasSchema("public");
+
+        modelBuilder.HasDbFunction(
+            typeof(ApplicationDbContext).GetMethod(
+                nameof(GetKNearestConstants),
+                new[] { typeof(int), typeof(int), typeof(int), typeof(int) })!)
+            .HasName("get_k_nearest_constants")
+            .HasSchema("public");
+
+        modelBuilder.HasDbFunction(
+            typeof(ApplicationDbContext).GetMethod(
+                nameof(GetByHilbertRange),
+                new[] { typeof(long), typeof(long), typeof(long), typeof(long), typeof(int) })!)
+            .HasName("get_by_hilbert_range")
+            .HasSchema("public");
 
         // Global query filter for soft delete
         foreach (var entityType in modelBuilder.Model.GetEntityTypes())

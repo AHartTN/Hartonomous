@@ -13,8 +13,11 @@ namespace Hartonomous.Data.Repositories;
 /// </summary>
 public class LandmarkRepository : Repository<Landmark>, ILandmarkRepository
 {
+    private readonly ApplicationDbContext _dbContext;
+
     public LandmarkRepository(ApplicationDbContext context) : base(context)
     {
+        _dbContext = context;
     }
     
     public async Task<Landmark?> GetByNameAsync(string name, CancellationToken cancellationToken = default)
@@ -64,7 +67,7 @@ public class LandmarkRepository : Repository<Landmark>, ILandmarkRepository
     
     /// <summary>
     /// Finds landmarks nearby a given spatial coordinate within a maximum distance.
-    /// This uses a two-phase approach: Hilbert range query (DB) then exact 4D distance (in-memory).
+    /// Uses PostgreSQL function for database-side filtering with Hilbert distance approximation.
     /// </summary>
     /// <param name="center">The center coordinate for the proximity search.</param>
     /// <param name="maxDistance">The maximum 4D Euclidean distance.</param>
@@ -84,30 +87,31 @@ public class LandmarkRepository : Repository<Landmark>, ILandmarkRepository
         {
             throw new ArgumentException("Max distance must be positive", nameof(maxDistance));
         }
-        
-        // Calculate the Hilbert range for the given center and maxDistance.
-        // This gives us a bounding box in Hilbert space.
-        var (minHigh, minLow, maxHigh, maxLow) = center.GetHilbertRangeForRadius(maxDistance);
-        
-        // Query for landmarks whose Hilbert prefixes overlap with this range.
-        // This leverages the B-tree index on Hilbert prefixes.
-        // Since landmarks are tiles, we check if their prefix falls within the query range.
-        var candidateLandmarks = await _dbSet
-            .Where(l => l.IsActive &&
-                        ((l.HilbertPrefixHigh > minHigh) || (l.HilbertPrefixHigh == minHigh && l.HilbertPrefixLow >= minLow)) &&
-                        ((l.HilbertPrefixHigh < maxHigh) || (l.HilbertPrefixHigh == maxHigh && l.HilbertPrefixLow <= maxLow)))
-            .ToListAsync(cancellationToken); // Fetch all candidates that broadly match the Hilbert range
-            
-        // Now, filter and order in-memory using the actual 4D Euclidean distance to the landmark's computed center.
-        // This uses the computed 'Center' property of the Landmark entity.
-        return candidateLandmarks
-            .Where(l => l.Center.DistanceTo(center) <= maxDistance)
-            .OrderBy(l => l.Center.DistanceTo(center))
-            .ToList();
+
+        // Call PostgreSQL function - returns landmarks within Hilbert distance approximation
+        // Distance column is extra and will be ignored by EF Core during materialization
+        var results = await _dbSet
+            .FromSqlRaw(@"
+                SELECT 
+                    id, name, description, hilbert_prefix_high, hilbert_prefix_low,
+                    level, constant_count, density, is_active, last_statistics_update,
+                    created_at, created_by, updated_at, updated_by,
+                    is_deleted, deleted_at, deleted_by
+                FROM get_nearby_landmarks({0}, {1}, {2}, {3}, {4})
+            ", 
+            (long)center.HilbertHigh, 
+            (long)center.HilbertLow, 
+            maxDistance,
+            center.Precision,
+            100) // max_results
+            .ToListAsync(cancellationToken);
+
+        return results;
     }
     
     /// <summary>
     /// Finds the single nearest landmark to a given spatial coordinate.
+    /// Uses PostgreSQL function for database-side query.
     /// </summary>
     /// <param name="coordinate">The spatial coordinate to find the nearest landmark for.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
@@ -120,17 +124,17 @@ public class LandmarkRepository : Repository<Landmark>, ILandmarkRepository
         {
             throw new ArgumentNullException(nameof(coordinate));
         }
-        
-        // Fetch all active landmarks (in a real system, this would be optimized to fetch candidates efficiently,
-        // e.g., by first querying a coarse Hilbert range).
-        var activeLandmarks = await _dbSet
-            .Where(l => l.IsActive)
+
+        // Call PostgreSQL function - returns single nearest landmark
+        var results = await _dbSet
+            .FromSqlRaw(@"
+                SELECT * FROM get_nearest_landmark({0}, {1})
+            ", 
+            (long)coordinate.HilbertHigh, 
+            (long)coordinate.HilbertLow)
             .ToListAsync(cancellationToken);
 
-        // Order by distance to the landmark's computed center and take the first one.
-        return activeLandmarks
-            .OrderBy(l => l.Center.DistanceTo(coordinate))
-            .FirstOrDefault();
+        return results.FirstOrDefault();
     }
     
     public async Task<IEnumerable<Landmark>> GetActiveLandmarksAsync(CancellationToken cancellationToken = default)

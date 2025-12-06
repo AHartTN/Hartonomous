@@ -44,6 +44,7 @@
     <Project Path="Hartonomous.Data.Tests/Hartonomous.Data.Tests.csproj" />
     <Project Path="Hartonomous.Infrastructure.Tests/Hartonomous.Infrastructure.Tests.csproj" />
   </Folder>
+  <Project Path="Hartonomous.Data.IntegrationTests/Hartonomous.Data.IntegrationTests.csproj" />
   <Project Path="Hartonomous.Marshal.CLI/Hartonomous.Marshal.CLI.csproj" />
   <Project Path="Hartonomous.Marshal/Hartonomous.Marshal.csproj" />
 </Solution>
