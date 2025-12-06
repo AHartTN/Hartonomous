@@ -14,7 +14,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Hartonomous.Data.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20251206060929_AddSpatialQueryFunctions")]
+    [Migration("20251206072237_AddSpatialQueryFunctions")]
     partial class AddSpatialQueryFunctions
     {
         /// <inheritdoc />
@@ -205,7 +205,8 @@ namespace Hartonomous.Data.Migrations
                         .HasColumnName("activated_at");
 
                     b.Property<Guid?>("CanonicalConstantId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("canonical_constant_id");
 
                     b.Property<string>("ContentType")
                         .IsRequired()
@@ -241,7 +242,8 @@ namespace Hartonomous.Data.Migrations
                         .HasColumnName("deleted_by");
 
                     b.Property<string>("ErrorMessage")
-                        .HasColumnType("text");
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
 
                     b.Property<DateTime>("FirstSeenAt")
                         .HasColumnType("timestamp with time zone");
@@ -310,10 +312,9 @@ namespace Hartonomous.Data.Migrations
                         .HasColumnType("character varying(256)")
                         .HasColumnName("updated_by");
 
-                    b.Property<Guid?>("canonical_constant_id")
-                        .HasColumnType("uuid");
-
                     b.HasKey("Id");
+
+                    b.HasIndex("CanonicalConstantId");
 
                     b.HasIndex("ContentType")
                         .HasDatabaseName("ix_constants_content_type");
@@ -349,8 +350,6 @@ namespace Hartonomous.Data.Migrations
 
                     b.HasIndex("Status")
                         .HasDatabaseName("ix_constants_status");
-
-                    b.HasIndex("canonical_constant_id");
 
                     b.ToTable("constants", (string)null);
                 });
@@ -1160,14 +1159,14 @@ namespace Hartonomous.Data.Migrations
 
             modelBuilder.Entity("Hartonomous.Core.Domain.Entities.Constant", b =>
                 {
+                    b.HasOne("Hartonomous.Core.Domain.Entities.Constant", "CanonicalConstant")
+                        .WithMany()
+                        .HasForeignKey("CanonicalConstantId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("Hartonomous.Core.Domain.Entities.Landmark", null)
                         .WithMany("Constants")
                         .HasForeignKey("LandmarkId");
-
-                    b.HasOne("Hartonomous.Core.Domain.Entities.Constant", "CanonicalConstant")
-                        .WithMany()
-                        .HasForeignKey("canonical_constant_id")
-                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.OwnsOne("Hartonomous.Core.Domain.ValueObjects.SpatialCoordinate", "Coordinate", b1 =>
                         {

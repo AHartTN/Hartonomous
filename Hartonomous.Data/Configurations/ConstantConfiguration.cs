@@ -197,10 +197,6 @@ public class ConstantConfiguration : IEntityTypeConfiguration<Constant>
             .HasColumnName("first_seen_at")
             .IsRequired();
 
-        builder.Property(c => c.LandmarkId)
-            .HasColumnName("landmark_id")
-            .IsRequired(false);
-
         // ====================================================================
         // DEDUPLICATION
         // ====================================================================
@@ -260,6 +256,11 @@ public class ConstantConfiguration : IEntityTypeConfiguration<Constant>
         // ====================================================================
         // RELATIONSHIPS
         // ====================================================================
+        
+        // Shadow property for Landmark foreign key
+        builder.Property<Guid?>("LandmarkId")
+            .HasColumnName("landmark_id")
+            .IsRequired(false);
         
         builder.HasMany(c => c.ComposingTokens)
             .WithMany(t => t.Constants)

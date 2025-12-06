@@ -14,8 +14,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Hartonomous.Data.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20251206070223_FixColumnNamesToSnakeCase")]
-    partial class FixColumnNamesToSnakeCase
+    [Migration("20251206075109_FixConstantColumnNamesToSnakeCase")]
+    partial class FixConstantColumnNamesToSnakeCase
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -247,7 +247,8 @@ namespace Hartonomous.Data.Migrations
                         .HasColumnName("error_message");
 
                     b.Property<DateTime>("FirstSeenAt")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("first_seen_at");
 
                     b.Property<long>("Frequency")
                         .ValueGeneratedOnAdd()

@@ -244,7 +244,8 @@ namespace Hartonomous.Data.Migrations
                         .HasColumnName("error_message");
 
                     b.Property<DateTime>("FirstSeenAt")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("first_seen_at");
 
                     b.Property<long>("Frequency")
                         .ValueGeneratedOnAdd()
@@ -1227,7 +1228,7 @@ namespace Hartonomous.Data.Migrations
 
                             NpgsqlIndexBuilderExtensions.HasMethod(b1.HasIndex("QuantizedEntropy", "QuantizedCompressibility", "QuantizedConnectivity"), "btree");
 
-                            b1.ToTable("constants");
+                            b1.ToTable("constants", (string)null);
 
                             b1.WithOwner()
                                 .HasForeignKey("ConstantId");
@@ -1296,7 +1297,7 @@ namespace Hartonomous.Data.Migrations
                             b1.HasIndex("MinX", "MaxX", "MinY", "MaxY")
                                 .HasDatabaseName("ix_content_boundaries_bbox");
 
-                            b1.ToTable("content_boundaries");
+                            b1.ToTable("content_boundaries", (string)null);
 
                             b1.WithOwner()
                                 .HasForeignKey("ContentBoundaryId");
@@ -1382,7 +1383,7 @@ namespace Hartonomous.Data.Migrations
                             b1.HasIndex("MinX", "MaxX", "MinY", "MaxY")
                                 .HasDatabaseName("ix_hierarchical_content_bbox");
 
-                            b1.ToTable("hierarchical_content");
+                            b1.ToTable("hierarchical_content", (string)null);
 
                             b1.WithOwner()
                                 .HasForeignKey("HierarchicalContentId");
