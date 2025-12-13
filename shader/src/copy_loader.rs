@@ -68,10 +68,40 @@ impl CopyLoader {
         let mut total_inserted = 0u64;
         
         for chunk in atoms.chunks(self.batch_size) {
-            total_inserted += self.load_batch(chunk)?;
+            match self.load_batch(chunk) {
+                Ok(rows) => total_inserted += rows,
+                Err(e) => {
+                    // COPY failed - fall back to INSERT with ON CONFLICT
+                    for atom in chunk {
+                        self.insert_with_conflict_handling(atom)?;
+                        total_inserted += 1;
+                    }
+                }
+            }
         }
         
         Ok(total_inserted)
+    }
+    
+    fn insert_with_conflict_handling(&mut self, atom: &Atom) -> ShaderResult<()> {
+        self.client.execute(
+            "INSERT INTO atom (atom_id, atom_class, modality, subtype, atomic_value, geom, hilbert_index, metadata)
+             VALUES ($1, $2, $3, $4, $5, ST_SetSRID(ST_GeomFromWKB($6), 4326), $7, $8)
+             ON CONFLICT (atom_id) DO UPDATE SET
+                updated_at = now(),
+                m = GREATEST(EXCLUDED.m, ST_M(atom.geom))",
+            &[
+                &atom.atom_id,
+                &atom.atom_class,
+                &atom.modality,
+                &atom.subtype,
+                &atom.atomic_value,
+                &create_pointzm_wkb(atom.x, atom.y, atom.z, atom.m),
+                &atom.hilbert_index,
+                &atom.metadata,
+            ]
+        )?;
+        Ok(())
     }
     
     fn load_batch(&mut self, atoms: &[Atom]) -> ShaderResult<u64> {
