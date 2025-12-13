@@ -1,0 +1,4 @@
+D:/Repositories/Hartonomous/cortex/build/CMakeFiles/cortex.dir
+D:/Repositories/Hartonomous/cortex/build/CMakeFiles/INSTALL.dir
+D:/Repositories/Hartonomous/cortex/build/CMakeFiles/ALL_BUILD.dir
+D:/Repositories/Hartonomous/cortex/build/CMakeFiles/ZERO_CHECK.dir

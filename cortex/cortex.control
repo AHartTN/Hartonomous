@@ -1,0 +1,6 @@
+# cortex PostgreSQL extension control file
+comment = 'Cortex LMDS-based geometric recalibration engine for Hartonomous'
+default_version = '1.0'
+module_pathname = '$libdir/cortex'
+relocatable = false
+requires = 'postgis'

@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__MCP_DOCKER__sequentialthinking",
+      "Bash(gh repo list:*)",
+      "Bash(ls:*)"
+    ]
+  }
+}

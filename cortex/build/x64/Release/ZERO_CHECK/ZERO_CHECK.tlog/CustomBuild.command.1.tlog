@@ -1,0 +1,10 @@
+^D:\REPOSITORIES\HARTONOMOUS\CORTEX\BUILD\CMAKEFILES\9A730F3197F43B699E4D2EB211DDBBC6\GENERATE.STAMP.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SD:/Repositories/Hartonomous/cortex -BD:/Repositories/Hartonomous/cortex/build --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file D:/Repositories/Hartonomous/cortex/build/cortex_extension.slnx
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

@@ -1,0 +1,30 @@
+[[bin]]
+name = "hartonomous-shader"
+path = "src/main.rs"
+
+[package]
+name = "hartonomous-shader"
+version = "1.0.0"
+edition = "2021"
+authors = ["Hartonomous Team"]
+
+[dependencies]
+blake3 = "1.5"
+postgres = { version = "0.19", features = ["with-serde_json-1"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.35", features = ["full"] }
+anyhow = "1.0"
+thiserror = "1.0"
+config = "0.14"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+hex = "0.4"
+
+[dev-dependencies]
+criterion = "0.5"
+tempfile = "3.8"
+
+[[bench]]
+name = "sdi_generation"
+harness = false
