@@ -6,13 +6,7 @@ $ErrorActionPreference = "Stop"
 
 Write-Host "=== Cortex Extension Installation ===" -ForegroundColor Cyan
 
-# Check for admin privileges
-$isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-if (-not $isAdmin) {
-    Write-Host "ERROR: This script requires Administrator privileges" -ForegroundColor Red
-    Write-Host "Please run: Start-Process powershell -Verb RunAs -ArgumentList '-File $PSCommandPath'" -ForegroundColor Yellow
-    exit 1
-}
+
 
 # PostgreSQL paths
 $PG_HOME = "D:/PostgreSQL/18"

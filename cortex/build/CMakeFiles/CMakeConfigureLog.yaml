@@ -110,7 +110,7 @@ events:
       The output was:
       0
       MSBuild version 18.3.0-preview-25570-20+708535641 for .NET Framework
-      Build started 12/13/2025 6:47:16 AM.
+      Build started 12/13/2025 7:57:10 AM.
       
       Project "D:\\Repositories\\Hartonomous\\cortex\\build\\CMakeFiles\\4.2.0\\CompilerIdC\\CompilerIdC.vcxproj" on node 1 (default targets).
       PrepareForBuild:
@@ -139,7 +139,7 @@ events:
           0 Warning(s)
           0 Error(s)
       
-      Time Elapsed 00:00:00.84
+      Time Elapsed 00:00:00.72
       
       
       Compilation of the C compiler identification source "CMakeCCompilerId.c" produced "CompilerIdC.exe"
@@ -1311,7 +1311,7 @@ events:
       The output was:
       0
       MSBuild version 18.3.0-preview-25570-20+708535641 for .NET Framework
-      Build started 12/13/2025 6:47:17 AM.
+      Build started 12/13/2025 7:57:11 AM.
       
       Project "D:\\Repositories\\Hartonomous\\cortex\\build\\CMakeFiles\\4.2.0\\CompilerIdCXX\\CompilerIdCXX.vcxproj" on node 1 (default targets).
       PrepareForBuild:
@@ -1340,7 +1340,7 @@ events:
           0 Warning(s)
           0 Error(s)
       
-      Time Elapsed 00:00:00.72
+      Time Elapsed 00:00:00.74
       
       
       Compilation of the CXX compiler identification source "CMakeCXXCompilerId.cpp" produced "CompilerIdCXX.exe"
@@ -1756,9 +1756,9 @@ events:
       - "C:/Program Files/CMake/bin/"
       - "C:/Program Files/CMake/sbin/"
       - "C:/Program Files/CMake/"
-      - "C:/Program Files (x86)/cortex_extension/bin/"
-      - "C:/Program Files (x86)/cortex_extension/sbin/"
-      - "C:/Program Files (x86)/cortex_extension/"
+      - "C:/Program Files/cortex_extension/bin/"
+      - "C:/Program Files/cortex_extension/sbin/"
+      - "C:/Program Files/cortex_extension/"
     searched_directories:
       - "C:/Program Files/PowerShell/7/rc.com"
       - "C:/Program Files/PowerShell/7/rc.exe"
@@ -1958,15 +1958,15 @@ events:
       - "C:/Program Files/CMake/rc.com"
       - "C:/Program Files/CMake/rc.exe"
       - "C:/Program Files/CMake/rc"
-      - "C:/Program Files (x86)/cortex_extension/bin/rc.com"
-      - "C:/Program Files (x86)/cortex_extension/bin/rc.exe"
-      - "C:/Program Files (x86)/cortex_extension/bin/rc"
-      - "C:/Program Files (x86)/cortex_extension/sbin/rc.com"
-      - "C:/Program Files (x86)/cortex_extension/sbin/rc.exe"
-      - "C:/Program Files (x86)/cortex_extension/sbin/rc"
-      - "C:/Program Files (x86)/cortex_extension/rc.com"
-      - "C:/Program Files (x86)/cortex_extension/rc.exe"
-      - "C:/Program Files (x86)/cortex_extension/rc"
+      - "C:/Program Files/cortex_extension/bin/rc.com"
+      - "C:/Program Files/cortex_extension/bin/rc.exe"
+      - "C:/Program Files/cortex_extension/bin/rc"
+      - "C:/Program Files/cortex_extension/sbin/rc.com"
+      - "C:/Program Files/cortex_extension/sbin/rc.exe"
+      - "C:/Program Files/cortex_extension/sbin/rc"
+      - "C:/Program Files/cortex_extension/rc.com"
+      - "C:/Program Files/cortex_extension/rc.exe"
+      - "C:/Program Files/cortex_extension/rc"
     found: false
     search_context:
       ENV{PATH}:
@@ -2029,12 +2029,12 @@ events:
         - "C:\\Program Files (x86)\\Microsoft SDKs\\Windows\\v10.0A\\bin\\NETFX 4.8.1 Tools\\x64"
         - "C:\\Program Files (x86)\\Microsoft SDKs\\Windows\\v10.0A\\bin\\NETFX 4.8.1 Tools"
         - "c:\\Users\\ahart\\.vscode\\extensions\\ms-python.debugpy-2025.16.0-win32-x64\\bundled\\scripts\\noConfigScripts"
-      CMAKE_INSTALL_PREFIX: "C:/Program Files (x86)/cortex_extension"
+      CMAKE_INSTALL_PREFIX: "C:/Program Files/cortex_extension"
       CMAKE_SYSTEM_PREFIX_PATH:
         - "C:/Program Files"
         - "C:/Program Files (x86)"
         - "C:/Program Files/CMake"
-        - "C:/Program Files (x86)/cortex_extension"
+        - "C:/Program Files/cortex_extension"
   -
     kind: "try_compile-v1"
     backtrace:
@@ -2044,8 +2044,8 @@ events:
     checks:
       - "Detecting C compiler ABI info"
     directories:
-      source: "D:/Repositories/Hartonomous/cortex/build/CMakeFiles/CMakeScratch/TryCompile-dki4kj"
-      binary: "D:/Repositories/Hartonomous/cortex/build/CMakeFiles/CMakeScratch/TryCompile-dki4kj"
+      source: "D:/Repositories/Hartonomous/cortex/build/CMakeFiles/CMakeScratch/TryCompile-zybwk6"
+      binary: "D:/Repositories/Hartonomous/cortex/build/CMakeFiles/CMakeScratch/TryCompile-zybwk6"
     cmakeVariables:
       CMAKE_C_FLAGS: "/DWIN32 /D_WINDOWS"
       CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
@@ -2054,39 +2054,39 @@ events:
       variable: "CMAKE_C_ABI_COMPILED"
       cached: true
       stdout: |
-        Change Dir: 'D:/Repositories/Hartonomous/cortex/build/CMakeFiles/CMakeScratch/TryCompile-dki4kj'
+        Change Dir: 'D:/Repositories/Hartonomous/cortex/build/CMakeFiles/CMakeScratch/TryCompile-zybwk6'
         
-        Run Build Command(s): "C:/Program Files/Microsoft Visual Studio/18/Insiders/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_00f53.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=18.0 /v:n
+        Run Build Command(s): "C:/Program Files/Microsoft Visual Studio/18/Insiders/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_512ed.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=18.0 /v:n
         MSBuild version 18.3.0-preview-25570-20+708535641 for .NET Framework
-        Build started 12/13/2025 6:47:18 AM.
+        Build started 12/13/2025 7:57:12 AM.
         
-        Project "D:\\Repositories\\Hartonomous\\cortex\\build\\CMakeFiles\\CMakeScratch\\TryCompile-dki4kj\\cmTC_00f53.vcxproj" on node 1 (default targets).
+        Project "D:\\Repositories\\Hartonomous\\cortex\\build\\CMakeFiles\\CMakeScratch\\TryCompile-zybwk6\\cmTC_512ed.vcxproj" on node 1 (default targets).
         PrepareForBuild:
           Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
-          Creating directory "D:\\Repositories\\Hartonomous\\cortex\\build\\CMakeFiles\\CMakeScratch\\TryCompile-dki4kj\\Debug\\".
-          Creating directory "cmTC_00f53.dir\\Debug\\cmTC_00f53.tlog\\".
+          Creating directory "D:\\Repositories\\Hartonomous\\cortex\\build\\CMakeFiles\\CMakeScratch\\TryCompile-zybwk6\\Debug\\".
+          Creating directory "cmTC_512ed.dir\\Debug\\cmTC_512ed.tlog\\".
         InitializeBuildStatus:
-          Creating "cmTC_00f53.dir\\Debug\\cmTC_00f53.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
-          Touching "cmTC_00f53.dir\\Debug\\cmTC_00f53.tlog\\unsuccessfulbuild".
+          Creating "cmTC_512ed.dir\\Debug\\cmTC_512ed.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+          Touching "cmTC_512ed.dir\\Debug\\cmTC_512ed.tlog\\unsuccessfulbuild".
         ClCompile:
-          C:\\Program Files\\Microsoft Visual Studio\\18\\Insiders\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\CL.exe /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /Fo"cmTC_00f53.dir\\Debug\\\\" /Fd"cmTC_00f53.dir\\Debug\\vc145.pdb" /external:W1 /TC /errorReport:queue "C:\\Program Files\\CMake\\share\\cmake-4.2\\Modules\\CMakeCCompilerABI.c"
+          C:\\Program Files\\Microsoft Visual Studio\\18\\Insiders\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\CL.exe /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /Fo"cmTC_512ed.dir\\Debug\\\\" /Fd"cmTC_512ed.dir\\Debug\\vc145.pdb" /external:W1 /TC /errorReport:queue "C:\\Program Files\\CMake\\share\\cmake-4.2\\Modules\\CMakeCCompilerABI.c"
           Microsoft (R) C/C++ Optimizing Compiler Version 19.50.35720 for x64
           Copyright (C) Microsoft Corporation.  All rights reserved.
-          cl /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /Fo"cmTC_00f53.dir\\Debug\\\\" /Fd"cmTC_00f53.dir\\Debug\\vc145.pdb" /external:W1 /TC /errorReport:queue "C:\\Program Files\\CMake\\share\\cmake-4.2\\Modules\\CMakeCCompilerABI.c"
+          cl /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /Fo"cmTC_512ed.dir\\Debug\\\\" /Fd"cmTC_512ed.dir\\Debug\\vc145.pdb" /external:W1 /TC /errorReport:queue "C:\\Program Files\\CMake\\share\\cmake-4.2\\Modules\\CMakeCCompilerABI.c"
           CMakeCCompilerABI.c
         Link:
-          C:\\Program Files\\Microsoft Visual Studio\\18\\Insiders\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\link.exe /OUT:"D:\\Repositories\\Hartonomous\\cortex\\build\\CMakeFiles\\CMakeScratch\\TryCompile-dki4kj\\Debug\\cmTC_00f53.exe" /INCREMENTAL /ILK:"cmTC_00f53.dir\\Debug\\cmTC_00f53.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"D:/Repositories/Hartonomous/cortex/build/CMakeFiles/CMakeScratch/TryCompile-dki4kj/Debug/cmTC_00f53.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /IMPLIB:"D:/Repositories/Hartonomous/cortex/build/CMakeFiles/CMakeScratch/TryCompile-dki4kj/Debug/cmTC_00f53.lib" /MACHINE:X64  /machine:x64 cmTC_00f53.dir\\Debug\\CMakeCCompilerABI.obj
-          cmTC_00f53.vcxproj -> D:\\Repositories\\Hartonomous\\cortex\\build\\CMakeFiles\\CMakeScratch\\TryCompile-dki4kj\\Debug\\cmTC_00f53.exe
+          C:\\Program Files\\Microsoft Visual Studio\\18\\Insiders\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\link.exe /OUT:"D:\\Repositories\\Hartonomous\\cortex\\build\\CMakeFiles\\CMakeScratch\\TryCompile-zybwk6\\Debug\\cmTC_512ed.exe" /INCREMENTAL /ILK:"cmTC_512ed.dir\\Debug\\cmTC_512ed.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"D:/Repositories/Hartonomous/cortex/build/CMakeFiles/CMakeScratch/TryCompile-zybwk6/Debug/cmTC_512ed.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /IMPLIB:"D:/Repositories/Hartonomous/cortex/build/CMakeFiles/CMakeScratch/TryCompile-zybwk6/Debug/cmTC_512ed.lib" /MACHINE:X64  /machine:x64 cmTC_512ed.dir\\Debug\\CMakeCCompilerABI.obj
+          cmTC_512ed.vcxproj -> D:\\Repositories\\Hartonomous\\cortex\\build\\CMakeFiles\\CMakeScratch\\TryCompile-zybwk6\\Debug\\cmTC_512ed.exe
         FinalizeBuildStatus:
-          Deleting file "cmTC_00f53.dir\\Debug\\cmTC_00f53.tlog\\unsuccessfulbuild".
-          Touching "cmTC_00f53.dir\\Debug\\cmTC_00f53.tlog\\cmTC_00f53.lastbuildstate".
-        Done Building Project "D:\\Repositories\\Hartonomous\\cortex\\build\\CMakeFiles\\CMakeScratch\\TryCompile-dki4kj\\cmTC_00f53.vcxproj" (default targets).
+          Deleting file "cmTC_512ed.dir\\Debug\\cmTC_512ed.tlog\\unsuccessfulbuild".
+          Touching "cmTC_512ed.dir\\Debug\\cmTC_512ed.tlog\\cmTC_512ed.lastbuildstate".
+        Done Building Project "D:\\Repositories\\Hartonomous\\cortex\\build\\CMakeFiles\\CMakeScratch\\TryCompile-zybwk6\\cmTC_512ed.vcxproj" (default targets).
         
         Build succeeded.
             0 Warning(s)
             0 Error(s)
         
-        Time Elapsed 00:00:00.77
+        Time Elapsed 00:00:00.66
         
       exitCode: 0
   -
@@ -2126,8 +2126,8 @@ events:
     checks:
       - "Detecting CXX compiler ABI info"
     directories:
-      source: "D:/Repositories/Hartonomous/cortex/build/CMakeFiles/CMakeScratch/TryCompile-8kzl8g"
-      binary: "D:/Repositories/Hartonomous/cortex/build/CMakeFiles/CMakeScratch/TryCompile-8kzl8g"
+      source: "D:/Repositories/Hartonomous/cortex/build/CMakeFiles/CMakeScratch/TryCompile-lrmv3u"
+      binary: "D:/Repositories/Hartonomous/cortex/build/CMakeFiles/CMakeScratch/TryCompile-lrmv3u"
     cmakeVariables:
       CMAKE_CXX_FLAGS: "/DWIN32 /D_WINDOWS /GR /EHsc"
       CMAKE_CXX_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
@@ -2137,39 +2137,39 @@ events:
       variable: "CMAKE_CXX_ABI_COMPILED"
       cached: true
       stdout: |
-        Change Dir: 'D:/Repositories/Hartonomous/cortex/build/CMakeFiles/CMakeScratch/TryCompile-8kzl8g'
+        Change Dir: 'D:/Repositories/Hartonomous/cortex/build/CMakeFiles/CMakeScratch/TryCompile-lrmv3u'
         
-        Run Build Command(s): "C:/Program Files/Microsoft Visual Studio/18/Insiders/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_57483.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=18.0 /v:n
+        Run Build Command(s): "C:/Program Files/Microsoft Visual Studio/18/Insiders/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_b1d2d.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=18.0 /v:n
         MSBuild version 18.3.0-preview-25570-20+708535641 for .NET Framework
-        Build started 12/13/2025 6:47:19 AM.
+        Build started 12/13/2025 7:57:13 AM.
         
-        Project "D:\\Repositories\\Hartonomous\\cortex\\build\\CMakeFiles\\CMakeScratch\\TryCompile-8kzl8g\\cmTC_57483.vcxproj" on node 1 (default targets).
+        Project "D:\\Repositories\\Hartonomous\\cortex\\build\\CMakeFiles\\CMakeScratch\\TryCompile-lrmv3u\\cmTC_b1d2d.vcxproj" on node 1 (default targets).
         PrepareForBuild:
           Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
-          Creating directory "D:\\Repositories\\Hartonomous\\cortex\\build\\CMakeFiles\\CMakeScratch\\TryCompile-8kzl8g\\Debug\\".
-          Creating directory "cmTC_57483.dir\\Debug\\cmTC_57483.tlog\\".
+          Creating directory "D:\\Repositories\\Hartonomous\\cortex\\build\\CMakeFiles\\CMakeScratch\\TryCompile-lrmv3u\\Debug\\".
+          Creating directory "cmTC_b1d2d.dir\\Debug\\cmTC_b1d2d.tlog\\".
         InitializeBuildStatus:
-          Creating "cmTC_57483.dir\\Debug\\cmTC_57483.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
-          Touching "cmTC_57483.dir\\Debug\\cmTC_57483.tlog\\unsuccessfulbuild".
+          Creating "cmTC_b1d2d.dir\\Debug\\cmTC_b1d2d.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+          Touching "cmTC_b1d2d.dir\\Debug\\cmTC_b1d2d.tlog\\unsuccessfulbuild".
         ClCompile:
-          C:\\Program Files\\Microsoft Visual Studio\\18\\Insiders\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\CL.exe /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /EHsc /RTC1 /MDd /GR /Fo"cmTC_57483.dir\\Debug\\\\" /Fd"cmTC_57483.dir\\Debug\\vc145.pdb" /external:W1 /TP /errorReport:queue "C:\\Program Files\\CMake\\share\\cmake-4.2\\Modules\\CMakeCXXCompilerABI.cpp"
+          C:\\Program Files\\Microsoft Visual Studio\\18\\Insiders\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\CL.exe /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /EHsc /RTC1 /MDd /GR /Fo"cmTC_b1d2d.dir\\Debug\\\\" /Fd"cmTC_b1d2d.dir\\Debug\\vc145.pdb" /external:W1 /TP /errorReport:queue "C:\\Program Files\\CMake\\share\\cmake-4.2\\Modules\\CMakeCXXCompilerABI.cpp"
           Microsoft (R) C/C++ Optimizing Compiler Version 19.50.35720 for x64
           Copyright (C) Microsoft Corporation.  All rights reserved.
-          cl /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /EHsc /RTC1 /MDd /GR /Fo"cmTC_57483.dir\\Debug\\\\" /Fd"cmTC_57483.dir\\Debug\\vc145.pdb" /external:W1 /TP /errorReport:queue "C:\\Program Files\\CMake\\share\\cmake-4.2\\Modules\\CMakeCXXCompilerABI.cpp"
+          cl /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /EHsc /RTC1 /MDd /GR /Fo"cmTC_b1d2d.dir\\Debug\\\\" /Fd"cmTC_b1d2d.dir\\Debug\\vc145.pdb" /external:W1 /TP /errorReport:queue "C:\\Program Files\\CMake\\share\\cmake-4.2\\Modules\\CMakeCXXCompilerABI.cpp"
           CMakeCXXCompilerABI.cpp
         Link:
-          C:\\Program Files\\Microsoft Visual Studio\\18\\Insiders\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\link.exe /OUT:"D:\\Repositories\\Hartonomous\\cortex\\build\\CMakeFiles\\CMakeScratch\\TryCompile-8kzl8g\\Debug\\cmTC_57483.exe" /INCREMENTAL /ILK:"cmTC_57483.dir\\Debug\\cmTC_57483.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"D:/Repositories/Hartonomous/cortex/build/CMakeFiles/CMakeScratch/TryCompile-8kzl8g/Debug/cmTC_57483.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /IMPLIB:"D:/Repositories/Hartonomous/cortex/build/CMakeFiles/CMakeScratch/TryCompile-8kzl8g/Debug/cmTC_57483.lib" /MACHINE:X64  /machine:x64 cmTC_57483.dir\\Debug\\CMakeCXXCompilerABI.obj
-          cmTC_57483.vcxproj -> D:\\Repositories\\Hartonomous\\cortex\\build\\CMakeFiles\\CMakeScratch\\TryCompile-8kzl8g\\Debug\\cmTC_57483.exe
+          C:\\Program Files\\Microsoft Visual Studio\\18\\Insiders\\VC\\Tools\\MSVC\\14.50.35717\\bin\\HostX64\\x64\\link.exe /OUT:"D:\\Repositories\\Hartonomous\\cortex\\build\\CMakeFiles\\CMakeScratch\\TryCompile-lrmv3u\\Debug\\cmTC_b1d2d.exe" /INCREMENTAL /ILK:"cmTC_b1d2d.dir\\Debug\\cmTC_b1d2d.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"D:/Repositories/Hartonomous/cortex/build/CMakeFiles/CMakeScratch/TryCompile-lrmv3u/Debug/cmTC_b1d2d.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /IMPLIB:"D:/Repositories/Hartonomous/cortex/build/CMakeFiles/CMakeScratch/TryCompile-lrmv3u/Debug/cmTC_b1d2d.lib" /MACHINE:X64  /machine:x64 cmTC_b1d2d.dir\\Debug\\CMakeCXXCompilerABI.obj
+          cmTC_b1d2d.vcxproj -> D:\\Repositories\\Hartonomous\\cortex\\build\\CMakeFiles\\CMakeScratch\\TryCompile-lrmv3u\\Debug\\cmTC_b1d2d.exe
         FinalizeBuildStatus:
-          Deleting file "cmTC_57483.dir\\Debug\\cmTC_57483.tlog\\unsuccessfulbuild".
-          Touching "cmTC_57483.dir\\Debug\\cmTC_57483.tlog\\cmTC_57483.lastbuildstate".
-        Done Building Project "D:\\Repositories\\Hartonomous\\cortex\\build\\CMakeFiles\\CMakeScratch\\TryCompile-8kzl8g\\cmTC_57483.vcxproj" (default targets).
+          Deleting file "cmTC_b1d2d.dir\\Debug\\cmTC_b1d2d.tlog\\unsuccessfulbuild".
+          Touching "cmTC_b1d2d.dir\\Debug\\cmTC_b1d2d.tlog\\cmTC_b1d2d.lastbuildstate".
+        Done Building Project "D:\\Repositories\\Hartonomous\\cortex\\build\\CMakeFiles\\CMakeScratch\\TryCompile-lrmv3u\\cmTC_b1d2d.vcxproj" (default targets).
         
         Build succeeded.
             0 Warning(s)
             0 Error(s)
         
-        Time Elapsed 00:00:00.73
+        Time Elapsed 00:00:00.65
         
       exitCode: 0
   -
@@ -2284,9 +2284,9 @@ events:
       - "C:/Program Files/CMake/bin/"
       - "C:/Program Files/CMake/sbin/"
       - "C:/Program Files/CMake/"
-      - "C:/Program Files (x86)/cortex_extension/bin/"
-      - "C:/Program Files (x86)/cortex_extension/sbin/"
-      - "C:/Program Files (x86)/cortex_extension/"
+      - "C:/Program Files/cortex_extension/bin/"
+      - "C:/Program Files/cortex_extension/sbin/"
+      - "C:/Program Files/cortex_extension/"
     searched_directories:
       - "C:/Program Files/PowerShell/7/pg_config.com"
       - "C:/Program Files/PowerShell/7/pg_config.exe"
@@ -2465,16 +2465,16 @@ events:
         - "C:\\Program Files (x86)\\Microsoft SDKs\\Windows\\v10.0A\\bin\\NETFX 4.8.1 Tools\\x64"
         - "C:\\Program Files (x86)\\Microsoft SDKs\\Windows\\v10.0A\\bin\\NETFX 4.8.1 Tools"
         - "c:\\Users\\ahart\\.vscode\\extensions\\ms-python.debugpy-2025.16.0-win32-x64\\bundled\\scripts\\noConfigScripts"
-      CMAKE_INSTALL_PREFIX: "C:/Program Files (x86)/cortex_extension"
+      CMAKE_INSTALL_PREFIX: "C:/Program Files/cortex_extension"
       CMAKE_SYSTEM_PREFIX_PATH:
         - "C:/Program Files"
         - "C:/Program Files (x86)"
         - "C:/Program Files/CMake"
-        - "C:/Program Files (x86)/cortex_extension"
+        - "C:/Program Files/cortex_extension"
   -
     kind: "find_package-v1"
     backtrace:
-      - "CMakeLists.txt:24 (find_package)"
+      - "CMakeLists.txt:32 (find_package)"
     name: "Eigen3"
     configs:
       -
@@ -3050,10 +3050,10 @@ events:
         - "C:\\Program Files (x86)\\Microsoft SDKs\\Windows\\v10.0A\\bin\\NETFX 4.8.1 Tools\\x64"
         - "C:\\Program Files (x86)\\Microsoft SDKs\\Windows\\v10.0A\\bin\\NETFX 4.8.1 Tools"
         - "c:\\Users\\ahart\\.vscode\\extensions\\ms-python.debugpy-2025.16.0-win32-x64\\bundled\\scripts\\noConfigScripts"
-      CMAKE_INSTALL_PREFIX: "C:/Program Files (x86)/cortex_extension"
+      CMAKE_INSTALL_PREFIX: "C:/Program Files/cortex_extension"
       CMAKE_SYSTEM_PREFIX_PATH:
         - "C:/Program Files"
         - "C:/Program Files (x86)"
         - "C:/Program Files/CMake"
-        - "C:/Program Files (x86)/cortex_extension"
+        - "C:/Program Files/cortex_extension"
 ...

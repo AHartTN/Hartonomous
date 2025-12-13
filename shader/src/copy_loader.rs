@@ -22,6 +22,7 @@ pub struct Atom {
 pub struct CopyLoader {
     client: Client,
     batch_size: usize,
+    queue: Vec<Atom>,
 }
 
 impl CopyLoader {
@@ -31,7 +32,35 @@ impl CopyLoader {
         Ok(Self {
             client,
             batch_size,
+            queue: Vec::with_capacity(batch_size),
         })
+    }
+    
+    /// Queue single atom for batch loading
+    pub fn queue_atom(&mut self, atom: Atom) -> ShaderResult<()> {
+        self.queue.push(atom);
+        
+        if self.queue.len() >= self.batch_size {
+            self.flush_queue()?;
+        }
+        
+        Ok(())
+    }
+    
+    /// Flush remaining atoms
+    pub fn flush(&mut self) -> ShaderResult<u64> {
+        if self.queue.is_empty() {
+            return Ok(0);
+        }
+        
+        let count = self.flush_queue()?;
+        Ok(count)
+    }
+    
+    fn flush_queue(&mut self) -> ShaderResult<u64> {
+        let atoms_to_load: Vec<Atom> = self.queue.drain(..).collect();
+        let count = self.load_batch(&atoms_to_load)?;
+        Ok(count)
     }
     
     /// Bulk load atoms using COPY protocol

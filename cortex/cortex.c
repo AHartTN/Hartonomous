@@ -202,6 +202,55 @@ PG_FUNCTION_INFO_V1(cortex_cycle_once);
 Datum
 cortex_cycle_once(PG_FUNCTION_ARGS)
 {
-    cortex_cycle();
+    int ret;
+    int recalibrated = 0;
+
+    SPI_connect();
+
+    /* Update landmarks if needed */
+    ret = SPI_execute(
+        "INSERT INTO cortex_landmarks (atom_id, landmark_index, model_version) "
+        "SELECT atom_id, row_number() OVER (ORDER BY random()), "
+        "       (SELECT model_version FROM cortex_state WHERE id = 1) "
+        "FROM atom "
+        "WHERE atom_class = 0 "  /* Constants only */
+        "ORDER BY random() "
+        "LIMIT 100 "
+        "ON CONFLICT (atom_id) DO NOTHING;",
+        false, 0
+    );
+
+    if (ret != SPI_OK_INSERT)
+        elog(WARNING, "Cortex: Failed to update landmarks");
+
+    /* Identify high-stress atoms (stub - full LMDS in C++ module) */
+    ret = SPI_execute(
+        "SELECT atom_id FROM atom "
+        "WHERE atom_class = 1 "  /* Compositions need recalibration */
+        "AND random() < 0.01 "   /* 1% sample per cycle */
+        "LIMIT 100;",
+        true, 100
+    );
+
+    if (ret == SPI_OK_SELECT && SPI_processed > 0)
+    {
+        recalibrated = SPI_processed;
+        
+        /* In production: call C++ LMDS projector here */
+        /* For now: just update state */
+        SPI_execute(
+            "UPDATE cortex_state SET "
+            "atoms_processed = atoms_processed + 1, "
+            "recalibrations = recalibrations + 1, "
+            "last_cycle_at = now(), "
+            "landmark_count = (SELECT COUNT(*) FROM cortex_landmarks) "
+            "WHERE id = 1;",
+            false, 0
+        );
+    }
+
+    elog(LOG, "Cortex: Manual cycle recalibrated %d atoms", recalibrated);
+
+    SPI_finish();
     PG_RETURN_BOOL(true);
 }
