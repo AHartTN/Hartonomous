@@ -1,6 +1,9 @@
 -- Test Data Population Script
 -- Creates sample atoms for validation
 
+-- Enable pgcrypto for gen_random_bytes
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 -- Insert numeric constants (Z=0, raw data)
 INSERT INTO atom (atom_id, atom_class, modality, atomic_value, geom, hilbert_index)
 SELECT
@@ -59,10 +62,10 @@ WITH target AS (
     SELECT geom FROM atom LIMIT 1
 )
 SELECT
-    atom_id,
-    ST_X(geom) as x,
-    ST_Y(geom) as y,
-    ST_3DDistance(geom, target.geom) as distance
-FROM atom, target
-ORDER BY geom <-> target.geom
+    a.atom_id,
+    ST_X(a.geom) as x,
+    ST_Y(a.geom) as y,
+    ST_3DDistance(a.geom, t.geom) as distance
+FROM atom a, target t
+ORDER BY a.geom <-> t.geom
 LIMIT 10;
