@@ -20,6 +20,7 @@
 #include "utils/snapmgr.h"
 #include "utils/timestamp.h"
 #include "utils/wait_classes.h"
+#include "lmds_projector.h"
 
 PG_MODULE_MAGIC;
 
@@ -204,6 +205,8 @@ cortex_cycle_once(PG_FUNCTION_ARGS)
 {
     int ret;
     int recalibrated = 0;
+    SPITupleTable *tuptable;
+    TupleDesc tupdesc;
 
     SPI_connect();
 
@@ -226,21 +229,145 @@ cortex_cycle_once(PG_FUNCTION_ARGS)
     /* Identify high-stress atoms (stub - full LMDS in C++ module) */
     ret = SPI_execute(
         "SELECT atom_id FROM atom "
-        "WHERE atom_class = 1 "  /* Compositions need recalibration */
-        "AND random() < 0.01 "   /* 1% sample per cycle */
+        "WHERE atom_class = 0 "  /* Constants for now */
+        "ORDER BY random() "
         "LIMIT 100;",
         true, 100
     );
 
-    if (ret == SPI_OK_SELECT && SPI_processed > 0)
+    if (ret == SPI_OK_SELECT)
     {
         recalibrated = SPI_processed;
+        tuptable = SPI_tuptable;
+        tupdesc = SPI_tuptable->tupdesc;
         
-        /* In production: call C++ LMDS projector here */
-        /* For now: just update state */
+        /* Get landmarks for LMDS projection */
+        ret = SPI_execute(
+            "SELECT a.atom_id, ST_X(a.geom), ST_Y(a.geom), ST_Z(a.geom), ST_M(a.geom) "
+            "FROM cortex_landmarks cl "
+            "JOIN atom a ON a.atom_id = cl.atom_id "
+            "ORDER BY cl.landmark_index "
+            "LIMIT 100",
+            true, 100
+        );
+        
+        if (ret == SPI_OK_SELECT && SPI_processed > 0)
+        {
+            int num_landmarks = SPI_processed;
+            SPITupleTable *landmark_table = SPI_tuptable;
+            TupleDesc landmark_desc = landmark_table->tupdesc;
+            
+            /* Build landmark set */
+            LandmarkSet landmarks;
+            landmarks.count = num_landmarks;
+            landmarks.landmarks = (Point4D*) palloc(num_landmarks * sizeof(Point4D));
+            landmarks.distances = (double**) palloc(num_landmarks * sizeof(double*));
+            
+            /* Load landmark positions */
+            for (int i = 0; i < num_landmarks; i++) {
+                HeapTuple tuple = landmark_table->vals[i];
+                bool isnull;
+                
+                landmarks.landmarks[i].x = DatumGetFloat8(SPI_getbinval(tuple, landmark_desc, 2, &isnull));
+                landmarks.landmarks[i].y = DatumGetFloat8(SPI_getbinval(tuple, landmark_desc, 3, &isnull));
+                landmarks.landmarks[i].z = DatumGetFloat8(SPI_getbinval(tuple, landmark_desc, 4, &isnull));
+                landmarks.landmarks[i].m = DatumGetFloat8(SPI_getbinval(tuple, landmark_desc, 5, &isnull));
+                
+                /* Allocate distance matrix row */
+                landmarks.distances[i] = (double*) palloc(num_landmarks * sizeof(double));
+            }
+            
+            /* Compute pairwise landmark distances */
+            for (int i = 0; i < num_landmarks; i++) {
+                for (int j = 0; j < num_landmarks; j++) {
+                    if (i == j) {
+                        landmarks.distances[i][j] = 0.0;
+                    } else {
+                        double dx = landmarks.landmarks[i].x - landmarks.landmarks[j].x;
+                        double dy = landmarks.landmarks[i].y - landmarks.landmarks[j].y;
+                        double dz = landmarks.landmarks[i].z - landmarks.landmarks[j].z;
+                        double dm = landmarks.landmarks[i].m - landmarks.landmarks[j].m;
+                        landmarks.distances[i][j] = sqrt(dx*dx + dy*dy + dz*dz + dm*dm);
+                    }
+                }
+            }
+            
+            /* Project high-stress atoms using LMDS */
+            for (int i = 0; i < recalibrated && i < 100; i++) {
+                HeapTuple tuple = tuptable->vals[i];
+                bool isnull;
+                
+                /* Get atom_id as bytea */
+                Datum atom_id_datum = SPI_getbinval(tuple, tupdesc, 1, &isnull);
+                if (isnull) continue;
+                
+                /* Convert atom_id to hex string for query */
+                char* atom_id_bytes = (char*) DatumGetPointer(atom_id_datum);
+                char hex_id[65];
+                for (int j = 0; j < 32; j++) {
+                    sprintf(hex_id + (j * 2), "%02x", (unsigned char)atom_id_bytes[j]);
+                }
+                hex_id[64] = '\0';
+                
+                /* Get current atom position */
+                char pos_query[256];
+                snprintf(pos_query, sizeof(pos_query),
+                    "SELECT ST_X(geom), ST_Y(geom), ST_Z(geom), ST_M(geom) "
+                    "FROM atom WHERE atom_id = '\\x%s'::bytea",
+                    hex_id
+                );
+                
+                ret = SPI_execute(pos_query, true, 1);
+                if (ret != SPI_OK_SELECT || SPI_processed != 1) continue;
+                
+                HeapTuple atom_tuple = SPI_tuptable->vals[0];
+                TupleDesc atom_desc = SPI_tuptable->tupdesc;
+                bool isnull_coord;
+                
+                Point4D current_pos;
+                current_pos.x = DatumGetFloat8(SPI_getbinval(atom_tuple, atom_desc, 1, &isnull_coord));
+                current_pos.y = DatumGetFloat8(SPI_getbinval(atom_tuple, atom_desc, 2, &isnull_coord));
+                current_pos.z = DatumGetFloat8(SPI_getbinval(atom_tuple, atom_desc, 3, &isnull_coord));
+                current_pos.m = DatumGetFloat8(SPI_getbinval(atom_tuple, atom_desc, 4, &isnull_coord));
+                
+                /* Calculate distances from this atom to all landmarks */
+                double* landmark_dists = (double*) palloc(num_landmarks * sizeof(double));
+                for (int j = 0; j < num_landmarks; j++) {
+                    double dx = current_pos.x - landmarks.landmarks[j].x;
+                    double dy = current_pos.y - landmarks.landmarks[j].y;
+                    double dz = current_pos.z - landmarks.landmarks[j].z;
+                    double dm = current_pos.m - landmarks.landmarks[j].m;
+                    landmark_dists[j] = sqrt(dx*dx + dy*dy + dz*dz + dm*dm);
+                }
+                
+                /* Project using LMDS */
+                Point4D new_pos;
+                lmds_project(landmark_dists, &landmarks, num_landmarks, &new_pos);
+                
+                /* Update atom position in database */
+                char update_query[512];
+                snprintf(update_query, sizeof(update_query),
+                    "UPDATE atom SET geom = ST_SetSRID(ST_MakePoint(%f, %f, %f, %f), 4326)::geometry(PointZM, 4326) "
+                    "WHERE atom_id = '\\x%s'::bytea",
+                    new_pos.x, new_pos.y, new_pos.z, new_pos.m, hex_id
+                );
+                
+                SPI_execute(update_query, false, 0);
+                pfree(landmark_dists);
+            }
+            
+            /* Clean up landmark data */
+            for (int i = 0; i < num_landmarks; i++) {
+                pfree(landmarks.distances[i]);
+            }
+            pfree(landmarks.distances);
+            pfree(landmarks.landmarks);
+        }
+        
+        /* Update state after processing */
         SPI_execute(
             "UPDATE cortex_state SET "
-            "atoms_processed = atoms_processed + 1, "
+            "atoms_processed = (SELECT COUNT(*) FROM atom WHERE atom_class = 0), "
             "recalibrations = recalibrations + 1, "
             "last_cycle_at = now(), "
             "landmark_count = (SELECT COUNT(*) FROM cortex_landmarks) "

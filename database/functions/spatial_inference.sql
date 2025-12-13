@@ -95,7 +95,7 @@ BEGIN
                 ST_Y(b.geom) - ST_Y(a.geom) + ST_Y(c.geom),
                 ST_Z(b.geom) - ST_Z(a.geom) + ST_Z(c.geom),
                 ST_M(b.geom) - ST_M(a.geom) + ST_M(c.geom)
-            ), 4326) as target
+            ), 0) as target
         FROM 
             atom a,
             atom b,

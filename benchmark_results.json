@@ -1,0 +1,168 @@
+[
+  {
+    "operation": "knn",
+    "k": 10,
+    "time_ms": 8.263587951660156,
+    "results_count": 10,
+    "qps": 121.01281015579919
+  },
+  {
+    "operation": "knn",
+    "k": 50,
+    "time_ms": 0.3876686096191406,
+    "results_count": 50,
+    "qps": 2579.5227552275524
+  },
+  {
+    "operation": "knn",
+    "k": 100,
+    "time_ms": 0.4286766052246094,
+    "results_count": 100,
+    "qps": 2332.7608453837597
+  },
+  {
+    "operation": "knn",
+    "k": 500,
+    "time_ms": 0.9961128234863281,
+    "results_count": 500,
+    "qps": 1003.9023456199138
+  },
+  {
+    "operation": "knn",
+    "k": 1000,
+    "time_ms": 1.6231536865234375,
+    "results_count": 1000,
+    "qps": 616.0846063454759
+  },
+  {
+    "operation": "radius_search",
+    "radius": 0.1,
+    "time_ms": 1.0328292846679688,
+    "results_count": 0,
+    "qps": 968.2142197599261
+  },
+  {
+    "operation": "radius_search",
+    "radius": 0.5,
+    "time_ms": 0.18835067749023438,
+    "results_count": 0,
+    "qps": 5309.245569620253
+  },
+  {
+    "operation": "radius_search",
+    "radius": 1.0,
+    "time_ms": 0.13375282287597656,
+    "results_count": 0,
+    "qps": 7476.477718360071
+  },
+  {
+    "operation": "radius_search",
+    "radius": 2.0,
+    "time_ms": 0.14328956604003906,
+    "results_count": 2,
+    "qps": 6978.875207986689
+  },
+  {
+    "operation": "radius_search",
+    "radius": 5.0,
+    "time_ms": 0.16450881958007812,
+    "results_count": 4,
+    "qps": 6078.701449275362
+  },
+  {
+    "operation": "trajectory_similarity",
+    "time_ms": 0.43964385986328125,
+    "results_count": 5,
+    "qps": 2274.5683297180044
+  },
+  {
+    "operation": "trajectory_similarity",
+    "time_ms": 0.15735626220703125,
+    "results_count": 5,
+    "qps": 6355.006060606061
+  },
+  {
+    "operation": "trajectory_similarity",
+    "time_ms": 0.13065338134765625,
+    "results_count": 5,
+    "qps": 7653.839416058394
+  },
+  {
+    "operation": "trajectory_similarity",
+    "time_ms": 0.11444091796875,
+    "results_count": 5,
+    "qps": 8738.133333333333
+  },
+  {
+    "operation": "trajectory_similarity",
+    "time_ms": 0.10943412780761719,
+    "results_count": 5,
+    "qps": 9137.917211328977
+  },
+  {
+    "operation": "trajectory_similarity",
+    "time_ms": 0.10728836059570312,
+    "results_count": 5,
+    "qps": 9320.675555555556
+  },
+  {
+    "operation": "composition_reconstruction",
+    "time_ms": 2.933025360107422,
+    "atoms_reconstructed": 4
+  },
+  {
+    "operation": "composition_reconstruction",
+    "time_ms": 0.08511543273925781,
+    "atoms_reconstructed": 0
+  },
+  {
+    "operation": "composition_reconstruction",
+    "time_ms": 0.05841255187988281,
+    "atoms_reconstructed": 4
+  },
+  {
+    "operation": "composition_reconstruction",
+    "time_ms": 0.05078315734863281,
+    "atoms_reconstructed": 4
+  },
+  {
+    "operation": "composition_reconstruction",
+    "time_ms": 0.04792213439941406,
+    "atoms_reconstructed": 0
+  },
+  {
+    "operation": "composition_reconstruction",
+    "time_ms": 0.04649162292480469,
+    "atoms_reconstructed": 0
+  },
+  {
+    "operation": "cortex_cycle",
+    "time_ms": 6.969213485717773,
+    "atoms_processed": 1104,
+    "landmarks": 788
+  },
+  {
+    "operation": "cortex_cycle",
+    "time_ms": 1.0342597961425781,
+    "atoms_processed": 1104,
+    "landmarks": 822
+  },
+  {
+    "operation": "cortex_cycle",
+    "time_ms": 1.035451889038086,
+    "atoms_processed": 1104,
+    "landmarks": 851
+  },
+  {
+    "operation": "cortex_cycle",
+    "time_ms": 1.2793540954589844,
+    "atoms_processed": 1104,
+    "landmarks": 882
+  },
+  {
+    "operation": "cortex_cycle",
+    "time_ms": 0.9014606475830078,
+    "atoms_processed": 1104,
+    "landmarks": 904
+  }
+]

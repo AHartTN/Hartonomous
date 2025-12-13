@@ -5,21 +5,12 @@
  * Implements Landmark Multidimensional Scaling.
  */
 
+#include "lmds_projector.h"
 #include <Eigen/Dense>
 #include <vector>
 #include <cmath>
 
 extern "C" {
-
-struct Point4D {
-    double x, y, z, m;
-};
-
-struct LandmarkSet {
-    int count;
-    Point4D* landmarks;
-    double** distances; // Distance matrix
-};
 
 // Calculate stress score for atom
 double calculate_stress(
@@ -48,10 +39,11 @@ double calculate_stress(
 }
 
 // Project atom using LMDS
-Point4D lmds_project(
+void lmds_project(
     double* landmark_distances,
     LandmarkSet* landmarks,
-    int num_landmarks
+    int num_landmarks,
+    Point4D* out_position
 ) {
     // Convert to Eigen matrix
     Eigen::VectorXd dists(num_landmarks);
@@ -113,13 +105,11 @@ Point4D lmds_project(
     // Project
     Eigen::VectorXd coords = X_pinv.transpose() * b_new;
     
-    Point4D result;
-    result.x = coords(0);
-    result.y = coords(1);
-    result.z = coords(2);
-    result.m = coords(3);
-    
-    return result;
+    // Write to output parameter
+    out_position->x = coords(0);
+    out_position->y = coords(1);
+    out_position->z = coords(2);
+    out_position->m = coords(3);
 }
 
 // Modified Gram-Schmidt orthonormalization

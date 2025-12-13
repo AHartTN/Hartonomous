@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS atom (
     modality SMALLINT NOT NULL,
     subtype VARCHAR(50),
     atomic_value BYTEA,
-    geom GEOMETRY(POINTZM, 4326) NOT NULL,
+    geom GEOMETRY(POINTZM, 0) NOT NULL,
     hilbert_index BIGINT NOT NULL,
     metadata JSONB,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -52,9 +52,9 @@ BEGIN
     -- Add geom if missing (critical)
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
                    WHERE table_schema = 'public' AND table_name = 'atom' AND column_name = 'geom') THEN
-        ALTER TABLE atom ADD COLUMN geom GEOMETRY(POINTZM, 4326);
+        ALTER TABLE atom ADD COLUMN geom GEOMETRY(POINTZM, 0);
         -- Set default for existing rows
-        UPDATE atom SET geom = ST_SetSRID(ST_MakePoint(0, 0, 0, 0), 4326) WHERE geom IS NULL;
+        UPDATE atom SET geom = ST_MakePoint(0, 0, 0, 0) WHERE geom IS NULL;
         ALTER TABLE atom ALTER COLUMN geom SET NOT NULL;
     END IF;
     

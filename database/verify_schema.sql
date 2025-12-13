@@ -68,7 +68,7 @@ SELECT
     COUNT(*) AS total_rows,
     COUNT(CASE WHEN geom IS NOT NULL THEN 1 END) AS has_geometry,
     COUNT(CASE WHEN ST_IsValid(geom) THEN 1 END) AS valid_geometry,
-    COUNT(CASE WHEN ST_GeometryType(geom) = 'ST_Point' AND ST_SRID(geom) = 4326 THEN 1 END) AS correct_type
+    COUNT(CASE WHEN ST_GeometryType(geom) = 'ST_Point' AND ST_SRID(geom) = 0 THEN 1 END) AS correct_type
 FROM atom;
 
 -- Cortex state

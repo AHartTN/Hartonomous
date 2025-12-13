@@ -54,7 +54,7 @@ class BatchProcessor:
                                 atom.atom_hash,
                                 atom.atom_class,
                                 atom.modality,
-                                f"SRID=4326;POINT ZM({atom.x} {atom.y} {atom.z} {atom.m})",
+                                f"POINT ZM({atom.x} {atom.y} {atom.z} {atom.m})",
                                 0,  # hilbert_index placeholder
                                 None  # metadata
                             ))

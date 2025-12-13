@@ -13,8 +13,8 @@ CREATE TABLE atom_audit_log (
     id BIGSERIAL PRIMARY KEY,
     atom_id BYTEA NOT NULL,
     operation CHAR(1) NOT NULL, -- I=Insert, U=Update, D=Delete
-    old_geom GEOMETRY(POINTZM, 4326),
-    new_geom GEOMETRY(POINTZM, 4326),
+    old_geom GEOMETRY(POINTZM, 0),
+    new_geom GEOMETRY(POINTZM, 0),
     changed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     changed_by TEXT DEFAULT current_user
 );

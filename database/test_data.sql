@@ -16,7 +16,7 @@ SELECT
         (random() - 0.5) * 100,  -- Y
         0.0,                      -- Z (raw)
         random()                  -- M (salience)
-    ), 4326) as geom,
+    ), 0) as geom,
     (random() * 9223372036854775807)::bigint as hilbert_index
 FROM generate_series(1, 1000) i
 ON CONFLICT DO NOTHING;
@@ -39,7 +39,7 @@ SELECT
         (random() - 0.5) * 100,
         0.0,
         random()
-    ), 4326) as geom,
+    ), 0) as geom,
     (random() * 9223372036854775807)::bigint as hilbert_index
 FROM tokens
 ON CONFLICT DO NOTHING;

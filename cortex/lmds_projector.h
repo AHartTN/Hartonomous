@@ -1,25 +1,29 @@
 /*
- * lmds_projector.h - LMDS projection header
+ * lmds_projector.h - LMDS projection C-compatible interface
  */
 
 #ifndef LMDS_PROJECTOR_H
 #define LMDS_PROJECTOR_H
 
+/* C-compatible struct definitions */
+typedef struct Point4D {
+    double x;
+    double y;
+    double z;
+    double m;
+} Point4D;
+
+typedef struct LandmarkSet {
+    int count;
+    Point4D* landmarks;
+    double** distances;
+} LandmarkSet;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-struct Point4D {
-    double x, y, z, m;
-};
-
-struct LandmarkSet {
-    int count;
-    Point4D* landmarks;
-    double** distances;
-};
-
-// Calculate stress score
+/* Calculate stress for an atom */
 double calculate_stress(
     Point4D current,
     Point4D* neighbors,
@@ -27,14 +31,15 @@ double calculate_stress(
     int neighbor_count
 );
 
-// LMDS projection
-Point4D lmds_project(
+/* Project atom using LMDS - output via pointer */
+void lmds_project(
     double* landmark_distances,
     LandmarkSet* landmarks,
-    int num_landmarks
+    int num_landmarks,
+    Point4D* out_position
 );
 
-// Gram-Schmidt orthonormalization
+/* Gram-Schmidt orthonormalization */
 void gram_schmidt_orthonormalize(
     Point4D* points,
     int count
@@ -44,4 +49,4 @@ void gram_schmidt_orthonormalize(
 }
 #endif
 
-#endif // LMDS_PROJECTOR_H
+#endif /* LMDS_PROJECTOR_H */

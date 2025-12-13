@@ -35,7 +35,7 @@ CREATE TABLE atom (
     -- X,Y: Learned coordinates via LMDS
     -- Z: Hierarchy (0=raw, 1=feature, 2=concept, 3=abstraction)
     -- M: Salience/frequency
-    geom GEOMETRY(POINTZM, 4326) NOT NULL,
+    geom GEOMETRY(GEOMETRYZM, 0) NOT NULL,  -- Accepts POINTZM (constants) and LINESTRINGZM (compositions)
     
     -- Hilbert index for physical clustering
     hilbert_index BIGINT NOT NULL,
