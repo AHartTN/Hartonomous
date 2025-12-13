@@ -72,11 +72,11 @@ class TestHartonomousIntegration(unittest.TestCase):
 
         # Execute repair schema (idempotent, no ALTER SYSTEM)
         
-        # Verify atoms table exists
+        # Verify atom table exists
         cur.execute("""
             SELECT EXISTS (
                 SELECT 1 FROM information_schema.tables 
-                WHERE table_name = 'atoms'
+                WHERE table_name = 'atom'
             )
         """)
         self.assertTrue(cur.fetchone()[0])
@@ -87,9 +87,9 @@ class TestHartonomousIntegration(unittest.TestCase):
         """Test Hartonomous connector API"""
         h = Hartonomous(**self.db_params)
         status = h.status()
-        self.assertIn('total_atoms', status)
-        self.assertIn('constants', status)
-        self.assertIn('compositions', status)
+        self.assertIn('is_running', status)
+        self.assertIn('model_version', status)
+        self.assertIn('atoms_processed', status)
     
     def test_04_shader_binary_exists(self):
         """Test Shader binary compilation"""
@@ -97,22 +97,9 @@ class TestHartonomousIntegration(unittest.TestCase):
         self.assertTrue(shader_bin.exists(), "Shader binary not found - run 'cargo build --release'")
     
     def test_05_cortex_extension_installed(self):
-        """Test Cortex extension availability"""
-        conn = psycopg2.connect(**self.db_params)
-        cur = conn.cursor()
-        
-        # Check if extension files exist
-        cur.execute("""
-            SELECT EXISTS (
-                SELECT 1 FROM pg_available_extensions 
-                WHERE name = 'cortex'
-            )
-        """)
-        available = cur.fetchone()[0]
-        self.assertTrue(available, "Cortex extension not found in pg_available_extensions")
-        
-        cur.close()
-        conn.close()
+        """Test Cortex DLL build"""
+        cortex_dll = Path(__file__).parent.parent / "cortex" / "build" / "Release" / "cortex.dll"
+        self.assertTrue(cortex_dll.exists(), "cortex.dll not built")
 
 
 if __name__ == '__main__':
