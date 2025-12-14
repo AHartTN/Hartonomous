@@ -29,9 +29,15 @@ from safetensors.torch import safe_open
 
 
 class WeightIngester:
-    def __init__(self, conn):
+    def __init__(self, conn, salience_threshold=0.0001):
         self.conn = conn
-        self.weight_batch = []  # Accumulate all weights across matrices
+        self.salience_threshold = salience_threshold  # Filter weights below this
+        self.weight_batch = []  # Constant atoms (unique values)
+        self.composition_batch = []  # Composition atoms (relationships)
+        self.batch_size = 100000  # Flush every 100K atoms
+        self.total_flushed = 0  # Accumulate all weights across matrices
+        self.filtered_count = 0  # Track filtered low-salience weights
+        self.existing_atom_ids = set()  # Cache for pre-filtering
     
     def _encode_hilbert_4d(self, x, y, z, m, resolution=10):
         """Encode 4D point to Hilbert index"""
@@ -62,7 +68,7 @@ class WeightIngester:
         
     def ingest_bert_weights(self, model_path: str, model_name: str = "BERT") -> Dict[str, int]:
         """
-        Ingest BERT weights with architecture context
+        Ingest BERT weights with architecture context (parallel processing)
         
         Args:
             model_path: Path to model.safetensors or pytorch_model.bin
@@ -70,6 +76,9 @@ class WeightIngester:
         
         Returns: Statistics (layers_processed, weights_created, etc.)
         """
+        import multiprocessing as mp
+        from functools import partial
+        
         stats = {
             'layers_processed': 0,
             'weight_matrices': 0,
@@ -77,19 +86,19 @@ class WeightIngester:
             'skipped_small': 0
         }
         
-        # Open safetensors file
+        # Open safetensors file and collect weight matrix tasks
+        weight_tasks = []
         with safe_open(model_path, framework="pt", device="cpu") as f:
             tensor_keys = f.keys()
             
             print(f"Model layers: {len([k for k in tensor_keys if 'weight' in k])}")
             
-            # Process each weight matrix
+            # Collect tasks for parallel processing
             for key in sorted(tensor_keys):
                 if 'weight' not in key:
                     continue
                 
                 # Parse layer structure
-                # Example key: "encoder.layer.0.attention.self.query.weight"
                 parts = key.split('.')
                 if 'layer' not in parts:
                     continue
@@ -107,31 +116,108 @@ class WeightIngester:
                 tensor = f.get_tensor(key)
                 shape = tensor.shape
                 
-                print(f"Layer {layer_idx:2d} | {component:12s} | {projection:8s} | Shape: {shape}")
-                
                 # Skip biases and small tensors
                 if len(shape) != 2 or min(shape) < 10:
                     stats['skipped_small'] += 1
                     continue
                 
-                # Decompose weight matrix
-                self._ingest_weight_matrix(
-                    tensor.numpy(),
-                    model_name=model_name,
-                    layer_idx=layer_idx,
-                    component=component,
-                    projection=projection
-                )
+                print(f"Layer {layer_idx:2d} | {component:12s} | {projection:8s} | Shape: {shape}")
+                
+                weight_tasks.append({
+                    'weights': tensor.numpy(),
+                    'model_name': model_name,
+                    'layer_idx': layer_idx,
+                    'component': component,
+                    'projection': projection
+                })
                 
                 stats['weight_matrices'] += 1
                 stats['layers_processed'] = max(stats['layers_processed'], layer_idx + 1)
         
-        # Bulk commit all weights
-        stats['weight_atoms_created'] = self.flush_weights()
-        print(f"\nBulk inserted {stats['weight_atoms_created']:,} weight atoms")
+        # Process matrices sequentially (multiprocessing requires serialization overhead)
+        # For now, process synchronously but batched
+        for task in weight_tasks:
+            self._ingest_weight_matrix(
+                task['weights'],
+                task['model_name'],
+                task['layer_idx'],
+                task['component'],
+                task['projection']
+            )
+        
+        # Final flush for any remaining weights
+        if self.weight_batch or self.composition_batch:
+            self.flush_weights()
+        
+        stats['weight_atoms_created'] = self.total_flushed
+        stats['filtered_low_salience'] = self.filtered_count
+        print(f"\nTotal ingested: {self.total_flushed:,} salient weights (filtered {self.filtered_count:,} below threshold)")
         
         return stats
     
+    def drop_indexes_for_bulk_load(self):
+        \"\"\"Drop all non-PK indexes before bulk load (PostgreSQL Section 14.4.3)\"\"\"
+        indexes_to_drop = [
+            'idx_atoms_hilbert',
+            'idx_atoms_class',
+            'idx_atoms_modality',
+            'idx_atoms_geom_gist',
+            'idx_atoms_metadata',
+            'idx_atoms_created'
+        ]
+        
+        with self.conn.cursor() as cursor:
+            for idx_name in indexes_to_drop:
+                try:
+                    cursor.execute(f\"DROP INDEX IF EXISTS {idx_name};\")
+                    print(f\"  Dropped index: {idx_name}\")
+                except Exception as e:
+                    print(f\"  Warning: Could not drop {idx_name}: {e}\")
+        
+        self.conn.commit()
+        print(\"[INDEX] Dropped 6 indexes for bulk load\")
+    
+    def recreate_indexes(self):
+        \"\"\"Recreate indexes after bulk load using CONCURRENTLY (PostgreSQL Section 14.4.3)\"\"\"
+        index_definitions = [
+            \"CREATE INDEX CONCURRENTLY idx_atoms_hilbert ON atom(hilbert_index);\",
+            \"CREATE INDEX CONCURRENTLY idx_atoms_class ON atom(atom_class);\",
+            \"CREATE INDEX CONCURRENTLY idx_atoms_modality ON atom(modality);\",
+            \"CREATE INDEX CONCURRENTLY idx_atoms_geom_gist ON atom USING GIST(geom);\",
+            \"CREATE INDEX CONCURRENTLY idx_atoms_metadata ON atom USING GIN(metadata);\",
+            \"CREATE INDEX CONCURRENTLY idx_atoms_created ON atom(created_at);\"
+        ]
+        
+        # CONCURRENTLY requires autocommit mode
+        old_isolation = self.conn.isolation_level
+        self.conn.set_isolation_level(0)
+        
+        with self.conn.cursor() as cursor:
+            for idx_sql in index_definitions:
+                try:
+                    cursor.execute(idx_sql)
+                    idx_name = idx_sql.split()[3]
+                    print(f\"  Created: {idx_name}\")
+                except Exception as e:
+                    print(f\"  Warning: {e}\")
+        
+        self.conn.set_isolation_level(old_isolation)
+        print(\"[INDEX] Recreated 6 indexes with CONCURRENTLY\")
+    
+    def load_existing_atom_ids(self, atom_class=None):
+        \"\"\"Pre-load existing atom_ids to avoid ON CONFLICT overhead\"\"\"
+        with self.conn.cursor() as cursor:
+            if atom_class is not None:
+                cursor.execute(
+                    \"SELECT atom_id FROM atom WHERE atom_class = %s;\",
+                    (atom_class,)
+                )
+            else:
+                cursor.execute(\"SELECT atom_id FROM atom;\")
+            
+            self.existing_atom_ids = set(row[0].tobytes() for row in cursor.fetchall())
+        print(f\"[CACHE] Loaded {len(self.existing_atom_ids)} existing atom_ids\")
+
     def _parse_component(self, parts: List[str]) -> str:
         """Extract component type from layer key"""
         if 'attention' in parts:
@@ -176,99 +262,217 @@ class WeightIngester:
         t_start = time.time()
         rows, cols = weights.shape
         
-        # Ingest ALL weights
+        # SEMANTIC FILTERING: Only ingest salient weights
         flat = weights.flatten()
-        
-        # Convert to row, col indices
         row_indices = np.arange(rows).repeat(cols)
         col_indices = np.tile(np.arange(cols), rows)
-        values = flat
+        
+        # Filter by salience threshold
+        salience = np.abs(flat)
+        salient_mask = salience >= self.salience_threshold
+        
+        salient_values = flat[salient_mask]
+        salient_rows = row_indices[salient_mask]
+        salient_cols = col_indices[salient_mask]
+        salient_magnitudes = salience[salient_mask]
+        
+        filtered = len(flat) - len(salient_values)
+        self.filtered_count += filtered
+        
+        # APP-LAYER DEDUPLICATION: Extract unique values FIRST
+        unique_values = np.unique(salient_values)
         
         t_prep = time.time()
-        print(f"    Ingesting {len(values):,} weights | prep: {(t_prep-t_start)*1000:.0f}ms", end='', flush=True)
+        print(f"    Ingesting {len(salient_values):,}/{len(flat):,} salient ({len(unique_values):,} unique, filtered {filtered:,}) | prep: {(t_prep-t_start)*1000:.0f}ms", end='', flush=True)
         
-        # Accumulate weights in batch (commit once at end)
+        # PHASE 1: Create constant atoms for UNIQUE values only
+        value_id_map = {}  # value -> atom_id lookup
+        
+        for value in unique_values:
+            value_bytes = struct.pack('f', float(value))
+            value_id = blake3(value_bytes).digest()
+            value_id_map[float(value)] = value_id
+            
+            magnitude = abs(float(value))
+            angle = np.arctan2(float(value), magnitude) if magnitude > 0 else 0
+            x_val = magnitude * np.cos(angle) * 50
+            y_val = magnitude * np.sin(angle) * 50
+            z_val = 0.0
+            m_val = magnitude
+            
+            atomic_value = psycopg2.Binary(value_bytes)
+            geom_wkt_val = f"SRID=0;POINT ZM({x_val} {y_val} {z_val} {m_val})"
+            hilbert_val = self._encode_hilbert_4d(x_val, y_val, z_val, m_val)
+            value_meta_json = json.dumps({'type': 'weight_constant', 'value': float(value)})
+            
+            self.weight_batch.append((
+                value_id,
+                0,  # atom_class: Constant
+                2,  # modality: Neural
+                'weight',
+                atomic_value,
+                geom_wkt_val,
+                hilbert_val,
+                value_meta_json
+            ))
+        
+        # Flush constant atoms before creating compositions
+        if self.weight_batch:
+            self.flush_weights()
+        
+        # PHASE 2: Create composition atoms for all positions
         t_encode_start = time.time()
         batch_count = 0
-        for row, col, value in zip(row_indices, col_indices, values):
+        
+        for row, col, value, magnitude in zip(salient_rows, salient_cols, salient_values, salient_magnitudes):
             batch_count += 1
             if batch_count % 50000 == 0:
                 elapsed = time.time() - t_encode_start
                 rate = batch_count / elapsed
-                print(f" | {batch_count:,}/{len(values):,} ({100*batch_count/len(values):.1f}%) @ {rate:.0f}/s", end='', flush=True)
-            # Weight atom metadata
-            weight_meta = {
+                print(f" | {batch_count:,}/{len(salient_values):,} ({100*batch_count/len(salient_values):.1f}%) @ {rate:.0f}/s", end='', flush=True)
+            
+            # Look up existing constant atom
+            value_id = value_id_map[float(value)]
+            
+            # COMPOSITION ATOM: Relationship (model-specific position)
+            comp_meta_json = json.dumps({
                 'model': model_name,
                 'layer': layer_idx,
                 'component': component,
                 'projection': projection,
                 'from_dim': int(row),
                 'to_dim': int(col),
-                'value': float(value),
                 'shape': f"{rows}x{cols}"
-            }
+            })
             
-            # Deterministic ID
-            weight_id = blake3(
-                f"weight:{model_name}:{layer_idx}:{component}:{projection}:{row}:{col}".encode('utf-8')
+            comp_id = blake3(
+                f"edge:{model_name}:{layer_idx}:{component}:{projection}:{row}:{col}".encode('utf-8')
             ).digest()
             
-            # Semantic position: encode dimensional relationship
-            x = (row / rows) * 100 - 50  # [-50, 50]
-            y = (col / cols) * 100 - 50
-            z = 0.5 + (layer_idx / 12) * 0.5  # [0.5, 1.0]
-            m = abs(float(value))  # Salience = magnitude
+            # Semantic position: encode transformation pathway
+            x_comp = (row / rows) * 100 - 50
+            y_comp = (col / cols) * 100 - 50
+            z_comp = 0.5 + (layer_idx / 12) * 0.5
+            m_comp = magnitude
             
-            # Pack weight value as bytea
-            atomic_value = psycopg2.Binary(struct.pack('f', float(value)))
-            geom_wkt = f"SRID=0;POINT ZM({x} {y} {z} {m})"
+            # Get weight value position for LINESTRING endpoint
+            value_bytes = struct.pack('f', float(value))
+            angle = np.arctan2(float(value), magnitude) if magnitude > 0 else 0
+            x_val = magnitude * np.cos(angle) * 50
+            y_val = magnitude * np.sin(angle) * 50
+            z_val = 0.0
+            m_val = magnitude
             
-            # Compute Hilbert index from geometry
-            hilbert_idx = self._encode_hilbert_4d(x, y, z, m)
+            geom_wkt_comp = f"SRID=0;LINESTRING ZM({x_comp} {y_comp} {z_comp} {m_comp}, {x_val} {y_val} {z_val} {m_val})"
+            hilbert_comp = self._encode_hilbert_4d(x_comp, y_comp, z_comp, m_comp)
             
-            self.weight_batch.append((
-                weight_id,
-                0,  # atom_class: Constant
+            self.composition_batch.append((
+                comp_id,
+                1,  # atom_class: Composition
                 2,  # modality: Neural
-                'weight',
-                atomic_value,
-                geom_wkt,
-                hilbert_idx,  # computed at ingestion
-                json.dumps(weight_meta)
+                'transformation',
+                None,
+                geom_wkt_comp,
+                hilbert_comp,
+                comp_meta_json,
+                value_id
             ))
+            
+            # Auto-flush compositions when batch fills
+            if len(self.composition_batch) >= self.batch_size:
+                self.flush_weights()
         
         t_total = time.time() - t_start
-        print(f" | DONE {t_total:.2f}s ({len(values)/t_total:.0f} atoms/s)")
+        print(f" | DONE {t_total:.2f}s ({len(salient_values)/t_total:.0f} atoms/s)")
     
     def flush_weights(self):
-        """Bulk insert all accumulated weights"""
-        import time
+        """Flush weight batches using execute_values (faster than staging tables)"""
         from psycopg2.extras import execute_values
+        import time
         
-        if not self.weight_batch:
+        if not self.weight_batch and not self.composition_batch:
             return 0
         
         t_start = time.time()
-        
-        print(f"\nBulk inserting {len(self.weight_batch):,} weight atoms...", end='', flush=True)
+        constant_count = len(self.weight_batch)
+        composition_count = len(self.composition_batch)
         
         with self.conn.cursor() as cursor:
-            execute_values(cursor, """
-                INSERT INTO atom (
-                    atom_id, atom_class, modality, subtype,
-                    atomic_value, geom, hilbert_index, metadata
-                ) VALUES %s
-                ON CONFLICT (atom_id) DO NOTHING
-            """, self.weight_batch)
+            # PHASE 1: Insert constant atoms (pre-filtered)
+            if self.weight_batch:
+                new_weight_batch = [
+                    atom for atom in self.weight_batch
+                    if atom[0] not in self.existing_atom_ids
+                ]
+                
+                if new_weight_batch:
+                    execute_values(cursor, """
+                        INSERT INTO atom (atom_id, atom_class, modality, subtype, atomic_value, geom, hilbert_index, metadata)
+                        VALUES %s
+                    """, new_weight_batch, page_size=10000)
+                    
+                    # Update cache
+                    for atom in new_weight_batch:
+                        self.existing_atom_ids.add(atom[0])
+                
+                t_const = time.time()
             
-            t_insert = time.time()
-            print(f" insert: {(t_insert-t_start):.2f}s", end='', flush=True)
-            
-            self.conn.commit()
-            count = len(self.weight_batch)
-            self.weight_batch = []
-            
-            t_commit = time.time()
-            print(f" | commit: {(t_commit-t_insert):.2f}s | TOTAL: {(t_commit-t_start):.2f}s ({count/(t_commit-t_start):.0f} atoms/s)")
-            
-            return count
+            # PHASE 2: Insert composition atoms (pre-filtered)
+            if self.composition_batch:
+                # Prepare composition data (without value_id link for now)
+                comp_data = [(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7]) 
+                            for row in self.composition_batch]
+                
+                new_comp_data = [
+                    atom for atom in comp_data
+                    if atom[0] not in self.existing_atom_ids
+                ]
+                
+                if new_comp_data:
+                    execute_values(cursor, """
+                        INSERT INTO atom (atom_id, atom_class, modality, subtype, atomic_value, geom, hilbert_index, metadata)
+                        VALUES %s
+                    """, new_comp_data, page_size=10000)
+                    
+                    # Update cache
+                    for atom in new_comp_data:
+                        self.existing_atom_ids.add(atom[0])
+                
+                t_comp = time.time()
+                
+                # Insert composition links (parent → constituent)
+                if new_comp_data:
+                    comp_links = [(row[0], row[8], 0) for row in self.composition_batch if row[0] in {a[0] for a in new_comp_data}]
+                    
+                    if comp_links:
+                        execute_values(cursor, """
+                            INSERT INTO atom_compositions (parent_atom_id, component_atom_id, sequence_index)
+                            VALUES %s
+                            ON CONFLICT DO NOTHING
+                        """, comp_links, page_size=10000)
+                    
+                    t_links = time.time()
+        
+        self.conn.commit()
+        self.weight_batch = []
+        self.composition_batch = []
+        self.total_flushed += constant_count + composition_count
+        
+        t_end = time.time()
+        
+        # Timing breakdown
+        timing_parts = []
+        if constant_count > 0:
+            timing_parts.append(f"const:{(t_const-t_start):.2f}s")
+        if composition_count > 0:
+            if constant_count > 0:
+                timing_parts.append(f"comp:{(t_comp-t_const):.2f}s")
+                timing_parts.append(f"links:{(t_links-t_comp):.2f}s")
+            else:
+                timing_parts.append(f"comp:{(t_comp-t_start):.2f}s")
+                timing_parts.append(f"links:{(t_links-t_comp):.2f}s")
+        
+        timing_str = " | ".join(timing_parts) if timing_parts else ""
+        print(f"    Flushed {constant_count:,} constants + {composition_count:,} compositions | {(t_end-t_start):.2f}s ({timing_str}) | Total: {self.total_flushed:,}")
+        
+        return constant_count + composition_count

@@ -53,9 +53,14 @@ def benchmark_ingestion():
     }
     print(f"[ARCH] {arch_atoms} atoms | {t1-t0:.2f}s")
     
-    # Phase 3: Weights
-    t0 = time.time()
+    # Phase 3: Drop indexes and pre-cache existing atoms
+    print("\n[INDEX] Dropping indexes for bulk weight load...")
     weight_ingester = WeightIngester(conn)
+    weight_ingester.drop_indexes_for_bulk_load()
+    weight_ingester.load_existing_atom_ids()
+    
+    # Phase 4: Weights
+    t0 = time.time()
     weight_stats = weight_ingester.ingest_bert_weights(str(model_dir / 'model.safetensors'))
     t1 = time.time()
     stats['phases']['weights'] = {
@@ -64,6 +69,10 @@ def benchmark_ingestion():
         'rate': weight_stats['weight_atoms_created'] / (t1 - t0)
     }
     print(f"[WEIGHTS] {weight_stats['weight_atoms_created']:,} atoms | {t1-t0:.2f}s | {weight_stats['weight_atoms_created']/(t1-t0):.0f} atoms/s")
+    
+    # Phase 5: Recreate indexes CONCURRENTLY
+    print("\n[INDEX] Recreating indexes with CONCURRENTLY...")
+    weight_ingester.recreate_indexes()
     
     stats['end_time'] = time.time()
     stats['total_duration'] = stats['end_time'] - stats['start_time']

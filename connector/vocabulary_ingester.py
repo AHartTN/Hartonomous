@@ -6,6 +6,7 @@ This provides the actual semantic context for neural network weights.
 """
 
 import json
+import time
 from pathlib import Path
 import psycopg2
 from blake3 import blake3
@@ -93,6 +94,12 @@ class VocabularyIngester:
                 0,  # atom_class = constant
                 1,  # modality = text
                 'character',
+                char.encode('utf-8', errors='ignore'),
+                f'SRID=4326;POINTZM({x} {y} 0.0 {m})',
+                hilbert_idx,
+                json.dumps({'char': char, 'ord': ord(char)})
+            ))
+        
         t_batch = time.time()
         print(f"  Character batch prepared | {(t_batch-t_collect)*1000:.0f}ms", end='', flush=True)
         
@@ -109,101 +116,67 @@ class VocabularyIngester:
         
         t_commit = time.time()
         print(f" | commit: {(t_commit-t_insert)*1000:.0f}ms | TOTAL: {(t_commit-t_start):.2f}s")
-        ursor, """
-        import time
         
-        t_start = time.time()
-        token_batch = []
-        composition_relationships = []
-        
-        processed = 0
-        for token, token_id in vocab.items():
-            processed += 1
-            if processed % 5000 == 0:
-                print(f"  Processing tokens: {processed:,}/{len(vocab):,} ({100*processed/len(vocab):.1f}%)", end='\r', flush=True)
-        
-        self.db.commit()
         return len(char_batch)
     
     def _ingest_tokens(self, vocab, cursor):
         """Ingest tokens as Z=1 compositions of characters"""
+        t_start = time.time()
         token_batch = []
         composition_relationships = []
         
         for token, token_id in vocab.items():
-            # Clean token
             clean_token = token.replace('##', '')
+            token_atom_id = blake3(b'\x01\x03\x01' + clean_token.encode('utf-8', errors='ignore')).digest()
             
-            # Generate token composition ID
-            comp_id = blake3(b'\x01\x01\x01' + token.encode('utf-8', errors='ignore')).digest()
-            
-            # Get character atom IDs for this token
-            char_atoms = []
+            char_coords = []
+            constituent_chars = []
             for char in clean_token:
                 char_atom_id = blake3(b'\x01\x02\x00' + char.encode('utf-8', errors='ignore')).digest()
-                char_atoms.append(char_atom_id)
+                x, y, z, m = self.projector.project_token(char)
+                char_coords.append((x, y, 0.0, m))
+                constituent_chars.append(char_atom_id)
             
-            if not char_atoms:
-                continue
-            
-            # Build geometry through character positions
-            # Query character positions
-            cursor.execute("""
-                SELECT ST_X(geom), ST_Y(geom), ST_M(geom)
-                FROM atom
-                WHERE atom_id = ANY(%s)
-                ORDER BY atom_id
-            """, (char_atoms,))
-            
-            coords = cursor.fetchall()
-            if len(coords) != len(char_atoms):
-                continue  # Missing character atoms
-            
-            # Single-character tokens are POINTZM, multi-character are LINESTRING ZM
-            if len(coords) == 1:
-                x, y, m = coords[0]
+            if len(char_coords) == 1:
+                x, y, z, m = char_coords[0]
+                geom_wkt = f'SRID=4326;POINTZM({x} {y} 1.0 {m})'
                 hilbert_idx = self._encode_hilbert_4d(float(x), float(y), 1.0, float(m))
-                geom_wkt = f"POINT ZM({x} {y} 1.0 {m})"
-                atom_class = 0  # Constant
-                atomic_value = psycopg2.Binary(clean_token.encode('utf-8'))
             else:
-                # Multi-character: compute centroid for Hilbert indexing
-                centroid_x = sum(c[0] for c in coords) / len(coords)
-                centroid_y = sum(c[1] for c in coords) / len(coords)
-                centroid_m = sum(c[2] for c in coords) / len(coords)
-                hilbert_idx = self._encode_hilbert_4d(float(centroid_x), float(centroid_y), 1.0, float(centroid_m))
-                
-                linestring_parts = [f"{x} {y} 1.0 {m}" for x, y, m in coords]
-                geom_wkt = f"LINESTRING ZM({', '.join(linestring_parts)})"
-                atom_class = 1  # Composition
-                atomic_value = None
-        t_prep = time.time()
-        print(f"\n  Token batch prepared: {len(token_batch):,} tokens | {(t_prep-t_start):.2f}s", end='', flush=True)
+                centroid_x = sum(c[0] for c in char_coords) / len(char_coords)
+                centroid_y = sum(c[1] for c in char_coords) / len(char_coords)
+                avg_m = sum(c[3] for c in char_coords) / len(char_coords)
+                linestring_points = ', '.join([f'{x} {y} {z} {m}' for x, y, z, m in char_coords])
+                geom_wkt = f'SRID=4326;LINESTRINGZM({linestring_points})'
+                hilbert_idx = self._encode_hilbert_4d(float(centroid_x), float(centroid_y), 1.0, float(avg_m))
+            
+            token_batch.append((
+                token_atom_id,
+                1,  # atom_class = composition
+                1,  # modality = text
+                'token',
+                None,
+                geom_wkt,
+                hilbert_idx,
+                json.dumps({'token': clean_token, 'token_id': token_id})
+            ))
+            
+            for i, char_id in enumerate(constituent_chars):
+                composition_relationships.append((token_atom_id, char_id, i))
         
-        # Insert token compositions
         execute_values(cursor, """
             INSERT INTO atom (atom_id, atom_class, modality, subtype, atomic_value, geom, hilbert_index, metadata)
             VALUES %s
             ON CONFLICT (atom_id) DO NOTHING
         """, token_batch)
         
-        t_token_insert = time.time()
-        print(f" | token insert: {(t_token_insert-t_prep):.2f}s", end='', flush=True)
-        
-        # Insert composition relationships
         execute_values(cursor, """
             INSERT INTO atom_compositions (parent_atom_id, component_atom_id, sequence_index)
             VALUES %s
             ON CONFLICT DO NOTHING
         """, composition_relationships)
         
-        t_comp_insert = time.time()
-        print(f" | compositions: {(t_comp_insert-t_token_insert):.2f}s", end='', flush=True)
-        
         self.db.commit()
-        
-        t_commit = time.time()
-        print(f" | commit: {(t_commit-t_comp_insert):.2f}s | TOTAL: {(t_commit-t_start):.2f}s")
-        
+        t_end = time.time()
+        print(f"  [{(t_end-t_start):.2f}s] {len(token_batch)} tokens, {len(composition_relationships)} compositions")
         return len(token_batch)
 
