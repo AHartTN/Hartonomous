@@ -63,6 +63,19 @@ impl HilbertIndexer {
     }
 }
 
+/// Public function for encoding 4D coordinates to Hilbert index
+pub fn encode_4d(x: f64, y: f64, z: f64, m: f64, resolution: usize) -> i64 {
+    let indexer = HilbertIndexer::new(resolution as u32);
+    
+    // Normalize to [0,1] range
+    let nx = (x + 50.0) / 100.0;
+    let ny = (y + 50.0) / 100.0;
+    let nz = z / 3.0;
+    let nm = m.clamp(0.0, 1.0);
+    
+    indexer.encode(nx.clamp(0.0, 1.0), ny.clamp(0.0, 1.0), nz.clamp(0.0, 1.0), nm).unwrap_or(0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

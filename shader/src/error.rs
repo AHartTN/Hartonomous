@@ -2,6 +2,7 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum ShaderError {
+    #[cfg(feature = "postgres")]
     #[error("Database error: {0}")]
     Database(#[from] postgres::Error),
     
@@ -11,6 +12,9 @@ pub enum ShaderError {
     #[error("Serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
     
+    #[error("Binary COPY error: {0}")]
+    BinaryCopy(#[from] crate::binary_copy::CopyError),
+    
     #[error("Invalid atom value: {0}")]
     InvalidAtomValue(String),
     
@@ -19,6 +23,9 @@ pub enum ShaderError {
     
     #[error("Configuration error: {0}")]
     Config(String),
+    
+    #[error("{0}")]
+    Other(String),
 }
 
 pub type ShaderResult<T> = Result<T, ShaderError>;

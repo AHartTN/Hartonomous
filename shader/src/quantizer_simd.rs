@@ -57,7 +57,7 @@ unsafe fn quantize_f32_avx2_unsafe(
         let scaled = _mm256_mul_ps(vals, scale_vec);
         
         // Round to nearest integer
-        let rounded = _mm256_round_ps::<_MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC>(scaled);
+        let rounded = _mm256_round_ps::<{ _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC }>(scaled);
         
         // Divide by scale: (round(x * 10^p)) / 10^p
         let quantized = _mm256_mul_ps(rounded, inv_scale_vec);

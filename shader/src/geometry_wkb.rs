@@ -9,7 +9,6 @@
  */
 
 use byteorder::{LittleEndian, WriteBytesExt};
-use std::io::{self, Write};
 
 /// 4D Point geometry (XYZM)
 #[derive(Debug, Clone, Copy)]
@@ -38,9 +37,9 @@ impl Point4D {
     pub fn from_value(value: f32, magnitude: f32) -> Self {
         // Polar coordinate mapping in XY plane
         let angle = if magnitude > 0.0 {
-            (value / magnitude).atan()
+            (value / magnitude).atan() as f64
         } else {
-            0.0
+            0.0_f64
         };
         
         let x = (magnitude as f64) * angle.cos() * 50.0;
@@ -90,9 +89,9 @@ impl LineString4D {
         
         // End point: weight value position (semantic endpoint)
         let angle = if magnitude > 0.0 {
-            (value / magnitude).atan()
+            (value / magnitude).atan() as f64
         } else {
-            0.0
+            0.0_f64
         };
         
         let x_end = (magnitude as f64) * angle.cos() * 50.0;

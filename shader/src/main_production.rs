@@ -30,7 +30,7 @@ mod cpe_builder;
 mod error;
 
 use binary_copy::{BinaryCopyWriter, AtomRecord};
-use quantizer_simd::{quantize_matrix, CompositionAtom};
+use quantizer_simd::quantize_matrix;
 use geometry_wkb::{Point4D, LineString4D};
 use error::ShaderResult;
 
@@ -132,25 +132,22 @@ fn process_safetensors(config: &Cli, mut output: Box<dyn Write>) -> ShaderResult
     let total_atoms = std::sync::atomic::AtomicUsize::new(0);
     let total_filtered = std::sync::atomic::AtomicUsize::new(0);
 
-    // Process matrices in parallel
-    use std::sync::Mutex;
-    let writer_mutex = Mutex::new(&mut copy_writer);
-
-    weight_keys.par_iter().try_for_each(|key| -> ShaderResult<()> {
+    // Process each matrix sequentially to avoid thread-safety issues with writer
+    for key in &weight_keys {
         // Get tensor view
         let view = tensors.tensor(key)
-            .map_err(|e| error::ShaderError::Other(e.to_string()))?;
+            .map_err(|e: safetensors::SafeTensorError| error::ShaderError::Other(e.to_string()))?;
         
         let shape = view.shape();
 
         // Skip non-matrix tensors
         if shape.len() != 2 {
-            return Ok(());
+            continue;
         }
 
         let (rows, cols) = (shape[0], shape[1]);
         if rows < 10 || cols < 10 {
-            return Ok(());
+            continue;
         }
 
         // Parse layer structure
@@ -165,23 +162,18 @@ fn process_safetensors(config: &Cli, mut output: Box<dyn Write>) -> ShaderResult
             .collect();
 
         // Quantize and filter
-        let quant = quantize_matrix(&data, rows, cols, config.precision, config.salience_threshold);
+        let result = quantize_matrix(&data, rows, cols, config.precision, config.salience_threshold);
 
         eprintln!("[SHADER]   → {} constants, {} compositions ({} filtered)",
-            quant.constants.len(), quant.compositions.len(), quant.filtered_count);
-
-        total_atoms.fetch_add(quant.constants.len() + quant.compositions.len(), 
-            std::sync::atomic::Ordering::Relaxed);
-        total_filtered.fetch_add(quant.filtered_count, std::sync::atomic::Ordering::Relaxed);
-
-        // Generate constant atom records
-        let const_records: Vec<AtomRecord> = quant.constants.par_iter()
-            .map(|(value, magnitude)| {
+            result.constants.len(), result.compositions.len(), result.filtered_count);
+        
+        // Build and write constant atom records
+        for (value, magnitude) in &result.constants {
                 let sdi = generate_weight_sdi(*value);
                 let geom = Point4D::from_value(*value, *magnitude);
                 let hilbert = encode_hilbert_point(&geom);
 
-                AtomRecord {
+                let record = AtomRecord {
                     atom_id: sdi.to_vec(),
                     atom_class: 0,
                     modality: 2,
@@ -190,18 +182,18 @@ fn process_safetensors(config: &Cli, mut output: Box<dyn Write>) -> ShaderResult
                     geom_wkb: geom.to_wkb(),
                     hilbert_index: hilbert,
                     metadata: serde_json::json!({"type": "weight_constant", "value": value}).to_string(),
-                }
-            })
-            .collect();
+                };
+                
+                copy_writer.write_record(&record)?;
+        }
 
-        // Generate composition atom records
-        let comp_records: Vec<AtomRecord> = quant.compositions.par_iter()
-            .map(|comp| {
+        // Generate and write composition atom records
+        for comp in &result.compositions {
                 let sdi = generate_composition_sdi(&config.name, layer_idx, &component, &projection, comp.row, comp.col);
                 let geom = LineString4D::from_composition(comp.row, comp.col, rows, cols, layer_idx, comp.value, comp.magnitude);
                 let hilbert = encode_hilbert_linestring(&geom);
 
-                AtomRecord {
+                let record = AtomRecord {
                     atom_id: sdi.to_vec(),
                     atom_class: 1,
                     modality: 2,
@@ -218,24 +210,15 @@ fn process_safetensors(config: &Cli, mut output: Box<dyn Write>) -> ShaderResult
                         "to_dim": comp.col,
                         "shape": format!("{}x{}", rows, cols)
                     }).to_string(),
-                }
-            })
-            .collect();
-
-        // Write to COPY stream (thread-safe)
-        {
-            let mut writer = writer_mutex.lock().unwrap();
-            for record in &const_records {
-                writer.write_record(record)?;
-            }
-            for record in &comp_records {
-                writer.write_record(record)?;
-            }
+                };
+                
+                copy_writer.write_record(&record)?;
         }
-
-        Ok(())
-    })?;
-
+        
+        total_atoms.fetch_add(result.constants.len() + result.compositions.len(), std::sync::atomic::Ordering::Relaxed);
+        total_filtered.fetch_add(result.filtered_count, std::sync::atomic::Ordering::Relaxed);
+    }
+    
     copy_writer.end_copy()?;
 
     let total = total_atoms.load(std::sync::atomic::Ordering::Relaxed);

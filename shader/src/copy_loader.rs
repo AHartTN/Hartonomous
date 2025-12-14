@@ -1,3 +1,4 @@
+#[cfg(feature = "postgres")]
 use postgres::{Client, NoTls};
 use std::io::Write;
 use crate::error::ShaderResult;
@@ -18,6 +19,7 @@ pub struct Atom {
     pub metadata: Option<serde_json::Value>,
 }
 
+#[cfg(feature = "postgres")]
 /// COPY protocol bulk loader
 pub struct CopyLoader {
     client: Client,
@@ -25,6 +27,7 @@ pub struct CopyLoader {
     queue: Vec<Atom>,
 }
 
+#[cfg(feature = "postgres")]
 impl CopyLoader {
     pub fn new(connection_string: &str, batch_size: usize) -> ShaderResult<Self> {
         let client = Client::connect(connection_string, NoTls)?;
@@ -84,6 +87,8 @@ impl CopyLoader {
     }
     
     fn insert_with_conflict_handling(&mut self, atom: &Atom) -> ShaderResult<()> {
+        #[cfg(feature = "postgres")]
+        {
         self.client.execute(
             "INSERT INTO atom (atom_id, atom_class, modality, subtype, atomic_value, geom, hilbert_index, metadata)
              VALUES ($1, $2, $3, $4, $5, ST_SetSRID(ST_GeomFromWKB($6), 4326), $7, $8)
@@ -92,8 +97,8 @@ impl CopyLoader {
                 m = GREATEST(EXCLUDED.m, ST_M(atom.geom))",
             &[
                 &atom.atom_id,
-                &atom.atom_class,
-                &atom.modality,
+                &(atom.atom_class as i32),
+                &(atom.modality as i32),
                 &atom.subtype,
                 &atom.atomic_value,
                 &create_pointzm_wkb(atom.x, atom.y, atom.z, atom.m),
@@ -101,6 +106,7 @@ impl CopyLoader {
                 &atom.metadata,
             ]
         )?;
+        }
         Ok(())
     }
     
@@ -109,11 +115,10 @@ impl CopyLoader {
         let mut rows = Vec::new();
         
         for atom in atoms {
-            let atom_id_hex = hex::encode(&atom.atom_id);
             let subtype = atom.subtype.as_ref().map(|s| s.as_str()).unwrap_or("\\N");
             let value_hex = atom.atomic_value.as_ref()
-                .map(|v| format!("\\\\x{}", hex::encode(v)))
-                .unwrap_or_else(|| "\\N".to_string());
+                .map(|v| format!("\\\\x{}", crate::sdi::bytes_to_hex(v)))
+                .unwrap_or_else(|| "\\N".to_string);
             let metadata = atom.metadata.as_ref()
                 .map(|m| m.to_string().replace('\n', " "))
                 .unwrap_or_else(|| "\\N".to_string());
