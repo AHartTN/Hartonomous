@@ -1,0 +1,24 @@
+{
+  "name": "hartonomous",
+  "version-semver": "0.1.0",
+  "description": "Universal semantic substrate - atoms, compositions, projections",
+  "homepage": "https://github.com/ahart/Hartonomous",
+  "dependencies": [
+    {
+      "name": "libpq",
+      "version>=": "16.0"
+    }
+  ],
+  "overrides": [],
+  "builtin-baseline": "a34c873a9717a888f58dc05571dde15bfce32f15",
+  "features": {
+    "tests": {
+      "description": "Build unit tests",
+      "dependencies": []
+    },
+    "tools": {
+      "description": "Build CLI tools",
+      "dependencies": []
+    }
+  }
+}

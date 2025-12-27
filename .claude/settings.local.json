@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cmake --build:*)",
+      "Bash(cmake:*)",
+      "Bash(./hartonomous-tests.exe)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nperf: fix 12 performance anti-patterns across encoding pipeline\n\nCompositionStore \\(unified from 4 files\\):\n- Single pair creation per call \\(was 3x redundant\\)\n- Single-lock pattern eliminates double-lookup overhead\n- Pre-allocated 1M capacity for forward/reverse/compositions\n- Collision handling in unlocked helper method\n\nPairEncodingCascade:\n- swap\\(\\) instead of move in tree reduction \\(18 fewer vectors/chunk\\)\n- Parallel cache merge \\(was serialized, 7 threads idle\\)\n\nPairEncodingEngine:\n- Reusable 262K pair buffer \\(was 80+ reallocations/pass\\)\n- RLE range-based tree building\n- Count non-empty chunks before reserving\n\nRLESequence:\n- O\\(log n\\) random access via cached cumulative counts + binary search\n- Invalidation on push/clear\n\nSeeder:\n- Stream chunks directly to PQputCopyData \\(no 4.5x memory concat\\)\n- Cached connection string at construction\n\nDeleted deprecated files:\n- composition_decoder.hpp \\(merged into CompositionStore\\)\n- global_composition_store.hpp \\(merged into CompositionStore\\)\n- thread_local_composition_store.hpp \\(merged into CompositionCache\\)\n- vocabulary.hpp \\(functionality in CompositionStore\\)\n- hilbert_encoder.hpp \\(unused\\)\n\nAll 36,457 assertions pass in 90 test cases.\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(./hartonomous-tests.exe:*)",
+      "Bash(git commit:*)",
+      "Bash(powershell -Command:*)",
+      "Bash(psql:*)",
+      "Bash(set PGPASSWORD=hartonomous:*)",
+      "Bash(createdb:*)",
+      "Bash(D:\\\\Repositories\\\\Hartonomous\\\\Hartonomous.Native\\\\build\\\\bin\\\\hartonomous-db-tests.exe:*)",
+      "Bash(./build/bin/hartonomous-db-tests.exe:*)"
+    ]
+  }
+}

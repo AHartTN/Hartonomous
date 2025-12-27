@@ -1,0 +1,393 @@
+# Hartonomous CI/CD Pipeline
+# Enterprise-grade, idempotent, multi-platform build and test automation
+#
+# Triggers: push/PR to main, manual dispatch
+# Artifacts: Native libraries, .NET packages, test results, coverage reports
+
+name: CI
+
+on:
+  push:
+    branches: [main, develop, 'feature/**', 'release/**']
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'readme/**'
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build type'
+        required: true
+        default: 'Release'
+        type: choice
+        options:
+          - Debug
+          - Release
+          - RelWithDebInfo
+
+env:
+  DOTNET_VERSION: '9.0.x'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  CMAKE_VERSION: '3.28'
+  NINJA_VERSION: '1.11.1'
+  VCPKG_BINARY_SOURCES: 'clear;x-gha,readwrite'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ===========================================================================
+  # Determine what changed to optimize CI runs
+  # ===========================================================================
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      native: ${{ steps.filter.outputs.native }}
+      dotnet: ${{ steps.filter.outputs.dotnet }}
+      infrastructure: ${{ steps.filter.outputs.infrastructure }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            native:
+              - 'Hartonomous.Native/**'
+              - 'CMakeLists.txt'
+              - 'CMakePresets.json'
+              - 'vcpkg.json'
+            dotnet:
+              - '**/*.cs'
+              - '**/*.csproj'
+              - '**/*.slnx'
+              - 'Directory.*.props'
+            infrastructure:
+              - '.github/**'
+              - 'Dockerfile*'
+              - 'docker-compose*.yml'
+
+  # ===========================================================================
+  # Native C++ Build Matrix
+  # ===========================================================================
+  native-build:
+    name: Native (${{ matrix.os }}-${{ matrix.compiler }}-${{ matrix.build_type }})
+    needs: changes
+    if: needs.changes.outputs.native == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Windows MSVC
+          - os: windows-latest
+            compiler: msvc
+            build_type: Release
+            preset: windows-msvc-release
+            artifact_name: hartonomous-native-win-x64
+          - os: windows-latest
+            compiler: msvc
+            build_type: Debug
+            preset: windows-msvc-debug
+            artifact_name: hartonomous-native-win-x64-debug
+
+          # Linux GCC
+          - os: ubuntu-latest
+            compiler: gcc
+            build_type: Release
+            preset: linux-gcc-release
+            artifact_name: hartonomous-native-linux-x64
+          - os: ubuntu-latest
+            compiler: gcc
+            build_type: Debug
+            preset: linux-gcc-debug
+            artifact_name: hartonomous-native-linux-x64-debug
+
+          # Linux Clang
+          - os: ubuntu-latest
+            compiler: clang
+            build_type: Release
+            preset: linux-clang-release
+            artifact_name: hartonomous-native-linux-clang-x64
+
+          # macOS
+          - os: macos-latest
+            compiler: clang
+            build_type: Release
+            preset: macos-clang-release
+            artifact_name: hartonomous-native-macos-arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: 'a34c873a9717a888f58dc05571dde15bfce32f15'
+          vcpkgDirectory: '${{ github.workspace }}/vcpkg'
+
+      - name: Export GitHub Actions cache environment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Setup MSVC (Windows)
+        if: runner.os == 'Windows' && matrix.compiler == 'msvc'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Setup Clang (Linux)
+        if: runner.os == 'Linux' && matrix.compiler == 'clang'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-17 lld-17
+          echo "CC=clang-17" >> $GITHUB_ENV
+          echo "CXX=clang++-17" >> $GITHUB_ENV
+
+      - name: Setup Ninja
+        uses: seanmiddleditch/gha-setup-ninja@v5
+
+      - name: Configure CMake
+        working-directory: Hartonomous.Native
+        run: cmake --preset ${{ matrix.preset }}
+
+      - name: Build
+        working-directory: Hartonomous.Native
+        run: cmake --build --preset ${{ matrix.preset }} --parallel
+
+      - name: Test
+        working-directory: Hartonomous.Native
+        run: ctest --preset ${{ matrix.preset }} --output-on-failure --output-junit test-results.xml
+
+      - name: Upload Test Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-native-${{ matrix.artifact_name }}
+          path: Hartonomous.Native/out/build/${{ matrix.preset }}/test-results.xml
+          retention-days: 30
+
+      - name: Upload Native Library
+        uses: actions/upload-artifact@v4
+        if: matrix.build_type == 'Release'
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: |
+            Hartonomous.Native/out/build/${{ matrix.preset }}/bin/*
+            !Hartonomous.Native/out/build/${{ matrix.preset }}/bin/*-tests*
+          retention-days: 90
+
+  # ===========================================================================
+  # .NET Build and Test
+  # ===========================================================================
+  dotnet-build:
+    name: .NET (${{ matrix.os }})
+    needs: [changes, native-build]
+    if: |
+      always() &&
+      (needs.changes.outputs.dotnet == 'true' || github.event_name == 'workflow_dispatch') &&
+      (needs.native-build.result == 'success' || needs.native-build.result == 'skipped')
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Download Native Libraries (Linux)
+        if: runner.os == 'Linux'
+        uses: actions/download-artifact@v4
+        with:
+          name: hartonomous-native-linux-x64
+          path: Hartonomous.Core/Native/linux-x64
+
+      - name: Download Native Libraries (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/download-artifact@v4
+        with:
+          name: hartonomous-native-win-x64
+          path: Hartonomous.Core/Native/win-x64
+
+      - name: Download Native Libraries (macOS)
+        if: runner.os == 'macOS'
+        uses: actions/download-artifact@v4
+        with:
+          name: hartonomous-native-macos-arm64
+          path: Hartonomous.Core/Native/osx-arm64
+
+      - name: Restore
+        run: dotnet restore Hartonomous.slnx
+
+      - name: Build
+        run: dotnet build Hartonomous.slnx --configuration Release --no-restore
+
+      - name: Test
+        run: |
+          dotnet test Hartonomous.slnx \
+            --configuration Release \
+            --no-build \
+            --logger "trx;LogFileName=test-results.trx" \
+            --logger "console;verbosity=detailed" \
+            --results-directory ./test-results \
+            --collect:"XPlat Code Coverage"
+
+      - name: Upload Test Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-dotnet-${{ matrix.os }}
+          path: ./test-results
+          retention-days: 30
+
+      - name: Upload Coverage
+        uses: actions/upload-artifact@v4
+        if: runner.os == 'Linux'
+        with:
+          name: coverage-dotnet
+          path: ./test-results/**/coverage.cobertura.xml
+          retention-days: 30
+
+  # ===========================================================================
+  # Package Native Libraries as NuGet
+  # ===========================================================================
+  package-native:
+    name: Package Native NuGet
+    needs: native-build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download All Native Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: native-artifacts
+          pattern: hartonomous-native-*
+          merge-multiple: false
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Create NuGet Package
+        run: |
+          mkdir -p package/runtimes/win-x64/native
+          mkdir -p package/runtimes/linux-x64/native
+          mkdir -p package/runtimes/osx-arm64/native
+
+          cp native-artifacts/hartonomous-native-win-x64/* package/runtimes/win-x64/native/ || true
+          cp native-artifacts/hartonomous-native-linux-x64/* package/runtimes/linux-x64/native/ || true
+          cp native-artifacts/hartonomous-native-macos-arm64/* package/runtimes/osx-arm64/native/ || true
+
+          dotnet pack Hartonomous.Core/Hartonomous.Core.csproj \
+            --configuration Release \
+            --output ./nupkg \
+            -p:IncludeNativeLibraries=true
+
+      - name: Upload NuGet Package
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages
+          path: ./nupkg/*.nupkg
+          retention-days: 90
+
+  # ===========================================================================
+  # Docker Build
+  # ===========================================================================
+  docker-build:
+    name: Docker Build
+    needs: [native-build, dotnet-build]
+    if: |
+      always() &&
+      github.event_name == 'push' &&
+      (needs.native-build.result == 'success' || needs.native-build.result == 'skipped') &&
+      (needs.dotnet-build.result == 'success' || needs.dotnet-build.result == 'skipped')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download Native Linux Library
+        uses: actions/download-artifact@v4
+        with:
+          name: hartonomous-native-linux-x64
+          path: Hartonomous.Core/Native/linux-x64
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and Push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: ${{ github.ref == 'refs/heads/main' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+  # ===========================================================================
+  # Test Results Summary
+  # ===========================================================================
+  test-summary:
+    name: Test Summary
+    needs: [native-build, dotnet-build]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download All Test Results
+        uses: actions/download-artifact@v4
+        with:
+          path: test-results
+          pattern: test-results-*
+          merge-multiple: true
+
+      - name: Test Report
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: Test Results
+          path: 'test-results/**/*.xml,test-results/**/*.trx'
+          reporter: 'java-junit,dotnet-trx'
+          fail-on-error: true

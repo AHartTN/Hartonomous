@@ -1,0 +1,59 @@
+# Hartonomous Native Seeder Build
+# Builds only the native C++ hartonomous-seed executable
+
+# ==============================================================================
+# Stage 1: Native C++ Build with PostgreSQL
+# ==============================================================================
+FROM mcr.microsoft.com/devcontainers/cpp:1-debian-12 AS native-build
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    cmake \
+    ninja-build \
+    libpq-dev \
+    postgresql-server-dev-all \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+
+# Copy CMake files
+COPY Hartonomous.Native/CMakeLists.txt Hartonomous.Native/CMakePresets.json ./Hartonomous.Native/
+COPY Hartonomous.Native/vcpkg.json ./Hartonomous.Native/
+
+# Copy source files
+COPY Hartonomous.Native/src ./Hartonomous.Native/src
+COPY Hartonomous.Native/tests ./Hartonomous.Native/tests
+
+# Copy test data
+COPY test-data ./test-data
+
+# Configure and build
+WORKDIR /src/Hartonomous.Native
+RUN cmake --preset linux-gcc-release \
+    -DCMAKE_INSTALL_PREFIX=/opt/hartonomous \
+    -DBUILD_TESTING=ON
+
+RUN cmake --build --preset linux-gcc-release --parallel $(nproc)
+
+# Run tests
+RUN ctest --preset linux-gcc-release --output-on-failure
+
+# Install
+RUN cmake --install out/build/linux-gcc-release
+
+# ==============================================================================
+# Stage 2: Minimal Runtime
+# ==============================================================================
+FROM debian:bookworm-slim AS runtime
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=native-build /opt/hartonomous/bin/hartonomous-seed /usr/local/bin/
+COPY --from=native-build /opt/hartonomous/bin/hartonomous-ingest /usr/local/bin/
+COPY --from=native-build /opt/hartonomous/lib/*.so* /usr/local/lib/
+
+RUN ldconfig
+
+ENTRYPOINT ["/usr/local/bin/hartonomous-seed"]

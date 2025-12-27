@@ -1,0 +1,66 @@
+<Project>
+  <!-- Hartonomous Directory.Build.props -->
+  <!-- Shared properties for all projects in the solution -->
+
+  <PropertyGroup>
+    <!-- Version Information -->
+    <VersionPrefix>0.1.0</VersionPrefix>
+    <VersionSuffix Condition="'$(VersionSuffix)' == ''">alpha</VersionSuffix>
+
+    <!-- .NET Configuration -->
+    <TargetFramework>net9.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <WarningsAsErrors />
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+
+    <!-- Build Configuration -->
+    <Deterministic>true</Deterministic>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+
+    <!-- Package Metadata -->
+    <Authors>Andrew Hart</Authors>
+    <Company>Hartonomous</Company>
+    <Product>Hartonomous</Product>
+    <Copyright>Copyright (c) 2024-2025 Andrew Hart</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/ahart/Hartonomous</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/ahart/Hartonomous</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>semantic;unicode;hilbert;content-addressing;ai</PackageTags>
+
+    <!-- Source Link for debugging -->
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+  <!-- Native Library Paths -->
+  <PropertyGroup>
+    <NativeLibraryBasePath>$(MSBuildThisFileDirectory)Hartonomous.Core\runtimes</NativeLibraryBasePath>
+  </PropertyGroup>
+
+  <!-- Runtime Identifiers for Native Library -->
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' == ''">
+    <RuntimeIdentifier Condition="$([MSBuild]::IsOSPlatform('Windows'))">win-x64</RuntimeIdentifier>
+    <RuntimeIdentifier Condition="$([MSBuild]::IsOSPlatform('Linux'))">linux-x64</RuntimeIdentifier>
+    <RuntimeIdentifier Condition="$([MSBuild]::IsOSPlatform('OSX'))">osx-arm64</RuntimeIdentifier>
+  </PropertyGroup>
+
+  <!-- CI/CD Detection -->
+  <PropertyGroup>
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+    <ContinuousIntegrationBuild Condition="'$(TF_BUILD)' == 'true'">true</ContinuousIntegrationBuild>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
+  </ItemGroup>
+
+</Project>

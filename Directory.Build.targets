@@ -1,0 +1,41 @@
+<Project>
+  <!-- Hartonomous Directory.Build.targets -->
+  <!-- Post-build tasks and native library copying -->
+
+  <!-- Copy Native Libraries for Development -->
+  <Target Name="CopyNativeLibraries" AfterTargets="Build" Condition="'$(DesignTimeBuild)' != 'true'">
+    <PropertyGroup>
+      <NativeSourcePath>$(MSBuildThisFileDirectory)Hartonomous.Core\runtimes\$(RuntimeIdentifier)\native</NativeSourcePath>
+    </PropertyGroup>
+
+    <ItemGroup Condition="Exists('$(NativeSourcePath)')">
+      <NativeLibraries Include="$(NativeSourcePath)\*.*" />
+    </ItemGroup>
+
+    <Copy SourceFiles="@(NativeLibraries)"
+          DestinationFolder="$(OutputPath)"
+          SkipUnchangedFiles="true"
+          Condition="'@(NativeLibraries)' != ''" />
+
+    <Message Text="Copied native libraries from $(NativeSourcePath) to $(OutputPath)"
+             Importance="high"
+             Condition="'@(NativeLibraries)' != ''" />
+  </Target>
+
+  <!-- Include Native Libraries in Publish -->
+  <Target Name="PublishNativeLibraries" AfterTargets="Publish" Condition="'$(RuntimeIdentifier)' != ''">
+    <PropertyGroup>
+      <NativeSourcePath>$(MSBuildThisFileDirectory)Hartonomous.Core\runtimes\$(RuntimeIdentifier)\native</NativeSourcePath>
+    </PropertyGroup>
+
+    <ItemGroup Condition="Exists('$(NativeSourcePath)')">
+      <NativeLibraries Include="$(NativeSourcePath)\*.*" />
+    </ItemGroup>
+
+    <Copy SourceFiles="@(NativeLibraries)"
+          DestinationFolder="$(PublishDir)"
+          SkipUnchangedFiles="true"
+          Condition="'@(NativeLibraries)' != ''" />
+  </Target>
+
+</Project>

@@ -1,0 +1,349 @@
+# Hartonomous Release Pipeline
+# Semantic versioning, changelog generation, multi-platform releases
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 1.0.0)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Is this a prerelease?'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  DOTNET_VERSION: '9.0.x'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+
+jobs:
+  # ===========================================================================
+  # Validate and Extract Version
+  # ===========================================================================
+  prepare:
+    name: Prepare Release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract Version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+            PRERELEASE="${{ github.event.inputs.prerelease }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/v}"
+            if [[ "$VERSION" == *"-"* ]]; then
+              PRERELEASE="true"
+            else
+              PRERELEASE="false"
+            fi
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "prerelease=$PRERELEASE" >> $GITHUB_OUTPUT
+          echo "Releasing version: $VERSION (prerelease: $PRERELEASE)"
+
+  # ===========================================================================
+  # Build Native Libraries for All Platforms
+  # ===========================================================================
+  build-native:
+    name: Build Native (${{ matrix.target }})
+    needs: prepare
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: windows-latest
+            target: win-x64
+            preset: windows-msvc-release
+            lib_ext: dll
+          - os: ubuntu-latest
+            target: linux-x64
+            preset: linux-gcc-release
+            lib_ext: so
+          - os: macos-latest
+            target: osx-arm64
+            preset: macos-clang-release
+            lib_ext: dylib
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: 'a34c873a9717a888f58dc05571dde15bfce32f15'
+
+      - name: Setup MSVC (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Setup Ninja
+        uses: seanmiddleditch/gha-setup-ninja@v5
+
+      - name: Configure
+        working-directory: Hartonomous.Native
+        run: cmake --preset ${{ matrix.preset }}
+
+      - name: Build
+        working-directory: Hartonomous.Native
+        run: cmake --build --preset ${{ matrix.preset }} --parallel
+
+      - name: Test
+        working-directory: Hartonomous.Native
+        run: ctest --preset ${{ matrix.preset }} --output-on-failure
+
+      - name: Package
+        shell: bash
+        run: |
+          mkdir -p release/${{ matrix.target }}
+          cp Hartonomous.Native/out/build/${{ matrix.preset }}/bin/*.${{ matrix.lib_ext }} release/${{ matrix.target }}/ || true
+          cp Hartonomous.Native/out/build/${{ matrix.preset }}/bin/*.exe release/${{ matrix.target }}/ 2>/dev/null || true
+          cp Hartonomous.Native/out/build/${{ matrix.preset }}/bin/hartonomous-ingest* release/${{ matrix.target }}/ 2>/dev/null || true
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.target }}
+          path: release/${{ matrix.target }}
+          retention-days: 7
+
+  # ===========================================================================
+  # Build .NET Package with Native Libraries
+  # ===========================================================================
+  build-dotnet:
+    name: Build .NET Package
+    needs: [prepare, build-native]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Download Native (win-x64)
+        uses: actions/download-artifact@v4
+        with:
+          name: native-win-x64
+          path: Hartonomous.Core/runtimes/win-x64/native
+
+      - name: Download Native (linux-x64)
+        uses: actions/download-artifact@v4
+        with:
+          name: native-linux-x64
+          path: Hartonomous.Core/runtimes/linux-x64/native
+
+      - name: Download Native (osx-arm64)
+        uses: actions/download-artifact@v4
+        with:
+          name: native-osx-arm64
+          path: Hartonomous.Core/runtimes/osx-arm64/native
+
+      - name: Restore
+        run: dotnet restore Hartonomous.slnx
+
+      - name: Build
+        run: dotnet build Hartonomous.slnx --configuration Release -p:Version=${{ needs.prepare.outputs.version }}
+
+      - name: Test
+        run: dotnet test Hartonomous.slnx --configuration Release --no-build
+
+      - name: Pack
+        run: |
+          dotnet pack Hartonomous.Core/Hartonomous.Core.csproj \
+            --configuration Release \
+            --no-build \
+            -p:Version=${{ needs.prepare.outputs.version }} \
+            -p:PackageVersion=${{ needs.prepare.outputs.version }} \
+            --output ./packages
+
+          dotnet pack Hartonomous.Infrastructure/Hartonomous.Infrastructure.csproj \
+            --configuration Release \
+            --no-build \
+            -p:Version=${{ needs.prepare.outputs.version }} \
+            -p:PackageVersion=${{ needs.prepare.outputs.version }} \
+            --output ./packages
+
+      - name: Upload NuGet Packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages
+          path: ./packages/*.nupkg
+          retention-days: 30
+
+  # ===========================================================================
+  # Create GitHub Release
+  # ===========================================================================
+  release:
+    name: Create Release
+    needs: [prepare, build-native, build-dotnet]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Package Release Assets
+        run: |
+          cd artifacts
+
+          # Package native libraries per platform
+          for dir in native-*/; do
+            platform="${dir#native-}"
+            platform="${platform%/}"
+            tar -czvf "hartonomous-native-$platform-${{ needs.prepare.outputs.version }}.tar.gz" -C "$dir" .
+          done
+
+          # Move NuGet packages
+          mv nuget-packages/*.nupkg . || true
+
+          ls -la
+
+      - name: Generate Changelog
+        id: changelog
+        run: |
+          # Get commits since last tag
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" $PREV_TAG..HEAD)
+          else
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" -20)
+          fi
+
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.prepare.outputs.version }}
+          name: Hartonomous v${{ needs.prepare.outputs.version }}
+          body: |
+            ## Hartonomous v${{ needs.prepare.outputs.version }}
+
+            ### Changes
+            ${{ steps.changelog.outputs.changelog }}
+
+            ### Installation
+
+            **NuGet:**
+            ```bash
+            dotnet add package Hartonomous.Core --version ${{ needs.prepare.outputs.version }}
+            ```
+
+            **Native Libraries:**
+            Download the appropriate archive for your platform below.
+
+            ### Checksums
+            ```
+            $(cd artifacts && sha256sum *.tar.gz *.nupkg 2>/dev/null || true)
+            ```
+          prerelease: ${{ needs.prepare.outputs.prerelease == 'true' }}
+          files: |
+            artifacts/*.tar.gz
+            artifacts/*.nupkg
+          fail_on_unmatched_files: false
+
+  # ===========================================================================
+  # Publish to NuGet
+  # ===========================================================================
+  publish-nuget:
+    name: Publish to NuGet
+    needs: [prepare, build-dotnet, release]
+    if: needs.prepare.outputs.prerelease == 'false'
+    runs-on: ubuntu-latest
+    environment: nuget-publish
+    steps:
+      - name: Download NuGet Packages
+        uses: actions/download-artifact@v4
+        with:
+          name: nuget-packages
+          path: packages
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Publish to NuGet.org
+        run: |
+          for package in packages/*.nupkg; do
+            dotnet nuget push "$package" \
+              --api-key ${{ secrets.NUGET_API_KEY }} \
+              --source https://api.nuget.org/v3/index.json \
+              --skip-duplicate
+          done
+
+  # ===========================================================================
+  # Publish Docker Image
+  # ===========================================================================
+  publish-docker:
+    name: Publish Docker Image
+    needs: [prepare, build-native, release]
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Native (linux-x64)
+        uses: actions/download-artifact@v4
+        with:
+          name: native-linux-x64
+          path: Hartonomous.Core/runtimes/linux-x64/native
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:${{ needs.prepare.outputs.version }}
+            ghcr.io/${{ github.repository }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64

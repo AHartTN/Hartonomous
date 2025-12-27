@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "Hartonomous.Terminal": {
+      "commandName": "Project"
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker"
+    }
+  }
+}

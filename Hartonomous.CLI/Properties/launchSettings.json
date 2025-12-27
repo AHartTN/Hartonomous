@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "Hartonomous.CLI": {
+      "commandName": "Project"
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker"
+    }
+  }
+}

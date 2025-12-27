@@ -1,0 +1,162 @@
+# Hartonomous Development Compose Stack
+# Complete local development environment with all services
+
+services:
+  # ============================================================================
+  # PostgreSQL with PostGIS
+  # ============================================================================
+  postgres:
+    image: postgis/postgis:16-3.4-alpine
+    container_name: hartonomous-postgres
+    environment:
+      POSTGRES_USER: hartonomous
+      POSTGRES_PASSWORD: hartonomous
+      POSTGRES_DB: hartonomous
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./Hartonomous.Native/sql:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hartonomous -d hartonomous"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hartonomous
+
+  # ============================================================================
+  # Redis for Caching
+  # ============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: hartonomous-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hartonomous
+
+  # ============================================================================
+  # Worker Service
+  # ============================================================================
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime-worker
+    container_name: hartonomous-worker
+    environment:
+      DOTNET_ENVIRONMENT: Development
+      ConnectionStrings__Postgres: "Host=postgres;Port=5432;Database=hartonomous;Username=hartonomous;Password=hartonomous"
+      ConnectionStrings__Redis: "redis:6379"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    networks:
+      - hartonomous
+
+  # ============================================================================
+  # CLI Tool (one-shot container)
+  # ============================================================================
+  cli:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime-cli
+    container_name: hartonomous-cli
+    environment:
+      ConnectionStrings__Postgres: "Host=postgres;Port=5432;Database=hartonomous;Username=hartonomous;Password=hartonomous"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./test-data:/data:ro
+    networks:
+      - hartonomous
+    profiles:
+      - cli  # Only run when explicitly requested
+
+  # ============================================================================
+  # Native Ingest Tool
+  # ============================================================================
+  ingest:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime-cli
+    container_name: hartonomous-ingest
+    entrypoint: ["/usr/local/bin/hartonomous-ingest"]
+    environment:
+      HARTONOMOUS_DB_HOST: postgres
+      HARTONOMOUS_DB_PORT: "5432"
+      HARTONOMOUS_DB_NAME: hartonomous
+      HARTONOMOUS_DB_USER: hartonomous
+      HARTONOMOUS_DB_PASSWORD: hartonomous
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./test-data:/data:ro
+    networks:
+      - hartonomous
+    profiles:
+      - ingest  # Only run when explicitly requested
+
+  # ============================================================================
+  # Database Seeder (seeds all Unicode atoms)
+  # ============================================================================
+  seeder:
+    build:
+      context: .
+      dockerfile: Dockerfile.seeder
+    container_name: hartonomous-seeder
+    environment:
+      HARTONOMOUS_DB_URL: "postgresql://hartonomous:hartonomous@postgres:5432/hartonomous"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - hartonomous
+    profiles:
+      - seed  # Only run when explicitly requested
+
+  # ============================================================================
+  # pgAdmin for Database Management
+  # ============================================================================
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: hartonomous-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@hartonomous.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+    networks:
+      - hartonomous
+    profiles:
+      - dev-tools
+
+volumes:
+  postgres_data:
+  redis_data:
+  pgadmin_data:
+
+networks:
+  hartonomous:
+    driver: bridge
