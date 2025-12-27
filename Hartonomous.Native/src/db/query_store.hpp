@@ -1033,10 +1033,12 @@ public:
         PQclear(count_res);
 
         // Upsert from staging to real table, converting WKT to geometry
+        // Use DISTINCT to handle any duplicate refs, and DO NOTHING for conflicts
         PGresult* upsert_res = PQexec(conn_.get(),
             "INSERT INTO relationship (from_high, from_low, to_high, to_low, "
             "weight, trajectory, rel_type, context_high, context_low) "
-            "SELECT from_high, from_low, to_high, to_low, weight, "
+            "SELECT DISTINCT ON (from_high, from_low, to_high, to_low, context_high, context_low) "
+            "from_high, from_low, to_high, to_low, weight, "
             "ST_GeomFromText(trajectory), rel_type, context_high, context_low "
             "FROM traj_staging "
             "ON CONFLICT (from_high, from_low, to_high, to_low, context_high, context_low) "
