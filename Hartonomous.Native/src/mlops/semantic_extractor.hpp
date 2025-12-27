@@ -104,7 +104,7 @@ public:
                         position_refs[i],
                         position_refs[j],
                         static_cast<double>(weight),
-                        RelType::SEMANTIC_LINK
+                        REL_DEFAULT
                     });
                 }
             }
@@ -160,7 +160,7 @@ public:
                     input_ref,
                     output_ref,
                     static_cast<double>(w),
-                    RelType::MODEL_WEIGHT
+                    REL_DEFAULT
                 });
             }
         }
@@ -188,7 +188,7 @@ private:
             weights.emplace_back(rel.from, rel.to, rel.weight);
         }
 
-        RelType primary_type = rels.empty() ? RelType::SEMANTIC_LINK : rels[0].type;
+        RelType primary_type = rels.empty() ? REL_DEFAULT : rels[0].type;
         store_.store_model_weights(weights, context, primary_type);
     }
 };

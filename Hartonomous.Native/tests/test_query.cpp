@@ -345,7 +345,7 @@ TEST_CASE("Weighted relationships", "[db][relationship]") {
     auto foo = store.encode_and_store("foo");
 
     SECTION("Store and retrieve relationship") {
-        store.store_relationship(hello, world, 0.95, RelType::SEMANTIC_LINK);
+        store.store_relationship(hello, world, 0.95, REL_DEFAULT);
 
         auto weight = store.get_weight(hello, world);
         REQUIRE(weight.has_value());
@@ -397,29 +397,25 @@ TEST_CASE("Weighted relationships", "[db][relationship]") {
             {world, foo, 0.50},
         };
 
-        store.store_model_weights(weights, model_ctx, RelType::MODEL_WEIGHT);
+        store.store_model_weights(weights, model_ctx, REL_DEFAULT);
 
         auto count = store.relationship_count();
         REQUIRE(count >= 3);
     }
 
     SECTION("Relationship type filtering") {
-        store.store_relationship(hello, world, 0.8, RelType::SEMANTIC_LINK);
-        store.store_relationship(hello, foo, 0.7, RelType::MODEL_WEIGHT);
+        // RelType is now a uniform default - types are distinguished by context hash
+        store.store_relationship(hello, world, 0.8, REL_DEFAULT);
+        store.store_relationship(hello, foo, 0.7, REL_DEFAULT);
 
         auto edges = store.find_from(hello);
 
         // Both should be found
         REQUIRE(edges.size() >= 2);
 
-        // Check types are different
-        bool found_semantic = false;
-        bool found_model = false;
+        // All relationships now use REL_DEFAULT (0)
         for (const auto& e : edges) {
-            if (e.rel_type == static_cast<std::int16_t>(RelType::SEMANTIC_LINK))
-                found_semantic = true;
-            if (e.rel_type == static_cast<std::int16_t>(RelType::MODEL_WEIGHT))
-                found_model = true;
+            REQUIRE(e.rel_type == REL_DEFAULT);
         }
     }
 }

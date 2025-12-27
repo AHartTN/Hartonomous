@@ -174,7 +174,7 @@ public:
             vector.size(),  // Dimensions
             refs,
             context,
-            RelType::EMBEDDING_TRAJECTORY);
+            REL_DEFAULT);
     }
 
     /// Bulk store trajectories (for batch ingestion)
@@ -192,7 +192,7 @@ public:
             dims,
             std::vector<NodeRef>(refs.begin(), refs.end()),
             context,
-            RelType::EMBEDDING_TRAJECTORY);
+            REL_DEFAULT);
     }
 
     // ========================================================================
@@ -210,7 +210,7 @@ public:
         NodeRef from,
         NodeRef to,
         double weight,
-        RelType type = RelType::SEMANTIC_LINK)
+        RelType type = REL_DEFAULT)
     {
         std::vector<std::tuple<NodeRef, NodeRef, double>> rels = {
             {from, to, weight}
@@ -222,7 +222,7 @@ public:
     void store_relationships(
         std::span<const std::tuple<NodeRef, NodeRef, double>> rels,
         NodeRef context,
-        RelType type = RelType::SEMANTIC_LINK)
+        RelType type = REL_DEFAULT)
     {
         store_.store_model_weights(
             std::vector<std::tuple<NodeRef, NodeRef, double>>(rels.begin(), rels.end()),

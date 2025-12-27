@@ -154,7 +154,7 @@ public:
         // Single bulk insert for all weights
         std::cerr << "ingest_package: bulk storing " << all_weights.size() << " weights..." << std::endl;
         if (!all_weights.empty()) {
-            store_.store_model_weights(all_weights, model_context_, db::RelType::MODEL_WEIGHT);
+            store_.store_model_weights(all_weights, model_context_);
         }
 
         // SINGLE flush for ALL compositions (batched from entire package)
@@ -412,51 +412,62 @@ public:
         std::size_t total_weights = 0;
         std::size_t stored_weights = 0;
 
+        // Collect all F32 tensors first
+        std::vector<TensorMeta> f32_tensors;
         for (const auto& meta : reader.tensors()) {
-            std::cerr << "ingest_safetensor_semantic: tensor " << meta.name << " dtype=" << static_cast<int>(meta.dtype) << std::endl;
-            if (meta.dtype != TensorDType::F32) continue;
+            if (meta.dtype == TensorDType::F32) {
+                f32_tensors.push_back(meta);
+            }
+        }
+        tensor_count = f32_tensors.size();
 
-            tensor_count++;
+        // PARALLEL: Process tensors in parallel, each with thread-local weight collection
+        std::vector<std::vector<std::tuple<NodeRef, NodeRef, double>>> thread_weights(f32_tensors.size());
+        std::vector<std::size_t> thread_totals(f32_tensors.size());
+        std::vector<std::size_t> thread_stored(f32_tensors.size());
 
-            // Ingest tensor name as content (no flush - batch with everything)
-            std::cerr << "ingest_safetensor_semantic: encoding tensor name" << std::endl;
-            NodeRef tensor_ref = store_.compute_root(meta.name);
-            store_.build_and_collect(
-                reinterpret_cast<const std::uint8_t*>(meta.name.data()),
-                meta.name.size());
-
-            std::size_t count = SafetensorReader::element_count(meta);
-            std::cerr << "ingest_safetensor_semantic: " << count << " elements" << std::endl;
-            total_weights += count;
-
-            // Check if this is a WORD embedding layer (connects tokens to vectors)
-            // Must be specifically word_embeddings, not position_embeddings or token_type_embeddings
+        // Find embedding tensor index (must be processed first for trajectory storage)
+        std::size_t embedding_idx = f32_tensors.size();
+        for (std::size_t i = 0; i < f32_tensors.size(); ++i) {
+            const auto& meta = f32_tensors[i];
             bool is_word_embedding = 
                 (meta.name.find("word_embed") != std::string::npos) ||
                 (meta.name.find("wte") != std::string::npos) ||
-                (meta.name == "embeddings.weight");  // Simple embedding layer
-            
-            // Also check shape matches vocab: [vocab_size, hidden_dim] where vocab_size > 1000
+                (meta.name == "embeddings.weight");
             bool has_vocab_shape = meta.shape.size() >= 2 && 
-                                   meta.shape[0] > 1000 &&  // Vocab is typically >30k
-                                   meta.shape[0] <= vocab_.size() * 2;  // Sanity check
-            
-            std::cerr << "ingest_safetensor_semantic: is_word_embedding=" << is_word_embedding 
-                      << " has_vocab_shape=" << has_vocab_shape 
-                      << " shape[0]=" << (meta.shape.size() > 0 ? meta.shape[0] : 0) << std::endl;
-
+                                   meta.shape[0] > 1000 &&
+                                   meta.shape[0] <= vocab_.size() * 2;
             if (is_word_embedding && has_vocab_shape && !vocab_.empty()) {
-                // Embedding matrix: [vocab_size, hidden_dim]
-                // Create relationships from tokens to embedding positions
-                std::cerr << "ingest_safetensor_semantic: calling ingest_embeddings" << std::endl;
-                stored_weights += collect_embeddings(reader, meta, tensor_ref, all_weights);
-                std::cerr << "ingest_safetensor_semantic: ingest_embeddings done" << std::endl;
-            } else {
-                // Other weights: sparse storage with tensor context
-                std::cerr << "ingest_safetensor_semantic: calling ingest_sparse_weights" << std::endl;
-                stored_weights += collect_sparse_weights(reader, meta, tensor_ref, all_weights);
-                std::cerr << "ingest_safetensor_semantic: ingest_sparse_weights done" << std::endl;
+                embedding_idx = i;
+                break;
             }
+        }
+
+        // Process embedding tensor separately (it uses trajectory storage)
+        if (embedding_idx < f32_tensors.size()) {
+            const auto& meta = f32_tensors[embedding_idx];
+            NodeRef tensor_ref = store_.compute_root(meta.name);
+            thread_totals[embedding_idx] = SafetensorReader::element_count(meta);
+            thread_stored[embedding_idx] = collect_embeddings(reader, meta, tensor_ref, thread_weights[embedding_idx]);
+        }
+
+        // PARALLEL: Process all other tensors
+        Threading::parallel_for(f32_tensors.size(), [&](std::size_t i) {
+            if (i == embedding_idx) return; // Already processed
+
+            const auto& meta = f32_tensors[i];
+            NodeRef tensor_ref = store_.compute_root(meta.name);
+            thread_totals[i] = SafetensorReader::element_count(meta);
+            thread_stored[i] = collect_sparse_weights(reader, meta, tensor_ref, thread_weights[i]);
+        });
+
+        // Merge results
+        for (std::size_t i = 0; i < f32_tensors.size(); ++i) {
+            total_weights += thread_totals[i];
+            stored_weights += thread_stored[i];
+            all_weights.insert(all_weights.end(),
+                std::make_move_iterator(thread_weights[i].begin()),
+                std::make_move_iterator(thread_weights[i].end()));
         }
 
         return {tensor_count, total_weights, stored_weights};
@@ -498,7 +509,7 @@ public:
             hidden_dim, 
             token_refs, 
             model_context_,
-            db::RelType::EMBEDDING_TRAJECTORY);
+            db::REL_DEFAULT);
 
         std::cerr << "collect_embeddings: trajectory storage complete\n";
 
@@ -527,6 +538,28 @@ public:
     }
 
     /// Collect non-embedding weights with sparse filtering (parallelized)
+    /// Compute dynamic sparsity threshold based on tensor statistics.
+    /// Keep top ~10% most significant weights (by magnitude).
+    [[nodiscard]] double compute_dynamic_threshold(const float* data, std::size_t count) {
+        if (count < 1000) return sparsity_threshold_; // Use default for tiny tensors
+        
+        // Sample to find magnitude distribution (avoid scanning entire tensor)
+        std::size_t sample_size = std::min(count, std::size_t(10000));
+        std::size_t stride = count / sample_size;
+        
+        std::vector<float> magnitudes;
+        magnitudes.reserve(sample_size);
+        for (std::size_t i = 0; i < count; i += stride) {
+            magnitudes.push_back(std::abs(data[i]));
+        }
+        
+        // Find 90th percentile (keep top 10%)
+        std::size_t threshold_idx = static_cast<std::size_t>(magnitudes.size() * 0.90);
+        std::nth_element(magnitudes.begin(), magnitudes.begin() + threshold_idx, magnitudes.end());
+        
+        return std::max(static_cast<double>(magnitudes[threshold_idx]), sparsity_threshold_);
+    }
+
     std::size_t collect_sparse_weights(const SafetensorReader& reader,
                                        const TensorMeta& meta,
                                        NodeRef tensor_ref,
@@ -534,12 +567,15 @@ public:
         std::size_t count = SafetensorReader::element_count(meta);
         const float* data = reader.get_f32_data(meta);
         
+        // Dynamic threshold: keep only significant weights
+        double threshold = compute_dynamic_threshold(data, count);
+        
         // Small tensors: sequential fast path
         if (count < 10000) {
             std::size_t collected = 0;
             for (std::size_t i = 0; i < count; ++i) {
                 float val = data[i];
-                if (std::abs(val) < sparsity_threshold_) continue;
+                if (std::abs(val) < threshold) continue;
                 all_weights.emplace_back(tensor_ref, make_index_ref(i), static_cast<double>(val));
                 ++collected;
             }
@@ -557,11 +593,11 @@ public:
             std::size_t end = std::min(start + chunk_size, count);
             
             std::vector<std::tuple<NodeRef, NodeRef, double>> local;
-            local.reserve((end - start) / 10);
+            local.reserve((end - start) / 100); // ~1% after dynamic threshold
             
             for (std::size_t i = start; i < end; ++i) {
                 float val = data[i];
-                if (std::abs(val) < sparsity_threshold_) continue;
+                if (std::abs(val) < threshold) continue;
                 local.emplace_back(tensor_ref, make_index_ref(i), static_cast<double>(val));
             }
             

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "connection.hpp"
 #include <libpq-fe.h>
 #include <string>
 #include <stdexcept>
@@ -105,6 +106,7 @@ public:
 
 /// RAII wrapper for PGconn*
 /// Automatically closes connection on destruction.
+/// Auto-bootstraps database if it doesn't exist.
 class PgConnection {
     PGconn* conn_ = nullptr;
     
@@ -115,6 +117,23 @@ public:
         conn_ = PQconnectdb(connstr.c_str());
         if (PQstatus(conn_) != CONNECTION_OK) {
             std::string err = PQerrorMessage(conn_);
+            
+            // Check if database doesn't exist - auto-bootstrap
+            if (err.find("does not exist") != std::string::npos) {
+                PQfinish(conn_);
+                conn_ = nullptr;
+                
+                // Try to create the database
+                ConnectionConfig::ensure_database_exists();
+                
+                // Retry connection
+                conn_ = PQconnectdb(connstr.c_str());
+                if (PQstatus(conn_) == CONNECTION_OK) {
+                    return; // Success after bootstrap
+                }
+                err = PQerrorMessage(conn_);
+            }
+            
             PQfinish(conn_);
             conn_ = nullptr;
             throw PgError("Connection failed: " + err);

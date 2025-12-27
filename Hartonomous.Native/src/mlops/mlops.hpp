@@ -143,7 +143,7 @@ public:
         // FALLBACK: Use relationship edges when no trajectories stored yet
         std::vector<Relationship> rels;
         if (context.id_high != 0 || context.id_low != 0) {
-            rels = store_.find_by_type(query, RelType::MODEL_WEIGHT, max_attend * 2);
+            rels = store_.find_by_type(query, REL_DEFAULT, max_attend * 2);
             rels.erase(
                 std::remove_if(rels.begin(), rels.end(),
                     [&](const Relationship& r) {
@@ -442,7 +442,7 @@ public:
         }
 
         // FALLBACK: Use TEMPORAL_NEXT relationships
-        auto rels = store_.find_by_type(context, RelType::TEMPORAL_NEXT, top_k * 2);
+        auto rels = store_.find_by_type(context, REL_DEFAULT, top_k * 2);
         if (model_context.id_high != 0 || model_context.id_low != 0) {
             rels.erase(
                 std::remove_if(rels.begin(), rels.end(),
@@ -673,7 +673,7 @@ public:
             // Get outgoing edges
             std::vector<Relationship> edges;
             if (model_context.id_high != 0 || model_context.id_low != 0) {
-                edges = store_.find_by_type(current, RelType::MODEL_WEIGHT, 100);
+                edges = store_.find_by_type(current, REL_DEFAULT, 100);
             } else {
                 edges = store_.find_from(current, 100);
             }
@@ -744,7 +744,7 @@ public:
                 fwd_queue.pop();
 
                 auto edges = model_context.id_high != 0 || model_context.id_low != 0
-                    ? store_.find_by_type(current, RelType::MODEL_WEIGHT, 50)
+                    ? store_.find_by_type(current, REL_DEFAULT, 50)
                     : store_.find_from(current, 50);
 
                 for (const auto& edge : edges) {
@@ -887,7 +887,7 @@ public:
         result.total_weight = 0.0;
 
         // Get transformation edges (MODEL_WEIGHT type)
-        auto edges = store_.find_by_type(input, RelType::MODEL_WEIGHT, max_outputs * 2);
+        auto edges = store_.find_by_type(input, REL_DEFAULT, max_outputs * 2);
 
         // Filter by context if specified
         if (context.id_high != 0 || context.id_low != 0) {

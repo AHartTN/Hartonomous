@@ -85,15 +85,11 @@ struct Trajectory {
     }
 };
 
-/// Relationship types
-enum class RelType : std::int16_t {
-    SEMANTIC_LINK = 0,         // General semantic relationship
-    MODEL_WEIGHT = 1,          // Neural network weight (sparse/salient only)
-    KNOWLEDGE_EDGE = 2,        // Knowledge graph edge
-    TEMPORAL_NEXT = 3,         // Sequence/temporal relationship
-    SPATIAL_NEAR = 4,          // Spatial proximity
-    EMBEDDING_TRAJECTORY = 5,  // Token embedding as 384-point LineStringZM trajectory
-};
+/// Relationship type is DEPRECATED - relationships are universal.
+/// Source/context is encoded in context_high/context_low (NodeRef of source).
+/// The rel_type column remains for backward compatibility but should be 0.
+using RelType = std::int16_t;
+constexpr RelType REL_DEFAULT = 0;
 
 /// Relationship result for queries (sparse - only stored relationships appear)
 struct Relationship {
@@ -563,7 +559,7 @@ public:
     /// Store trajectory with weight (sparse - only call for salient relationships).
     /// This stores the ENTIRE path as ONE LineStringZM, not N separate records.
     void store_trajectory(NodeRef from, NodeRef to, const Trajectory& traj,
-                          RelType type = RelType::SEMANTIC_LINK,
+                          RelType type = REL_DEFAULT,
                           NodeRef context = NodeRef{}) {
         // Don't store empty trajectories or zero weights
         if (traj.points.empty()) return;
@@ -763,7 +759,7 @@ public:
     /// Store a weighted relationship: from → to with weight.
     /// SPARSE: Only call this for salient (non-zero, meaningful) weights.
     void store_relationship(NodeRef from, NodeRef to, double weight,
-                            RelType type = RelType::SEMANTIC_LINK,
+                            RelType type = REL_DEFAULT,
                             NodeRef context = NodeRef{}) {
         // Sparse encoding: skip near-zero weights
         if (std::abs(weight) < 1e-9) return;
@@ -883,27 +879,58 @@ public:
     }
 
     /// Bulk store model weights (for importing neural network parameters).
-    /// PARALLEL: each thread gets its own connection for parallel COPY.
+    /// IDEMPOTENT: Checks if model context already exists, skips if so.
+    /// PARALLEL: Direct COPY when inserting new model (no conflicts possible).
     void store_model_weights(
         const std::vector<std::tuple<NodeRef, NodeRef, double>>& weights,
         NodeRef model_context,
-        RelType type = RelType::MODEL_WEIGHT)
+        RelType type = REL_DEFAULT)
     {
         if (weights.empty()) return;
 
-        // For small batches, use simple single-connection approach
-        if (weights.size() < 100000) {
-            store_model_weights_single(weights, model_context, type);
+        std::cerr << "store_model_weights: " << weights.size() << " weights" << std::endl;
+
+        // IDEMPOTENT CHECK: Does this model already have NON-TRAJECTORY weights stored?
+        // We check for rows WITHOUT trajectories (trajectory IS NULL) because embeddings
+        // are stored as trajectories BEFORE this function is called, and we don't want
+        // to skip weight storage just because trajectories exist.
+        char check_sql[256];
+        std::snprintf(check_sql, sizeof(check_sql),
+            "SELECT 1 FROM relationship WHERE context_high = %lld AND context_low = %lld "
+            "AND trajectory IS NULL LIMIT 1",
+            static_cast<long long>(model_context.id_high),
+            static_cast<long long>(model_context.id_low));
+        PgResult check_res(PQexec(conn_.get(), check_sql));
+        if (check_res.status() == PGRES_TUPLES_OK && check_res.row_count() > 0) {
+            std::cerr << "store_model_weights: model already ingested, skipping" << std::endl;
             return;
         }
 
+        // =========================================================================
+        // PostgreSQL Bulk Load Optimization (per official docs):
+        // 1. DROP INDEXES before bulk load
+        // 2. COPY data (parallel)
+        // 3. RECREATE INDEXES after
+        // This avoids 6+ index updates per row = millions of saved operations
+        // =========================================================================
+
+        auto start_time = std::chrono::high_resolution_clock::now();
+
+        // DROP INDEXES (except primary key - can't drop that during load)
+        std::cerr << "store_model_weights: dropping indexes for bulk load..." << std::endl;
+        PQexec(conn_.get(), "DROP INDEX IF EXISTS idx_relationship_from");
+        PQexec(conn_.get(), "DROP INDEX IF EXISTS idx_relationship_to");
+        PQexec(conn_.get(), "DROP INDEX IF EXISTS idx_relationship_context");
+        PQexec(conn_.get(), "DROP INDEX IF EXISTS idx_relationship_weight");
+        PQexec(conn_.get(), "DROP INDEX IF EXISTS idx_relationship_trajectory");
+
+        // PARALLEL COPY - each thread gets its own connection
         std::string connstr = ConnectionConfig::connection_string();
-        std::size_t num_threads = std::min(Threading::default_thread_count(), std::size_t(4));
+        std::size_t num_threads = std::min(Threading::default_thread_count(), std::size_t(8));
         std::size_t chunk_size = (weights.size() + num_threads - 1) / num_threads;
 
-        std::atomic<std::size_t> success_count{0};
+        std::atomic<std::size_t> total_inserted{0};
 
-        // Each thread: own connection, own staging table, parallel COPY + INSERT
         Threading::parallel_for(num_threads, [&](std::size_t tid) {
             std::size_t start = tid * chunk_size;
             std::size_t end = std::min(start + chunk_size, weights.size());
@@ -911,32 +938,26 @@ public:
 
             try {
                 PgConnection conn(connstr);
-                std::string table_name = "weight_staging_" + std::to_string(tid);
-
-                // Create this thread's staging table
-                std::string drop_sql = "DROP TABLE IF EXISTS " + table_name;
-                std::string create_sql = "CREATE UNLOGGED TABLE " + table_name + " ("
-                    "from_high BIGINT, from_low BIGINT, to_high BIGINT, to_low BIGINT, "
-                    "weight DOUBLE PRECISION, rel_type SMALLINT, context_high BIGINT, context_low BIGINT)";
-                PQexec(conn.get(), drop_sql.c_str());
-                PQexec(conn.get(), create_sql.c_str());
-
-                // COPY data to staging
-                std::string copy_sql = "COPY " + table_name +
-                    " (from_high, from_low, to_high, to_low, weight, rel_type, context_high, context_low) FROM STDIN";
-                PGresult* res = PQexec(conn.get(), copy_sql.c_str());
+                
+                // Direct COPY to relationship table (no conflicts for new model)
+                PGresult* res = PQexec(conn.get(),
+                    "COPY relationship (from_high, from_low, to_high, to_low, "
+                    "weight, rel_type, context_high, context_low) FROM STDIN");
                 if (PQresultStatus(res) != PGRES_COPY_IN) {
+                    std::cerr << "Thread " << tid << " COPY failed: " << PQerrorMessage(conn.get()) << std::endl;
                     PQclear(res);
                     return;
                 }
                 PQclear(res);
 
-                // Stream this chunk's data
+                std::string buffer;
+                buffer.reserve((end - start) * 80);
+                
                 char buf[256];
                 for (std::size_t i = start; i < end; ++i) {
                     const auto& [from, to, weight] = weights[i];
                     int len = std::snprintf(buf, sizeof(buf),
-                        "%lld\t%lld\t%lld\t%lld\t%.17g\t%d\t%lld\t%lld\n",
+                        "%lld\t%lld\t%lld\t%lld\t%.6g\t%d\t%lld\t%lld\n",
                         static_cast<long long>(from.id_high),
                         static_cast<long long>(from.id_low),
                         static_cast<long long>(to.id_high),
@@ -945,7 +966,17 @@ public:
                         static_cast<int>(type),
                         static_cast<long long>(model_context.id_high),
                         static_cast<long long>(model_context.id_low));
-                    PQputCopyData(conn.get(), buf, len);
+                    buffer.append(buf, len);
+                    
+                    // Flush at ~1MB to balance syscalls vs memory
+                    if (buffer.size() > 1000000) {
+                        PQputCopyData(conn.get(), buffer.data(), static_cast<int>(buffer.size()));
+                        buffer.clear();
+                    }
+                }
+                
+                if (!buffer.empty()) {
+                    PQputCopyData(conn.get(), buffer.data(), static_cast<int>(buffer.size()));
                 }
 
                 PQputCopyEnd(conn.get(), nullptr);
@@ -953,23 +984,29 @@ public:
                     PQclear(res);
                 }
 
-                // Upsert from staging to relationship table
-                std::string upsert_sql =
-                    "INSERT INTO relationship (from_high, from_low, to_high, to_low, "
-                    "weight, rel_type, context_high, context_low) "
-                    "SELECT from_high, from_low, to_high, to_low, weight, rel_type, "
-                    "context_high, context_low FROM " + table_name + " "
-                    "ON CONFLICT (from_high, from_low, to_high, to_low, context_high, context_low) "
-                    "DO UPDATE SET weight = EXCLUDED.weight";
-                PQexec(conn.get(), upsert_sql.c_str());
-
-                // Cleanup
-                PQexec(conn.get(), drop_sql.c_str());
-                ++success_count;
-            } catch (...) {
-                // Thread failed, continue with others
+                total_inserted += (end - start);
+            } catch (const std::exception& e) {
+                std::cerr << "Thread " << tid << " failed: " << e.what() << std::endl;
             }
         });
+
+        auto copy_time = std::chrono::high_resolution_clock::now();
+        auto copy_ms = std::chrono::duration_cast<std::chrono::milliseconds>(copy_time - start_time).count();
+        std::cerr << "store_model_weights: COPY complete in " << copy_ms << "ms, recreating indexes..." << std::endl;
+
+        // RECREATE INDEXES (building on bulk data is faster than incremental updates)
+        PQexec(conn_.get(), "CREATE INDEX idx_relationship_from ON relationship (from_high, from_low)");
+        PQexec(conn_.get(), "CREATE INDEX idx_relationship_to ON relationship (to_high, to_low)");
+        PQexec(conn_.get(), "CREATE INDEX idx_relationship_context ON relationship (context_high, context_low)");
+        PQexec(conn_.get(), "CREATE INDEX idx_relationship_weight ON relationship (weight)");
+        PQexec(conn_.get(), "CREATE INDEX idx_relationship_trajectory ON relationship USING GIST (trajectory)");
+
+        auto end_time = std::chrono::high_resolution_clock::now();
+        auto total_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
+        auto index_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - copy_time).count();
+
+        std::cerr << "store_model_weights: indexes rebuilt in " << index_ms << "ms" << std::endl;
+        std::cerr << "store_model_weights: inserted " << total_inserted.load() << " rows in " << total_ms << "ms total" << std::endl;
     }
 
     /// Single-connection weight storage for small batches
@@ -1026,20 +1063,32 @@ public:
     }
 
     /// Bulk store embedding trajectories (384-point LineStringZM for each token).
-    /// Uses COPY protocol for maximum throughput.
-    /// Each embedding becomes a trajectory: point[i] = (i, embed[i], i/64, i%64)
-    /// ST_FrechetDistance replaces cosine similarity at query time.
+    /// IDEMPOTENT: Checks if trajectories for this model already exist, skips if so.
+    /// Uses parallel WKT generation + COPY protocol for maximum throughput.
     void store_embedding_trajectories(
-        const float* embeddings,           // [vocab_size × hidden_dim] contiguous
+        const float* embeddings,
         std::size_t vocab_size,
         std::size_t hidden_dim,
-        const std::vector<NodeRef>& token_refs,  // NodeRef for each token
+        const std::vector<NodeRef>& token_refs,
         NodeRef model_context,
-        RelType type = RelType::EMBEDDING_TRAJECTORY)
+        RelType type = REL_DEFAULT)
     {
         if (vocab_size == 0 || hidden_dim == 0 || token_refs.empty()) return;
 
         std::cerr << "store_embedding_trajectories: " << vocab_size << " embeddings, " << hidden_dim << " dims\n";
+
+        // IDEMPOTENT CHECK: Do trajectories for this model already exist?
+        char check_sql[256];
+        std::snprintf(check_sql, sizeof(check_sql),
+            "SELECT 1 FROM relationship WHERE context_high = %lld AND context_low = %lld "
+            "AND trajectory IS NOT NULL LIMIT 1",
+            static_cast<long long>(model_context.id_high),
+            static_cast<long long>(model_context.id_low));
+        PgResult check_res(PQexec(conn_.get(), check_sql));
+        if (check_res.status() == PGRES_TUPLES_OK && check_res.row_count() > 0) {
+            std::cerr << "store_embedding_trajectories: trajectories already exist, skipping\n";
+            return;
+        }
 
         // Create staging table with trajectory column (no ON COMMIT DROP - we're in autocommit)
         PQexec(conn_.get(), "DROP TABLE IF EXISTS traj_staging");
@@ -1066,69 +1115,114 @@ public:
         }
         PQclear(res);
 
-        // Pre-allocate WKT buffer for one trajectory
-        // LINESTRINGZM(0 v0 0 0, 1 v1 0 1, ...) ≈ 25 chars per point × 384 = ~10KB
-        std::string wkt;
-        wkt.reserve(hidden_dim * 30);
-
-        std::string row;
-        row.reserve(hidden_dim * 30 + 200);
-
         std::size_t effective_size = std::min(vocab_size, token_refs.size());
 
-        for (std::size_t token_idx = 0; token_idx < effective_size; ++token_idx) {
-            const NodeRef& ref = token_refs[token_idx];
-            
-            // Skip tokens with null refs
-            if (ref.id_high == 0 && ref.id_low == 0) continue;
+        auto gen_start = std::chrono::high_resolution_clock::now();
+        std::cerr << "store_embedding_trajectories: generating " << effective_size << " trajectories (" << hidden_dim << " points each) with " << Threading::default_thread_count() << " threads...\n";
+        std::cerr.flush();
 
-            const float* embed = embeddings + token_idx * hidden_dim;
-
-            // Compute L2 norm for weight
-            double norm_sq = 0.0;
-            for (std::size_t d = 0; d < hidden_dim; ++d) {
-                norm_sq += static_cast<double>(embed[d]) * static_cast<double>(embed[d]);
+        // Progress tracking
+        std::atomic<std::size_t> progress{0};
+        std::atomic<bool> done{false};
+        
+        // Progress reporter thread
+        std::thread progress_thread([&]() {
+            while (!done.load()) {
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+                std::size_t p = progress.load();
+                if (!done.load()) {
+                    std::cerr << "  progress: " << p << "/" << effective_size << " (" << (p * 100 / effective_size) << "%)\n";
+                    std::cerr.flush();
+                }
             }
-            double weight = std::sqrt(norm_sq);
+        });
 
-            // Skip zero-norm embeddings
-            if (weight < 1e-9) continue;
+        // PARALLEL: Generate all WKT rows in memory using all cores
+        std::size_t num_threads = Threading::default_thread_count();
+        std::size_t chunk_size = (effective_size + num_threads - 1) / num_threads;
+        std::vector<std::string> thread_data(num_threads);
 
-            // Build WKT: LINESTRINGZM(d embed[d] d/64 d%64, ...)
-            wkt.clear();
-            wkt += "LINESTRINGZM(";
+        Threading::parallel_for(num_threads, [&](std::size_t tid) {
+            std::size_t start = tid * chunk_size;
+            std::size_t end = std::min(start + chunk_size, effective_size);
+            if (start >= effective_size) return;
 
-            for (std::size_t d = 0; d < hidden_dim; ++d) {
-                if (d > 0) wkt += ',';
-                char pt[64];
-                std::snprintf(pt, sizeof(pt), "%zu %.8g %zu %zu",
-                    d, static_cast<double>(embed[d]), d / 64, d % 64);
-                wkt += pt;
+            std::string& data = thread_data[tid];
+            data.reserve((end - start) * (hidden_dim * 25 + 200));
+
+            std::string wkt;
+            wkt.reserve(hidden_dim * 25);
+
+            for (std::size_t token_idx = start; token_idx < end; ++token_idx) {
+                const NodeRef& ref = token_refs[token_idx];
+                if (ref.id_high == 0 && ref.id_low == 0) {
+                    progress.fetch_add(1);
+                    continue;
+                }
+
+                const float* embed = embeddings + token_idx * hidden_dim;
+
+                // Compute L2 norm
+                double norm_sq = 0.0;
+                for (std::size_t d = 0; d < hidden_dim; ++d) {
+                    norm_sq += static_cast<double>(embed[d]) * static_cast<double>(embed[d]);
+                }
+                double weight = std::sqrt(norm_sq);
+                if (weight < 1e-9) continue;
+
+                // Build WKT inline
+                wkt.clear();
+                wkt += "LINESTRINGZM(";
+                for (std::size_t d = 0; d < hidden_dim; ++d) {
+                    if (d > 0) wkt += ',';
+                    char pt[48];
+                    std::snprintf(pt, sizeof(pt), "%zu %.4g %zu %zu",
+                        d, static_cast<double>(embed[d]), d / 64, d % 64);
+                    wkt += pt;
+                }
+                wkt += ')';
+
+                // Append row
+                char buf[256];
+                std::snprintf(buf, sizeof(buf),
+                    "%lld\t%lld\t%lld\t%lld\t%.6g\t",
+                    static_cast<long long>(ref.id_high),
+                    static_cast<long long>(ref.id_low),
+                    static_cast<long long>(ref.id_high),
+                    static_cast<long long>(ref.id_low),
+                    weight);
+                data += buf;
+                data += wkt;
+
+                std::snprintf(buf, sizeof(buf),
+                    "\t%d\t%lld\t%lld\n",
+                    static_cast<int>(type),
+                    static_cast<long long>(model_context.id_high),
+                    static_cast<long long>(model_context.id_low));
+                data += buf;
+                
+                progress.fetch_add(1);
             }
-            wkt += ')';
+        });
 
-            // Build row: from_high \t from_low \t to_high \t to_low \t weight \t trajectory \t type \t ctx_high \t ctx_low
-            row.clear();
-            char header[256];
-            std::snprintf(header, sizeof(header),
-                "%lld\t%lld\t%lld\t%lld\t%.17g\t",
-                static_cast<long long>(ref.id_high),
-                static_cast<long long>(ref.id_low),
-                static_cast<long long>(ref.id_high),  // to = from (self-reference for embedding)
-                static_cast<long long>(ref.id_low),
-                weight);
-            row += header;
-            row += wkt;
+        // Stop progress thread
+        done.store(true);
+        progress_thread.join();
 
-            char trailer[128];
-            std::snprintf(trailer, sizeof(trailer),
-                "\t%d\t%lld\t%lld\n",
-                static_cast<int>(type),
-                static_cast<long long>(model_context.id_high),
-                static_cast<long long>(model_context.id_low));
-            row += trailer;
+        auto gen_end = std::chrono::high_resolution_clock::now();
+        auto gen_ms = std::chrono::duration_cast<std::chrono::milliseconds>(gen_end - gen_start).count();
+        
+        std::size_t total_bytes = 0;
+        for (const auto& chunk : thread_data) total_bytes += chunk.size();
+        std::cerr << "store_embedding_trajectories: generated " << (total_bytes / 1024 / 1024) << "MB WKT in " << gen_ms << "ms\n";
 
-            PQputCopyData(conn_.get(), row.data(), static_cast<int>(row.size()));
+        // Stream all chunks to PostgreSQL
+        std::cerr << "store_embedding_trajectories: streaming to PostgreSQL...\n";
+        auto copy_start = std::chrono::high_resolution_clock::now();
+        for (const auto& chunk : thread_data) {
+            if (!chunk.empty()) {
+                PQputCopyData(conn_.get(), chunk.data(), static_cast<int>(chunk.size()));
+            }
         }
 
         // End COPY and consume all results
@@ -1142,12 +1236,26 @@ public:
             PQclear(res);
         }
 
+        auto copy_end = std::chrono::high_resolution_clock::now();
+        auto copy_ms = std::chrono::duration_cast<std::chrono::milliseconds>(copy_end - copy_start).count();
+        std::cerr << "store_embedding_trajectories: COPY to staging in " << copy_ms << "ms\n";
+
         // Check staging count
         PGresult* count_res = PQexec(conn_.get(), "SELECT COUNT(*) FROM traj_staging");
         if (PQresultStatus(count_res) == PGRES_TUPLES_OK) {
             std::cerr << "store_embedding_trajectories: staging has " << PQgetvalue(count_res, 0, 0) << " rows\n";
         }
         PQclear(count_res);
+
+        // DROP INDEXES before bulk insert (per PostgreSQL docs)
+        std::cerr << "store_embedding_trajectories: dropping indexes for bulk insert...\n";
+        PQexec(conn_.get(), "DROP INDEX IF EXISTS idx_relationship_from");
+        PQexec(conn_.get(), "DROP INDEX IF EXISTS idx_relationship_to");
+        PQexec(conn_.get(), "DROP INDEX IF EXISTS idx_relationship_context");
+        PQexec(conn_.get(), "DROP INDEX IF EXISTS idx_relationship_weight");
+        PQexec(conn_.get(), "DROP INDEX IF EXISTS idx_relationship_trajectory");
+
+        auto upsert_start = std::chrono::high_resolution_clock::now();
 
         // Upsert from staging to real table, converting WKT to geometry
         // Use DISTINCT to handle any duplicate refs, and DO NOTHING for conflicts
@@ -1162,10 +1270,24 @@ public:
             "DO UPDATE SET weight = EXCLUDED.weight, trajectory = EXCLUDED.trajectory");
         if (PQresultStatus(upsert_res) != PGRES_COMMAND_OK) {
             std::cerr << "store_embedding_trajectories: upsert failed: " << PQerrorMessage(conn_.get()) << "\n";
-        } else {
-            std::cerr << "store_embedding_trajectories: upsert complete\n";
         }
         PQclear(upsert_res);
+
+        auto upsert_end = std::chrono::high_resolution_clock::now();
+        auto upsert_ms = std::chrono::duration_cast<std::chrono::milliseconds>(upsert_end - upsert_start).count();
+        std::cerr << "store_embedding_trajectories: upsert complete in " << upsert_ms << "ms\n";
+
+        // RECREATE INDEXES
+        std::cerr << "store_embedding_trajectories: recreating indexes...\n";
+        PQexec(conn_.get(), "CREATE INDEX idx_relationship_from ON relationship (from_high, from_low)");
+        PQexec(conn_.get(), "CREATE INDEX idx_relationship_to ON relationship (to_high, to_low)");
+        PQexec(conn_.get(), "CREATE INDEX idx_relationship_context ON relationship (context_high, context_low)");
+        PQexec(conn_.get(), "CREATE INDEX idx_relationship_weight ON relationship (weight)");
+        PQexec(conn_.get(), "CREATE INDEX idx_relationship_trajectory ON relationship USING GIST (trajectory)");
+
+        auto index_end = std::chrono::high_resolution_clock::now();
+        auto index_ms = std::chrono::duration_cast<std::chrono::milliseconds>(index_end - upsert_end).count();
+        std::cerr << "store_embedding_trajectories: indexes rebuilt in " << index_ms << "ms\n";
 
         // Cleanup staging
         PQexec(conn_.get(), "DROP TABLE traj_staging");
