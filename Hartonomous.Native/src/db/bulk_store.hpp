@@ -192,71 +192,64 @@ private:
     }
 
     void write_compositions(const std::vector<CompTuple>& batch) {
-        // Build multi-row INSERT
-        constexpr std::size_t CHUNK = 5000;
-
-        for (std::size_t i = 0; i < batch.size(); i += CHUNK) {
-            std::size_t end = std::min(i + CHUNK, batch.size());
-
-            std::string query;
-            query.reserve((end - i) * 100);
-            query = "INSERT INTO composition (hilbert_high, hilbert_low, "
-                    "left_high, left_low, right_high, right_low) VALUES ";
-
-            char buf[128];
-            for (std::size_t j = i; j < end; ++j) {
-                const auto& c = batch[j];
-                if (j > i) query += ',';
-                std::snprintf(buf, sizeof(buf),
-                    "(%lld,%lld,%lld,%lld,%lld,%lld)",
-                    static_cast<long long>(c.parent_high),
-                    static_cast<long long>(c.parent_low),
-                    static_cast<long long>(c.left_high),
-                    static_cast<long long>(c.left_low),
-                    static_cast<long long>(c.right_high),
-                    static_cast<long long>(c.right_low));
-                query += buf;
+        // COPY protocol - fastest possible bulk insert
+        if (PQputCopyData(conn_.get(), "", 0) != 1) {
+            // Start COPY
+            PGresult* res = PQexec(conn_.get(),
+                "COPY composition (hilbert_high, hilbert_low, left_high, left_low, "
+                "right_high, right_low) FROM STDIN WITH (FORMAT text)");
+            if (PQresultStatus(res) != PGRES_COPY_IN) {
+                PQclear(res);
+                return;
             }
-
-            query += " ON CONFLICT DO NOTHING";
-            PQexec(conn_.get(), query.c_str());
+            PQclear(res);
         }
+
+        // Stream all rows
+        std::string buffer;
+        buffer.reserve(batch.size() * 80);
+        char line[128];
+        for (const auto& c : batch) {
+            int len = std::snprintf(line, sizeof(line), "%lld\t%lld\t%lld\t%lld\t%lld\t%lld\n",
+                static_cast<long long>(c.parent_high), static_cast<long long>(c.parent_low),
+                static_cast<long long>(c.left_high), static_cast<long long>(c.left_low),
+                static_cast<long long>(c.right_high), static_cast<long long>(c.right_low));
+            buffer.append(line, len);
+        }
+
+        PQputCopyData(conn_.get(), buffer.data(), static_cast<int>(buffer.size()));
+        PQputCopyEnd(conn_.get(), nullptr);
+        PGresult* res = PQgetResult(conn_.get());
+        PQclear(res);
     }
 
     void write_relationships(const std::vector<RelTuple>& batch) {
-        constexpr std::size_t CHUNK = 5000;
-
-        for (std::size_t i = 0; i < batch.size(); i += CHUNK) {
-            std::size_t end = std::min(i + CHUNK, batch.size());
-
-            std::string query;
-            query.reserve((end - i) * 150);
-            query = "INSERT INTO relationship (from_high, from_low, to_high, to_low, "
-                    "weight, rel_type, context_high, context_low) VALUES ";
-
-            char buf[200];
-            for (std::size_t j = i; j < end; ++j) {
-                const auto& r = batch[j];
-                if (j > i) query += ',';
-                std::snprintf(buf, sizeof(buf),
-                    "(%lld,%lld,%lld,%lld,%.17g,%d,%lld,%lld)",
-                    static_cast<long long>(r.from_high),
-                    static_cast<long long>(r.from_low),
-                    static_cast<long long>(r.to_high),
-                    static_cast<long long>(r.to_low),
-                    r.weight,
-                    static_cast<int>(r.rel_type),
-                    static_cast<long long>(r.ctx_high),
-                    static_cast<long long>(r.ctx_low));
-                query += buf;
-            }
-
-            query += " ON CONFLICT (from_high, from_low, to_high, to_low, "
-                     "context_high, context_low) DO UPDATE SET "
-                     "weight = relationship.weight + EXCLUDED.weight, "
-                     "obs_count = relationship.obs_count + 1";
-            PQexec(conn_.get(), query.c_str());
+        // COPY protocol for relationships
+        PGresult* res = PQexec(conn_.get(),
+            "COPY relationship (from_high, from_low, to_high, to_low, weight, "
+            "rel_type, context_high, context_low) FROM STDIN WITH (FORMAT text)");
+        if (PQresultStatus(res) != PGRES_COPY_IN) {
+            PQclear(res);
+            return;
         }
+        PQclear(res);
+
+        std::string buffer;
+        buffer.reserve(batch.size() * 100);
+        char line[200];
+        for (const auto& r : batch) {
+            int len = std::snprintf(line, sizeof(line), "%lld\t%lld\t%lld\t%lld\t%.17g\t%d\t%lld\t%lld\n",
+                static_cast<long long>(r.from_high), static_cast<long long>(r.from_low),
+                static_cast<long long>(r.to_high), static_cast<long long>(r.to_low),
+                r.weight, static_cast<int>(r.rel_type),
+                static_cast<long long>(r.ctx_high), static_cast<long long>(r.ctx_low));
+            buffer.append(line, len);
+        }
+
+        PQputCopyData(conn_.get(), buffer.data(), static_cast<int>(buffer.size()));
+        PQputCopyEnd(conn_.get(), nullptr);
+        res = PQgetResult(conn_.get());
+        PQclear(res);
     }
 };
 
