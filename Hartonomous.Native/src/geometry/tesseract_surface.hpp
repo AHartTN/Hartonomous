@@ -98,8 +98,6 @@ constexpr UInt128 TesseractSurface::codepoint_to_hilbert(std::int32_t codepoint)
 }
 
 constexpr std::int32_t TesseractSurface::hilbert_to_nearest_codepoint(UInt128 index) noexcept {
-    // This is approximate - exact reverse mapping requires a lookup table
-    // For now, decode coords and determine face from boundary
     auto coords = HilbertCurve4D::index_to_coords(index);
 
     // Convert unsigned Hilbert coords back to signed center-origin
@@ -108,23 +106,30 @@ constexpr std::int32_t TesseractSurface::hilbert_to_nearest_codepoint(UInt128 in
     std::int32_t z = static_cast<std::int32_t>(static_cast<std::int64_t>(coords[2]) - INT32_MAX);
     std::int32_t w = static_cast<std::int32_t>(static_cast<std::int64_t>(coords[3]) - INT32_MAX);
 
-    // Determine which face based on boundary conditions
-    // A surface point has exactly one coordinate at ±TESSERACT_BOUNDARY
+    // Determine face from boundary coordinate and extract free coordinate 'b' for reverse mapping
     TesseractFace face;
-    if (x == -TESSERACT_BOUNDARY) face = TesseractFace::XNeg;
-    else if (x == TESSERACT_BOUNDARY) face = TesseractFace::XPos;
-    else if (y == -TESSERACT_BOUNDARY) face = TesseractFace::YNeg;
-    else if (y == TESSERACT_BOUNDARY) face = TesseractFace::YPos;
-    else if (z == -TESSERACT_BOUNDARY) face = TesseractFace::ZNeg;
-    else if (z == TESSERACT_BOUNDARY) face = TesseractFace::ZPos;
-    else if (w == -TESSERACT_BOUNDARY) face = TesseractFace::WNeg;
-    else if (w == TESSERACT_BOUNDARY) face = TesseractFace::WPos;
-    else return -1; // Not on surface - interior point
+    std::int32_t b; // Free coordinate used for reverse Fibonacci lattice lookup
+    if (x == -TESSERACT_BOUNDARY) { face = TesseractFace::XNeg; b = z; }
+    else if (x == TESSERACT_BOUNDARY) { face = TesseractFace::XPos; b = z; }
+    else if (y == -TESSERACT_BOUNDARY) { face = TesseractFace::YNeg; b = z; }
+    else if (y == TESSERACT_BOUNDARY) { face = TesseractFace::YPos; b = z; }
+    else if (z == -TESSERACT_BOUNDARY) { face = TesseractFace::ZNeg; b = y; }
+    else if (z == TESSERACT_BOUNDARY) { face = TesseractFace::ZPos; b = y; }
+    else if (w == -TESSERACT_BOUNDARY) { face = TesseractFace::WNeg; b = y; }
+    else if (w == TESSERACT_BOUNDARY) { face = TesseractFace::WPos; b = y; }
+    else return -1; // Not on surface
 
-    // TODO: Implement proper reverse lookup using spatial index
-    // For now, return a placeholder based on face
-    // This would require iterating codepoints or building an index
-    return static_cast<std::int32_t>(face) * CODEPOINTS_PER_FACE;
+    // Reverse Fibonacci lattice: 3D cell coords -> cell index
+    // FibonacciLattice uses: a = (i * phi) mod 1, b = i/N, c = sqrt(i/N)
+    // For reverse: estimate i from b (most linear relationship)
+    std::int64_t b64 = static_cast<std::int64_t>(b) + static_cast<std::int64_t>(TESSERACT_BOUNDARY);
+    std::int64_t cell_idx = b64 * static_cast<std::int64_t>(CODEPOINTS_PER_FACE) / (2LL * static_cast<std::int64_t>(TESSERACT_BOUNDARY));
+    cell_idx = (cell_idx < 0) ? 0 : (cell_idx >= CODEPOINTS_PER_FACE) ? CODEPOINTS_PER_FACE - 1 : cell_idx;
+
+    // Combine face and cell index to approximate codepoint
+    // This is a nearest-neighbor approximation; exact inverse requires lookup table
+    std::int32_t face_base = static_cast<std::int32_t>(face) * CODEPOINTS_PER_FACE;
+    return face_base + static_cast<std::int32_t>(cell_idx);
 }
 
 constexpr double TesseractSurface::euclidean_distance_squared(

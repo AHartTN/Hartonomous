@@ -817,6 +817,25 @@ public:
         return execute_relationship_query(query, from, true);
     }
 
+    /// Find all relationships FROM a node within a specific context.
+    [[nodiscard]] std::vector<Relationship> find_from(NodeRef from, NodeRef context,
+                                                       std::size_t limit = 100) {
+        char query[512];
+        std::snprintf(query, sizeof(query),
+            "SELECT to_high, to_low, weight, obs_count, rel_type, context_high, context_low "
+            "FROM relationship "
+            "WHERE from_high = %lld AND from_low = %lld "
+            "AND context_high = %lld AND context_low = %lld "
+            "ORDER BY weight DESC LIMIT %zu",
+            static_cast<long long>(from.id_high),
+            static_cast<long long>(from.id_low),
+            static_cast<long long>(context.id_high),
+            static_cast<long long>(context.id_low),
+            limit);
+
+        return execute_relationship_query(query, from, true);
+    }
+
     /// Find all relationships TO a node (incoming edges).
     [[nodiscard]] std::vector<Relationship> find_to(NodeRef to,
                                                      std::size_t limit = 100) {

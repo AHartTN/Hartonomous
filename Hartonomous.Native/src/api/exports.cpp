@@ -185,7 +185,16 @@ HARTONOMOUS_API int hartonomous_db_stats(HartonomousDbStats* stats) {
         stats->atom_count = static_cast<std::int64_t>(store.atom_count());
         stats->composition_count = static_cast<std::int64_t>(store.composition_count());
         stats->relationship_count = static_cast<std::int64_t>(store.relationship_count());
-        stats->database_size_bytes = 0;  // TODO: implement
+        // Query actual database size from PostgreSQL
+        auto& db = get_db_store();
+        PGconn* conn = db.connection();
+        PGresult* res = PQexec(conn, "SELECT pg_database_size(current_database())");
+        if (PQresultStatus(res) == PGRES_TUPLES_OK && PQntuples(res) > 0) {
+            stats->database_size_bytes = std::stoll(PQgetvalue(res, 0, 0));
+        } else {
+            stats->database_size_bytes = 0;
+        }
+        PQclear(res);
         return 0;
     } catch (const std::exception&) {
         return -2;

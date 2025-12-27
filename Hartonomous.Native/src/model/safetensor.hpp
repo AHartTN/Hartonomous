@@ -462,7 +462,6 @@ public:
         const std::unordered_map<std::string, std::vector<std::size_t>>& tensor_shapes)
     {
         SafetensorWriter writer;
-        (void)model_context;  // TODO: Filter by context when querying
 
         for (const auto& [name, shape] : tensor_shapes) {
             std::size_t count = 1;
@@ -474,9 +473,8 @@ public:
             // Get tensor NodeRef
             NodeRef tensor_ref = store_.compute_root(name);
 
-            // Query all stored weights for this tensor
-            // TODO: Add context filter: store_.find_from(tensor_ref, model_context, count)
-            auto rels = store_.find_from(tensor_ref, count);
+            // Query all stored weights for this tensor within model context
+            auto rels = store_.find_from(tensor_ref, model_context, count);
 
             for (const auto& rel : rels) {
                 // Decode index from to NodeRef
