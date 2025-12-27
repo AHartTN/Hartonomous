@@ -80,11 +80,13 @@ public:
 
         ModelResult result{};
 
-        // Create model context from directory path
+        // Create model context from directory path (no flush - batch everything)
         std::cerr << "ingest_package: computing root..." << std::endl;
         model_context_ = store_.compute_root(model_dir);
-        std::cerr << "ingest_package: encode_and_store..." << std::endl;
-        store_.encode_and_store(model_dir);
+        std::cerr << "ingest_package: build_and_collect..." << std::endl;
+        store_.build_and_collect(
+            reinterpret_cast<const std::uint8_t*>(model_dir.data()),
+            model_dir.size());
 
         std::filesystem::path dir(model_dir);
         std::cerr << "ingest_package: Phase 1 - tokenizer..." << std::endl;
@@ -154,7 +156,11 @@ public:
         if (!all_weights.empty()) {
             store_.store_model_weights(all_weights, model_context_, db::RelType::MODEL_WEIGHT);
         }
-        
+
+        // SINGLE flush for ALL compositions (batched from entire package)
+        std::cerr << "ingest_package: flushing " << store_.pending_compositions_.size() << " compositions..." << std::endl;
+        store_.flush_pending();
+
         std::cerr << "ingest_package: Phase 3 complete" << std::endl;
 
         auto end = std::chrono::high_resolution_clock::now();
@@ -376,7 +382,7 @@ private:
         return result;
     }
 
-    /// Ingest text file as semantic content
+    /// Ingest text file as semantic content (no flush - batch with everything else)
     void ingest_text_file(const std::string& path) {
         std::ifstream file(path);
         if (!file) return;
@@ -385,7 +391,9 @@ private:
                              std::istreambuf_iterator<char>());
 
         if (!content.empty()) {
-            store_.encode_and_store(content);
+            store_.build_and_collect(
+                reinterpret_cast<const std::uint8_t*>(content.data()),
+                content.size());
         }
     }
 
@@ -410,9 +418,12 @@ public:
 
             tensor_count++;
 
-            // Ingest tensor name as content
+            // Ingest tensor name as content (no flush - batch with everything)
             std::cerr << "ingest_safetensor_semantic: encoding tensor name" << std::endl;
-            NodeRef tensor_ref = store_.encode_and_store(meta.name);
+            NodeRef tensor_ref = store_.compute_root(meta.name);
+            store_.build_and_collect(
+                reinterpret_cast<const std::uint8_t*>(meta.name.data()),
+                meta.name.size());
 
             std::size_t count = SafetensorReader::element_count(meta);
             std::cerr << "ingest_safetensor_semantic: " << count << " elements" << std::endl;

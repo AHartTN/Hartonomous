@@ -10,8 +10,10 @@
 
 #include "connection.hpp"
 #include "pg_result.hpp"
+#include "../threading/threading.hpp"
 #include "../atoms/node_ref.hpp"
 #include "../atoms/byte_atom_table.hpp"
+#include "../atoms/codepoint_atom_table.hpp"
 #include "../atoms/merkle_hash.hpp"
 #include "../atoms/semantic_decompose.hpp"
 #include <libpq-fe.h>
@@ -138,10 +140,41 @@ public:
     /// Returns the root NodeRef that would represent this content.
     [[nodiscard]] NodeRef compute_root(const std::uint8_t* data, std::size_t len) {
         if (len == 0) return NodeRef{};
-        if (len == 1) return ByteAtomTable::instance()[data[0]];
 
-        // Build balanced binary tree structure, compute hashes
-        return build_tree_hashes(data, len);
+        // Decode UTF-8 to codepoints - use UNICODE atoms, not bytes
+        auto codepoints = UTF8Decoder::decode(data, len);
+        if (codepoints.size() == 1) {
+            return CodepointAtomTable::instance().ref(codepoints[0]);
+        }
+
+        // Build balanced binary tree on codepoints
+        return build_tree_codepoints(codepoints, 0, codepoints.size());
+    }
+
+    /// Build tree on codepoints (no collection, just compute hashes)
+    [[nodiscard]] NodeRef build_tree_codepoints(
+        const std::vector<std::int32_t>& codepoints,
+        std::size_t start, std::size_t end)
+    {
+        const auto& atoms = CodepointAtomTable::instance();
+        std::size_t len = end - start;
+
+        if (len == 0) return NodeRef{};
+        if (len == 1) return atoms.ref(codepoints[start]);
+
+        if (len == 2) {
+            NodeRef children[2] = {atoms.ref(codepoints[start]), atoms.ref(codepoints[start + 1])};
+            auto [h, l] = MerkleHash::compute(children, children + 2);
+            return NodeRef::comp(h, l);
+        }
+
+        std::size_t mid = start + len / 2;
+        NodeRef left = build_tree_codepoints(codepoints, start, mid);
+        NodeRef right = build_tree_codepoints(codepoints, mid, end);
+
+        NodeRef children[2] = {left, right};
+        auto [h, l] = MerkleHash::compute(children, children + 2);
+        return NodeRef::comp(h, l);
     }
 
     [[nodiscard]] NodeRef compute_root(const char* text) {
@@ -850,7 +883,7 @@ public:
     }
 
     /// Bulk store model weights (for importing neural network parameters).
-    /// Uses COPY for maximum throughput - handles millions of rows efficiently.
+    /// PARALLEL: each thread gets its own connection for parallel COPY.
     void store_model_weights(
         const std::vector<std::tuple<NodeRef, NodeRef, double>>& weights,
         NodeRef model_context,
@@ -858,17 +891,100 @@ public:
     {
         if (weights.empty()) return;
 
-        // COPY is 10-100x faster than INSERT for bulk loads
-        // Use a temp table to handle conflicts gracefully
-        PQexec(conn_.get(), 
-            "CREATE TEMP TABLE IF NOT EXISTS weight_staging ("
+        // For small batches, use simple single-connection approach
+        if (weights.size() < 100000) {
+            store_model_weights_single(weights, model_context, type);
+            return;
+        }
+
+        std::string connstr = ConnectionConfig::connection_string();
+        std::size_t num_threads = std::min(Threading::default_thread_count(), std::size_t(4));
+        std::size_t chunk_size = (weights.size() + num_threads - 1) / num_threads;
+
+        std::atomic<std::size_t> success_count{0};
+
+        // Each thread: own connection, own staging table, parallel COPY + INSERT
+        Threading::parallel_for(num_threads, [&](std::size_t tid) {
+            std::size_t start = tid * chunk_size;
+            std::size_t end = std::min(start + chunk_size, weights.size());
+            if (start >= weights.size()) return;
+
+            try {
+                PgConnection conn(connstr);
+                std::string table_name = "weight_staging_" + std::to_string(tid);
+
+                // Create this thread's staging table
+                std::string drop_sql = "DROP TABLE IF EXISTS " + table_name;
+                std::string create_sql = "CREATE UNLOGGED TABLE " + table_name + " ("
+                    "from_high BIGINT, from_low BIGINT, to_high BIGINT, to_low BIGINT, "
+                    "weight DOUBLE PRECISION, rel_type SMALLINT, context_high BIGINT, context_low BIGINT)";
+                PQexec(conn.get(), drop_sql.c_str());
+                PQexec(conn.get(), create_sql.c_str());
+
+                // COPY data to staging
+                std::string copy_sql = "COPY " + table_name +
+                    " (from_high, from_low, to_high, to_low, weight, rel_type, context_high, context_low) FROM STDIN";
+                PGresult* res = PQexec(conn.get(), copy_sql.c_str());
+                if (PQresultStatus(res) != PGRES_COPY_IN) {
+                    PQclear(res);
+                    return;
+                }
+                PQclear(res);
+
+                // Stream this chunk's data
+                char buf[256];
+                for (std::size_t i = start; i < end; ++i) {
+                    const auto& [from, to, weight] = weights[i];
+                    int len = std::snprintf(buf, sizeof(buf),
+                        "%lld\t%lld\t%lld\t%lld\t%.17g\t%d\t%lld\t%lld\n",
+                        static_cast<long long>(from.id_high),
+                        static_cast<long long>(from.id_low),
+                        static_cast<long long>(to.id_high),
+                        static_cast<long long>(to.id_low),
+                        weight,
+                        static_cast<int>(type),
+                        static_cast<long long>(model_context.id_high),
+                        static_cast<long long>(model_context.id_low));
+                    PQputCopyData(conn.get(), buf, len);
+                }
+
+                PQputCopyEnd(conn.get(), nullptr);
+                while ((res = PQgetResult(conn.get())) != nullptr) {
+                    PQclear(res);
+                }
+
+                // Upsert from staging to relationship table
+                std::string upsert_sql =
+                    "INSERT INTO relationship (from_high, from_low, to_high, to_low, "
+                    "weight, rel_type, context_high, context_low) "
+                    "SELECT from_high, from_low, to_high, to_low, weight, rel_type, "
+                    "context_high, context_low FROM " + table_name + " "
+                    "ON CONFLICT (from_high, from_low, to_high, to_low, context_high, context_low) "
+                    "DO UPDATE SET weight = EXCLUDED.weight";
+                PQexec(conn.get(), upsert_sql.c_str());
+
+                // Cleanup
+                PQexec(conn.get(), drop_sql.c_str());
+                ++success_count;
+            } catch (...) {
+                // Thread failed, continue with others
+            }
+        });
+    }
+
+    /// Single-connection weight storage for small batches
+    void store_model_weights_single(
+        const std::vector<std::tuple<NodeRef, NodeRef, double>>& weights,
+        NodeRef model_context,
+        RelType type)
+    {
+        PQexec(conn_.get(), "DROP TABLE IF EXISTS weight_staging");
+        PQexec(conn_.get(),
+            "CREATE UNLOGGED TABLE weight_staging ("
             "from_high BIGINT, from_low BIGINT, to_high BIGINT, to_low BIGINT, "
             "weight DOUBLE PRECISION, rel_type SMALLINT, context_high BIGINT, context_low BIGINT"
-            ") ON COMMIT DROP");
-        
-        PQexec(conn_.get(), "TRUNCATE weight_staging");
+            ")");
 
-        // Start COPY
         PGresult* res = PQexec(conn_.get(),
             "COPY weight_staging (from_high, from_low, to_high, to_low, "
             "weight, rel_type, context_high, context_low) FROM STDIN");
@@ -878,7 +994,6 @@ public:
         }
         PQclear(res);
 
-        // Stream all rows - no batching needed, COPY handles buffering
         char buf[256];
         for (const auto& [from, to, weight] : weights) {
             int len = std::snprintf(buf, sizeof(buf),
@@ -894,12 +1009,11 @@ public:
             PQputCopyData(conn_.get(), buf, len);
         }
 
-        // End COPY
         PQputCopyEnd(conn_.get(), nullptr);
-        res = PQgetResult(conn_.get());
-        PQclear(res);
+        while ((res = PQgetResult(conn_.get())) != nullptr) {
+            PQclear(res);
+        }
 
-        // Upsert from staging to real table
         PQexec(conn_.get(),
             "INSERT INTO relationship (from_high, from_low, to_high, to_low, "
             "weight, rel_type, context_high, context_low) "
@@ -907,6 +1021,8 @@ public:
             "context_high, context_low FROM weight_staging "
             "ON CONFLICT (from_high, from_low, to_high, to_low, context_high, context_low) "
             "DO UPDATE SET weight = EXCLUDED.weight");
+
+        PQexec(conn_.get(), "DROP TABLE weight_staging");
     }
 
     /// Bulk store embedding trajectories (384-point LineStringZM for each token).
@@ -1015,15 +1131,16 @@ public:
             PQputCopyData(conn_.get(), row.data(), static_cast<int>(row.size()));
         }
 
-        // End COPY
+        // End COPY and consume all results
         if (PQputCopyEnd(conn_.get(), nullptr) != 1) {
             std::cerr << "store_embedding_trajectories: COPY end failed: " << PQerrorMessage(conn_.get()) << "\n";
         }
-        res = PQgetResult(conn_.get());
-        if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-            std::cerr << "store_embedding_trajectories: COPY failed: " << PQerrorMessage(conn_.get()) << "\n";
+        while ((res = PQgetResult(conn_.get())) != nullptr) {
+            if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+                std::cerr << "store_embedding_trajectories: COPY failed: " << PQerrorMessage(conn_.get()) << "\n";
+            }
+            PQclear(res);
         }
-        PQclear(res);
 
         // Check staging count
         PGresult* count_res = PQexec(conn_.get(), "SELECT COUNT(*) FROM traj_staging");
@@ -1060,6 +1177,155 @@ public:
         if (res.status() != PGRES_TUPLES_OK) return 0;
         return std::stoull(res.get_value(0, 0));
     }
+
+    // =========================================================================
+    // TRAJECTORY INTERSECTION QUERIES - Where meaning emerges
+    // =========================================================================
+
+    /// Find trajectories that INTERSECT or come within distance of a reference trajectory.
+    /// THIS is the geometric meaning discovery - where trajectories cross in 4D space.
+    ///
+    /// NOT clustering. INTERSECTION. The concept of "king" is where trajectories cross.
+    [[nodiscard]] std::vector<std::pair<NodeRef, double>> query_trajectory_intersections(
+        NodeRef ref,
+        double distance_threshold = 0.1)
+    {
+        // Get the trajectory for this ref
+        char query[1024];
+        std::snprintf(query, sizeof(query),
+            "SELECT r2.from_high, r2.from_low, "
+            "       ST_Distance(r1.trajectory, r2.trajectory) as dist "
+            "FROM relationship r1 "
+            "JOIN relationship r2 ON r1.from_high != r2.from_high OR r1.from_low != r2.from_low "
+            "WHERE r1.from_high = %lld AND r1.from_low = %lld "
+            "  AND r1.trajectory IS NOT NULL "
+            "  AND r2.trajectory IS NOT NULL "
+            "  AND ST_DWithin(r1.trajectory, r2.trajectory, %f) "
+            "ORDER BY dist "
+            "LIMIT 100",
+            static_cast<long long>(ref.id_high),
+            static_cast<long long>(ref.id_low),
+            distance_threshold);
+
+        return execute_trajectory_query(query);
+    }
+
+    /// Find trajectories by Frechet distance (trajectory similarity).
+    /// Frechet distance = "man walking dog" distance - how similar are the paths?
+    [[nodiscard]] std::vector<std::pair<NodeRef, double>> query_trajectory_neighbors(
+        NodeRef ref,
+        std::size_t limit = 10)
+    {
+        char query[1024];
+        std::snprintf(query, sizeof(query),
+            "SELECT r2.from_high, r2.from_low, "
+            "       ST_FrechetDistance(r1.trajectory, r2.trajectory) as dist "
+            "FROM relationship r1 "
+            "JOIN relationship r2 ON r1.from_high != r2.from_high OR r1.from_low != r2.from_low "
+            "WHERE r1.from_high = %lld AND r1.from_low = %lld "
+            "  AND r1.trajectory IS NOT NULL "
+            "  AND r2.trajectory IS NOT NULL "
+            "ORDER BY dist "
+            "LIMIT %zu",
+            static_cast<long long>(ref.id_high),
+            static_cast<long long>(ref.id_low),
+            limit);
+
+        return execute_trajectory_query(query);
+    }
+
+    /// Query compositions in a 4D bounding box.
+    /// Useful for exploring regions of semantic space.
+    [[nodiscard]] std::vector<NodeRef> query_bounding_box(
+        double page_min, double page_max,
+        double type_min, double type_max,
+        double base_min, double base_max,
+        double variant_min, double variant_max,
+        std::size_t limit = 100)
+    {
+        // Use PostGIS 4D bounding box query on atoms
+        char query[1024];
+        std::snprintf(query, sizeof(query),
+            "SELECT hilbert_high, hilbert_low FROM atom "
+            "WHERE ST_X(semantic_position) BETWEEN %f AND %f "
+            "  AND ST_Y(semantic_position) BETWEEN %f AND %f "
+            "  AND ST_Z(semantic_position) BETWEEN %f AND %f "
+            "  AND ST_M(semantic_position) BETWEEN %f AND %f "
+            "LIMIT %zu",
+            page_min, page_max, type_min, type_max,
+            base_min, base_max, variant_min, variant_max, limit);
+
+        PgResult res(PQexec(conn_.get(), query));
+        std::vector<NodeRef> results;
+
+        if (res.status() == PGRES_TUPLES_OK) {
+            for (int i = 0; i < res.row_count(); ++i) {
+                NodeRef ref;
+                ref.id_high = std::stoll(res.get_value(i, 0));
+                ref.id_low = std::stoll(res.get_value(i, 1));
+                ref.is_atom = true;
+                results.push_back(ref);
+            }
+        }
+
+        return results;
+    }
+
+    /// Find compositions whose trajectories pass through a point in 4D space.
+    /// Returns compositions where the trajectory INTERSECTS this region.
+    [[nodiscard]] std::vector<NodeRef> query_trajectories_through_point(
+        double page, double type, double base, double variant,
+        double radius = 1.0,
+        std::size_t limit = 100)
+    {
+        // Create a point and find trajectories that pass near it
+        char query[1024];
+        std::snprintf(query, sizeof(query),
+            "SELECT from_high, from_low FROM relationship "
+            "WHERE trajectory IS NOT NULL "
+            "  AND ST_DWithin(trajectory, ST_MakePoint(%f, %f, %f, %f), %f) "
+            "LIMIT %zu",
+            page, type, base, variant, radius, limit);
+
+        PgResult res(PQexec(conn_.get(), query));
+        std::vector<NodeRef> results;
+
+        if (res.status() == PGRES_TUPLES_OK) {
+            for (int i = 0; i < res.row_count(); ++i) {
+                NodeRef ref;
+                ref.id_high = std::stoll(res.get_value(i, 0));
+                ref.id_low = std::stoll(res.get_value(i, 1));
+                ref.is_atom = false;
+                results.push_back(ref);
+            }
+        }
+
+        return results;
+    }
+
+private:
+    /// Execute trajectory query and return results.
+    [[nodiscard]] std::vector<std::pair<NodeRef, double>> execute_trajectory_query(
+        const char* query)
+    {
+        PgResult res(PQexec(conn_.get(), query));
+        std::vector<std::pair<NodeRef, double>> results;
+
+        if (res.status() == PGRES_TUPLES_OK) {
+            for (int i = 0; i < res.row_count(); ++i) {
+                NodeRef ref;
+                ref.id_high = std::stoll(res.get_value(i, 0));
+                ref.id_low = std::stoll(res.get_value(i, 1));
+                ref.is_atom = false;
+                double dist = std::stod(res.get_value(i, 2));
+                results.emplace_back(ref, dist);
+            }
+        }
+
+        return results;
+    }
+
+public:
 
     // =========================================================================
     // QUERY ANALYSIS - Verify index usage
@@ -1302,13 +1568,27 @@ public:
     std::vector<std::tuple<NodeRef, NodeRef, NodeRef>> pending_compositions_;
 
     /// Build tree and collect compositions for batch insert.
+    /// Decodes UTF-8 → codepoints → builds tree on UNICODE atoms (1.1M), not bytes.
     NodeRef build_and_collect(const std::uint8_t* data, std::size_t len) {
-        const auto& atoms = ByteAtomTable::instance();
+        // Decode UTF-8 to codepoints - this is the CORRECT approach
+        auto codepoints = UTF8Decoder::decode(data, len);
+        return build_and_collect_codepoints(codepoints, 0, codepoints.size());
+    }
 
-        if (len == 1) return atoms[data[0]];
+    /// Build tree on codepoint range (recursive, balanced binary tree)
+    NodeRef build_and_collect_codepoints(
+        const std::vector<std::int32_t>& codepoints,
+        std::size_t start, std::size_t end)
+    {
+        const auto& atoms = CodepointAtomTable::instance();
+        std::size_t len = end - start;
+
+        if (len == 0) return NodeRef{};
+        if (len == 1) return atoms.ref(codepoints[start]);
+
         if (len == 2) {
-            NodeRef left = atoms[data[0]];
-            NodeRef right = atoms[data[1]];
+            NodeRef left = atoms.ref(codepoints[start]);
+            NodeRef right = atoms.ref(codepoints[start + 1]);
             NodeRef children[2] = {left, right};
             auto [h, l] = MerkleHash::compute(children, children + 2);
             NodeRef comp = NodeRef::comp(h, l);
@@ -1316,9 +1596,9 @@ public:
             return comp;
         }
 
-        std::size_t mid = len / 2;
-        NodeRef left = build_and_collect(data, mid);
-        NodeRef right = build_and_collect(data + mid, len - mid);
+        std::size_t mid = start + len / 2;
+        NodeRef left = build_and_collect_codepoints(codepoints, start, mid);
+        NodeRef right = build_and_collect_codepoints(codepoints, mid, end);
 
         NodeRef children[2] = {left, right};
         auto [h, l] = MerkleHash::compute(children, children + 2);
@@ -1332,13 +1612,14 @@ public:
         if (pending_compositions_.empty()) return;
 
         // Use COPY for maximum throughput
-        PQexec(conn_.get(), 
+        // Note: Don't use ON COMMIT DROP - it drops immediately in autocommit mode
+        PQexec(conn_.get(),
             "CREATE TEMP TABLE IF NOT EXISTS comp_staging ("
             "hilbert_high BIGINT, hilbert_low BIGINT, "
             "left_high BIGINT, left_low BIGINT, "
             "right_high BIGINT, right_low BIGINT"
-            ") ON COMMIT DROP");
-        
+            ")");
+
         PQexec(conn_.get(), "TRUNCATE comp_staging");
 
         // Start COPY
@@ -1366,10 +1647,11 @@ public:
             PQputCopyData(conn_.get(), buf, len);
         }
 
-        // End COPY
+        // End COPY and consume all results
         PQputCopyEnd(conn_.get(), nullptr);
-        res = PQgetResult(conn_.get());
-        PQclear(res);
+        while ((res = PQgetResult(conn_.get())) != nullptr) {
+            PQclear(res);
+        }
 
         // Upsert from staging
         PQexec(conn_.get(),

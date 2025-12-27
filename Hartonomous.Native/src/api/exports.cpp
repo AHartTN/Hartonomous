@@ -259,7 +259,11 @@ HARTONOMOUS_API int hartonomous_ingest(
             
             if (p.extension() == ".safetensors") {
                 ModelIngester ingester(store, sparsity);
-                auto [tensors, total, stored] = ingester.ingest_safetensor_semantic(path);
+                std::vector<std::tuple<NodeRef, NodeRef, double>> all_weights;
+                auto [tensors, total, stored] = ingester.ingest_safetensor_semantic(path, all_weights);
+                if (!all_weights.empty()) {
+                    store.store_model_weights(all_weights, ingester.model_context(), db::RelType::MODEL_WEIGHT);
+                }
                 compositions = static_cast<std::int64_t>(stored);
             } else {
                 DatabaseEncoder encoder(db);

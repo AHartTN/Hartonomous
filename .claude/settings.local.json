@@ -13,7 +13,10 @@
       "Bash(set PGPASSWORD=hartonomous:*)",
       "Bash(createdb:*)",
       "Bash(D:\\\\Repositories\\\\Hartonomous\\\\Hartonomous.Native\\\\build\\\\bin\\\\hartonomous-db-tests.exe:*)",
-      "Bash(./build/bin/hartonomous-db-tests.exe:*)"
+      "Bash(./build/bin/hartonomous-db-tests.exe:*)",
+      "Bash(./build/bin/hartonomous-seed.exe:*)",
+      "Bash(timeout 60 ./build/bin/hartonomous-db-tests.exe:*)",
+      "Bash(timeout 120 ./build/bin/hartonomous-db-tests.exe:*)"
     ]
   }
 }
