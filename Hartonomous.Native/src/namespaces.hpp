@@ -40,7 +40,7 @@ class SemanticDecompose;
 class SemanticHilbert;
 class SemanticCoord;
 class PairEncoding;
-class ByteAtomTable;
+class CodepointAtomTable;
 
 class PointZM;
 class LineStringZM;

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "node_ref.hpp"
-#include "byte_atom_table.hpp"
+#include "codepoint_atom_table.hpp"
 #include "composition_store.hpp"
 #include "pair_frequency_counter.hpp"
 #include "rle_sequence.hpp"
@@ -22,7 +22,7 @@ namespace hartonomous {
 /// nodes, building a Merkle DAG structure with learned vocabulary.
 ///
 /// Algorithm:
-/// 1. Stream bytes -> atoms (via ByteAtomTable)
+/// 1. Stream bytes -> atoms (via CodepointAtomTable with UTF-8 decoding)
 /// 2. RLE collapse consecutive identical atoms
 /// 3. Count all adjacent pair frequencies (parallel)
 /// 4. Merge most frequent pairs -> new vocabulary entries
@@ -69,27 +69,29 @@ public:
     NodeRef ingest(const std::uint8_t* data, std::size_t length) {
         if (length == 0) return NodeRef{};
 
-        const auto& atoms = ByteAtomTable::instance();
+        // Decode UTF-8 to codepoints
+        auto all_codepoints = UTF8Decoder::decode(data, length);
+        const auto& atoms = CodepointAtomTable::instance();
 
-        // Create work units
-        std::vector<WorkUnit> units;
-        units.reserve((length + config_.chunk_size - 1) / config_.chunk_size);
-        for (std::size_t offset = 0; offset < length; offset += config_.chunk_size) {
-            std::size_t chunk_len = std::min(config_.chunk_size, length - offset);
-            units.push_back({data + offset, chunk_len, offset});
+        // Create work units based on codepoints
+        std::vector<std::pair<std::size_t, std::size_t>> ranges; // start, end indices into codepoints
+        std::size_t cp_count = all_codepoints.size();
+        for (std::size_t start = 0; start < cp_count; start += config_.chunk_size) {
+            std::size_t end = std::min(start + config_.chunk_size, cp_count);
+            ranges.push_back({start, end});
         }
 
-        std::vector<ChunkResult> results(units.size());
+        std::vector<ChunkResult> results(ranges.size());
 
         // Phase 1: Convert to atoms + RLE (parallel)
-        Threading::parallel_for(units.size(), [&](std::size_t unit_idx) {
-            const auto& unit = units[unit_idx];
-            ChunkResult& result = results[unit_idx];
-            result.offset = unit.offset;
-            result.sequence.reserve(unit.length / 4);  // Estimate RLE compression
+        Threading::parallel_for(ranges.size(), [&](std::size_t idx) {
+            auto [start, end] = ranges[idx];
+            ChunkResult& result = results[idx];
+            result.offset = start;
+            result.sequence.reserve((end - start) / 4);  // Estimate RLE compression
 
-            for (std::size_t i = 0; i < unit.length; ++i) {
-                result.sequence.push(atoms[unit.data[i]]);
+            for (std::size_t i = start; i < end; ++i) {
+                result.sequence.push(atoms.ref(all_codepoints[i]));
             }
         });
 
@@ -305,7 +307,12 @@ private:
             }
 
             if (current.is_atom) {
-                out.push_back(ByteAtomTable::instance().to_byte(current));
+                // Convert atom back to codepoint, then UTF-8 encode
+                std::int32_t cp = SemanticDecompose::atom_to_codepoint(
+                    AtomId{current.id_high, current.id_low});
+                std::uint8_t buf[4];
+                std::size_t len = UTF8Decoder::encode_one(cp, buf);
+                out.insert(out.end(), buf, buf + len);
                 continue;
             }
 

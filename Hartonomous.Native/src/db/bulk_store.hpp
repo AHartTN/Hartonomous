@@ -12,7 +12,7 @@
 #include "connection.hpp"
 #include "pg_result.hpp"
 #include "../atoms/node_ref.hpp"
-#include "../atoms/byte_atom_table.hpp"
+#include "../atoms/codepoint_atom_table.hpp"
 #include "../atoms/merkle_hash.hpp"
 #include <libpq-fe.h>
 #include <vector>
@@ -252,7 +252,9 @@ private:
             }
 
             query += " ON CONFLICT (from_high, from_low, to_high, to_low, "
-                     "context_high, context_low) DO UPDATE SET weight = EXCLUDED.weight";
+                     "context_high, context_low) DO UPDATE SET "
+                     "weight = relationship.weight + EXCLUDED.weight, "
+                     "obs_count = relationship.obs_count + 1";
             PQexec(conn_.get(), query.c_str());
         }
     }
@@ -276,14 +278,16 @@ public:
     NodeRef encode(const std::uint8_t* data, std::size_t len) {
         if (len == 0) return NodeRef{};
 
-        const auto& atoms = ByteAtomTable::instance();
-        if (len == 1) return atoms[data[0]];
+        // Decode UTF-8 to codepoints
+        auto codepoints = UTF8Decoder::decode(data, len);
+        const auto& atoms = CodepointAtomTable::instance();
+        if (codepoints.size() == 1) return atoms.ref(codepoints[0]);
 
         // Build tree, collect compositions
         std::vector<CompTuple> local_comps;
-        local_comps.reserve(len);
+        local_comps.reserve(codepoints.size());
 
-        NodeRef root = build_tree(data, len, local_comps, atoms);
+        NodeRef root = build_tree_codepoints(codepoints, 0, codepoints.size(), local_comps, atoms);
 
         // Push to collector
         comp_collector_.push_range(local_comps.begin(), local_comps.end());
@@ -346,13 +350,15 @@ public:
     std::size_t relationships_written() const { return writer_.relationships_written(); }
 
 private:
-    NodeRef build_tree(const std::uint8_t* data, std::size_t len,
-                       std::vector<CompTuple>& comps,
-                       const ByteAtomTable& atoms) {
-        if (len == 1) return atoms[data[0]];
+    NodeRef build_tree_codepoints(const std::vector<std::int32_t>& codepoints,
+                                   std::size_t start, std::size_t end,
+                                   std::vector<CompTuple>& comps,
+                                   const CodepointAtomTable& atoms) {
+        std::size_t len = end - start;
+        if (len == 1) return atoms.ref(codepoints[start]);
         if (len == 2) {
-            NodeRef left = atoms[data[0]];
-            NodeRef right = atoms[data[1]];
+            NodeRef left = atoms.ref(codepoints[start]);
+            NodeRef right = atoms.ref(codepoints[start + 1]);
             NodeRef children[2] = {left, right};
             auto [h, l] = MerkleHash::compute(children, children + 2);
             NodeRef comp = NodeRef::comp(h, l);
@@ -360,9 +366,9 @@ private:
             return comp;
         }
 
-        std::size_t mid = len / 2;
-        NodeRef left = build_tree(data, mid, comps, atoms);
-        NodeRef right = build_tree(data + mid, len - mid, comps, atoms);
+        std::size_t mid = start + len / 2;
+        NodeRef left = build_tree_codepoints(codepoints, start, mid, comps, atoms);
+        NodeRef right = build_tree_codepoints(codepoints, mid, end, comps, atoms);
 
         NodeRef children[2] = {left, right};
         auto [h, l] = MerkleHash::compute(children, children + 2);

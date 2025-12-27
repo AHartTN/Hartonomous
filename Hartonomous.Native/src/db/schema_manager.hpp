@@ -110,7 +110,15 @@ public:
         // 4. Validate and repair tables
         validate_and_repair_tables(status);
         
-        // 5. Validate and repair indexes
+        // 5. Validate columns and repair missing ones
+        validate_atom_columns(status);
+        validate_composition_columns(status);
+        validate_relationship_columns(status);
+        if (!status.missing_columns.empty()) {
+            repair_missing_columns(status);
+        }
+        
+        // 6. Validate and repair indexes
         validate_and_repair_indexes(status);
         
         // 6. Ensure custom functions exist
@@ -285,7 +293,7 @@ private:
     void validate_relationship_columns(SchemaStatus& status) {
         auto cols = get_table_columns("relationship");
         static const std::vector<std::string> required = {
-            "from_high", "from_low", "to_high", "to_low", "weight", 
+            "from_high", "from_low", "to_high", "to_low", "weight", "obs_count",
             "trajectory", "rel_type", "context_high", "context_low"
         };
         for (const auto& col : required) {
@@ -293,6 +301,17 @@ private:
                 status.missing_columns.push_back("relationship." + col);
             }
         }
+    }
+    
+    void repair_missing_columns(SchemaStatus& status) {
+        for (const auto& col : status.missing_columns) {
+            if (col == "relationship.obs_count") {
+                // Use ADD COLUMN IF NOT EXISTS (PostgreSQL 9.6+)
+                exec_void("ALTER TABLE relationship ADD COLUMN IF NOT EXISTS obs_count INTEGER NOT NULL DEFAULT 1");
+                status.actions_taken.push_back("Added column: " + col);
+            }
+        }
+        status.missing_columns.clear();
     }
     
     void validate_and_repair_tables(SchemaStatus& status) {
@@ -351,6 +370,7 @@ private:
                     to_high BIGINT NOT NULL,
                     to_low BIGINT NOT NULL,
                     weight DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+                    obs_count INTEGER NOT NULL DEFAULT 1,
                     trajectory GEOMETRY(LINESTRINGZM, 0),
                     rel_type SMALLINT NOT NULL DEFAULT 0,
                     context_high BIGINT DEFAULT 0,

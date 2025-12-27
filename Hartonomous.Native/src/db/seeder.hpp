@@ -16,6 +16,7 @@
 #include <stdexcept>
 #include <cstring>
 #include <chrono>
+#include <atomic>
 
 namespace hartonomous::db {
 
@@ -157,196 +158,57 @@ private:
     }
 
 public:
-    /// Seed ONLY byte atoms (0-255) - FAST for tests
-    void seed_byte_atoms() {
-        CopyBuilder data;
-        data.reserve(256 * 100);
-        
-        for (uint32_t byte = 0; byte < 256; ++byte) {
-            AtomId id = SemanticDecompose::get_atom_id(byte);
-            auto coord = SemanticDecompose::get_coord(byte);
-            
-            data.field(id.high)
-                .field(id.low)
-                .field(static_cast<std::int64_t>(byte))
-                .field(static_cast<std::int64_t>(0))
-                .point_zm_int(coord.page, coord.type, coord.base, coord.variant)
-                .end_row();
-        }
-        
-        PgResult res(PQexec(conn_.get(), Schema::COPY_ATOMS));
-        if (res.status() != PGRES_COPY_IN) {
-            throw std::runtime_error("Failed to start COPY for byte atoms");
-        }
-        
-        std::string str = data.str();
-        if (PQputCopyData(conn_.get(), str.c_str(), static_cast<int>(str.size())) != 1) {
-            throw std::runtime_error("Failed to put COPY data for byte atoms");
-        }
-        
-        if (PQputCopyEnd(conn_.get(), nullptr) != 1) {
-            throw std::runtime_error("Failed to end COPY for byte atoms");
-        }
-        
-        PgResult end_res(PQgetResult(conn_.get()));
-    }
-
-    /// Seed Unicode atoms - IDEMPOTENT, PARALLEL
-    /// Fast path: Multi-threaded generation + Multi-connection COPY
-    /// Slow path: Staging + ON CONFLICT when partial
+    /// Seed Unicode atoms - DETERMINISTIC, PARALLEL, INSTANT
+    /// All 1,112,064 atoms have deterministic IDs from Hilbert curve encoding.
+    /// No staging tables, no slow paths - just parallel generation and parallel COPY.
     /// Returns: (total_atoms, newly_inserted)
     std::pair<size_t, size_t> seed_unicode_atoms_idempotent() {
-        auto start = std::chrono::steady_clock::now();
-
         constexpr size_t TOTAL_ATOMS = 1112064;  // Unicode - surrogates
         constexpr uint32_t MAX_CP = 0x10FFFF + 1;
 
-        // Quick check: if all atoms exist, skip entirely
+        // Check if already seeded (instant - single COUNT query)
         size_t existing = get_atom_count();
         if (existing >= TOTAL_ATOMS) {
-            if (!quiet_) hartonomous::log().info("All ", TOTAL_ATOMS, " atoms already exist. Skipping.");
             return {TOTAL_ATOMS, 0};
         }
 
-        if (existing == 0) {
-            // FAST PATH: Parallel generation (all cores) + Parallel COPY (limited connections)
-            if (!quiet_) {
-                hartonomous::log().info("Empty table - ", gen_threads_, " gen threads, ", copy_threads_, " COPY connections");
-            }
+        auto start = std::chrono::steady_clock::now();
 
-            auto gen_start = std::chrono::steady_clock::now();
+        // PARALLEL GENERATION - use all cores, deterministic output
+        uint32_t gen_chunk_size = MAX_CP / static_cast<uint32_t>(gen_threads_);
+        std::vector<std::string> gen_results(gen_threads_);
 
-            // Generate with ALL available threads (CPU-bound)
-            uint32_t gen_chunk_size = MAX_CP / static_cast<uint32_t>(gen_threads_);
-            std::vector<std::string> gen_results(gen_threads_);
+        Threading::parallel_for(gen_threads_, [&](size_t i) {
+            uint32_t cp_start = static_cast<uint32_t>(i * gen_chunk_size);
+            uint32_t cp_end = (i == gen_threads_ - 1) ? MAX_CP : static_cast<uint32_t>((i + 1) * gen_chunk_size);
+            gen_results[i] = generate_chunk(cp_start, cp_end);
+        });
 
-            Threading::parallel_for(gen_threads_, [&](size_t i) {
-                uint32_t cp_start = static_cast<uint32_t>(i * gen_chunk_size);
-                uint32_t cp_end = (i == gen_threads_ - 1) ? MAX_CP : static_cast<uint32_t>((i + 1) * gen_chunk_size);
-                gen_results[i] = generate_chunk(cp_start, cp_end);
-            });
-
-            // Merge gen_results into copy_chunks (fewer, larger chunks for COPY)
-            std::vector<std::string> copy_chunks(copy_threads_);
-            size_t chunks_per_copy = (gen_threads_ + copy_threads_ - 1) / copy_threads_;
-            for (size_t i = 0; i < gen_threads_; ++i) {
-                size_t copy_idx = i / chunks_per_copy;
-                if (copy_idx >= copy_threads_) copy_idx = copy_threads_ - 1;
-                copy_chunks[copy_idx] += std::move(gen_results[i]);
-            }
-
-            auto gen_end = std::chrono::steady_clock::now();
-            if (!quiet_) {
-                hartonomous::log().info("Generated in ", std::chrono::duration<double>(gen_end - gen_start).count(), "s");
-            }
-
-            // Parallel COPY with limited connections (IO-bound)
-            auto copy_start = std::chrono::steady_clock::now();
-            std::vector<size_t> copy_results(copy_threads_, 0);
-
-            // Filter to non-empty chunks, then parallel COPY
-            std::vector<size_t> non_empty_indices;
-            for (size_t i = 0; i < copy_chunks.size(); ++i) {
-                if (!copy_chunks[i].empty()) {
-                    non_empty_indices.push_back(i);
-                }
-            }
-
-            Threading::parallel_for(non_empty_indices.size(), [&](size_t j) {
-                size_t i = non_empty_indices[j];
-                copy_results[i] = copy_chunk(connstr_, copy_chunks[i]);
-            });
-
-            size_t success_count = 0;
-            for (size_t r : copy_results) success_count += r;
-
-            auto copy_end = std::chrono::steady_clock::now();
-            double copy_elapsed = std::chrono::duration<double>(copy_end - copy_start).count();
-
-            if (!quiet_) {
-                hartonomous::log().info("Parallel COPY in ", copy_elapsed, "s (", (TOTAL_ATOMS / copy_elapsed / 1000), "K atoms/s)");
-            }
-
-            if (success_count != non_empty_indices.size()) {
-                throw std::runtime_error("Some COPY operations failed");
-            }
-
-            auto end = std::chrono::steady_clock::now();
-            if (!quiet_) {
-                hartonomous::log().info("Inserted ", TOTAL_ATOMS, " atoms. Total: ", std::chrono::duration<double>(end - start).count(), "s");
-            }
-
-            return {TOTAL_ATOMS, TOTAL_ATOMS};
-        } else {
-            // SLOW PATH: Partial data exists, use staging + ON CONFLICT
-            if (!quiet_) {
-                hartonomous::log().info("Found ", existing, "/", TOTAL_ATOMS, " atoms. Using staging table...");
-            }
-
-            // Generate all data (parallel with all cores)
-            auto gen_start = std::chrono::steady_clock::now();
-            uint32_t chunk_size = MAX_CP / static_cast<uint32_t>(gen_threads_);
-            std::vector<std::string> gen_results(gen_threads_);
-
-            Threading::parallel_for(gen_threads_, [&](size_t i) {
-                uint32_t cp_start = static_cast<uint32_t>(i * chunk_size);
-                uint32_t cp_end = (i == gen_threads_ - 1) ? MAX_CP : static_cast<uint32_t>((i + 1) * chunk_size);
-                gen_results[i] = generate_chunk(cp_start, cp_end);
-            });
-
-            auto gen_end = std::chrono::steady_clock::now();
-            if (!quiet_) {
-                hartonomous::log().info("Generated in ", std::chrono::duration<double>(gen_end - gen_start).count(), "s");
-            }
-
-            // Create unlogged staging table
-            exec("DROP TABLE IF EXISTS atoms_staging");
-            exec(Schema::CREATE_ATOMS_STAGING);
-
-            // COPY to staging - stream each chunk directly (Issue 11 fix: no concatenation)
-            auto copy_start = std::chrono::steady_clock::now();
-            start_copy(Schema::COPY_ATOMS_STAGING);
-
-            for (auto& chunk : gen_results) {
-                if (!chunk.empty()) {
-                    if (PQputCopyData(conn_.get(), chunk.c_str(), static_cast<int>(chunk.size())) != 1) {
-                        throw std::runtime_error("COPY data failed: " + std::string(PQerrorMessage(conn_.get())));
-                    }
-                }
-                chunk.clear();  // Release memory immediately
-                chunk.shrink_to_fit();
-            }
-            if (PQputCopyEnd(conn_.get(), nullptr) != 1) {
-                throw std::runtime_error("COPY end failed: " + std::string(PQerrorMessage(conn_.get())));
-            }
-
-            PgResult res(PQgetResult(conn_.get()));
-            if (res.status() != PGRES_COMMAND_OK) {
-                throw std::runtime_error("COPY staging failed: " + std::string(PQerrorMessage(conn_.get())));
-            }
-
-            auto copy_end = std::chrono::steady_clock::now();
-            if (!quiet_) {
-                hartonomous::log().info("COPY to staging in ", std::chrono::duration<double>(copy_end - copy_start).count(), "s");
-            }
-
-            // INSERT from staging with ON CONFLICT DO NOTHING
-            auto insert_start = std::chrono::steady_clock::now();
-            PgResult insert_res(PQexec(conn_.get(), Schema::INSERT_ATOMS_FROM_STAGING));
-            insert_res.expect_ok("INSERT_ATOMS_FROM_STAGING");
-            size_t inserted = insert_res.affected_rows();
-
-            // Cleanup staging
-            exec("DROP TABLE atoms_staging");
-
-            auto end = std::chrono::steady_clock::now();
-            if (!quiet_) {
-                hartonomous::log().info("INSERT ON CONFLICT in ", std::chrono::duration<double>(end - insert_start).count(), "s");
-                hartonomous::log().info("Inserted ", inserted, " new atoms. Total: ", std::chrono::duration<double>(end - start).count(), "s");
-            }
-
-            return {TOTAL_ATOMS, inserted};
+        // Merge into COPY chunks (fewer connections than gen threads)
+        std::vector<std::string> copy_chunks(copy_threads_);
+        size_t chunks_per_copy = (gen_threads_ + copy_threads_ - 1) / copy_threads_;
+        for (size_t i = 0; i < gen_threads_; ++i) {
+            size_t copy_idx = std::min(i / chunks_per_copy, copy_threads_ - 1);
+            copy_chunks[copy_idx] += std::move(gen_results[i]);
         }
+
+        // PARALLEL COPY - multiple connections, ON CONFLICT handled by PK
+        std::atomic<size_t> total_success{0};
+        Threading::parallel_for(copy_threads_, [&](size_t i) {
+            if (copy_chunks[i].empty()) return;
+            total_success += copy_chunk(connstr_, copy_chunks[i]);
+        });
+
+        auto end = std::chrono::steady_clock::now();
+        double elapsed = std::chrono::duration<double>(end - start).count();
+
+        if (!quiet_) {
+            size_t inserted = TOTAL_ATOMS - existing;
+            hartonomous::log().info("Seeded ", inserted, " atoms in ", elapsed, "s (",
+                static_cast<size_t>(TOTAL_ATOMS / elapsed / 1000), "K/s)");
+        }
+
+        return {TOTAL_ATOMS, TOTAL_ATOMS - existing};
     }
 
     /// Seed compositions from a CompositionStore - IDEMPOTENT

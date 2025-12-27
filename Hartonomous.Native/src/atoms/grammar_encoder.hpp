@@ -19,7 +19,7 @@
 /// Same content = same grammar = same composition roots.
 
 #include "node_ref.hpp"
-#include "byte_atom_table.hpp"
+#include "codepoint_atom_table.hpp"
 #include "merkle_hash.hpp"
 #include <vector>
 #include <unordered_map>
@@ -66,7 +66,7 @@ struct SymbolPairEqual {
 
 /// Grammar-based encoder using pattern discovery
 class GrammarEncoder {
-    const ByteAtomTable& atoms_;
+    const CodepointAtomTable& atoms_;
 
     // All discovered rules
     std::vector<GrammarRule> rules_;
@@ -78,7 +78,7 @@ class GrammarEncoder {
     static constexpr std::uint32_t MIN_FREQ = 2;
 
 public:
-    GrammarEncoder() : atoms_(ByteAtomTable::instance()) {
+    GrammarEncoder() : atoms_(CodepointAtomTable::instance()) {
         rules_.reserve(10000);
         pending_.reserve(10000);
     }
@@ -86,13 +86,16 @@ public:
     /// Encode content using grammar-based pattern discovery
     [[nodiscard]] NodeRef encode(const std::uint8_t* data, std::size_t len) {
         if (len == 0) return NodeRef{};
-        if (len == 1) return atoms_[data[0]];
 
-        // Initialize sequence with byte atoms
+        // Decode UTF-8 to codepoints
+        auto codepoints = UTF8Decoder::decode(data, len);
+        if (codepoints.size() == 1) return atoms_.ref(codepoints[0]);
+
+        // Initialize sequence with codepoint atoms
         std::vector<Symbol> seq;
-        seq.reserve(len);
-        for (std::size_t i = 0; i < len; ++i) {
-            seq.push_back({atoms_[data[i]], true});
+        seq.reserve(codepoints.size());
+        for (std::int32_t cp : codepoints) {
+            seq.push_back({atoms_.ref(cp), true});
         }
 
         // Iteratively find and replace repeated bigrams

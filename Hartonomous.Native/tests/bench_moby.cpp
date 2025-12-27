@@ -1,7 +1,7 @@
 /// Full database benchmark: seed atoms, ingest Moby Dick, write to DB, decode from DB
 
 #include "atoms/database_encoder.hpp"
-#include "atoms/byte_atom_table.hpp"
+#include "atoms/codepoint_atom_table.hpp"
 #include "db/database_store.hpp"
 #include "db/seeder.hpp"
 #include <iostream>
@@ -103,12 +103,7 @@ using namespace hartonomous;
 using namespace hartonomous::db;
 
 int main() {
-    // Check for database connection
-    if (!std::getenv("HARTONOMOUS_DB_URL")) {
-        std::cerr << "ERROR: HARTONOMOUS_DB_URL not set\n";
-        std::cerr << "Example: set HARTONOMOUS_DB_URL=postgresql://hartonomous:hartonomous@localhost:5433/hartonomous\n";
-        return 1;
-    }
+    // Database connection uses ConnectionConfig defaults if HARTONOMOUS_DB_URL not set
 
     const char* path = TEST_DATA_DIR "/moby_dick.txt";
     
@@ -128,15 +123,15 @@ int main() {
     
     auto total_start = std::chrono::high_resolution_clock::now();
 
-    // Phase 1: Database setup + seed atoms
+    // Phase 1: Database setup + ensure schema (atoms seeded automatically)
     auto seed_start = std::chrono::high_resolution_clock::now();
     
     Seeder seeder(true);  // quiet
-    seeder.ensure_schema();
-    seeder.seed_byte_atoms();  // Fast: only 256 atoms for byte data
+    seeder.ensure_schema();  // Seeds all 1.1M Unicode atoms if needed
     
     DatabaseStore db;
-    db.clear_all();
+    // Clear only compositions, NOT atoms (atoms are seeded once and reused)
+    db.clear_compositions();
     
     auto seed_end = std::chrono::high_resolution_clock::now();
     auto seed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(seed_end - seed_start).count();

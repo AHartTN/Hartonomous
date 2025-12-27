@@ -1,7 +1,7 @@
 #pragma once
 
 #include "node_ref.hpp"
-#include "byte_atom_table.hpp"
+#include "codepoint_atom_table.hpp"
 #include "composition_store.hpp"
 #include "../threading/threading.hpp"
 #include <vector>
@@ -61,16 +61,18 @@ private:
     static NodeRef encode_chunk(const std::uint8_t* data, std::size_t len, CompositionCache& cache) {
         if (len == 0) return NodeRef{};
 
-        const auto& atoms = ByteAtomTable::instance();
+        // Decode UTF-8 to codepoints first
+        auto codepoints = UTF8Decoder::decode(data, len);
+        const auto& atoms = CodepointAtomTable::instance();
 
         // Build block roots first, then reduce
         std::vector<NodeRef> level;
-        level.reserve((len + BLOCK_SIZE - 1) / BLOCK_SIZE);
+        level.reserve((codepoints.size() + BLOCK_SIZE - 1) / BLOCK_SIZE);
 
         // First level: create blocks of atoms
-        for (std::size_t i = 0; i < len; i += BLOCK_SIZE) {
-            std::size_t block_end = std::min(i + BLOCK_SIZE, len);
-            NodeRef block_root = build_atom_block(data + i, block_end - i, cache, atoms);
+        for (std::size_t i = 0; i < codepoints.size(); i += BLOCK_SIZE) {
+            std::size_t block_end = std::min(i + BLOCK_SIZE, codepoints.size());
+            NodeRef block_root = build_codepoint_block(codepoints, i, block_end, cache, atoms);
             level.push_back(block_root);
         }
 
@@ -93,16 +95,19 @@ private:
         return level.empty() ? NodeRef{} : level[0];
     }
 
-    static NodeRef build_atom_block(const std::uint8_t* data, std::size_t len,
-                                     CompositionCache& cache, const ByteAtomTable& atoms) {
+    static NodeRef build_codepoint_block(const std::vector<std::int32_t>& codepoints,
+                                         std::size_t start, std::size_t end,
+                                         CompositionCache& cache, 
+                                         const CodepointAtomTable& atoms) {
+        std::size_t len = end - start;
         if (len == 0) return NodeRef{};
-        if (len == 1) return atoms[data[0]];
-        if (len == 2) return cache.get_or_create(atoms[data[0]], atoms[data[1]]);
+        if (len == 1) return atoms.ref(codepoints[start]);
+        if (len == 2) return cache.get_or_create(atoms.ref(codepoints[start]), atoms.ref(codepoints[start + 1]));
 
         // Recursive balanced split
-        std::size_t mid = len / 2;
-        NodeRef left = build_atom_block(data, mid, cache, atoms);
-        NodeRef right = build_atom_block(data + mid, len - mid, cache, atoms);
+        std::size_t mid = start + len / 2;
+        NodeRef left = build_codepoint_block(codepoints, start, mid, cache, atoms);
+        NodeRef right = build_codepoint_block(codepoints, mid, end, cache, atoms);
         return cache.get_or_create(left, right);
     }
 
@@ -125,8 +130,12 @@ private:
         }
 
         if (node.is_atom) {
-            // Terminal: convert atom back to byte
-            out.push_back(ByteAtomTable::instance().to_byte(node));
+            // Terminal: convert atom back to codepoint, then UTF-8 encode
+            std::int32_t cp = SemanticDecompose::atom_to_codepoint(
+                AtomId{node.id_high, node.id_low});
+            std::uint8_t buf[4];
+            std::size_t len = UTF8Decoder::encode_one(cp, buf);
+            out.insert(out.end(), buf, buf + len);
             return;
         }
 

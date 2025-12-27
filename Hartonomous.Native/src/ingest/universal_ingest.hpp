@@ -42,6 +42,7 @@
 #include "../db/query_store.hpp"
 #include "../atoms/node_ref.hpp"
 #include "../atoms/codepoint_atom_table.hpp"
+#include "../atoms/merkle_hash.hpp"
 #include "../threading/threading.hpp"
 #include <span>
 #include <vector>
@@ -50,6 +51,7 @@
 #include <filesystem>
 #include <fstream>
 #include <cstdint>
+#include <cstring>
 #include <iostream>
 
 namespace hartonomous::ingest {
@@ -148,51 +150,79 @@ public:
     }
 
     // ========================================================================
-    // TRAJECTORY STORAGE - For high-dimensional data
+    // EMBEDDING → TOKEN-TO-TOKEN SIMILARITY
     // ========================================================================
 
-    /// Store high-dimensional vector as trajectory through 4D space.
+    /// Store token-to-token relationships computed from embeddings.
     ///
-    /// Why trajectories? A 4096-dim embedding doesn't fit in 4D space.
-    /// But a SEQUENCE through 4D space does. Each dimension becomes a point.
-    /// Similarity = trajectory similarity = Frechet distance.
-    /// GiST index gives O(log n) queries, not O(n²) pairwise at ingestion.
+    /// THE CORRECT APPROACH:
+    /// Embeddings are TEMPORARY - use them to compute which tokens relate.
+    /// We compute cosine similarity between token pairs, then store as relationships.
+    /// The embedding dimensions disappear - they serve only to identify relationships.
     ///
-    /// @param ref The NodeRef this trajectory belongs to (e.g., token ref)
-    /// @param vector The high-dimensional vector (e.g., embedding)
-    /// @param context Model/source context
-    void store_trajectory(
-        NodeRef ref,
-        std::span<const float> vector,
-        NodeRef context)
-    {
-        // Store as single trajectory
-        std::vector<NodeRef> refs = {ref};
-        store_.store_embedding_trajectories(
-            vector.data(),
-            1,  // One vector
-            vector.size(),  // Dimensions
-            refs,
-            context,
-            REL_DEFAULT);
-    }
-
-    /// Bulk store trajectories (for batch ingestion)
-    /// O(n) - each vector stored once
-    void store_trajectories(
-        std::span<const float> vectors,  // [count × dims] contiguous
+    /// @param vectors Embedding matrix [count × dims] contiguous
+    /// @param count Number of tokens
+    /// @param dims Embedding dimension
+    /// @param refs NodeRef for each token (from CPE ingestion)
+    /// @param context Model context for aggregation
+    /// @param similarity_threshold Only store pairs with similarity > this
+    void store_token_similarities(
+        std::span<const float> vectors,
         std::size_t count,
         std::size_t dims,
         std::span<const NodeRef> refs,
-        NodeRef context)
+        NodeRef context,
+        float similarity_threshold = 0.5f)
     {
-        store_.store_embedding_trajectories(
-            vectors.data(),
-            count,
-            dims,
-            std::vector<NodeRef>(refs.begin(), refs.end()),
-            context,
-            REL_DEFAULT);
+        // Precompute L2 norms for cosine similarity
+        std::vector<float> norms(count);
+        for (std::size_t i = 0; i < count; ++i) {
+            const float* embed = vectors.data() + i * dims;
+            float sum = 0.0f;
+            for (std::size_t d = 0; d < dims; ++d) {
+                sum += embed[d] * embed[d];
+            }
+            norms[i] = std::sqrt(sum);
+        }
+        
+        std::vector<std::tuple<NodeRef, NodeRef, double>> relationships;
+        relationships.reserve(count * 50); // ~50 neighbors per token
+        
+        // For each token, find similar tokens
+        for (std::size_t i = 0; i < count && i < refs.size(); ++i) {
+            NodeRef from_ref = refs[i];
+            if (from_ref.id_high == 0 && from_ref.id_low == 0) continue;
+            if (norms[i] < 1e-8f) continue;
+            
+            const float* embed_i = vectors.data() + i * dims;
+            
+            for (std::size_t j = i + 1; j < count && j < refs.size(); ++j) {
+                if (norms[j] < 1e-8f) continue;
+                
+                const float* embed_j = vectors.data() + j * dims;
+                
+                // Cosine similarity
+                float dot = 0.0f;
+                for (std::size_t d = 0; d < dims; ++d) {
+                    dot += embed_i[d] * embed_j[d];
+                }
+                double sim = static_cast<double>(dot) / 
+                             (static_cast<double>(norms[i]) * static_cast<double>(norms[j]));
+                
+                if (sim > static_cast<double>(similarity_threshold)) {
+                    NodeRef to_ref = refs[j];
+                    if (to_ref.id_high == 0 && to_ref.id_low == 0) continue;
+                    
+                    // Bidirectional
+                    relationships.emplace_back(from_ref, to_ref, sim);
+                    relationships.emplace_back(to_ref, from_ref, sim);
+                }
+            }
+        }
+        
+        if (!relationships.empty()) {
+            store_.store_model_weights(relationships, context, REL_DEFAULT);
+        }
     }
 
     // ========================================================================

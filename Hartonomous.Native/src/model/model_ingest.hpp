@@ -92,17 +92,28 @@ public:
         std::cerr << "ingest_package: Phase 1 - tokenizer..." << std::endl;
 
         // Phase 1: Ingest tokenizer vocabulary FIRST (semantic foundation)
+        // Only ingest ONE tokenizer file - they contain the same vocab in different formats
+        // Priority: vocab.txt (simple) > tokenizer.json (complex)
+        std::string tokenizer_path;
         for (const auto& entry : std::filesystem::recursive_directory_iterator(dir)) {
             if (!entry.is_regular_file()) continue;
 
             std::string filename = entry.path().filename().string();
 
-            // Tokenizer files - these define the semantic mapping
-            if (filename == "tokenizer.json" || filename == "vocab.txt" ||
-                filename == "vocab.json" || filename == "merges.txt") {
-                std::cerr << "ingest_package: ingesting tokenizer: " << filename << std::endl;
-                result.vocab = ingest_tokenizer(entry.path().string());
+            // Prefer vocab.txt (simpler format)
+            if (filename == "vocab.txt") {
+                tokenizer_path = entry.path().string();
+                break;  // Found preferred format
             }
+            // Fallback to tokenizer.json
+            if (tokenizer_path.empty() && filename == "tokenizer.json") {
+                tokenizer_path = entry.path().string();
+            }
+        }
+        
+        if (!tokenizer_path.empty()) {
+            std::cerr << "ingest_package: ingesting tokenizer: " << std::filesystem::path(tokenizer_path).filename().string() << std::endl;
+            result.vocab = ingest_tokenizer(tokenizer_path);
         }
         
         std::cerr << "ingest_package: Phase 2 - config files..." << std::endl;
@@ -426,39 +437,45 @@ public:
         std::vector<std::size_t> thread_totals(f32_tensors.size());
         std::vector<std::size_t> thread_stored(f32_tensors.size());
 
-        // Find embedding tensor index (must be processed first for trajectory storage)
-        std::size_t embedding_idx = f32_tensors.size();
+        // Find embedding tensor index - SKIP IT ENTIRELY
+        // Embeddings are worthless - just coordinates in the model's arbitrary space
+        // We have our OWN deterministic 4D semantic space from Unicode decomposition
+        // The vocabulary ingestion (tokens → CPE → NodeRefs) is the ONLY value we extract
+        std::size_t embedding_idx = f32_tensors.size(); // Invalid index = skip
         for (std::size_t i = 0; i < f32_tensors.size(); ++i) {
             const auto& meta = f32_tensors[i];
             bool is_word_embedding = 
                 (meta.name.find("word_embed") != std::string::npos) ||
                 (meta.name.find("wte") != std::string::npos) ||
                 (meta.name == "embeddings.weight");
-            bool has_vocab_shape = meta.shape.size() >= 2 && 
-                                   meta.shape[0] > 1000 &&
-                                   meta.shape[0] <= vocab_.size() * 2;
-            if (is_word_embedding && has_vocab_shape && !vocab_.empty()) {
-                embedding_idx = i;
+            if (is_word_embedding) {
+                embedding_idx = i; // Mark to SKIP
+                std::cerr << "SKIPPING embedding tensor: " << meta.name 
+                          << " (worthless coordinates in model's arbitrary space)\n";
                 break;
             }
         }
 
-        // Process embedding tensor separately (it uses trajectory storage)
-        if (embedding_idx < f32_tensors.size()) {
-            const auto& meta = f32_tensors[embedding_idx];
-            NodeRef tensor_ref = store_.compute_root(meta.name);
-            thread_totals[embedding_idx] = SafetensorReader::element_count(meta);
-            thread_stored[embedding_idx] = collect_embeddings(reader, meta, tensor_ref, thread_weights[embedding_idx]);
-        }
+        // Process non-embedding tensors only
+        // Weight matrices are 2D: [out_features × in_features]
+        // Each weight at [i,j] = relationship from input_j to output_i
+        // Store as trajectory LineStringZM from input position to output position
 
         // PARALLEL: Process all other tensors
         Threading::parallel_for(f32_tensors.size(), [&](std::size_t i) {
-            if (i == embedding_idx) return; // Already processed
+            if (i == embedding_idx) return; // Skip embeddings
 
             const auto& meta = f32_tensors[i];
             NodeRef tensor_ref = store_.compute_root(meta.name);
             thread_totals[i] = SafetensorReader::element_count(meta);
-            thread_stored[i] = collect_sparse_weights(reader, meta, tensor_ref, thread_weights[i]);
+            
+            // 2D weight matrices: store as input→output relationships
+            if (meta.shape.size() == 2) {
+                thread_stored[i] = collect_weight_matrix(reader, meta, tensor_ref, thread_weights[i]);
+            } else {
+                // 1D or other: store raw sparse weights  
+                thread_stored[i] = collect_sparse_weights(reader, meta, tensor_ref, thread_weights[i]);
+            }
         });
 
         // Merge results
@@ -473,17 +490,24 @@ public:
         return {tensor_count, total_weights, stored_weights};
     }
 
-    /// Ingest embedding matrix - store each embedding as a 384-point trajectory.
+    /// Extract token-to-token relationships from embedding matrix via cosine similarity.
     ///
-    /// THE VISION: Embeddings ARE positions in high-dimensional space.
-    /// Store them as LineStringZM trajectories: point[d] = (d, embed[d], d/64, d%64)
-    /// Query similarity with ST_FrechetDistance via GiST index - O(log n) not O(n²).
+    /// THE CORRECT APPROACH (per VISION.md):
+    /// Embeddings are TEMPORARY - they exist only to compute which tokens relate.
+    /// We compute cosine similarity between token pairs, then DISCARD the embeddings.
+    /// The embedding dimensions disappear - they served their purpose.
     ///
-    /// NO pairwise computation at ingestion. Store once, query with spatial ops.
+    /// For each token pair where similarity > threshold:
+    ///   - Emit relationship (our NodeRefs, not model indices)
+    ///
+    /// This is O(n² × d) but we can optimize with:
+    ///   - Only compare tokens with high-magnitude embeddings
+    ///   - Use approximate nearest neighbors (future)
+    ///   - Sample pairs rather than exhaustive comparison
     std::size_t collect_embeddings(const SafetensorReader& reader,
                                    const TensorMeta& meta,
                                    [[maybe_unused]] NodeRef tensor_ref,
-                                   [[maybe_unused]] std::vector<std::tuple<NodeRef, NodeRef, double>>& all_weights) {
+                                   std::vector<std::tuple<NodeRef, NodeRef, double>>& all_weights) {
         if (meta.shape.size() < 2) return 0;
 
         std::size_t vocab_size = meta.shape[0];
@@ -491,53 +515,120 @@ public:
         const float* data = reader.get_f32_data(meta);
 
         std::size_t effective_size = std::min(vocab_size, vocab_.size());
-        
-        // Build vector of token refs
-        std::vector<NodeRef> token_refs;
-        token_refs.reserve(effective_size);
+
+        std::cerr << "collect_embeddings: computing token-to-token similarity for " 
+                  << effective_size << " tokens\n";
+
+        // Precompute L2 norms for cosine similarity
+        std::vector<float> norms(effective_size);
         for (std::size_t i = 0; i < effective_size; ++i) {
-            token_refs.push_back(vocab_[i].ref);
+            const float* embed = data + i * hidden_dim;
+            float sum = 0.0f;
+            for (std::size_t d = 0; d < hidden_dim; ++d) {
+                sum += embed[d] * embed[d];
+            }
+            norms[i] = std::sqrt(sum);
         }
 
-        std::cerr << "collect_embeddings: storing " << effective_size 
-                  << " embeddings as " << hidden_dim << "-point trajectories\n";
+        // Similarity threshold - only store relationships above this
+        constexpr double similarity_threshold = 0.5;  // cosine similarity > 0.5
+        
+        // For large vocabularies, we sample to avoid O(n²) explosion
+        // Top-K per token: find the K most similar tokens for each token
+        constexpr std::size_t max_neighbors_per_token = 50;
 
-        // Bulk store all embeddings as trajectories via COPY protocol
-        store_.store_embedding_trajectories(
-            data, 
-            vocab_size, 
-            hidden_dim, 
-            token_refs, 
-            model_context_,
-            db::REL_DEFAULT);
+        std::cerr << "collect_embeddings: similarity threshold = " << similarity_threshold 
+                  << ", max neighbors = " << max_neighbors_per_token << "\n";
 
-        std::cerr << "collect_embeddings: trajectory storage complete\n";
+        // Parallel: each thread handles a chunk of source tokens
+        std::size_t num_threads = Threading::default_thread_count();
+        std::size_t chunk_size = (effective_size + num_threads - 1) / num_threads;
+        std::vector<std::vector<std::tuple<NodeRef, NodeRef, double>>> thread_weights(num_threads);
 
-        // Return count of stored embeddings (not pairs - we don't compute pairs)
-        return effective_size;
+        std::atomic<std::size_t> pairs_compared{0};
+        std::atomic<std::size_t> pairs_stored{0};
+
+        Threading::parallel_for(num_threads, [&](std::size_t tid) {
+            std::size_t start = tid * chunk_size;
+            std::size_t end = std::min(start + chunk_size, effective_size);
+            if (start >= effective_size) return;
+
+            auto& local = thread_weights[tid];
+            local.reserve((end - start) * max_neighbors_per_token);
+
+            // For top-K selection per token
+            std::vector<std::pair<double, std::size_t>> similarities;
+            similarities.reserve(effective_size);
+
+            for (std::size_t i = start; i < end; ++i) {
+                NodeRef from_ref = vocab_[i].ref;
+                if (from_ref.id_high == 0 && from_ref.id_low == 0) continue;
+                if (norms[i] < 1e-8f) continue;  // Skip zero vectors
+
+                const float* embed_i = data + i * hidden_dim;
+
+                similarities.clear();
+
+                // Compare with all other tokens (j > i to avoid duplicates)
+                for (std::size_t j = i + 1; j < effective_size; ++j) {
+                    if (norms[j] < 1e-8f) continue;
+
+                    const float* embed_j = data + j * hidden_dim;
+
+                    // Cosine similarity = dot(a,b) / (|a| × |b|)
+                    float dot = 0.0f;
+                    for (std::size_t d = 0; d < hidden_dim; ++d) {
+                        dot += embed_i[d] * embed_j[d];
+                    }
+                    double sim = static_cast<double>(dot) / 
+                                 (static_cast<double>(norms[i]) * static_cast<double>(norms[j]));
+
+                    pairs_compared++;
+
+                    if (sim > similarity_threshold) {
+                        similarities.emplace_back(sim, j);
+                    }
+                }
+
+                // Sort by similarity descending, take top-K
+                if (similarities.size() > max_neighbors_per_token) {
+                    std::partial_sort(similarities.begin(), 
+                                     similarities.begin() + max_neighbors_per_token,
+                                     similarities.end(),
+                                     [](const auto& a, const auto& b) { 
+                                         return a.first > b.first; 
+                                     });
+                    similarities.resize(max_neighbors_per_token);
+                }
+
+                // Store as bidirectional relationships
+                for (const auto& [sim, j] : similarities) {
+                    NodeRef to_ref = vocab_[j].ref;
+                    if (to_ref.id_high == 0 && to_ref.id_low == 0) continue;
+
+                    // Bidirectional: A→B and B→A with same weight
+                    local.emplace_back(from_ref, to_ref, sim);
+                    local.emplace_back(to_ref, from_ref, sim);
+                    pairs_stored += 2;
+                }
+            }
+        });
+
+        // Merge thread results
+        std::size_t stored = 0;
+        for (auto& tw : thread_weights) {
+            stored += tw.size();
+            all_weights.insert(all_weights.end(),
+                std::make_move_iterator(tw.begin()),
+                std::make_move_iterator(tw.end()));
+        }
+
+        std::cerr << "collect_embeddings: compared " << pairs_compared.load() 
+                  << " pairs, stored " << stored << " relationships\n";
+
+        return stored;
     }
 
-    /// Create NodeRef from semantic position coordinates
-    [[nodiscard]] NodeRef make_semantic_position_ref(double x, double y, double z, double m) {
-        // Quantize coordinates to integers for deterministic hashing
-        std::int32_t ix = static_cast<std::int32_t>(x * 10000);
-        std::int32_t iy = static_cast<std::int32_t>(y * 10000);
-        std::int32_t iz = static_cast<std::int32_t>(z * 10000);
-        std::int32_t im = static_cast<std::int32_t>(m * 10000);
-
-        NodeRef refs[2] = {
-            NodeRef::comp(
-                (static_cast<std::int64_t>(ix) << 32) | static_cast<std::uint32_t>(iy),
-                (static_cast<std::int64_t>(iz) << 32) | static_cast<std::uint32_t>(im)
-            ),
-            NodeRef::comp(ix ^ iy, iz ^ im)
-        };
-
-        auto [h, l] = MerkleHash::compute(refs, refs + 2);
-        return NodeRef::comp(h, l);
-    }
-
-    /// Collect non-embedding weights with sparse filtering (parallelized)
     /// Compute dynamic sparsity threshold based on tensor statistics.
     /// Keep top ~10% most significant weights (by magnitude).
     [[nodiscard]] double compute_dynamic_threshold(const float* data, std::size_t count) {
@@ -558,6 +649,85 @@ public:
         std::nth_element(magnitudes.begin(), magnitudes.begin() + threshold_idx, magnitudes.end());
         
         return std::max(static_cast<double>(magnitudes[threshold_idx]), sparsity_threshold_);
+    }
+
+    /// Collect 2D weight matrix as (input, output, weight) points.
+    /// Matrix layout: matrix[out_idx][in_idx] = weight from input to output
+    /// Each significant weight becomes a relationship point.
+    /// Each row (fixed output) = trajectory of how inputs feed into that output.
+    std::size_t collect_weight_matrix(const SafetensorReader& reader,
+                                      const TensorMeta& meta,
+                                      NodeRef tensor_ref,
+                                      std::vector<std::tuple<NodeRef, NodeRef, double>>& all_weights) {
+        if (meta.shape.size() != 2) return 0;
+        
+        std::size_t out_dim = meta.shape[0];  // rows = output features
+        std::size_t in_dim = meta.shape[1];   // cols = input features
+        std::size_t count = out_dim * in_dim;
+        const float* data = reader.get_f32_data(meta);
+        
+        // Dynamic threshold for this matrix
+        double threshold = compute_dynamic_threshold(data, count);
+        
+        // Small matrices: sequential
+        if (count < 10000) {
+            std::size_t collected = 0;
+            for (std::size_t out_idx = 0; out_idx < out_dim; ++out_idx) {
+                NodeRef out_ref = make_index_ref(out_idx);
+                for (std::size_t in_idx = 0; in_idx < in_dim; ++in_idx) {
+                    float val = data[out_idx * in_dim + in_idx];
+                    if (std::abs(val) < threshold) continue;
+                    NodeRef in_ref = make_index_ref(in_idx);
+                    // Store as (tensor, composition(in→out), weight)
+                    NodeRef children[2] = {in_ref, out_ref};
+                    auto [h, l] = MerkleHash::compute(children, children + 2);
+                    NodeRef edge_ref = NodeRef::comp(h, l);
+                    all_weights.emplace_back(tensor_ref, edge_ref, static_cast<double>(val));
+                    ++collected;
+                }
+            }
+            return collected;
+        }
+        
+        // Large matrices: parallel by output row (each row = one output's input relationships)
+        std::size_t num_threads = Threading::default_thread_count();
+        std::size_t rows_per_thread = (out_dim + num_threads - 1) / num_threads;
+        
+        std::vector<std::vector<std::tuple<NodeRef, NodeRef, double>>> thread_weights(num_threads);
+        
+        Threading::parallel_for(num_threads, [&](std::size_t tid) {
+            std::size_t start_row = tid * rows_per_thread;
+            std::size_t end_row = std::min(start_row + rows_per_thread, out_dim);
+            
+            std::vector<std::tuple<NodeRef, NodeRef, double>> local;
+            local.reserve((end_row - start_row) * in_dim / 100); // ~1% significant
+            
+            for (std::size_t out_idx = start_row; out_idx < end_row; ++out_idx) {
+                NodeRef out_ref = make_index_ref(out_idx);
+                for (std::size_t in_idx = 0; in_idx < in_dim; ++in_idx) {
+                    float val = data[out_idx * in_dim + in_idx];
+                    if (std::abs(val) < threshold) continue;
+                    NodeRef in_ref = make_index_ref(in_idx);
+                    NodeRef children[2] = {in_ref, out_ref};
+                    auto [h, l] = MerkleHash::compute(children, children + 2);
+                    NodeRef edge_ref = NodeRef::comp(h, l);
+                    local.emplace_back(tensor_ref, edge_ref, static_cast<double>(val));
+                }
+            }
+            
+            thread_weights[tid] = std::move(local);
+        });
+        
+        // Merge
+        std::size_t collected = 0;
+        for (auto& tw : thread_weights) {
+            collected += tw.size();
+            all_weights.insert(all_weights.end(),
+                              std::make_move_iterator(tw.begin()),
+                              std::make_move_iterator(tw.end()));
+        }
+        
+        return collected;
     }
 
     std::size_t collect_sparse_weights(const SafetensorReader& reader,
@@ -616,26 +786,7 @@ public:
         return collected;
     }
 
-    /// Create deterministic NodeRef for dimension
-    [[nodiscard]] NodeRef make_dimension_ref(NodeRef tensor_ref, std::size_t dim) {
-        // Combine tensor ref with dimension to create unique ref
-        std::uint8_t bytes[16];
-        std::memcpy(bytes, &tensor_ref.id_high, 8);
-        std::memcpy(bytes + 8, &dim, 8);
-
-        NodeRef refs[2] = {
-            NodeRef::comp(
-                *reinterpret_cast<std::int64_t*>(bytes),
-                *reinterpret_cast<std::int64_t*>(bytes + 8)
-            ),
-            tensor_ref
-        };
-
-        auto [h, l] = MerkleHash::compute(refs, refs + 2);
-        return NodeRef::comp(h, l);
-    }
-
-    /// Create deterministic NodeRef from index
+    /// Create deterministic NodeRef from index (for non-embedding tensor weights)
     [[nodiscard]] NodeRef make_index_ref(std::size_t index) {
         std::uint8_t bytes[8];
         for (int i = 0; i < 8; ++i) {

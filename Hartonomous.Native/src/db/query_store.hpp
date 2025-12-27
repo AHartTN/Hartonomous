@@ -12,7 +12,6 @@
 #include "pg_result.hpp"
 #include "../threading/threading.hpp"
 #include "../atoms/node_ref.hpp"
-#include "../atoms/byte_atom_table.hpp"
 #include "../atoms/codepoint_atom_table.hpp"
 #include "../atoms/merkle_hash.hpp"
 #include "../atoms/semantic_decompose.hpp"
@@ -96,6 +95,7 @@ struct Relationship {
     NodeRef from;
     NodeRef to;
     double weight;
+    std::int32_t obs_count;  // How many times this edge was observed
     std::int16_t rel_type;
     NodeRef context;
 };
@@ -185,7 +185,7 @@ public:
     /// O(1) with primary key index.
     [[nodiscard]] bool exists(NodeRef ref) {
         if (ref.is_atom) {
-            // Atoms always exist (they're the 256 byte values)
+            // Atoms always exist (they're the 1.1M Unicode codepoints)
             return true;
         }
 
@@ -444,10 +444,11 @@ public:
     // DECODE - Get content back from root
     // =========================================================================
 
-    /// Decode composition tree to bytes.
+    /// Decode composition tree to codepoints, then encode as UTF-8 bytes.
     [[nodiscard]] std::vector<std::uint8_t> decode(NodeRef root) {
-        std::vector<std::uint8_t> result;
-        result.reserve(1024);
+        // First collect all codepoints
+        std::vector<std::int32_t> codepoints;
+        codepoints.reserve(1024);
 
         std::vector<NodeRef> stack;
         stack.reserve(10000);
@@ -462,7 +463,10 @@ public:
             }
 
             if (node.is_atom) {
-                result.push_back(ByteAtomTable::instance().to_byte(node));
+                // Convert atom NodeRef back to codepoint
+                std::int32_t cp = SemanticDecompose::atom_to_codepoint(
+                    AtomId{node.id_high, node.id_low});
+                codepoints.push_back(cp);
                 continue;
             }
 
@@ -473,6 +477,15 @@ public:
 
             stack.push_back(children->second);
             stack.push_back(children->first);
+        }
+
+        // Encode codepoints to UTF-8
+        std::vector<std::uint8_t> result;
+        result.reserve(codepoints.size() * 2);
+        std::uint8_t buf[4];
+        for (std::int32_t cp : codepoints) {
+            std::size_t len = UTF8Decoder::encode_one(cp, buf);
+            result.insert(result.end(), buf, buf + len);
         }
 
         return result;
@@ -569,10 +582,11 @@ public:
         char query[2048];
         std::snprintf(query, sizeof(query),
             "INSERT INTO relationship (from_high, from_low, to_high, to_low, "
-            "weight, trajectory, rel_type, context_high, context_low) "
-            "VALUES (%lld, %lld, %lld, %lld, %f, ST_GeomFromText('%s'), %d, %lld, %lld) "
+            "weight, obs_count, trajectory, rel_type, context_high, context_low) "
+            "VALUES (%lld, %lld, %lld, %lld, %f, 1, ST_GeomFromText('%s'), %d, %lld, %lld) "
             "ON CONFLICT (from_high, from_low, to_high, to_low, context_high, context_low) "
-            "DO UPDATE SET weight = EXCLUDED.weight, trajectory = EXCLUDED.trajectory",
+            "DO UPDATE SET weight = relationship.weight + EXCLUDED.weight, "
+            "obs_count = relationship.obs_count + 1, trajectory = EXCLUDED.trajectory",
             static_cast<long long>(from.id_high),
             static_cast<long long>(from.id_low),
             static_cast<long long>(to.id_high),
@@ -758,19 +772,23 @@ public:
 
     /// Store a weighted relationship: from → to with weight.
     /// SPARSE: Only call this for salient (non-zero, meaningful) weights.
+    /// WEIGHTED AVERAGE: On conflict, computes running average of weights.
     void store_relationship(NodeRef from, NodeRef to, double weight,
                             RelType type = REL_DEFAULT,
                             NodeRef context = NodeRef{}) {
         // Sparse encoding: skip near-zero weights
         if (std::abs(weight) < 1e-9) return;
 
+        // On conflict: compute weighted average
+        // new_avg = (old_weight * old_count + new_weight) / (old_count + 1)
         char query[512];
         std::snprintf(query, sizeof(query),
             "INSERT INTO relationship (from_high, from_low, to_high, to_low, "
-            "weight, rel_type, context_high, context_low) "
-            "VALUES (%lld, %lld, %lld, %lld, %f, %d, %lld, %lld) "
+            "weight, obs_count, rel_type, context_high, context_low) "
+            "VALUES (%lld, %lld, %lld, %lld, %f, 1, %d, %lld, %lld) "
             "ON CONFLICT (from_high, from_low, to_high, to_low, context_high, context_low) "
-            "DO UPDATE SET weight = EXCLUDED.weight",
+            "DO UPDATE SET weight = (relationship.weight * relationship.obs_count + EXCLUDED.weight) / (relationship.obs_count + 1), "
+            "obs_count = relationship.obs_count + 1",
             static_cast<long long>(from.id_high),
             static_cast<long long>(from.id_low),
             static_cast<long long>(to.id_high),
@@ -788,7 +806,7 @@ public:
                                                        std::size_t limit = 100) {
         char query[512];
         std::snprintf(query, sizeof(query),
-            "SELECT to_high, to_low, weight, rel_type, context_high, context_low "
+            "SELECT to_high, to_low, weight, obs_count, rel_type, context_high, context_low "
             "FROM relationship "
             "WHERE from_high = %lld AND from_low = %lld "
             "ORDER BY weight DESC LIMIT %zu",
@@ -804,7 +822,7 @@ public:
                                                      std::size_t limit = 100) {
         char query[512];
         std::snprintf(query, sizeof(query),
-            "SELECT from_high, from_low, weight, rel_type, context_high, context_low "
+            "SELECT from_high, from_low, weight, obs_count, rel_type, context_high, context_low "
             "FROM relationship "
             "WHERE to_high = %lld AND to_low = %lld "
             "ORDER BY weight DESC LIMIT %zu",
@@ -823,7 +841,7 @@ public:
     {
         char query[512];
         std::snprintf(query, sizeof(query),
-            "SELECT from_high, from_low, to_high, to_low, weight, rel_type "
+            "SELECT from_high, from_low, to_high, to_low, weight, obs_count, rel_type "
             "FROM relationship "
             "WHERE weight >= %f AND weight <= %f "
             "  AND context_high = %lld AND context_low = %lld "
@@ -846,7 +864,8 @@ public:
                 r.to.id_low = std::stoll(res.get_value(i, 3));
                 r.to.is_atom = is_atom(r.to.id_high, r.to.id_low);
                 r.weight = std::stod(res.get_value(i, 4));
-                r.rel_type = static_cast<std::int16_t>(std::stoi(res.get_value(i, 5)));
+                r.obs_count = std::stoi(res.get_value(i, 5));
+                r.rel_type = static_cast<std::int16_t>(std::stoi(res.get_value(i, 6)));
                 r.context = context;
                 results.push_back(r);
             }
@@ -876,6 +895,25 @@ public:
             return std::stod(res.get_value(0, 0));
         }
         return std::nullopt;
+    }
+
+    /// Delete a specific relationship.
+    void delete_relationship(NodeRef from, NodeRef to,
+                             NodeRef context = NodeRef{}) {
+        char query[256];
+        std::snprintf(query, sizeof(query),
+            "DELETE FROM relationship "
+            "WHERE from_high = %lld AND from_low = %lld "
+            "  AND to_high = %lld AND to_low = %lld "
+            "  AND context_high = %lld AND context_low = %lld",
+            static_cast<long long>(from.id_high),
+            static_cast<long long>(from.id_low),
+            static_cast<long long>(to.id_high),
+            static_cast<long long>(to.id_low),
+            static_cast<long long>(context.id_high),
+            static_cast<long long>(context.id_low));
+
+        PQexec(conn_.get(), query);
     }
 
     /// Bulk store model weights (for importing neural network parameters).
@@ -942,7 +980,7 @@ public:
                 // Direct COPY to relationship table (no conflicts for new model)
                 PGresult* res = PQexec(conn.get(),
                     "COPY relationship (from_high, from_low, to_high, to_low, "
-                    "weight, rel_type, context_high, context_low) FROM STDIN");
+                    "weight, obs_count, rel_type, context_high, context_low) FROM STDIN");
                 if (PQresultStatus(res) != PGRES_COPY_IN) {
                     std::cerr << "Thread " << tid << " COPY failed: " << PQerrorMessage(conn.get()) << std::endl;
                     PQclear(res);
@@ -951,13 +989,13 @@ public:
                 PQclear(res);
 
                 std::string buffer;
-                buffer.reserve((end - start) * 80);
+                buffer.reserve((end - start) * 100);
                 
                 char buf[256];
                 for (std::size_t i = start; i < end; ++i) {
                     const auto& [from, to, weight] = weights[i];
                     int len = std::snprintf(buf, sizeof(buf),
-                        "%lld\t%lld\t%lld\t%lld\t%.6g\t%d\t%lld\t%lld\n",
+                        "%lld\t%lld\t%lld\t%lld\t%.6g\t1\t%d\t%lld\t%lld\n",
                         static_cast<long long>(from.id_high),
                         static_cast<long long>(from.id_low),
                         static_cast<long long>(to.id_high),
@@ -1053,11 +1091,12 @@ public:
 
         PQexec(conn_.get(),
             "INSERT INTO relationship (from_high, from_low, to_high, to_low, "
-            "weight, rel_type, context_high, context_low) "
-            "SELECT from_high, from_low, to_high, to_low, weight, rel_type, "
+            "weight, obs_count, rel_type, context_high, context_low) "
+            "SELECT from_high, from_low, to_high, to_low, weight, 1, rel_type, "
             "context_high, context_low FROM weight_staging "
             "ON CONFLICT (from_high, from_low, to_high, to_low, context_high, context_low) "
-            "DO UPDATE SET weight = EXCLUDED.weight");
+            "DO UPDATE SET weight = relationship.weight + EXCLUDED.weight, "
+            "obs_count = relationship.obs_count + 1");
 
         PQexec(conn_.get(), "DROP TABLE weight_staging");
     }
@@ -1258,16 +1297,17 @@ public:
         auto upsert_start = std::chrono::high_resolution_clock::now();
 
         // Upsert from staging to real table, converting WKT to geometry
-        // Use DISTINCT to handle any duplicate refs, and DO NOTHING for conflicts
+        // Use DISTINCT to handle any duplicate refs, accumulate weight and obs_count on conflict
         PGresult* upsert_res = PQexec(conn_.get(),
             "INSERT INTO relationship (from_high, from_low, to_high, to_low, "
-            "weight, trajectory, rel_type, context_high, context_low) "
+            "weight, obs_count, trajectory, rel_type, context_high, context_low) "
             "SELECT DISTINCT ON (from_high, from_low, to_high, to_low, context_high, context_low) "
-            "from_high, from_low, to_high, to_low, weight, "
+            "from_high, from_low, to_high, to_low, weight, 1, "
             "ST_GeomFromText(trajectory), rel_type, context_high, context_low "
             "FROM traj_staging "
             "ON CONFLICT (from_high, from_low, to_high, to_low, context_high, context_low) "
-            "DO UPDATE SET weight = EXCLUDED.weight, trajectory = EXCLUDED.trajectory");
+            "DO UPDATE SET weight = relationship.weight + EXCLUDED.weight, "
+            "obs_count = relationship.obs_count + 1, trajectory = EXCLUDED.trajectory");
         if (PQresultStatus(upsert_res) != PGRES_COMMAND_OK) {
             std::cerr << "store_embedding_trajectories: upsert failed: " << PQerrorMessage(conn_.get()) << "\n";
         }
@@ -1555,7 +1595,7 @@ public:
     {
         char query[512];
         std::snprintf(query, sizeof(query),
-            "SELECT to_high, to_low, weight, context_high, context_low "
+            "SELECT to_high, to_low, weight, obs_count, context_high, context_low "
             "FROM relationship "
             "WHERE from_high = %lld AND from_low = %lld AND rel_type = %d "
             "ORDER BY weight DESC LIMIT %zu",
@@ -1575,9 +1615,10 @@ public:
                 r.to.id_low = std::stoll(res.get_value(i, 1));
                 r.to.is_atom = is_atom(r.to.id_high, r.to.id_low);
                 r.weight = std::stod(res.get_value(i, 2));
+                r.obs_count = std::stoi(res.get_value(i, 3));
                 r.rel_type = static_cast<std::int16_t>(type);
-                r.context.id_high = std::stoll(res.get_value(i, 3));
-                r.context.id_low = std::stoll(res.get_value(i, 4));
+                r.context.id_high = std::stoll(res.get_value(i, 4));
+                r.context.id_low = std::stoll(res.get_value(i, 5));
                 r.context.is_atom = false;
                 results.push_back(r);
             }
@@ -1663,11 +1704,14 @@ private:
     bool contains_short_substring(const std::string& substring) {
         // For very short substrings, we need to walk the tree
         // This is O(n) in compositions but necessary for non-aligned substrings
-        const auto& atoms = ByteAtomTable::instance();
+        const auto& atoms = CodepointAtomTable::instance();
 
-        if (substring.size() == 1) {
-            // Single byte - check if atom exists with relationships
-            NodeRef atom = atoms[static_cast<unsigned char>(substring[0])];
+        // Decode UTF-8 to get the actual codepoints
+        auto codepoints = UTF8Decoder::decode(substring);
+        
+        if (codepoints.size() == 1) {
+            // Single codepoint - check if atom exists with relationships
+            NodeRef atom = atoms.ref(codepoints[0]);
             char query[256];
             std::snprintf(query, sizeof(query),
                 "SELECT 1 FROM composition WHERE "
@@ -1681,7 +1725,7 @@ private:
             return res.status() == PGRES_TUPLES_OK && res.row_count() > 0;
         }
 
-        // For 2-4 bytes, compute the composition and check if it exists
+        // For 2-4 codepoints, compute the composition and check if it exists
         NodeRef root = compute_root(substring);
         return exists(root);
     }
@@ -1786,35 +1830,17 @@ public:
         pending_compositions_.clear();
     }
 
-    /// Build tree structure and compute hashes (for compute_root).
-    NodeRef build_tree_hashes(const std::uint8_t* data, std::size_t len) {
-        const auto& atoms = ByteAtomTable::instance();
-
-        if (len == 1) return atoms[data[0]];
-        if (len == 2) {
-            NodeRef children[2] = {atoms[data[0]], atoms[data[1]]};
-            auto [h, l] = MerkleHash::compute(children, children + 2);
-            return NodeRef::comp(h, l);
-        }
-
-        // Balanced binary tree
-        std::size_t mid = len / 2;
-        NodeRef left = build_tree_hashes(data, mid);
-        NodeRef right = build_tree_hashes(data + mid, len - mid);
-
-        NodeRef children[2] = {left, right};
-        auto [h, l] = MerkleHash::compute(children, children + 2);
-        return NodeRef::comp(h, l);
-    }
-
-    /// Check if an ID is an atom (byte 0-255).
+    /// Check if an ID represents a codepoint atom.
+    /// Uses inverse Hilbert encoding to verify it's a valid atom.
     bool is_atom(std::int64_t high, std::int64_t low) {
-        // Byte atoms have known structure from ByteAtomTable
-        for (std::uint32_t b = 0; b < 256; ++b) {
-            NodeRef atom = ByteAtomTable::instance()[b];
-            if (atom.id_high == high && atom.id_low == low) {
-                return true;
-            }
+        // Try to decode as an atom - if it produces a valid codepoint, it's an atom
+        AtomId id{high, low};
+        std::int32_t cp = SemanticDecompose::atom_to_codepoint(id);
+        // Valid Unicode codepoint range (excluding surrogates)
+        if (cp >= 0 && cp <= 0x10FFFF && !(cp >= 0xD800 && cp <= 0xDFFF)) {
+            // Verify round-trip: codepoint → atom → should match
+            NodeRef verify = CodepointAtomTable::instance().ref(cp);
+            return verify.id_high == high && verify.id_low == low;
         }
         return false;
     }
@@ -1842,9 +1868,10 @@ public:
                 }
 
                 r.weight = std::stod(res.get_value(i, 2));
-                r.rel_type = static_cast<std::int16_t>(std::stoi(res.get_value(i, 3)));
-                r.context.id_high = std::stoll(res.get_value(i, 4));
-                r.context.id_low = std::stoll(res.get_value(i, 5));
+                r.obs_count = std::stoi(res.get_value(i, 3));
+                r.rel_type = static_cast<std::int16_t>(std::stoi(res.get_value(i, 4)));
+                r.context.id_high = std::stoll(res.get_value(i, 5));
+                r.context.id_low = std::stoll(res.get_value(i, 6));
                 r.context.is_atom = false;
 
                 results.push_back(r);

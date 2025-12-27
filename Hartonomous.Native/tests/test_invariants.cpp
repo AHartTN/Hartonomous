@@ -155,17 +155,24 @@ TEST_CASE("Different content produces different roots", "[invariant][merkle]") {
 // LOSSLESS: Round-trip encoding preserves all data
 // =============================================================================
 
-TEST_CASE("Binary data round-trips losslessly", "[invariant][lossless]") {
+TEST_CASE("Unicode codepoints round-trip losslessly", "[invariant][lossless]") {
     PairEncodingEngine engine;
-    
-    // All byte values
-    std::vector<std::uint8_t> input(256);
-    for (int i = 0; i < 256; ++i) input[i] = static_cast<std::uint8_t>(i);
-    
-    auto root = engine.ingest(input.data(), input.size());
+
+    // Sample from the FULL 1.1M codepoint space using prime step
+    std::vector<std::int32_t> codepoints;
+    for (std::int32_t cp = 0; cp <= 0x10FFFF; cp += 997) {
+        if (cp >= 0xD800 && cp <= 0xDFFF) continue;  // Skip surrogates
+        codepoints.push_back(cp);
+    }
+
+    // Encode to UTF-8
+    std::string input = UTF8Decoder::encode(codepoints);
+
+    auto root = engine.ingest(input);
     auto decoded = engine.decode(root);
-    
-    REQUIRE(decoded == input);
+
+    bool matches = (std::string(decoded.begin(), decoded.end()) == input);
+    REQUIRE(matches);
 }
 
 TEST_CASE("Large repetitive data round-trips", "[invariant][lossless]") {

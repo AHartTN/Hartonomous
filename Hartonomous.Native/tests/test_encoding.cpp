@@ -21,9 +21,9 @@ using namespace hartonomous;
 TEST_CASE("PairEncodingEngine: Lossless round-trip", "[encoding][lossless]") {
     PairEncodingEngine engine;
     
-    SECTION("All byte values") {
-        std::vector<std::uint8_t> input(256);
-        for (int i = 0; i < 256; ++i) input[i] = static_cast<std::uint8_t>(i);
+    SECTION("ASCII values") {
+        std::vector<std::uint8_t> input(128);
+        for (int i = 0; i < 128; ++i) input[i] = static_cast<std::uint8_t>(i);
         
         auto root = engine.ingest(input.data(), input.size());
         auto decoded = engine.decode(root);
@@ -39,8 +39,8 @@ TEST_CASE("PairEncodingEngine: Lossless round-trip", "[encoding][lossless]") {
         REQUIRE(std::string(decoded.begin(), decoded.end()) == input);
     }
     
-    SECTION("Binary with nulls") {
-        std::vector<std::uint8_t> input = {0x00, 0xFF, 0x00, 0x7F, 0x80, 0x00};
+    SECTION("ASCII with nulls") {
+        std::vector<std::uint8_t> input = {0x00, 0x20, 0x00, 0x7F, 0x01, 0x00};
         auto root = engine.ingest(input.data(), input.size());
         auto decoded = engine.decode(root);
         
@@ -57,12 +57,12 @@ TEST_CASE("PairEncodingEngine: Lossless round-trip", "[encoding][lossless]") {
         REQUIRE(std::string(decoded.begin(), decoded.end()) == input);
     }
     
-    SECTION("Pseudo-random binary") {
+    SECTION("Pseudo-random ASCII") {
         std::vector<std::uint8_t> input(10000);
         std::uint32_t seed = 12345;
         for (auto& b : input) {
             seed = seed * 1103515245 + 12345;
-            b = static_cast<std::uint8_t>((seed >> 16) & 0xFF);
+            b = static_cast<std::uint8_t>(((seed >> 16) & 0x7F));  // ASCII only
         }
         
         auto root = engine.ingest(input.data(), input.size());
@@ -75,9 +75,9 @@ TEST_CASE("PairEncodingEngine: Lossless round-trip", "[encoding][lossless]") {
 TEST_CASE("PairEncodingCascade: Lossless round-trip", "[encoding][lossless]") {
     CompositionStore store;
     
-    SECTION("All byte values") {
-        std::vector<std::uint8_t> input(256);
-        for (int i = 0; i < 256; ++i) input[i] = static_cast<std::uint8_t>(i);
+    SECTION("ASCII values") {
+        std::vector<std::uint8_t> input(128);
+        for (int i = 0; i < 128; ++i) input[i] = static_cast<std::uint8_t>(i);
         
         auto root = PairEncodingCascade::encode(input.data(), input.size(), store);
         auto decoded = PairEncodingCascade::decode(root, store);

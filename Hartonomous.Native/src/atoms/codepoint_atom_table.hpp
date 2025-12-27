@@ -108,16 +108,11 @@ private:
         // Step 1: Semantic decomposition (codepoint → 4D coordinates)
         atom.coord = SemanticDecompose::get_coord(codepoint);
 
-        // Step 2: Hilbert encoding (4D → 128-bit)
-        // This preserves semantic locality: similar codepoints → nearby indices
-        auto [high, low] = HilbertEncoder::encode(
-            static_cast<std::uint32_t>(atom.coord.page),
-            static_cast<std::uint32_t>(atom.coord.type),
-            static_cast<std::uint32_t>(atom.coord.base),
-            static_cast<std::uint32_t>(atom.coord.variant)
-        );
+        // Step 2: Get AtomId via SemanticDecompose (which uses SemanticHilbert)
+        // This ensures consistency with how atoms are seeded in the database
+        AtomId id = SemanticDecompose::get_atom_id(codepoint);
 
-        atom.ref = NodeRef::atom(AtomId{high, low});
+        atom.ref = NodeRef::atom(id);
         return atom;
     }
 };

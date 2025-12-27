@@ -404,22 +404,22 @@ Models contribute evidence to the shared relationship graph. We don't depend on 
 - [x] Semantic decomposition (codepoint → 4D coordinates)
 - [x] Hilbert encoding (4D → 128-bit AtomId)
 - [x] CPE (text → composition tree → NodeRef)
-- [x] PostGIS schema (composition, relationship tables)
-- [x] Trajectory storage (LineStringZM)
-- [x] Bulk ingestion (COPY protocol, 11M rows/second)
-- [x] Tokenizer ingestion (token → NodeRef mapping)
+- [x] PostGIS schema (composition, relationship tables with obs_count)
+- [x] Trajectory storage (LineStringZM) for paths through semantic space
+- [x] Bulk ingestion (COPY protocol, parallel)
+- [x] Tokenizer ingestion (token → NodeRef mapping via CPE)
+- [x] Embedding → token-to-token similarity (cosine similarity above threshold)
+- [x] Multi-model aggregation (ON CONFLICT accumulates weight + obs_count)
 
 ### 8.2 In Progress
-- [ ] Embedding → relationship extraction (token-to-token, not token-to-dimension)
-- [ ] Multi-model aggregation (ON CONFLICT strategies)
-- [ ] Centroid/hull computation on trajectories
+- [ ] Query interface (relationship + spatial combined)
+- [ ] Path-based similarity via ST_FrechetDistance / ST_Intersects
 
 ### 8.3 Not Started
-- [ ] Query interface (relationship + spatial combined)
 - [ ] A* pathfinding on relationship graph
 - [ ] Spectral analysis of relationship graph
 - [ ] Inference API (input → output via traversal)
-- [ ] Attention pattern extraction from transformer weights
+- [ ] Attention pattern capture during inference (runtime, not static)
 - [ ] Web/API frontend
 
 ---

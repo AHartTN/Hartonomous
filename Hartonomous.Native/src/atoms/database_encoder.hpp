@@ -7,7 +7,7 @@
 /// Uses PairEncodingCascade for fast O(n) tree building with parallel chunks.
 
 #include "node_ref.hpp"
-#include "byte_atom_table.hpp"
+#include "codepoint_atom_table.hpp"
 #include "composition_store.hpp"
 #include "../threading/threading.hpp"
 #include "../db/database_store.hpp"
@@ -51,21 +51,27 @@ public:
 
         total_bytes_ = len;
 
-        std::size_t num_chunks = (len + chunk_size_ - 1) / chunk_size_;
+        // DECODE UTF-8 TO CODEPOINTS FIRST - everything else operates on codepoints
+        auto codepoints = UTF8Decoder::decode(data, len);
+        if (codepoints.empty()) return NodeRef{};
+
+        // Chunk on CODEPOINTS, not bytes
+        std::size_t codepoint_chunk_size = chunk_size_;  // codepoints per chunk
+        std::size_t num_chunks = (codepoints.size() + codepoint_chunk_size - 1) / codepoint_chunk_size;
         std::vector<NodeRef> chunk_roots(num_chunks);
         std::vector<CompositionCache> local_caches(num_chunks);
 
-        // Phase 1: Parallel chunk encoding (CPU-bound)
+        // Phase 1: Parallel chunk encoding on CODEPOINTS
         Threading::parallel_for(num_chunks, [&](std::size_t i) {
-            std::size_t start = i * chunk_size_;
-            std::size_t end = std::min(start + chunk_size_, len);
-            chunk_roots[i] = encode_chunk(data + start, end - start, local_caches[i]);
+            std::size_t start = i * codepoint_chunk_size;
+            std::size_t end = std::min(start + codepoint_chunk_size, codepoints.size());
+            chunk_roots[i] = encode_codepoint_chunk(codepoints, start, end, local_caches[i]);
         });
 
-        // Phase 2: Merge local caches into global store (parallel, store handles locking)
-        Threading::parallel_for(num_chunks, [&](std::size_t i) {
+        // Phase 2: Merge local caches into global store (SEQUENTIAL - merging is lock-heavy)
+        for (std::size_t i = 0; i < num_chunks; ++i) {
             store_.merge(local_caches[i]);
-        });
+        }
 
         // Phase 3: Build final tree from chunk roots
         NodeRef root = build_tree(chunk_roots.data(), chunk_roots.size());
@@ -89,24 +95,32 @@ public:
         if (len == 0) return NodeRef{};
 
         total_bytes_ = len;
+        
+        // DECODE UTF-8 TO CODEPOINTS FIRST - everything else operates on codepoints
+        auto codepoints = UTF8Decoder::decode(data, len);
+        if (codepoints.empty()) return NodeRef{};
+
         auto t0 = std::chrono::high_resolution_clock::now();
 
-        std::size_t num_chunks = (len + chunk_size_ - 1) / chunk_size_;
+        // Chunk on CODEPOINTS, not bytes
+        std::size_t codepoint_chunk_size = chunk_size_;
+        std::size_t num_chunks = (codepoints.size() + codepoint_chunk_size - 1) / codepoint_chunk_size;
         std::vector<NodeRef> chunk_roots(num_chunks);
         std::vector<CompositionCache> local_caches(num_chunks);
 
         Threading::parallel_for(num_chunks, [&](std::size_t i) {
-            std::size_t start = i * chunk_size_;
-            std::size_t end = std::min(start + chunk_size_, len);
-            chunk_roots[i] = encode_chunk(data + start, end - start, local_caches[i]);
+            std::size_t start = i * codepoint_chunk_size;
+            std::size_t end = std::min(start + codepoint_chunk_size, codepoints.size());
+            chunk_roots[i] = encode_codepoint_chunk(codepoints, start, end, local_caches[i]);
         });
 
         auto t1 = std::chrono::high_resolution_clock::now();
         last_encode_ms_ = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
 
-        Threading::parallel_for(num_chunks, [&](std::size_t i) {
+        // Sequential merge - parallel merges cause lock contention
+        for (std::size_t i = 0; i < num_chunks; ++i) {
             store_.merge(local_caches[i]);
-        });
+        }
 
         auto t2 = std::chrono::high_resolution_clock::now();
         last_merge_ms_ = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count();
@@ -143,19 +157,23 @@ public:
     [[nodiscard]] const CompositionStore& store() const { return store_; }
 
 private:
-    NodeRef encode_chunk(const std::uint8_t* data, std::size_t len, CompositionCache& cache) {
-        if (len == 0) return NodeRef{};
+    /// Encode a slice of codepoints into a balanced tree
+    NodeRef encode_codepoint_chunk(const std::vector<std::int32_t>& codepoints,
+                                    std::size_t start, std::size_t end,
+                                    CompositionCache& cache) {
+        if (start >= end) return NodeRef{};
 
-        const auto& atoms = ByteAtomTable::instance();
+        const auto& atoms = CodepointAtomTable::instance();
 
-        // Build balanced tree from bytes
+        // Build balanced tree from codepoints[start:end]
         std::vector<NodeRef> level;
+        std::size_t len = end - start;
         level.reserve((len + block_size_ - 1) / block_size_);
 
         // First level: create blocks of atoms
-        for (std::size_t i = 0; i < len; i += block_size_) {
-            std::size_t block_end = std::min(i + block_size_, len);
-            level.push_back(build_atom_block(data + i, block_end - i, cache, atoms));
+        for (std::size_t i = start; i < end; i += block_size_) {
+            std::size_t block_end = std::min(i + block_size_, end);
+            level.push_back(build_codepoint_block(codepoints, i, block_end, cache, atoms));
         }
 
         // Reduce to single root
@@ -177,15 +195,18 @@ private:
         return level.empty() ? NodeRef{} : level[0];
     }
 
-    static NodeRef build_atom_block(const std::uint8_t* data, std::size_t len,
-                                     CompositionCache& cache, const ByteAtomTable& atoms) {
+    static NodeRef build_codepoint_block(const std::vector<std::int32_t>& codepoints,
+                                          std::size_t start, std::size_t end,
+                                          CompositionCache& cache, 
+                                          const CodepointAtomTable& atoms) {
+        std::size_t len = end - start;
         if (len == 0) return NodeRef{};
-        if (len == 1) return atoms[data[0]];
-        if (len == 2) return cache.get_or_create(atoms[data[0]], atoms[data[1]]);
+        if (len == 1) return atoms.ref(codepoints[start]);
+        if (len == 2) return cache.get_or_create(atoms.ref(codepoints[start]), atoms.ref(codepoints[start + 1]));
 
-        std::size_t mid = len / 2;
-        NodeRef left = build_atom_block(data, mid, cache, atoms);
-        NodeRef right = build_atom_block(data + mid, len - mid, cache, atoms);
+        std::size_t mid = start + len / 2;
+        NodeRef left = build_codepoint_block(codepoints, start, mid, cache, atoms);
+        NodeRef right = build_codepoint_block(codepoints, mid, end, cache, atoms);
         return cache.get_or_create(left, right);
     }
 

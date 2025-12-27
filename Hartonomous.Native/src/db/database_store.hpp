@@ -13,7 +13,7 @@
 #include "pg_result.hpp"
 #include "copy_builder.hpp"
 #include "../atoms/node_ref.hpp"
-#include "../atoms/byte_atom_table.hpp"
+#include "../atoms/codepoint_atom_table.hpp"
 #include "../atoms/semantic_decompose.hpp"
 #include "../atoms/atom_id.hpp"
 #include <libpq-fe.h>
@@ -44,7 +44,6 @@ class DatabaseStore {
     
     // Read cache - BULK LOADED, uses combined 64-bit key for speed
     mutable std::unordered_map<std::uint64_t, std::pair<NodeRef, NodeRef>, IdHash> decompose_cache_;
-    mutable std::unordered_map<std::uint64_t, bool, IdHash> atom_cache_;
     mutable bool cache_loaded_ = false;
     
     static std::uint64_t make_key(std::int64_t high, std::int64_t low) noexcept {
@@ -76,10 +75,16 @@ public:
     void clear_all() {
         conn_.exec_ok("TRUNCATE atom, composition CASCADE", "clear_all");
         decompose_cache_.clear();
-        atom_cache_.clear();
         cache_loaded_ = false;
     }
-    
+
+    /// Clear only compositions (preserves atoms)
+    void clear_compositions() {
+        conn_.exec_ok("TRUNCATE composition", "clear_compositions");
+        decompose_cache_.clear();
+        cache_loaded_ = false;
+    }
+
     /// Store a composition (parent = left + right)
     void store_composition(NodeRef parent, NodeRef left, NodeRef right) {
         pending_compositions_.emplace_back(parent, left, right);
@@ -163,7 +168,6 @@ public:
     /// Clear the read cache (forces fresh reads from DB)
     void clear_cache() const {
         decompose_cache_.clear();
-        atom_cache_.clear();
         cache_loaded_ = false;
     }
     
@@ -172,15 +176,7 @@ public:
         if (cache_loaded_) return;
         
         decompose_cache_.clear();
-        atom_cache_.clear();
         decompose_cache_.reserve(500000);
-        atom_cache_.reserve(300);
-        
-        // Precompute byte atoms (0-255) - deterministic, no DB query needed
-        for (std::uint32_t byte = 0; byte < 256; ++byte) {
-            AtomId id = SemanticDecompose::get_atom_id(byte);
-            atom_cache_[make_key(id.high, id.low)] = true;
-        }
         
         // Load all compositions in one query - single row per composition
         PgResult res(PQexec(conn_.get(),
@@ -210,12 +206,12 @@ public:
                     NodeRef left;
                     left.id_high = vals[2];
                     left.id_low = vals[3];
-                    left.is_atom = is_atom_cached(left.id_high, left.id_low);
+                    left.is_atom = is_valid_unicode_atom(left.id_high, left.id_low);
                     
                     NodeRef right;
                     right.id_high = vals[4];
                     right.id_low = vals[5];
-                    right.is_atom = is_atom_cached(right.id_high, right.id_low);
+                    right.is_atom = is_valid_unicode_atom(right.id_high, right.id_low);
                     
                     decompose_cache_[make_key(vals[0], vals[1])] = std::make_pair(left, right);
                 }
@@ -225,6 +221,19 @@ public:
         }
         
         cache_loaded_ = true;
+    }
+    
+    /// Check if an ID represents a valid Unicode atom via round-trip verification.
+    [[nodiscard]] bool is_valid_unicode_atom(std::int64_t high, std::int64_t low) const {
+        AtomId id{high, low};
+        std::int32_t cp = SemanticDecompose::atom_to_codepoint(id);
+        // Valid Unicode codepoint range (excluding surrogates)
+        if (cp >= 0 && cp <= 0x10FFFF && !(cp >= 0xD800 && cp <= 0xDFFF)) {
+            // Verify round-trip: codepoint → atom → should match
+            AtomId verify = SemanticDecompose::get_atom_id(cp);
+            return verify.high == high && verify.low == low;
+        }
+        return false;
     }
     
     /// Decompose a composition - uses bulk-loaded cache
@@ -244,11 +253,6 @@ public:
         }
         
         return std::nullopt;
-    }
-    
-    /// Check if an ID is an atom (from cache)
-    [[nodiscard]] bool is_atom_cached(std::int64_t high, std::int64_t low) const {
-        return atom_cache_.count(make_key(high, low)) > 0;
     }
     
     /// Check if an ID represents an atom (has codepoint)
@@ -308,7 +312,12 @@ private:
             }
             
             if (node.is_atom) {
-                out.push_back(ByteAtomTable::instance().to_byte(node));
+                // Convert atom back to codepoint, then UTF-8 encode
+                std::int32_t cp = SemanticDecompose::atom_to_codepoint(
+                    AtomId{node.id_high, node.id_low});
+                std::uint8_t buf[4];
+                std::size_t len = UTF8Decoder::encode_one(cp, buf);
+                out.insert(out.end(), buf, buf + len);
                 continue;
             }
             

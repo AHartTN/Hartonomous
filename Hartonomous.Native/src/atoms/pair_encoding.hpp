@@ -13,7 +13,7 @@
 // Each type is defined in its own header per single-responsibility principle.
 
 #include "hash_utils.hpp"
-#include "byte_atom_table.hpp"
+#include "codepoint_atom_table.hpp"
 #include "rle_sequence.hpp"
 #include "pair_frequency_counter.hpp"
 #include "composition_store.hpp"

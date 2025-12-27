@@ -17,7 +17,7 @@
 
 #include "content_chunker.hpp"
 #include "node_ref.hpp"
-#include "byte_atom_table.hpp"
+#include "codepoint_atom_table.hpp"
 #include "merkle_hash.hpp"
 #include <vector>
 #include <unordered_map>
@@ -34,7 +34,7 @@ struct CompositionEntry {
 /// Substring-aware encoder using content-defined chunking
 class SubstringEncoder {
     HierarchicalChunker chunker_;
-    const ByteAtomTable& atoms_;
+    const CodepointAtomTable& atoms_;
 
     // Composition cache: prevents duplicate computation
     std::unordered_map<std::uint64_t, NodeRef> cache_;
@@ -48,7 +48,7 @@ class SubstringEncoder {
     }
 
 public:
-    SubstringEncoder() : atoms_(ByteAtomTable::instance()) {
+    SubstringEncoder() : atoms_(CodepointAtomTable::instance()) {
         cache_.reserve(100000);
         pending_.reserve(10000);
     }
@@ -57,14 +57,17 @@ public:
     /// Returns root NodeRef
     [[nodiscard]] NodeRef encode(const std::uint8_t* data, std::size_t len) {
         if (len == 0) return NodeRef{};
-        if (len == 1) return atoms_[data[0]];
+
+        // Decode UTF-8 to codepoints
+        auto codepoints = UTF8Decoder::decode(data, len);
+        if (codepoints.size() == 1) return atoms_.ref(codepoints[0]);
 
         // Small content: encode directly as balanced tree (fast path)
-        if (len <= 8) {
-            return encode_balanced(data, len);
+        if (codepoints.size() <= 8) {
+            return encode_balanced_codepoints(codepoints, 0, codepoints.size());
         }
 
-        // Use content-defined chunks
+        // Use content-defined chunks on the raw bytes
         auto chunks = chunker_.chunk(data, len);
 
         if (chunks.size() == 1 && chunks[0].repeat_count == 1) {
@@ -125,13 +128,15 @@ public:
 private:
     /// Encode a single chunk
     [[nodiscard]] NodeRef encode_chunk(const Chunk& chunk) {
-        if (chunk.length == 1) {
-            return atoms_[chunk.data[0]];
+        // Decode UTF-8 to codepoints
+        auto codepoints = UTF8Decoder::decode(chunk.data, chunk.length);
+        if (codepoints.size() == 1) {
+            return atoms_.ref(codepoints[0]);
         }
 
         // Recursively chunk or use balanced tree for small chunks
-        if (chunk.length <= 16) {
-            return encode_balanced(chunk.data, chunk.length);
+        if (codepoints.size() <= 16) {
+            return encode_balanced_codepoints(codepoints, 0, codepoints.size());
         }
 
         // Recursive content-defined chunking
@@ -139,7 +144,7 @@ private:
 
         if (sub_chunks.size() == 1) {
             // No further subdivision - use balanced tree
-            return encode_balanced(chunk.data, chunk.length);
+            return encode_balanced_codepoints(codepoints, 0, codepoints.size());
         }
 
         std::vector<NodeRef> refs;
@@ -151,18 +156,20 @@ private:
         return build_tree_from_refs(refs);
     }
 
-    /// Encode small content as balanced binary tree (consistent with existing encoding)
-    [[nodiscard]] NodeRef encode_balanced(const std::uint8_t* data, std::size_t len) {
-        if (len == 1) return atoms_[data[0]];
+    /// Encode codepoints as balanced binary tree
+    [[nodiscard]] NodeRef encode_balanced_codepoints(const std::vector<std::int32_t>& codepoints,
+                                                      std::size_t start, std::size_t end) {
+        std::size_t len = end - start;
+        if (len == 1) return atoms_.ref(codepoints[start]);
         if (len == 2) {
-            NodeRef left = atoms_[data[0]];
-            NodeRef right = atoms_[data[1]];
+            NodeRef left = atoms_.ref(codepoints[start]);
+            NodeRef right = atoms_.ref(codepoints[start + 1]);
             return make_composition(left, right);
         }
 
-        std::size_t mid = len / 2;
-        NodeRef left = encode_balanced(data, mid);
-        NodeRef right = encode_balanced(data + mid, len - mid);
+        std::size_t mid = start + len / 2;
+        NodeRef left = encode_balanced_codepoints(codepoints, start, mid);
+        NodeRef right = encode_balanced_codepoints(codepoints, mid, end);
         return make_composition(left, right);
     }
 
