@@ -244,6 +244,9 @@ private:
         std::uint32_t id = 0;
         std::size_t pos = 0;
 
+        // Estimate line count for reserve (average token ~8 chars + newline)
+        vocab_.reserve(content.size() / 9 + 100);
+
         while (pos < content.size()) {
             std::size_t end = content.find('\n', pos);
             if (end == std::string::npos) end = content.size();

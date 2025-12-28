@@ -25,9 +25,9 @@ using namespace hartonomous::model;
 
 // Thread-safe singleton for database connection
 static std::mutex g_db_mutex;
+static std::atomic<bool> g_initialized{false};
 static std::unique_ptr<QueryStore> g_store;
 static std::unique_ptr<DatabaseStore> g_db_store;  // For fast ingestion
-static bool g_initialized = false;
 
 static QueryStore& get_store() {
     std::lock_guard<std::mutex> lock(g_db_mutex);
@@ -164,13 +164,18 @@ HARTONOMOUS_API const char* hartonomous_get_version() {
 #ifdef HARTONOMOUS_HAS_DATABASE
 
 HARTONOMOUS_API int hartonomous_db_init() {
+    // Double-checked locking with atomic flag
+    if (g_initialized.load(std::memory_order_acquire)) {
+        return 0;
+    }
+    
     try {
         std::lock_guard<std::mutex> lock(g_db_mutex);
-        if (!g_initialized) {
+        if (!g_initialized.load(std::memory_order_relaxed)) {
             Seeder seeder(true);  // quiet mode
             seeder.ensure_schema();
             g_store = std::make_unique<QueryStore>();
-            g_initialized = true;
+            g_initialized.store(true, std::memory_order_release);
         }
         return 0;
     } catch (const std::exception&) {
@@ -186,7 +191,7 @@ HARTONOMOUS_API int hartonomous_db_stats(HartonomousDbStats* stats) {
         stats->atom_count = static_cast<std::int64_t>(store.atom_count());
         stats->composition_count = static_cast<std::int64_t>(store.composition_count());
         stats->relationship_count = static_cast<std::int64_t>(store.relationship_count());
-        stats->database_size_bytes = 0;  // TODO: implement
+        stats->database_size_bytes = store.database_size();
         return 0;
     } catch (const std::exception&) {
         return -2;

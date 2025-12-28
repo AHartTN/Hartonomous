@@ -46,7 +46,7 @@ struct RelTuple {
 template<typename T>
 class BatchCollector {
     std::vector<T> buffer_;
-    std::mutex mutex_;
+    mutable std::mutex mutex_;
     std::size_t capacity_;
 
 public:
@@ -80,7 +80,7 @@ public:
     }
 
     std::size_t size() const {
-        std::lock_guard<std::mutex> lock(const_cast<std::mutex&>(mutex_));
+        std::lock_guard<std::mutex> lock(mutex_);
         return buffer_.size();
     }
 };
@@ -100,6 +100,7 @@ class PipelinedWriter {
 
     std::atomic<std::size_t> comps_written_{0};
     std::atomic<std::size_t> rels_written_{0};
+    std::atomic<std::size_t> in_flight_{0};  // Track pending writes
 
 public:
     explicit PipelinedWriter(const std::string& connstr = ConnectionConfig::connection_string())
@@ -115,6 +116,7 @@ public:
 
     void submit_compositions(std::vector<CompTuple>&& batch) {
         if (batch.empty()) return;
+        in_flight_.fetch_add(1);
         {
             std::lock_guard<std::mutex> lock(queue_mutex_);
             comp_queue_.push(std::move(batch));
@@ -124,6 +126,7 @@ public:
 
     void submit_relationships(std::vector<RelTuple>&& batch) {
         if (batch.empty()) return;
+        in_flight_.fetch_add(1);
         {
             std::lock_guard<std::mutex> lock(queue_mutex_);
             rel_queue_.push(std::move(batch));
@@ -132,12 +135,14 @@ public:
     }
 
     void flush() {
-        // Wait for queues to drain
+        // Wait for queues to drain AND writes to complete
         while (true) {
+            bool empty = false;
             {
                 std::lock_guard<std::mutex> lock(queue_mutex_);
-                if (comp_queue_.empty() && rel_queue_.empty()) break;
+                empty = comp_queue_.empty() && rel_queue_.empty();
             }
+            if (empty && in_flight_.load() == 0) break;
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
     }
@@ -178,10 +183,12 @@ private:
             if (!comps.empty()) {
                 write_compositions(comps);
                 comps_written_ += comps.size();
+                in_flight_.fetch_sub(1);
             }
             if (!rels.empty()) {
                 write_relationships(rels);
                 rels_written_ += rels.size();
+                in_flight_.fetch_sub(1);
             }
         }
     }

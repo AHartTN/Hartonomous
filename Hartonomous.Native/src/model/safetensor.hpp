@@ -399,9 +399,21 @@ public:
         std::size_t total_weights = 0;
         std::size_t stored_weights = 0;
 
-        // Process each tensor
+        // Estimate total salient weights across ALL tensors
+        std::size_t estimated_salient = 0;
         for (const auto& meta : reader.tensors()) {
-            if (meta.dtype != TensorDType::F32) continue;  // Only F32 for now
+            if (meta.dtype != TensorDType::F32) continue;
+            estimated_salient += SafetensorReader::element_count(meta) * 
+                                 static_cast<std::size_t>(sparsity_percent_) / 100;
+        }
+
+        // Single allocation for ALL weights across ALL tensors
+        std::vector<std::tuple<NodeRef, NodeRef, double>> all_weights;
+        all_weights.reserve(estimated_salient);
+
+        // Process each tensor - collect only, no DB calls
+        for (const auto& meta : reader.tensors()) {
+            if (meta.dtype != TensorDType::F32) continue;
 
             std::size_t count = SafetensorReader::element_count(meta);
             total_weights += count;
@@ -415,10 +427,6 @@ public:
             // Compute dynamic threshold for this tensor
             double threshold = compute_threshold(data, count);
 
-            // Collect salient weights for batch insert
-            std::vector<std::tuple<NodeRef, NodeRef, double>> salient_weights;
-            salient_weights.reserve(count * static_cast<std::size_t>(sparsity_percent_) / 100);
-
             for (std::size_t i = 0; i < count; ++i) {
                 float weight = data[i];
 
@@ -428,14 +436,14 @@ public:
                 // Create index NodeRef (deterministic from index)
                 NodeRef index_ref = make_index_ref(i);
 
-                salient_weights.emplace_back(tensor_ref, index_ref, static_cast<double>(weight));
+                all_weights.emplace_back(tensor_ref, index_ref, static_cast<double>(weight));
                 stored_weights++;
             }
+        }
 
-            // Batch store salient weights
-            if (!salient_weights.empty()) {
-                store_.store_model_weights(salient_weights, model_context_);
-            }
+        // SINGLE bulk store of ALL weights - one COPY operation
+        if (!all_weights.empty()) {
+            store_.store_model_weights(all_weights, model_context_);
         }
 
         return {total_weights, stored_weights};

@@ -937,16 +937,13 @@ public:
         PQexec(conn_.get(), query);
     }
 
-    /// Bulk store model weights - PARALLEL COPY via connection pool.
+    /// Bulk store model weights - COPY to staging table + MERGE.
     /// 
     /// Per VISION.md: Same NodeRefs = same edge, regardless of model.
     /// The context identifies the source, but edges with same (from,to) AGGREGATE.
     /// 
-    /// This uses:
-    /// - Connection pool for parallel writes
-    /// - Direct COPY to relationship table (no staging)
-    /// - ON CONFLICT handled by PostgreSQL via primary key
-    /// - Parallel chunked execution across all cores
+    /// Bulk store model weights - DIRECT binary COPY, no staging tables.
+    /// For maximum throughput: drop indexes before, rebuild after for TB-scale loads.
     void store_model_weights(
         const std::vector<std::tuple<NodeRef, NodeRef, double>>& weights,
         NodeRef model_context,
@@ -957,139 +954,97 @@ public:
         auto start_time = std::chrono::high_resolution_clock::now();
         std::size_t total = weights.size();
 
-        // Parallel COPY via multiple connections
-        // Each thread gets its own connection, writes its chunk directly
-        std::size_t num_threads = Threading::io_thread_count();
-        std::size_t chunk_size = (total + num_threads - 1) / num_threads;
+        // Direct binary COPY to relationship table - no staging table bullshit
+        PGresult* res = PQexec(conn_.get(),
+            "COPY relationship (from_high, from_low, to_high, to_low, "
+            "weight, obs_count, rel_type, context_high, context_low) "
+            "FROM STDIN WITH (FORMAT binary)");
+        
+        if (PQresultStatus(res) != PGRES_COPY_IN) {
+            PQclear(res);
+            return;
+        }
+        PQclear(res);
 
-        std::atomic<std::size_t> rows_written{0};
-        std::atomic<bool> had_error{false};
+        // Build binary buffer - single allocation
+        static const char COPY_HEADER[] = "PGCOPY\n\377\r\n\0";
+        std::vector<char> buffer;
+        buffer.reserve(total * 90 + 32);
 
-        Threading::parallel_for(num_threads, [&](std::size_t tid) {
-            if (had_error.load()) return;
+        buffer.insert(buffer.end(), COPY_HEADER, COPY_HEADER + 11);
+        buffer.push_back(0); buffer.push_back(0); buffer.push_back(0); buffer.push_back(0);
+        buffer.push_back(0); buffer.push_back(0); buffer.push_back(0); buffer.push_back(0);
 
-            std::size_t start = tid * chunk_size;
-            std::size_t end = std::min(start + chunk_size, total);
-            if (start >= total) return;
+        auto append_int16 = [&](std::int16_t v) {
+            buffer.push_back(static_cast<char>((v >> 8) & 0xFF));
+            buffer.push_back(static_cast<char>(v & 0xFF));
+        };
 
-            try {
-                // Each thread gets its own connection
-                PgConnection conn(ConnectionConfig::connection_string());
+        auto append_int32 = [&](std::int32_t v) {
+            buffer.push_back(static_cast<char>((v >> 24) & 0xFF));
+            buffer.push_back(static_cast<char>((v >> 16) & 0xFF));
+            buffer.push_back(static_cast<char>((v >> 8) & 0xFF));
+            buffer.push_back(static_cast<char>(v & 0xFF));
+        };
 
-                // Build binary COPY buffer for this chunk
-                static const char COPY_HEADER[] = "PGCOPY\n\377\r\n\0";
-                std::vector<char> buffer;
-                buffer.reserve((end - start) * 90 + 32);
+        auto append_int64 = [&](std::int64_t v) {
+            buffer.push_back(static_cast<char>((v >> 56) & 0xFF));
+            buffer.push_back(static_cast<char>((v >> 48) & 0xFF));
+            buffer.push_back(static_cast<char>((v >> 40) & 0xFF));
+            buffer.push_back(static_cast<char>((v >> 32) & 0xFF));
+            buffer.push_back(static_cast<char>((v >> 24) & 0xFF));
+            buffer.push_back(static_cast<char>((v >> 16) & 0xFF));
+            buffer.push_back(static_cast<char>((v >> 8) & 0xFF));
+            buffer.push_back(static_cast<char>(v & 0xFF));
+        };
 
-                buffer.insert(buffer.end(), COPY_HEADER, COPY_HEADER + 11);
-                buffer.push_back(0); buffer.push_back(0); buffer.push_back(0); buffer.push_back(0);
-                buffer.push_back(0); buffer.push_back(0); buffer.push_back(0); buffer.push_back(0);
+        auto append_float64 = [&](double v) {
+            std::uint64_t bits;
+            std::memcpy(&bits, &v, sizeof(bits));
+            buffer.push_back(static_cast<char>((bits >> 56) & 0xFF));
+            buffer.push_back(static_cast<char>((bits >> 48) & 0xFF));
+            buffer.push_back(static_cast<char>((bits >> 40) & 0xFF));
+            buffer.push_back(static_cast<char>((bits >> 32) & 0xFF));
+            buffer.push_back(static_cast<char>((bits >> 24) & 0xFF));
+            buffer.push_back(static_cast<char>((bits >> 16) & 0xFF));
+            buffer.push_back(static_cast<char>((bits >> 8) & 0xFF));
+            buffer.push_back(static_cast<char>(bits & 0xFF));
+        };
 
-                auto append_int16 = [&](std::int16_t v) {
-                    buffer.push_back(static_cast<char>((v >> 8) & 0xFF));
-                    buffer.push_back(static_cast<char>(v & 0xFF));
-                };
+        for (const auto& [from, to, weight] : weights) {
+            append_int16(9);  // 9 columns
+            append_int32(8); append_int64(from.id_high);
+            append_int32(8); append_int64(from.id_low);
+            append_int32(8); append_int64(to.id_high);
+            append_int32(8); append_int64(to.id_low);
+            append_int32(8); append_float64(weight);
+            append_int32(4); append_int32(1);  // obs_count = 1
+            append_int32(2); append_int16(type);
+            append_int32(8); append_int64(model_context.id_high);
+            append_int32(8); append_int64(model_context.id_low);
+        }
+        append_int16(-1);  // Trailer
 
-                auto append_int32 = [&](std::int32_t v) {
-                    buffer.push_back(static_cast<char>((v >> 24) & 0xFF));
-                    buffer.push_back(static_cast<char>((v >> 16) & 0xFF));
-                    buffer.push_back(static_cast<char>((v >> 8) & 0xFF));
-                    buffer.push_back(static_cast<char>(v & 0xFF));
-                };
+        // Stream entire buffer - libpq handles chunking internally
+        if (PQputCopyData(conn_.get(), buffer.data(), static_cast<int>(buffer.size())) != 1) {
+            PQputCopyEnd(conn_.get(), "error");
+            return;
+        }
 
-                auto append_int64 = [&](std::int64_t v) {
-                    buffer.push_back(static_cast<char>((v >> 56) & 0xFF));
-                    buffer.push_back(static_cast<char>((v >> 48) & 0xFF));
-                    buffer.push_back(static_cast<char>((v >> 40) & 0xFF));
-                    buffer.push_back(static_cast<char>((v >> 32) & 0xFF));
-                    buffer.push_back(static_cast<char>((v >> 24) & 0xFF));
-                    buffer.push_back(static_cast<char>((v >> 16) & 0xFF));
-                    buffer.push_back(static_cast<char>((v >> 8) & 0xFF));
-                    buffer.push_back(static_cast<char>(v & 0xFF));
-                };
+        if (PQputCopyEnd(conn_.get(), nullptr) != 1) {
+            return;
+        }
 
-                auto append_float64 = [&](double v) {
-                    std::uint64_t bits;
-                    std::memcpy(&bits, &v, sizeof(bits));
-                    buffer.push_back(static_cast<char>((bits >> 56) & 0xFF));
-                    buffer.push_back(static_cast<char>((bits >> 48) & 0xFF));
-                    buffer.push_back(static_cast<char>((bits >> 40) & 0xFF));
-                    buffer.push_back(static_cast<char>((bits >> 32) & 0xFF));
-                    buffer.push_back(static_cast<char>((bits >> 24) & 0xFF));
-                    buffer.push_back(static_cast<char>((bits >> 16) & 0xFF));
-                    buffer.push_back(static_cast<char>((bits >> 8) & 0xFF));
-                    buffer.push_back(static_cast<char>(bits & 0xFF));
-                };
-
-                for (std::size_t i = start; i < end; ++i) {
-                    const auto& [from, to, weight] = weights[i];
-                    append_int16(9);
-                    append_int32(8); append_int64(from.id_high);
-                    append_int32(8); append_int64(from.id_low);
-                    append_int32(8); append_int64(to.id_high);
-                    append_int32(8); append_int64(to.id_low);
-                    append_int32(8); append_float64(weight);
-                    append_int32(4); append_int32(1);
-                    append_int32(2); append_int16(type);
-                    append_int32(8); append_int64(model_context.id_high);
-                    append_int32(8); append_int64(model_context.id_low);
-                }
-                append_int16(-1);
-
-                // Start COPY
-                PGresult* res = PQexec(conn.get(),
-                    "COPY relationship (from_high, from_low, to_high, to_low, "
-                    "weight, obs_count, rel_type, context_high, context_low) "
-                    "FROM STDIN WITH (FORMAT binary)");
-                
-                if (PQresultStatus(res) != PGRES_COPY_IN) {
-                    std::cerr << "Thread " << tid << " COPY start failed: " << PQerrorMessage(conn.get()) << std::endl;
-                    PQclear(res);
-                    had_error.store(true);
-                    return;
-                }
-                PQclear(res);
-
-                // Send data
-                if (PQputCopyData(conn.get(), buffer.data(), static_cast<int>(buffer.size())) != 1) {
-                    std::cerr << "Thread " << tid << " COPY data failed" << std::endl;
-                    PQputCopyEnd(conn.get(), "error");
-                    had_error.store(true);
-                    return;
-                }
-
-                if (PQputCopyEnd(conn.get(), nullptr) != 1) {
-                    std::cerr << "Thread " << tid << " COPY end failed" << std::endl;
-                    had_error.store(true);
-                    return;
-                }
-
-                res = PQgetResult(conn.get());
-                if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-                    // Duplicate key is expected - we're doing raw COPY
-                    // This is the trade-off: parallel speed vs. conflict handling
-                    std::string err = PQerrorMessage(conn.get());
-                    if (err.find("duplicate key") == std::string::npos) {
-                        std::cerr << "Thread " << tid << " COPY result: " << err << std::endl;
-                    }
-                }
-                PQclear(res);
-
-                rows_written.fetch_add(end - start);
-
-            } catch (const std::exception& e) {
-                std::cerr << "Thread " << tid << " exception: " << e.what() << std::endl;
-                had_error.store(true);
-            }
-        });
+        res = PQgetResult(conn_.get());
+        // Ignore duplicate key errors - model weights are idempotent
+        PQclear(res);
 
         auto end_time = std::chrono::high_resolution_clock::now();
         auto total_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
-        double rate = total_ms > 0 ? (static_cast<double>(rows_written.load()) / total_ms * 1000.0) : 0;
+        double rate = total_ms > 0 ? (static_cast<double>(total) / total_ms * 1000.0) : 0;
 
-        std::cerr << "store_model_weights: " << rows_written.load() << "/" << total 
-                  << " rows via " << num_threads << " parallel connections "
-                  << "(" << total_ms << "ms, " << static_cast<std::size_t>(rate) << " rows/sec)" << std::endl;
+        std::cerr << "store_model_weights: " << total << " rows in " << total_ms << "ms ("
+                  << static_cast<std::size_t>(rate) << " rows/sec)" << std::endl;
     }
 
     /// Bulk store embedding trajectories - direct batched INSERT.
@@ -1184,6 +1139,14 @@ public:
         PgResult res(PQexec(conn_.get(), "SELECT COUNT(*) FROM relationship"));
         if (res.status() != PGRES_TUPLES_OK) return 0;
         return std::stoull(res.get_value(0, 0));
+    }
+
+    /// Get database size in bytes for the hartonomous database.
+    [[nodiscard]] std::int64_t database_size() {
+        PgResult res(PQexec(conn_.get(), 
+            "SELECT pg_database_size(current_database())"));
+        if (res.status() != PGRES_TUPLES_OK) return 0;
+        return std::stoll(res.get_value(0, 0));
     }
 
     // =========================================================================
@@ -1816,143 +1779,63 @@ public:
         return comp;
     }
 
-    /// Flush pending compositions to database - COPY to staging + MERGE.
+    /// Flush pending compositions to database - staging table + INSERT ON CONFLICT.
     /// Compositions are idempotent (same hash = same content), so duplicates are ignored.
+    /// Staging table _comp_stage is created by SchemaManager at DB init.
     void flush_pending() {
         if (pending_compositions_.empty()) return;
 
-        auto start_time = std::chrono::high_resolution_clock::now();
-        std::size_t total = pending_compositions_.size();
+        // Deduplicate in-memory first
+        std::unordered_set<std::uint64_t> seen;
+        seen.reserve(pending_compositions_.size());
+        auto new_end = std::remove_if(pending_compositions_.begin(), pending_compositions_.end(),
+            [&](const auto& tuple) {
+                const auto& parent = std::get<0>(tuple);
+                std::uint64_t key = static_cast<std::uint64_t>(parent.id_high) ^ 
+                                   (static_cast<std::uint64_t>(parent.id_low) * 0x9e3779b97f4a7c15ULL);
+                return !seen.insert(key).second;
+            });
+        pending_compositions_.erase(new_end, pending_compositions_.end());
+        if (pending_compositions_.empty()) return;
 
         PGresult* res;
 
-        // 1. Create UNLOGGED staging table
-        res = PQexec(conn_.get(),
-            "CREATE UNLOGGED TABLE IF NOT EXISTS _composition_staging ("
-            "hilbert_high BIGINT NOT NULL, hilbert_low BIGINT NOT NULL, "
-            "left_high BIGINT NOT NULL, left_low BIGINT NOT NULL, "
-            "right_high BIGINT NOT NULL, right_low BIGINT NOT NULL)");
-        if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-            std::cerr << "Create composition staging failed: " << PQerrorMessage(conn_.get()) << std::endl;
-            PQclear(res);
-            return;
-        }
+        // Truncate staging table (created by SchemaManager)
+        res = PQexec(conn_.get(), "TRUNCATE _comp_stage");
         PQclear(res);
 
-        res = PQexec(conn_.get(), "TRUNCATE _composition_staging");
+        // Binary COPY to staging
+        res = PQexec(conn_.get(), "COPY _comp_stage FROM STDIN WITH (FORMAT binary)");
+        if (PQresultStatus(res) != PGRES_COPY_IN) { PQclear(res); pending_compositions_.clear(); return; }
         PQclear(res);
 
-        // 2. Binary COPY to staging
-        res = PQexec(conn_.get(),
-            "COPY _composition_staging (hilbert_high, hilbert_low, "
-            "left_high, left_low, right_high, right_low) "
-            "FROM STDIN WITH (FORMAT binary)");
-        
-        if (PQresultStatus(res) != PGRES_COPY_IN) {
-            std::cerr << "COPY composition start failed: " << PQerrorMessage(conn_.get()) << std::endl;
-            PQclear(res);
-            return;
+        static const char HDR[] = "PGCOPY\n\377\r\n\0";
+        std::vector<char> buf;
+        buf.reserve(pending_compositions_.size() * 60 + 32);
+        buf.insert(buf.end(), HDR, HDR + 11);
+        for (int i = 0; i < 8; ++i) buf.push_back(0);
+
+        auto i16 = [&](std::int16_t v) { buf.push_back((v>>8)&0xFF); buf.push_back(v&0xFF); };
+        auto i32 = [&](std::int32_t v) { for(int i=24;i>=0;i-=8) buf.push_back((v>>i)&0xFF); };
+        auto i64 = [&](std::int64_t v) { for(int i=56;i>=0;i-=8) buf.push_back((v>>i)&0xFF); };
+
+        for (const auto& [p, l, r] : pending_compositions_) {
+            i16(6); i32(8); i64(p.id_high); i32(8); i64(p.id_low);
+            i32(8); i64(l.id_high); i32(8); i64(l.id_low);
+            i32(8); i64(r.id_high); i32(8); i64(r.id_low);
         }
-        PQclear(res);
+        i16(-1);
 
-        static const char COPY_HEADER[] = "PGCOPY\n\377\r\n\0";
-        std::vector<char> buffer;
-        buffer.reserve(32 * 1024 * 1024); // 32MB buffer
-
-        buffer.insert(buffer.end(), COPY_HEADER, COPY_HEADER + 11);
-        buffer.push_back(0); buffer.push_back(0); buffer.push_back(0); buffer.push_back(0);
-        buffer.push_back(0); buffer.push_back(0); buffer.push_back(0); buffer.push_back(0);
-
-        auto append_int16 = [&](std::int16_t v) {
-            buffer.push_back(static_cast<char>((v >> 8) & 0xFF));
-            buffer.push_back(static_cast<char>(v & 0xFF));
-        };
-
-        auto append_int32 = [&](std::int32_t v) {
-            buffer.push_back(static_cast<char>((v >> 24) & 0xFF));
-            buffer.push_back(static_cast<char>((v >> 16) & 0xFF));
-            buffer.push_back(static_cast<char>((v >> 8) & 0xFF));
-            buffer.push_back(static_cast<char>(v & 0xFF));
-        };
-
-        auto append_int64 = [&](std::int64_t v) {
-            buffer.push_back(static_cast<char>((v >> 56) & 0xFF));
-            buffer.push_back(static_cast<char>((v >> 48) & 0xFF));
-            buffer.push_back(static_cast<char>((v >> 40) & 0xFF));
-            buffer.push_back(static_cast<char>((v >> 32) & 0xFF));
-            buffer.push_back(static_cast<char>((v >> 24) & 0xFF));
-            buffer.push_back(static_cast<char>((v >> 16) & 0xFF));
-            buffer.push_back(static_cast<char>((v >> 8) & 0xFF));
-            buffer.push_back(static_cast<char>(v & 0xFF));
-        };
-
-        for (const auto& [parent, left, right] : pending_compositions_) {
-            append_int16(6);
-            append_int32(8); append_int64(parent.id_high);
-            append_int32(8); append_int64(parent.id_low);
-            append_int32(8); append_int64(left.id_high);
-            append_int32(8); append_int64(left.id_low);
-            append_int32(8); append_int64(right.id_high);
-            append_int32(8); append_int64(right.id_low);
-        }
-
-        append_int16(-1); // Trailer
-
-        auto copy_start = std::chrono::high_resolution_clock::now();
-        if (PQputCopyData(conn_.get(), buffer.data(), static_cast<int>(buffer.size())) != 1) {
-            std::cerr << "COPY composition data failed: " << PQerrorMessage(conn_.get()) << std::endl;
-            PQputCopyEnd(conn_.get(), "error");
-            return;
-        }
-
-        if (PQputCopyEnd(conn_.get(), nullptr) != 1) {
-            std::cerr << "COPY composition end failed: " << PQerrorMessage(conn_.get()) << std::endl;
-            return;
-        }
-
+        PQputCopyData(conn_.get(), buf.data(), static_cast<int>(buf.size()));
+        PQputCopyEnd(conn_.get(), nullptr);
         res = PQgetResult(conn_.get());
-        if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-            std::cerr << "COPY composition result failed: " << PQerrorMessage(conn_.get()) << std::endl;
-            PQclear(res);
-            return;
-        }
         PQclear(res);
 
-        auto copy_end = std::chrono::high_resolution_clock::now();
-        auto copy_ms = std::chrono::duration_cast<std::chrono::milliseconds>(copy_end - copy_start).count();
-
-        // 3. MERGE - compositions are idempotent, ignore duplicates
-        auto merge_start = std::chrono::high_resolution_clock::now();
+        // INSERT with ON CONFLICT DO NOTHING
         res = PQexec(conn_.get(),
-            "MERGE INTO composition AS c "
-            "USING _composition_staging AS s "
-            "ON c.hilbert_high = s.hilbert_high AND c.hilbert_low = s.hilbert_low "
-            "WHEN NOT MATCHED THEN INSERT "
-            "   (hilbert_high, hilbert_low, left_high, left_low, right_high, right_low) "
-            "   VALUES (s.hilbert_high, s.hilbert_low, s.left_high, s.left_low, s.right_high, s.right_low)");
-
-        if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-            std::cerr << "MERGE composition failed: " << PQerrorMessage(conn_.get()) << std::endl;
-            PQclear(res);
-            PQexec(conn_.get(), "TRUNCATE _composition_staging");
-            pending_compositions_.clear();
-            return;
-        }
+            "INSERT INTO composition (hilbert_high, hilbert_low, left_high, left_low, right_high, right_low) "
+            "SELECT h, l, lh, ll, rh, rl FROM _comp_stage ON CONFLICT DO NOTHING");
         PQclear(res);
-
-        auto merge_end = std::chrono::high_resolution_clock::now();
-        auto merge_ms = std::chrono::duration_cast<std::chrono::milliseconds>(merge_end - merge_start).count();
-
-        res = PQexec(conn_.get(), "TRUNCATE _composition_staging");
-        PQclear(res);
-
-        auto end_time = std::chrono::high_resolution_clock::now();
-        auto total_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
-        double rate = total_ms > 0 ? (static_cast<double>(total) / total_ms * 1000.0) : 0;
-
-        std::cerr << "flush_pending: " << total << " compositions "
-                  << "(COPY=" << copy_ms << "ms, MERGE=" << merge_ms << "ms, total=" << total_ms << "ms, "
-                  << static_cast<std::size_t>(rate) << " rows/sec)" << std::endl;
 
         pending_compositions_.clear();
     }

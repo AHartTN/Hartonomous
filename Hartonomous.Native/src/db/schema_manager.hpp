@@ -245,7 +245,7 @@ private:
     void validate_tables(SchemaStatus& status) {
         // Expected tables
         static const std::vector<std::string> expected = {
-            "atom", "composition", "relationship"
+            "atom", "composition", "relationship", "_comp_stage"
         };
         
         for (const auto& table : expected) {
@@ -379,6 +379,15 @@ private:
                 )
             )");
             status.actions_taken.push_back("Created table: relationship");
+        }
+        else if (name == "_comp_stage") {
+            // Staging table for bulk composition inserts - UNLOGGED for speed
+            exec_void(R"(
+                CREATE UNLOGGED TABLE _comp_stage (
+                    h BIGINT, l BIGINT, lh BIGINT, ll BIGINT, rh BIGINT, rl BIGINT
+                )
+            )");
+            status.actions_taken.push_back("Created staging table: _comp_stage");
         }
     }
     

@@ -74,7 +74,7 @@ private:
     std::string connstr_;
     std::vector<PGconn*> available_;
     std::vector<PGconn*> all_connections_;
-    std::mutex mutex_;
+    mutable std::mutex mutex_;
     std::condition_variable cv_;
     std::size_t max_size_;
     bool shutdown_ = false;
@@ -173,7 +173,7 @@ public:
     
     /// Get current pool statistics
     [[nodiscard]] std::pair<std::size_t, std::size_t> stats() const {
-        std::lock_guard lock(const_cast<std::mutex&>(mutex_));
+        std::lock_guard lock(mutex_);
         return {available_.size(), all_connections_.size()};
     }
     
