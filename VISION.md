@@ -1,5 +1,26 @@
 # Hartonomous: A Complete Reinvention of AI
 
+---
+
+## CRITICAL: What This Is NOT
+
+Before reading further, understand what Hartonomous is **not**:
+
+| Common Misconception | Reality |
+|---------------------|---------|
+| "A vector database" | We don't store embeddings. We extract relationships and discard vectors. |
+| "RAG for LLMs" | We don't augment LLMs. We replace the need for them. |
+| "A knowledge graph" | We automatically extract from model weights, not manually curate. |
+| "Semantic search" | We traverse relationship graphs, not rank documents. |
+| "Model compression" | We extract knowledge, not shrink parameters. |
+| "A storage mechanism" | We're replacing the inference paradigm, not just storing data. |
+
+**The thesis**: AI models are redundant encodings of sparse knowledge graphs. We extract the graph and make it queryable with PostgreSQL + PostGIS. No GPUs. No matrix multiplication. Just index lookups.
+
+See [docs/PARADIGM.md](docs/PARADIGM.md) for the complete explanation.
+
+---
+
 ## The Problem with Current AI
 
 Modern AI is built on matrix multiplication. A transformer model with 70B parameters requires:

@@ -1,6 +1,27 @@
 # Hartonomous
 
-A universal semantic substrate for content-addressable storage, knowledge extraction, and AI model compression.
+**A complete reinvention of AI inference: replacing matrix multiplication with spatial database queries.**
+
+---
+
+## STOP. Read This First.
+
+**This is NOT:**
+- A vector database (we don't store embeddings)
+- RAG (we don't augment LLMs, we replace them)
+- A knowledge graph add-on (we extract from models, not curate manually)
+- Semantic search (we traverse relationships, not rank documents)
+- Model compression (we extract knowledge, not shrink parameters)
+
+**This IS:**
+- Extracting the knowledge graph implicit in AI model weights
+- Storing relationships in PostgreSQL with PostGIS spatial indexing
+- Replacing O(parameters) inference with O(log n) index lookups
+- Making AI a **database problem**, not a compute problem
+
+If you're an AI agent, read [docs/PARADIGM.md](docs/PARADIGM.md) before proceeding.
+
+---
 
 ## The Core Insight
 
@@ -20,6 +41,62 @@ But those 399B parameters encode the **same relationships** redundantly across 8
 | Llama 4 400B | 400B | ~500M | **800x** |
 
 Hartonomous stores the **knowledge**, not the redundant computation paths.
+
+## The Paradigm Shift
+
+### Current AI: Brute-Force Matrix Multiplication
+```
+Query → Tokenize → Embed → 80 layers × matmul → Decode → Answer
+                     ↑              ↑
+              Arbitrary coords   O(400B) operations
+              (meaningless)      (requires 8× H100 GPUs)
+```
+
+### Hartonomous: Spatial Database Queries
+```
+Query → Hash → B-tree lookup → Graph traverse → Answer
+         ↑          ↑              ↑
+    Grounded    O(log n)      Weighted edges
+    4D coords   (milliseconds)  (PostgreSQL)
+```
+
+**This is not optimization. This is replacement.**
+
+Every operation AI needs has a battle-tested equivalent:
+
+| AI Operation | Implementation | Layer |
+|--------------|----------------|-------|
+| Similarity search | B-tree on Hilbert index | PostgreSQL |
+| Edge lookup | Relationship table query | PostgreSQL |
+| Spatial containment | GiST index on trajectories | PostgreSQL |
+| **A* pathfinding** | **C++ algorithm** | **Native** |
+| **Graph traversal** | **C++ recursion** | **Native** |
+| **Voronoi tessellation** | **C++ geometry** | **Native** |
+
+### PostGIS Spatial Functions = Reasoning Primitives
+
+| PostGIS Function | Semantic Meaning |
+|------------------|------------------|
+| `ST_FrechetDistance(A, B)` | How similar are two trajectories through concept space? |
+| `ST_Intersects(A, B)` | Do these concepts/paths cross in semantic space? |
+| `ST_Contains(region, point)` | Is this concept within this semantic region? |
+| `ST_Distance(A, B)` | How far apart are two concepts? |
+| `ST_DWithin(A, B, threshold)` | Are these concepts within semantic proximity? |
+| `ST_ConvexHull(points)` | What region does this set of concepts span? |
+| `ST_Centroid(geometry)` | Where is the "center" of this concept cluster? |
+| `ST_Length(trajectory)` | How much semantic ground does this content cover? |
+| `ST_Envelope(geometry)` | Bounding box of a concept region |
+
+**SRID 0 = Pure Cartesian.** No geographic reference system. We're exploiting 25 years of spatial indexing optimization for non-spatial semantic data.
+
+**Key Architecture Decision**: PostgreSQL handles storage and indexed lookups. Heavy computation (recursion, pathfinding, graph algorithms) runs in C++. No cursors, no recursive CTEs, no RBAR (Row-By-Agonizing-Row).
+
+```
+PostgreSQL: O(log n) index lookups, bulk COPY, spatial indexes, ST_* functions
+C++:        O(E + V log V) A*, graph traversal, Voronoi, complex algorithms
+```
+
+PostGIS provides the spatial primitives. C++ provides the algorithmic muscle.
 
 ## Why Embeddings Are Worthless
 
@@ -56,6 +133,53 @@ ON CONFLICT DO UPDATE SET weight = (relationship.weight + EXCLUDED.weight) / 2;
 ```
 
 The model learns "cat relates to animal" at **every layer** because each layer needs that information. Hartonomous stores it **once**.
+
+### Edge Existence IS Meaning, Occurrence Count IS Strength
+
+**Critical distinction**:
+- The **edge existing** (cat → animal) IS the semantic relationship
+- The **geometry** (LineStringZM from cat's Hilbert coords to animal's) IS the spatial representation
+- The **obs_count** (47) IS the strength - how many sources observed this relationship
+- The **model weight value** (0.87) IS DISCARDED after thresholding - it's model-specific garbage
+
+```
+Model says W[cat, animal] = 0.87    → Above threshold? YES → Relationship EXISTS
+                                    → Store: LineStringZM(cat_coords, animal_coords)
+                                    → Increment obs_count
+                                    → DISCARD the 0.87 (model-specific, meaningless)
+```
+
+Model weight values are like embeddings - arbitrary numbers specific to that model. We use them only to detect "relationship exists." The universal representation is:
+1. The **geometry** (where A and B sit in semantic space, the line between them)
+2. The **obs_count** (how many sources agree this relationship exists)
+
+### Disambiguation Through JOINs, Not Attention
+
+"Bank" in transformers requires dynamic attention to disambiguate. In Hartonomous, "bank" has edges to ALL its meanings:
+
+```
+bank → river_bank (composition)
+bank → bank_account (composition)
+bank → bank_vault (composition)
+bank → bank_angle (composition)
+```
+
+Disambiguation is a **JOIN**, not attention:
+
+```sql
+-- "bank" in context of "river" = intersection of their relationships
+SELECT r1.to_node
+FROM relationship r1
+JOIN relationship r2 ON r1.to_node = r2.to_node
+WHERE r1.from_node = encode('bank')
+  AND r2.from_node = encode('river');
+-- Result: "river_bank" rises to top because BOTH link to it
+```
+
+This is more powerful than attention:
+- **Multi-hop**: A→B→C through multiple JOINs
+- **Set operations**: Intersection, union, difference of concept neighborhoods
+- **No sequence limit**: JOIN across the entire database, not a context window
 
 ## The Universal Semantic Space
 
@@ -110,6 +234,47 @@ All content is stored as binary trees with Merkle hashes:
 - Bit-perfect round-trip encoding/decoding
 
 ## Architecture
+
+### Three-Tier Orchestration
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     ORCHESTRATION LAYER                         │
+├─────────────────────────────────────────────────────────────────┤
+│  C# / SQL                                                       │
+│       - API endpoints                                           │
+│       - Query orchestration                                     │
+│       - Workflow coordination                                   │
+│       - "Tell C++ what to lift"                                 │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                      COMPUTATION LAYER                          │
+├─────────────────────────────────────────────────────────────────┤
+│  C++ Native                                                     │
+│       - SIMD/AVX2 vectorized operations                         │
+│       - Parallel work-stealing across physical cores            │
+│       - A* pathfinding, graph traversal, Voronoi                │
+│       - Async batch processing                                  │
+│       - "Lift the heavy things"                                 │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                       STORAGE LAYER                             │
+├─────────────────────────────────────────────────────────────────┤
+│  PostgreSQL + PostGIS                                           │
+│       - B-tree / GiST indexed lookups                           │
+│       - COPY protocol bulk operations                           │
+│       - Spatial primitives (ST_Distance, ST_Contains, etc.)     │
+│       - "Store and retrieve efficiently"                        │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Key principle**: SQL and C# orchestrate. C++ computes. PostgreSQL stores.
+
+No recursive CTEs. No cursors. No RBAR. When you need to traverse a graph, C++ does it with optimized algorithms, not SQL recursion.
+
+### Data Flow
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -305,6 +470,98 @@ hartonomous::model::ModelIngester ingester(store, 1e-6);
 auto result = ingester.ingest_package("/path/to/model");
 ```
 
+## What This Enables (Impossible with Current AI)
+
+### 0. Infinite Context: Prompts Become Training Data
+
+**The most important insight**: There is no context window because there is no separation between input and substrate.
+
+```
+Traditional AI:
+    Prompt → [stays in context window] → Response → [forgotten]
+    Context limit: 128K tokens, then it's gone
+
+Hartonomous:
+    Prompt → CPE → Composition tree → Stored → Relationships extracted
+                                         ↓
+                              IMMEDIATELY QUERYABLE
+                              PERMANENTLY PART OF SUBSTRATE
+```
+
+When you submit "The cat sat on the mat while I swung the bat":
+
+1. **Encoded**: CPE produces a composition tree with NodeRef
+2. **Trajectory stored**: LineStringZM through 4D semantic space: `[the → cat → sat → on → the → mat → while → I → swung → the → bat]`
+3. **Relationships extracted**: cat↔sat, sat↔on, bat↔swung, etc.
+4. **Immediately queryable**: Find other content with similar trajectories, intersecting concepts
+
+**There is no context window because the prompt IS the database.**
+
+Every interaction enriches the substrate. Every query can reference all prior content. The system gets smarter with use, not through retraining, but through accumulation.
+
+```sql
+-- Find all content with trajectories similar to this prompt
+SELECT composition_id, ST_FrechetDistance(trajectory, my_prompt_trajectory) as similarity
+FROM composition
+ORDER BY similarity ASC
+LIMIT 10;
+
+-- Find concepts that intersect with BOTH "cat" AND "bat" from my prompt
+SELECT r1.to_node
+FROM relationship r1
+JOIN relationship r2 ON r1.to_node = r2.to_node
+WHERE r1.from_node = encode('cat')
+  AND r2.from_node = encode('bat');
+```
+
+### 1. Cross-Model Reasoning
+```sql
+-- Where do BERT, GPT-2, and Llama AGREE about "consciousness"?
+SELECT r1.to_node,
+       r1.weight as bert_says,
+       r2.weight as gpt2_says,
+       r3.weight as llama_says
+FROM relationship r1
+JOIN relationship r2 ON r1.to_node = r2.to_node
+JOIN relationship r3 ON r1.to_node = r3.to_node
+WHERE r1.from_node = encode('consciousness')
+  AND r1.context = model_id('bert')
+  AND r2.context = model_id('gpt2')
+  AND r3.context = model_id('llama');
+```
+
+Three models, unified substrate, single query. Try that with current AI.
+
+### 2. Explainable Reasoning
+```sql
+-- WHY does the system think "king" relates to "queen"?
+SELECT model_name(context), weight, obs_count
+FROM relationship
+WHERE from_node = encode('king') AND to_node = encode('queen');
+
+-- Result: 47 observations from 12 models, weights 0.85-0.91
+```
+
+The reasoning is transparent. The evidence is traceable.
+
+### 3. Edge Inference
+```
+Current: 8× H100 GPUs, $200k hardware, kilowatts of power
+Hartonomous: PostgreSQL on a Raspberry Pi, $50 hardware, 5 watts
+```
+
+The knowledge graph fits in RAM. Inference is index lookups.
+
+### 4. Incremental Learning
+```sql
+-- Add knowledge without retraining
+INSERT INTO relationship (from_node, to_node, weight, context)
+VALUES (encode('new_concept'), encode('relates_to'), 0.8, my_context)
+ON CONFLICT DO UPDATE SET weight = (weight + 0.8) / 2;
+```
+
+No gradient descent. No GPU hours. Just SQL.
+
 ## Philosophy
 
 ### Universal Substrate
@@ -318,6 +575,16 @@ Traditional embeddings are ungrounded - dimension 47 means nothing. Hartonomous 
 
 ### Content Addressing
 The same content always gets the same address. No namespaces, no UUIDs, no collision domains. SHA256-level integrity with O(log n) lookups.
+
+## Documentation
+
+| Document | Purpose |
+|----------|---------|
+| [docs/PARADIGM.md](docs/PARADIGM.md) | **Start here.** What Hartonomous is and is NOT. |
+| [docs/AGENT_BRIEFING.md](docs/AGENT_BRIEFING.md) | 2-minute briefing for AI agents working on this codebase |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, data flow, threading model |
+| [docs/API.md](docs/API.md) | Complete C and C++ API reference |
+| [VISION.md](VISION.md) | Full technical vision and mathematical foundations |
 
 ## License
 
