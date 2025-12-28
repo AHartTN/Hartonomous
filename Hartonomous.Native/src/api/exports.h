@@ -552,6 +552,187 @@ HARTONOMOUS_API int hartonomous_find_containing(
     std::int32_t capacity,
     std::int32_t* count);
 
+// =============================================================================
+// MLOPS - AI INFERENCE REPLACEMENT
+// =============================================================================
+
+/**
+ * @brief Generation candidate result
+ */
+typedef struct {
+    std::int64_t ref_high;      ///< Upper 64 bits of candidate NodeRef
+    std::int64_t ref_low;       ///< Lower 64 bits of candidate NodeRef
+    double probability;         ///< Normalized probability [0, 1]
+    double log_prob;            ///< Log probability
+    std::int32_t is_atom;       ///< 1 if atom, 0 if composition
+} HartonomousCandidate;
+
+/**
+ * @brief Inference hop result
+ */
+typedef struct {
+    std::int64_t from_high;
+    std::int64_t from_low;
+    std::int64_t to_high;
+    std::int64_t to_low;
+    double weight;
+    std::int16_t rel_type;
+} HartonomousInferenceHop;
+
+/**
+ * @brief Attention result
+ */
+typedef struct {
+    std::int64_t ref_high;
+    std::int64_t ref_low;
+    double attention_weight;    ///< Normalized attention weight
+    double raw_score;           ///< Pre-normalization score
+} HartonomousAttendedNode;
+
+/**
+ * @brief Generate next token/composition candidates from context.
+ * Replaces softmax(Wx + b) with graph traversal.
+ * @param context_high Upper 64 bits of context NodeRef
+ * @param context_low Lower 64 bits of context NodeRef
+ * @param model_high Upper 64 bits of model context (0 for any)
+ * @param model_low Lower 64 bits of model context (0 for any)
+ * @param candidates Pre-allocated array for candidates
+ * @param capacity Maximum candidates to return
+ * @param count Pointer to receive actual candidate count
+ * @return 0 on success, negative on error
+ */
+HARTONOMOUS_API int hartonomous_generate(
+    std::int64_t context_high, std::int64_t context_low,
+    std::int64_t model_high, std::int64_t model_low,
+    HartonomousCandidate* candidates,
+    std::int32_t capacity,
+    std::int32_t* count);
+
+/**
+ * @brief Sample next token from generation with temperature.
+ * @param context_high Upper 64 bits of context NodeRef
+ * @param context_low Lower 64 bits of context NodeRef
+ * @param temperature Sampling temperature (0=greedy, 1=normal)
+ * @param seed Random seed for sampling
+ * @param result_high Pointer to receive upper 64 bits of sampled NodeRef
+ * @param result_low Pointer to receive lower 64 bits of sampled NodeRef
+ * @return 0 on success, negative on error
+ */
+HARTONOMOUS_API int hartonomous_generate_next(
+    std::int64_t context_high, std::int64_t context_low,
+    double temperature,
+    std::uint64_t seed,
+    std::int64_t* result_high, std::int64_t* result_low);
+
+/**
+ * @brief Run inference via A* pathfinding through relationship graph.
+ * Replaces forward pass through layers with graph traversal.
+ * @param input_high Upper 64 bits of input NodeRef
+ * @param input_low Lower 64 bits of input NodeRef
+ * @param max_hops Maximum graph hops (layers)
+ * @param model_high Upper 64 bits of model context (0 for any)
+ * @param model_low Lower 64 bits of model context (0 for any)
+ * @param path Pre-allocated array for path hops
+ * @param capacity Maximum hops to return
+ * @param hop_count Pointer to receive actual hop count
+ * @param total_weight Pointer to receive total path weight
+ * @return 0 on success, negative on error
+ */
+HARTONOMOUS_API int hartonomous_infer(
+    std::int64_t input_high, std::int64_t input_low,
+    std::int32_t max_hops,
+    std::int64_t model_high, std::int64_t model_low,
+    HartonomousInferenceHop* path,
+    std::int32_t capacity,
+    std::int32_t* hop_count,
+    double* total_weight);
+
+/**
+ * @brief Run targeted inference from input to specific target.
+ * Uses bidirectional A* to find optimal path.
+ * @param input_high Upper 64 bits of input NodeRef
+ * @param input_low Lower 64 bits of input NodeRef
+ * @param target_high Upper 64 bits of target NodeRef
+ * @param target_low Lower 64 bits of target NodeRef
+ * @param max_hops Maximum graph hops
+ * @param path Pre-allocated array for path hops
+ * @param capacity Maximum hops to return
+ * @param hop_count Pointer to receive actual hop count
+ * @param total_weight Pointer to receive total path weight
+ * @return 0 on success, 1 if no path found, negative on error
+ */
+HARTONOMOUS_API int hartonomous_infer_to(
+    std::int64_t input_high, std::int64_t input_low,
+    std::int64_t target_high, std::int64_t target_low,
+    std::int32_t max_hops,
+    HartonomousInferenceHop* path,
+    std::int32_t capacity,
+    std::int32_t* hop_count,
+    double* total_weight);
+
+/**
+ * @brief Compute attention from query to related concepts.
+ * Replaces QK^T/sqrt(d) with trajectory intersection.
+ * @param query_high Upper 64 bits of query NodeRef
+ * @param query_low Lower 64 bits of query NodeRef
+ * @param context_high Upper 64 bits of context (0 for any)
+ * @param context_low Lower 64 bits of context (0 for any)
+ * @param attended Pre-allocated array for attended nodes
+ * @param capacity Maximum attended nodes to return
+ * @param count Pointer to receive actual count
+ * @return 0 on success, negative on error
+ */
+HARTONOMOUS_API int hartonomous_attend(
+    std::int64_t query_high, std::int64_t query_low,
+    std::int64_t context_high, std::int64_t context_low,
+    HartonomousAttendedNode* attended,
+    std::int32_t capacity,
+    std::int32_t* count);
+
+/**
+ * @brief Complete text by generating continuation.
+ * High-level API: encodes prompt, generates, decodes result.
+ * @param prompt Input prompt text
+ * @param prompt_len Length of prompt
+ * @param max_tokens Maximum tokens to generate
+ * @param temperature Sampling temperature
+ * @param seed Random seed
+ * @param buffer Buffer to receive generated text
+ * @param buffer_capacity Size of buffer
+ * @param generated_len Pointer to receive actual generated length
+ * @return 0 on success, negative on error
+ */
+HARTONOMOUS_API int hartonomous_complete(
+    const char* prompt,
+    std::int32_t prompt_len,
+    std::int32_t max_tokens,
+    double temperature,
+    std::uint64_t seed,
+    char* buffer,
+    std::int32_t buffer_capacity,
+    std::int32_t* generated_len);
+
+/**
+ * @brief Answer a question using the knowledge graph.
+ * High-level API: encodes question, finds path to answer, decodes.
+ * @param question Question text
+ * @param question_len Length of question
+ * @param max_hops Maximum inference hops
+ * @param buffer Buffer to receive answer text
+ * @param buffer_capacity Size of buffer
+ * @param answer_len Pointer to receive actual answer length
+ * @param confidence Pointer to receive confidence score [0, 1]
+ * @return 0 on success, 1 if no answer found, negative on error
+ */
+HARTONOMOUS_API int hartonomous_ask(
+    const char* question,
+    std::int32_t question_len,
+    std::int32_t max_hops,
+    char* buffer,
+    std::int32_t buffer_capacity,
+    std::int32_t* answer_len,
+    double* confidence);
+
 #ifdef __cplusplus
 }
 #endif

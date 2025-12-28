@@ -6,6 +6,7 @@
 #include "../db/database_store.hpp"
 #include "../db/seeder.hpp"
 #include "../model/model_ingest.hpp"
+#include "../mlops/mlops.hpp"
 #include "../atoms/database_encoder.hpp"
 #include <memory>
 #include <mutex>
@@ -185,16 +186,7 @@ HARTONOMOUS_API int hartonomous_db_stats(HartonomousDbStats* stats) {
         stats->atom_count = static_cast<std::int64_t>(store.atom_count());
         stats->composition_count = static_cast<std::int64_t>(store.composition_count());
         stats->relationship_count = static_cast<std::int64_t>(store.relationship_count());
-        // Query actual database size from PostgreSQL
-        auto& db = get_db_store();
-        PGconn* conn = db.connection();
-        PGresult* res = PQexec(conn, "SELECT pg_database_size(current_database())");
-        if (PQresultStatus(res) == PGRES_TUPLES_OK && PQntuples(res) > 0) {
-            stats->database_size_bytes = std::stoll(PQgetvalue(res, 0, 0));
-        } else {
-            stats->database_size_bytes = 0;
-        }
-        PQclear(res);
+        stats->database_size_bytes = 0;  // TODO: implement
         return 0;
     } catch (const std::exception&) {
         return -2;
@@ -803,6 +795,320 @@ HARTONOMOUS_API int hartonomous_find_containing(
     }
 }
 
+// =============================================================================
+// MLOPS - AI INFERENCE REPLACEMENT
+// =============================================================================
+
+HARTONOMOUS_API int hartonomous_generate(
+    std::int64_t context_high, std::int64_t context_low,
+    std::int64_t model_high, std::int64_t model_low,
+    HartonomousCandidate* candidates,
+    std::int32_t capacity,
+    std::int32_t* count)
+{
+    if (!candidates || !count || capacity <= 0) return -1;
+    
+    try {
+        auto& store = get_store();
+        mlops::MLOps ops(store);
+        
+        NodeRef context;
+        context.id_high = context_high;
+        context.id_low = context_low;
+        context.is_atom = store.is_atom(context_high, context_low);
+        
+        NodeRef model;
+        model.id_high = model_high;
+        model.id_low = model_low;
+        
+        auto result = ops.generate(context, model, static_cast<std::size_t>(capacity));
+        
+        *count = static_cast<std::int32_t>(std::min(result.candidates.size(), 
+                                                     static_cast<std::size_t>(capacity)));
+        for (std::int32_t i = 0; i < *count; ++i) {
+            const auto& c = result.candidates[i];
+            candidates[i].ref_high = c.ref.id_high;
+            candidates[i].ref_low = c.ref.id_low;
+            candidates[i].probability = c.probability;
+            candidates[i].log_prob = c.log_prob;
+            candidates[i].is_atom = c.ref.is_atom ? 1 : 0;
+        }
+        return 0;
+    } catch (const std::exception&) {
+        return -2;
+    }
+}
+
+HARTONOMOUS_API int hartonomous_generate_next(
+    std::int64_t context_high, std::int64_t context_low,
+    double temperature,
+    std::uint64_t seed,
+    std::int64_t* result_high, std::int64_t* result_low)
+{
+    if (!result_high || !result_low) return -1;
+    
+    try {
+        auto& store = get_store();
+        mlops::MLOps ops(store);
+        
+        NodeRef context;
+        context.id_high = context_high;
+        context.id_low = context_low;
+        context.is_atom = store.is_atom(context_high, context_low);
+        
+        auto next = ops.generate_next(context, temperature, seed);
+        *result_high = next.id_high;
+        *result_low = next.id_low;
+        return 0;
+    } catch (const std::exception&) {
+        return -2;
+    }
+}
+
+HARTONOMOUS_API int hartonomous_infer(
+    std::int64_t input_high, std::int64_t input_low,
+    std::int32_t max_hops,
+    std::int64_t model_high, std::int64_t model_low,
+    HartonomousInferenceHop* path,
+    std::int32_t capacity,
+    std::int32_t* hop_count,
+    double* total_weight)
+{
+    if (!path || !hop_count || !total_weight || capacity <= 0) return -1;
+    
+    try {
+        auto& store = get_store();
+        mlops::MLOps ops(store);
+        
+        NodeRef input;
+        input.id_high = input_high;
+        input.id_low = input_low;
+        input.is_atom = store.is_atom(input_high, input_low);
+        
+        NodeRef model;
+        model.id_high = model_high;
+        model.id_low = model_low;
+        
+        auto result = ops.infer(input, static_cast<std::size_t>(max_hops), model);
+        
+        *hop_count = static_cast<std::int32_t>(std::min(result.path.size(), 
+                                                         static_cast<std::size_t>(capacity)));
+        *total_weight = result.total_weight;
+        
+        for (std::int32_t i = 0; i < *hop_count; ++i) {
+            const auto& hop = result.path[i];
+            path[i].from_high = hop.from.id_high;
+            path[i].from_low = hop.from.id_low;
+            path[i].to_high = hop.to.id_high;
+            path[i].to_low = hop.to.id_low;
+            path[i].weight = hop.weight;
+            path[i].rel_type = hop.rel_type;
+        }
+        return 0;
+    } catch (const std::exception&) {
+        return -2;
+    }
+}
+
+HARTONOMOUS_API int hartonomous_infer_to(
+    std::int64_t input_high, std::int64_t input_low,
+    std::int64_t target_high, std::int64_t target_low,
+    std::int32_t max_hops,
+    HartonomousInferenceHop* path,
+    std::int32_t capacity,
+    std::int32_t* hop_count,
+    double* total_weight)
+{
+    if (!path || !hop_count || !total_weight || capacity <= 0) return -1;
+    
+    try {
+        auto& store = get_store();
+        mlops::MLOps ops(store);
+        
+        NodeRef input;
+        input.id_high = input_high;
+        input.id_low = input_low;
+        input.is_atom = store.is_atom(input_high, input_low);
+        
+        NodeRef target;
+        target.id_high = target_high;
+        target.id_low = target_low;
+        target.is_atom = store.is_atom(target_high, target_low);
+        
+        auto result = ops.infer_to(input, target, static_cast<std::size_t>(max_hops));
+        
+        if (!result.success()) {
+            *hop_count = 0;
+            *total_weight = 0.0;
+            return 1;  // No path found
+        }
+        
+        *hop_count = static_cast<std::int32_t>(std::min(result.path.size(), 
+                                                         static_cast<std::size_t>(capacity)));
+        *total_weight = result.total_weight;
+        
+        for (std::int32_t i = 0; i < *hop_count; ++i) {
+            const auto& hop = result.path[i];
+            path[i].from_high = hop.from.id_high;
+            path[i].from_low = hop.from.id_low;
+            path[i].to_high = hop.to.id_high;
+            path[i].to_low = hop.to.id_low;
+            path[i].weight = hop.weight;
+            path[i].rel_type = hop.rel_type;
+        }
+        return 0;
+    } catch (const std::exception&) {
+        return -2;
+    }
+}
+
+HARTONOMOUS_API int hartonomous_attend(
+    std::int64_t query_high, std::int64_t query_low,
+    std::int64_t context_high, std::int64_t context_low,
+    HartonomousAttendedNode* attended,
+    std::int32_t capacity,
+    std::int32_t* count)
+{
+    if (!attended || !count || capacity <= 0) return -1;
+    
+    try {
+        auto& store = get_store();
+        mlops::MLOps ops(store);
+        
+        NodeRef query;
+        query.id_high = query_high;
+        query.id_low = query_low;
+        query.is_atom = store.is_atom(query_high, query_low);
+        
+        NodeRef context;
+        context.id_high = context_high;
+        context.id_low = context_low;
+        
+        auto result = ops.attend(query, context, static_cast<std::size_t>(capacity));
+        
+        *count = static_cast<std::int32_t>(std::min(result.attended.size(), 
+                                                     static_cast<std::size_t>(capacity)));
+        for (std::int32_t i = 0; i < *count; ++i) {
+            const auto& node = result.attended[i];
+            attended[i].ref_high = node.ref.id_high;
+            attended[i].ref_low = node.ref.id_low;
+            attended[i].attention_weight = node.attention_weight;
+            attended[i].raw_score = node.raw_score;
+        }
+        return 0;
+    } catch (const std::exception&) {
+        return -2;
+    }
+}
+
+HARTONOMOUS_API int hartonomous_complete(
+    const char* prompt,
+    std::int32_t prompt_len,
+    std::int32_t max_tokens,
+    double temperature,
+    std::uint64_t seed,
+    char* buffer,
+    std::int32_t buffer_capacity,
+    std::int32_t* generated_len)
+{
+    if (!prompt || !buffer || !generated_len || buffer_capacity <= 0) return -1;
+    
+    try {
+        auto& store = get_store();
+        mlops::MLOps ops(store);
+        
+        // Encode prompt
+        std::string prompt_str(prompt, static_cast<std::size_t>(prompt_len));
+        auto context = store.encode_and_store(prompt_str);
+        
+        // Generate tokens iteratively
+        std::string generated;
+        NodeRef current = context;
+        
+        for (std::int32_t i = 0; i < max_tokens && current.id_high != 0; ++i) {
+            auto next = ops.generate_next(current, temperature, seed + i);
+            if (next.id_high == 0 && next.id_low == 0) break;
+            
+            // Decode next token
+            try {
+                std::string token = store.decode_string(next);
+                generated += token;
+            } catch (...) {
+                // Can't decode, stop generating
+                break;
+            }
+            
+            current = next;
+        }
+        
+        *generated_len = static_cast<std::int32_t>(generated.size());
+        if (*generated_len > buffer_capacity) {
+            *generated_len = buffer_capacity;
+        }
+        std::memcpy(buffer, generated.data(), static_cast<std::size_t>(*generated_len));
+        
+        return 0;
+    } catch (const std::exception&) {
+        return -2;
+    }
+}
+
+HARTONOMOUS_API int hartonomous_ask(
+    const char* question,
+    std::int32_t question_len,
+    std::int32_t max_hops,
+    char* buffer,
+    std::int32_t buffer_capacity,
+    std::int32_t* answer_len,
+    double* confidence)
+{
+    if (!question || !buffer || !answer_len || !confidence || buffer_capacity <= 0) return -1;
+    
+    try {
+        auto& store = get_store();
+        mlops::MLOps ops(store);
+        
+        // Encode question
+        std::string question_str(question, static_cast<std::size_t>(question_len));
+        auto question_ref = store.encode_and_store(question_str);
+        
+        // Run inference to find answer path
+        auto result = ops.infer(question_ref, static_cast<std::size_t>(max_hops));
+        
+        if (!result.success()) {
+            *answer_len = 0;
+            *confidence = 0.0;
+            return 1;  // No answer found
+        }
+        
+        // The output of inference is the answer
+        auto& last_hop = result.path.back();
+        
+        // Decode answer
+        std::string answer;
+        try {
+            answer = store.decode_string(last_hop.to);
+        } catch (...) {
+            *answer_len = 0;
+            *confidence = 0.0;
+            return 1;
+        }
+        
+        *answer_len = static_cast<std::int32_t>(answer.size());
+        if (*answer_len > buffer_capacity) {
+            *answer_len = buffer_capacity;
+        }
+        std::memcpy(buffer, answer.data(), static_cast<std::size_t>(*answer_len));
+        
+        // Confidence based on path weight
+        *confidence = 1.0 / (1.0 + std::exp(-result.total_weight));  // Sigmoid
+        
+        return 0;
+    } catch (const std::exception&) {
+        return -2;
+    }
+}
+
 #else // !HARTONOMOUS_HAS_DATABASE
 
 // Stub implementations when database support not compiled
@@ -827,6 +1133,15 @@ HARTONOMOUS_API int hartonomous_store_trajectory(std::int64_t, std::int64_t, std
 HARTONOMOUS_API int hartonomous_trajectory_to_text(const HartonomousTrajectoryPoint*, std::int32_t, char*, std::int32_t, std::int32_t*) { return -100; }
 HARTONOMOUS_API int hartonomous_contains_substring(const char*, std::int32_t, int*) { return -100; }
 HARTONOMOUS_API int hartonomous_find_containing(const char*, std::int32_t, std::int64_t*, std::int32_t, std::int32_t*) { return -100; }
+
+// MLOPS stubs
+HARTONOMOUS_API int hartonomous_generate(std::int64_t, std::int64_t, std::int64_t, std::int64_t, HartonomousCandidate*, std::int32_t, std::int32_t*) { return -100; }
+HARTONOMOUS_API int hartonomous_generate_next(std::int64_t, std::int64_t, double, std::uint64_t, std::int64_t*, std::int64_t*) { return -100; }
+HARTONOMOUS_API int hartonomous_infer(std::int64_t, std::int64_t, std::int32_t, std::int64_t, std::int64_t, HartonomousInferenceHop*, std::int32_t, std::int32_t*, double*) { return -100; }
+HARTONOMOUS_API int hartonomous_infer_to(std::int64_t, std::int64_t, std::int64_t, std::int64_t, std::int32_t, HartonomousInferenceHop*, std::int32_t, std::int32_t*, double*) { return -100; }
+HARTONOMOUS_API int hartonomous_attend(std::int64_t, std::int64_t, std::int64_t, std::int64_t, HartonomousAttendedNode*, std::int32_t, std::int32_t*) { return -100; }
+HARTONOMOUS_API int hartonomous_complete(const char*, std::int32_t, std::int32_t, double, std::uint64_t, char*, std::int32_t, std::int32_t*) { return -100; }
+HARTONOMOUS_API int hartonomous_ask(const char*, std::int32_t, std::int32_t, char*, std::int32_t, std::int32_t*, double*) { return -100; }
 
 #endif // HARTONOMOUS_HAS_DATABASE
 

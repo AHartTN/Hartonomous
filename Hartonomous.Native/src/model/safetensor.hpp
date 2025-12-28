@@ -23,6 +23,7 @@
 #include <unordered_map>
 #include <stdexcept>
 #include <cmath>
+#include <algorithm>
 
 namespace hartonomous::model {
 
@@ -350,18 +351,40 @@ private:
 };
 
 /// Import safetensor model into the universal substrate
-/// Sparse encoding: only stores weights with |value| >= threshold
+/// Sparse encoding: keeps top N% of weights by magnitude
 class SafetensorImporter {
     db::QueryStore& store_;
-    double sparsity_threshold_;
+    double sparsity_percent_;  // Keep top N% of weights by magnitude
 
     // Model context NodeRef - identifies which model these weights belong to
     NodeRef model_context_;
 
+    /// Compute threshold to keep top N% of weights
+    [[nodiscard]] double compute_threshold(const float* data, std::size_t count) {
+        if (count < 100) return 1e-9; // Keep everything for tiny tensors
+        
+        std::size_t sample_size = std::min(count, std::size_t(10000));
+        std::size_t stride = count / sample_size;
+        
+        std::vector<float> magnitudes;
+        magnitudes.reserve(sample_size);
+        for (std::size_t i = 0; i < count; i += stride) {
+            magnitudes.push_back(std::abs(data[i]));
+        }
+        
+        double percentile = (100.0 - sparsity_percent_) / 100.0;
+        std::size_t threshold_idx = static_cast<std::size_t>(magnitudes.size() * percentile);
+        threshold_idx = std::min(threshold_idx, magnitudes.size() - 1);
+        
+        std::nth_element(magnitudes.begin(), magnitudes.begin() + static_cast<std::ptrdiff_t>(threshold_idx), magnitudes.end());
+        return static_cast<double>(magnitudes[threshold_idx]);
+    }
+
 public:
-    explicit SafetensorImporter(db::QueryStore& store, double sparsity_threshold = 1e-6)
+    /// @param sparsity_percent Keep top N% of weights by magnitude (default: 10%)
+    explicit SafetensorImporter(db::QueryStore& store, double sparsity_percent = 10.0)
         : store_(store)
-        , sparsity_threshold_(sparsity_threshold)
+        , sparsity_percent_(std::clamp(sparsity_percent, 0.1, 100.0))
     {}
 
     /// Import a safetensor file
@@ -388,16 +411,19 @@ public:
             store_.encode_and_store(meta.name);
 
             const float* data = reader.get_f32_data(meta);
+            
+            // Compute dynamic threshold for this tensor
+            double threshold = compute_threshold(data, count);
 
             // Collect salient weights for batch insert
             std::vector<std::tuple<NodeRef, NodeRef, double>> salient_weights;
-            salient_weights.reserve(count / 10);  // Assume 90% sparsity
+            salient_weights.reserve(count * static_cast<std::size_t>(sparsity_percent_) / 100);
 
             for (std::size_t i = 0; i < count; ++i) {
                 float weight = data[i];
 
-                // Sparse filter: skip near-zero weights
-                if (std::abs(weight) < sparsity_threshold_) continue;
+                // Sparse filter: skip weights below threshold
+                if (std::abs(weight) < threshold) continue;
 
                 // Create index NodeRef (deterministic from index)
                 NodeRef index_ref = make_index_ref(i);

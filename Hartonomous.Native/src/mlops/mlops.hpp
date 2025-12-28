@@ -40,6 +40,7 @@ namespace hartonomous::mlops {
 using db::QueryStore;
 using db::Relationship;
 using db::RelType;
+using db::REL_DEFAULT;
 using db::Trajectory;
 using db::TrajectoryPoint;
 using db::SpatialMatch;
@@ -551,7 +552,7 @@ public:
         for (std::size_t i = 0; i < std::min(top_k, similar.size()); ++i) {
             const auto& match = similar[i];
             GenerationResult::Candidate cand;
-            cand.ref = NodeRef::atom(match.hilbert_high, match.hilbert_low);
+            cand.ref = NodeRef::atom(AtomId{match.hilbert_high, match.hilbert_low});
 
             if (match.distance > 0) {
                 cand.probability = (1.0 / match.distance) / total_inv_dist;

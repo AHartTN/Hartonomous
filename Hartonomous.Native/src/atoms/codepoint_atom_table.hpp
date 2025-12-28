@@ -25,7 +25,6 @@
 #include "merkle_hash.hpp"
 #include "../hilbert/hilbert_encoder.hpp"
 #include <unordered_map>
-#include <shared_mutex>
 #include <mutex>
 #include <cstdint>
 #include <string>
@@ -45,7 +44,7 @@ struct CodepointAtom {
 /// Unlike ByteAtomTable (256 entries), this handles the full Unicode range.
 /// Uses lazy initialization + caching since 1.1M atoms is too large for precomputation.
 class CodepointAtomTable {
-    mutable std::shared_mutex mutex_;
+    mutable std::mutex mutex_;
     mutable std::unordered_map<std::int32_t, CodepointAtom> cache_;
 
 public:
@@ -59,9 +58,9 @@ public:
 
     /// Get atom for codepoint - lazy evaluation with caching
     [[nodiscard]] CodepointAtom get(std::int32_t codepoint) const {
-        // Fast path: check cache with shared lock
+        // Fast path: check cache with lock
         {
-            std::shared_lock lock(mutex_);
+            std::unique_lock lock(mutex_);
             auto it = cache_.find(codepoint);
             if (it != cache_.end()) {
                 return it->second;

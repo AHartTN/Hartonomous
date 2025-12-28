@@ -290,4 +290,106 @@ internal static partial class NativeInterop
         [Out] long[] results,
         int capacity,
         out int count);
+
+    // =========================================================================
+    // MLOPS - INFERENCE & GENERATION
+    // =========================================================================
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct NativeCandidate
+    {
+        public long HilbertHigh;
+        public long HilbertLow;
+        public double Score;
+        public int Rank;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct NativeInferenceHop
+    {
+        public long FromHigh;
+        public long FromLow;
+        public long ToHigh;
+        public long ToLow;
+        public double Weight;
+        public double CumulativeCost;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct NativeAttendedNode
+    {
+        public long HilbertHigh;
+        public long HilbertLow;
+        public double AttentionWeight;
+    }
+
+    [LibraryImport(LibraryName, EntryPoint = "hartonomous_generate")]
+    internal static partial int Generate(
+        long contextHigh, long contextLow,
+        int topK,
+        double temperature,
+        [Out] NativeCandidate[] candidates,
+        int capacity,
+        out int count);
+
+    [LibraryImport(LibraryName, EntryPoint = "hartonomous_generate_next")]
+    internal static partial int GenerateNext(
+        [In] long[] contextHighs,
+        [In] long[] contextLows,
+        int contextLen,
+        int topK,
+        double temperature,
+        [Out] NativeCandidate[] candidates,
+        int capacity,
+        out int count);
+
+    [LibraryImport(LibraryName, EntryPoint = "hartonomous_infer")]
+    internal static partial int Infer(
+        long startHigh, long startLow,
+        int maxHops,
+        [Out] NativeInferenceHop[] hops,
+        int capacity,
+        out int hopCount);
+
+    [LibraryImport(LibraryName, EntryPoint = "hartonomous_infer_to")]
+    internal static partial int InferTo(
+        long startHigh, long startLow,
+        long goalHigh, long goalLow,
+        int maxHops,
+        [Out] NativeInferenceHop[] hops,
+        int capacity,
+        out int hopCount);
+
+    [LibraryImport(LibraryName, EntryPoint = "hartonomous_attend")]
+    internal static partial int Attend(
+        [In] long[] queryHighs,
+        [In] long[] queryLows,
+        int queryLen,
+        [In] long[] keyHighs,
+        [In] long[] keyLows,
+        int keyLen,
+        [Out] NativeAttendedNode[] attended,
+        int capacity,
+        out int count);
+
+    [LibraryImport(LibraryName, EntryPoint = "hartonomous_complete")]
+    internal static partial int Complete(
+        [In] byte[] prompt,
+        int promptLen,
+        int maxTokens,
+        double temperature,
+        ulong seed,
+        [Out] byte[] buffer,
+        int bufferCapacity,
+        out int generatedLen);
+
+    [LibraryImport(LibraryName, EntryPoint = "hartonomous_ask")]
+    internal static partial int Ask(
+        [In] byte[] question,
+        int questionLen,
+        int maxHops,
+        [Out] byte[] answerBuffer,
+        int answerCapacity,
+        out int answerLen,
+        out double confidence);
 }

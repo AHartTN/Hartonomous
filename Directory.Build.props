@@ -3,12 +3,24 @@
   <!-- Shared properties for all projects in the solution -->
 
   <PropertyGroup>
+    <!-- Unified Artifacts Output - all builds go here -->
+    <ArtifactsPath>$(MSBuildThisFileDirectory)artifacts</ArtifactsPath>
+    <BaseOutputPath>$(ArtifactsPath)\bin\$(MSBuildProjectName)\</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(ArtifactsPath)\obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
+    <PackageOutputPath>$(ArtifactsPath)\packages</PackageOutputPath>
+    <PublishDir>$(ArtifactsPath)\publish\$(MSBuildProjectName)</PublishDir>
+
     <!-- Version Information -->
     <VersionPrefix>0.1.0</VersionPrefix>
     <VersionSuffix Condition="'$(VersionSuffix)' == ''">alpha</VersionSuffix>
 
-    <!-- .NET Configuration -->
-    <TargetFramework>net9.0</TargetFramework>
+    <!-- 
+      .NET Configuration
+      NOTE: TargetFramework is NOT set here because:
+      1. MAUI projects use TargetFrameworks (plural) which conflicts
+      2. Each project should explicitly set its TargetFramework
+      See individual .csproj files for TargetFramework settings.
+    -->
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -42,15 +54,15 @@
 
   <!-- Native Library Paths -->
   <PropertyGroup>
-    <NativeLibraryBasePath>$(MSBuildThisFileDirectory)Hartonomous.Core\runtimes</NativeLibraryBasePath>
+    <NativeLibraryBasePath>$(ArtifactsPath)\native</NativeLibraryBasePath>
   </PropertyGroup>
 
-  <!-- Runtime Identifiers for Native Library -->
-  <PropertyGroup Condition="'$(RuntimeIdentifier)' == ''">
-    <RuntimeIdentifier Condition="$([MSBuild]::IsOSPlatform('Windows'))">win-x64</RuntimeIdentifier>
-    <RuntimeIdentifier Condition="$([MSBuild]::IsOSPlatform('Linux'))">linux-x64</RuntimeIdentifier>
-    <RuntimeIdentifier Condition="$([MSBuild]::IsOSPlatform('OSX'))">osx-arm64</RuntimeIdentifier>
-  </PropertyGroup>
+  <!-- 
+    NOTE: RuntimeIdentifier is NOT set globally because:
+    1. MAUI projects handle their own RIDs via TargetFrameworks
+    2. Setting it globally causes restore failures for MAUI
+    Projects needing a RuntimeIdentifier should set it explicitly.
+  -->
 
   <!-- CI/CD Detection -->
   <PropertyGroup>

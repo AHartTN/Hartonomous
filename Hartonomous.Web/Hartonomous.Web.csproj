@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Hartonomous.ServiceDefaults\Hartonomous.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\Hartonomous.Web.Client\Hartonomous.Web.Client.csproj" />
+    <ProjectReference Include="..\Hartonomous.UI\Hartonomous.UI.csproj" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="10.0.0" />
+  </ItemGroup>
+
+</Project>

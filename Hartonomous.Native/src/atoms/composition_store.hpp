@@ -4,7 +4,6 @@
 #include "merkle_hash.hpp"
 #include "hash_utils.hpp"
 #include <optional>
-#include <shared_mutex>
 #include <mutex>
 #include <unordered_map>
 #include <vector>
@@ -81,7 +80,7 @@ public:
     };
 
 private:
-    mutable std::shared_mutex mutex_;
+    mutable std::mutex mutex_;
 
     // Forward mapping: (left, right) -> composition ref
     std::unordered_map<std::pair<NodeRef, NodeRef>, NodeRef, PairHash, PairEqual> forward_;
@@ -109,7 +108,7 @@ public:
     /// Try to find existing composition for pair.
     [[nodiscard]] std::optional<NodeRef> find(NodeRef left, NodeRef right) const {
         const auto pair = std::make_pair(left, right);
-        std::shared_lock lock(mutex_);
+        std::unique_lock lock(mutex_);
         auto it = forward_.find(pair);
         if (it != forward_.end()) {
             return it->second;
@@ -119,7 +118,7 @@ public:
 
     /// Decompose a composition into its children (for decoding).
     [[nodiscard]] std::optional<std::pair<NodeRef, NodeRef>> decompose(NodeRef comp) const {
-        std::shared_lock lock(mutex_);
+        std::unique_lock lock(mutex_);
         auto it = reverse_.find(comp);
         if (it != reverse_.end()) {
             return it->second;
@@ -129,7 +128,7 @@ public:
 
     /// Check if a composition exists.
     [[nodiscard]] bool contains(NodeRef comp) const {
-        std::shared_lock lock(mutex_);
+        std::unique_lock lock(mutex_);
         return reverse_.find(comp) != reverse_.end();
     }
 
@@ -181,7 +180,7 @@ public:
 
     /// Get number of compositions.
     [[nodiscard]] std::size_t size() const {
-        std::shared_lock lock(mutex_);
+        std::unique_lock lock(mutex_);
         return compositions_.size();
     }
 

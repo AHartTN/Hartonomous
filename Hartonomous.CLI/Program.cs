@@ -18,7 +18,9 @@ internal static class Program
             new InfoCommand(),
             new VersionCommand(),
             new IngestCommand(),
-            new QueryCommand()
+            new QueryCommand(),
+            new CompleteCommand(),
+            new AskCommand()
         };
 
         var registry = new CommandRegistry(commands);

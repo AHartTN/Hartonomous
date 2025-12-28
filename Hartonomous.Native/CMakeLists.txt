@@ -181,6 +181,7 @@ if(BUILD_TESTING)
     # Find threads package for std::mutex support
     find_package(Threads REQUIRED)
 
+    # Single unified test executable
     add_executable(hartonomous-tests
         tests/test_main.cpp
         tests/test_invariants.cpp
@@ -189,52 +190,35 @@ if(BUILD_TESTING)
         tests/test_vision.cpp
     )
 
-    target_link_libraries(hartonomous-tests PRIVATE
-        hartonomous-core
-        Catch2::Catch2WithMain
-        Threads::Threads
-    )
-
-    target_include_directories(hartonomous-tests PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/src
-    )
-
-    # Test data directory - absolute path resolved at configure time
-    target_compile_definitions(hartonomous-tests PRIVATE
-        TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../test-data"
-    )
-
-    # Database integration tests (requires PostgreSQL)
+    # Add database tests if PostgreSQL available
     if(HARTONOMOUS_HAS_DATABASE)
-        add_executable(hartonomous-db-tests
-            tests/test_main.cpp
+        target_sources(hartonomous-tests PRIVATE
             tests/test_database.cpp
             tests/test_query.cpp
             tests/test_safetensor.cpp
         )
-
-        target_link_libraries(hartonomous-db-tests PRIVATE
+        target_link_libraries(hartonomous-tests PRIVATE
             hartonomous-core
             Catch2::Catch2WithMain
             PostgreSQL::PostgreSQL
             Threads::Threads
         )
-
-        target_include_directories(hartonomous-db-tests PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/src
-        )
-
-        target_compile_definitions(hartonomous-db-tests PRIVATE
-            TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../test-data"
-        )
-
-        add_test(NAME hartonomous-db-tests COMMAND hartonomous-db-tests)
-        message(STATUS "Database tests enabled")
     else()
-        message(STATUS "Database tests disabled (PostgreSQL not found)")
+        target_link_libraries(hartonomous-tests PRIVATE
+            hartonomous-core
+            Catch2::Catch2WithMain
+            Threads::Threads
+        )
     endif()
 
-    # Simple test registration - no discovery at build time
+    target_include_directories(hartonomous-tests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+
+    target_compile_definitions(hartonomous-tests PRIVATE
+        TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../test-data"
+    )
+
     add_test(NAME hartonomous-tests COMMAND hartonomous-tests)
 endif()
 

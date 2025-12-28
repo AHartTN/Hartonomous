@@ -17,7 +17,11 @@ internal static class Program
             new RangeCommand(),
             new InfoCommand(),
             new ClearCommand(),
-            new ExitCommand()
+            new ExitCommand(),
+            // AI/MLOps commands
+            new ChatCommand(),
+            new AskCommand(),
+            new CompleteReplCommand()
         };
 
         var registry = new ReplCommandRegistry(commands);

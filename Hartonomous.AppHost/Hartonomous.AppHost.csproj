@@ -15,9 +15,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Hartonomous.App\Hartonomous.App\Hartonomous.App.csproj">
-      <SetTargetFramework>TargetFramework=net10.0</SetTargetFramework>
-    </ProjectReference>
+    <ProjectReference Include="..\Hartonomous.Web\Hartonomous.Web.csproj" />
     <ProjectReference Include="..\Hartonomous.Worker\Hartonomous.Worker.csproj" />
   </ItemGroup>
 

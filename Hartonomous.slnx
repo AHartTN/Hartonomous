@@ -1,8 +1,8 @@
 <Solution>
-  <Project Path="Hartonomous.App/Hartonomous.App.Shared/Hartonomous.App.Shared.csproj" />
-  <Project Path="Hartonomous.App/Hartonomous.App.Web.Client/Hartonomous.App.Web.Client.csproj" />
-  <Project Path="Hartonomous.App/Hartonomous.App.Web/Hartonomous.App.Web.csproj" />
-  <Project Path="Hartonomous.App/Hartonomous.App/Hartonomous.App.csproj">
+  <Project Path="Hartonomous.UI/Hartonomous.UI.csproj" />
+  <Project Path="Hartonomous.Web.Client/Hartonomous.Web.Client.csproj" />
+  <Project Path="Hartonomous.Web/Hartonomous.Web.csproj" />
+  <Project Path="Hartonomous.Maui/Hartonomous.Maui.csproj">
     <Deploy Solution="Debug|*" />
   </Project>
   <Project Path="Hartonomous.AppHost/Hartonomous.AppHost.csproj" />

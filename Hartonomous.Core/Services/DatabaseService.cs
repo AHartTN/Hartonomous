@@ -144,6 +144,71 @@ public sealed class DatabaseService
         return Encoding.UTF8.GetString(buffer, 0, textLen);
     }
 
+    /// <summary>
+    /// Complete a prompt using semantic graph traversal.
+    /// Replaces LLM completion with O(log n) spatial lookups.
+    /// </summary>
+    public string Complete(string prompt, int maxTokens = 20, double temperature = 0.7, ulong seed = 0)
+    {
+        EnsureInitialized();
+
+        var promptBytes = Encoding.UTF8.GetBytes(prompt);
+        var buffer = new byte[maxTokens * 100];  // Generous buffer for output
+
+        var result = NativeInterop.Complete(
+            promptBytes, promptBytes.Length,
+            maxTokens, temperature, seed,
+            buffer, buffer.Length,
+            out var generatedLen);
+
+        if (result < 0)
+        {
+            throw new InvalidOperationException($"Completion failed: error {result}");
+        }
+
+        return Encoding.UTF8.GetString(buffer, 0, generatedLen);
+    }
+
+    /// <summary>
+    /// Ask a question and get an answer from the knowledge graph.
+    /// Uses A* pathfinding through semantic relationships.
+    /// </summary>
+    public (string Answer, double Confidence, InferenceHop[] Path) Ask(string question, int maxHops = 6)
+    {
+        EnsureInitialized();
+
+        var questionBytes = Encoding.UTF8.GetBytes(question);
+        var buffer = new byte[16 * 1024];  // 16KB for answer
+        var pathBuffer = new NativeInterop.NativeInferenceHop[maxHops];
+
+        var result = NativeInterop.Ask(
+            questionBytes, questionBytes.Length,
+            maxHops,
+            buffer, buffer.Length,
+            out var answerLen,
+            out var confidence);
+
+        if (result == 1)
+        {
+            // No answer found
+            return ("", 0.0, []);
+        }
+
+        if (result < 0)
+        {
+            throw new InvalidOperationException($"Ask failed: error {result}");
+        }
+
+        var answer = Encoding.UTF8.GetString(buffer, 0, answerLen);
+
+        // Get the inference path for verbose output
+        var questionRef = EncodeAndStore(question);
+        var hops = new List<InferenceHop>();
+
+        // For now, return empty path - would need additional native call for path details
+        return (answer, confidence, []);
+    }
+
     private void EnsureInitialized()
     {
         if (!_initialized)
@@ -152,6 +217,14 @@ public sealed class DatabaseService
         }
     }
 }
+
+/// <summary>
+/// A hop in the inference path.
+/// </summary>
+public readonly record struct InferenceHop(
+    string FromText,
+    string ToText,
+    double Weight);
 
 /// <summary>
 /// Database statistics.

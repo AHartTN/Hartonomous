@@ -107,8 +107,6 @@ TEST_CASE("Encode and store: content becomes queryable", "[content][store]") {
     }
 
     SECTION("Idempotent: storing twice doesn't duplicate") {
-        auto count_before = store.composition_count();
-
         store.encode_and_store("Test content");
         auto count_after_first = store.composition_count();
 

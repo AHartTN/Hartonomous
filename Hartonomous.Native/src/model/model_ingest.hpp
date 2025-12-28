@@ -58,7 +58,7 @@ struct ModelResult {
 /// Model ingester - ingests EVERYTHING semantically
 class ModelIngester {
     db::QueryStore& store_;
-    double sparsity_threshold_;
+    double sparsity_percent_;  // Keep top N% of weights by magnitude (e.g., 10.0 = top 10%)
 
     // Model context - identifies this model in the substrate
     NodeRef model_context_;
@@ -67,9 +67,10 @@ class ModelIngester {
     std::vector<Token> vocab_;
 
 public:
-    explicit ModelIngester(db::QueryStore& store, double sparsity_threshold = 1e-6)
+    /// @param sparsity_percent Keep top N% of weights by magnitude (default: 50% = top 50%)
+    explicit ModelIngester(db::QueryStore& store, double sparsity_percent = 50.0)
         : store_(store)
-        , sparsity_threshold_(sparsity_threshold)
+        , sparsity_percent_(std::clamp(sparsity_percent, 0.1, 100.0))
     {}
 
     /// Ingest entire model package (all files in directory)
@@ -630,9 +631,9 @@ public:
     }
 
     /// Compute dynamic sparsity threshold based on tensor statistics.
-    /// Keep top ~10% most significant weights (by magnitude).
+    /// Keep top sparsity_percent_% most significant weights (by magnitude).
     [[nodiscard]] double compute_dynamic_threshold(const float* data, std::size_t count) {
-        if (count < 1000) return sparsity_threshold_; // Use default for tiny tensors
+        if (count < 100) return 1e-9; // Keep everything for tiny tensors
         
         // Sample to find magnitude distribution (avoid scanning entire tensor)
         std::size_t sample_size = std::min(count, std::size_t(10000));
@@ -644,11 +645,15 @@ public:
             magnitudes.push_back(std::abs(data[i]));
         }
         
-        // Find 90th percentile (keep top 10%)
-        std::size_t threshold_idx = static_cast<std::size_t>(magnitudes.size() * 0.90);
-        std::nth_element(magnitudes.begin(), magnitudes.begin() + threshold_idx, magnitudes.end());
+        // Percentile = (100 - sparsity_percent_) / 100
+        // e.g., sparsity_percent_=10 means keep top 10%, so threshold is 90th percentile
+        double percentile = (100.0 - sparsity_percent_) / 100.0;
+        std::size_t threshold_idx = static_cast<std::size_t>(magnitudes.size() * percentile);
+        threshold_idx = std::min(threshold_idx, magnitudes.size() - 1);
         
-        return std::max(static_cast<double>(magnitudes[threshold_idx]), sparsity_threshold_);
+        std::nth_element(magnitudes.begin(), magnitudes.begin() + static_cast<std::ptrdiff_t>(threshold_idx), magnitudes.end());
+        
+        return static_cast<double>(magnitudes[threshold_idx]);
     }
 
     /// Collect 2D weight matrix as (input, output, weight) points.
