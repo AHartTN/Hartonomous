@@ -1,5 +1,7 @@
 using System.Text;
+using Hartonomous.Core.Models;
 using Hartonomous.Core.Native;
+using Hartonomous.Core.Services.Abstractions;
 
 namespace Hartonomous.Core.Services;
 
@@ -7,11 +9,11 @@ namespace Hartonomous.Core.Services;
 /// Containment queries - find substrings and compositions.
 /// Uses content-defined chunking for consistent boundaries.
 /// </summary>
-public sealed class ContainmentService
+public sealed class ContainmentService : IContainmentService
 {
-    private readonly DatabaseService _db;
+    private readonly IDatabaseService _db;
 
-    public ContainmentService(DatabaseService? db = null)
+    public ContainmentService(IDatabaseService? db = null)
     {
         _db = db ?? DatabaseService.Instance;
     }

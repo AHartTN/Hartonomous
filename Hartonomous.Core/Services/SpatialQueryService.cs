@@ -1,5 +1,7 @@
 using System.Text;
+using Hartonomous.Core.Models;
 using Hartonomous.Core.Native;
+using Hartonomous.Core.Services.Abstractions;
 
 namespace Hartonomous.Core.Services;
 
@@ -7,11 +9,11 @@ namespace Hartonomous.Core.Services;
 /// Spatial queries using PostGIS-backed semantic proximity.
 /// Find similar characters, case variants, diacriticals via geometry.
 /// </summary>
-public sealed class SpatialQueryService
+public sealed class SpatialQueryService : ISpatialQueryService
 {
-    private readonly DatabaseService _db;
+    private readonly IDatabaseService _db;
 
-    public SpatialQueryService(DatabaseService? db = null)
+    public SpatialQueryService(IDatabaseService? db = null)
     {
         _db = db ?? DatabaseService.Instance;
     }
@@ -109,26 +111,4 @@ public sealed class SpatialQueryService
         }
         return result;
     }
-}
-
-/// <summary>
-/// Result from a spatial query.
-/// </summary>
-public readonly record struct SpatialMatch(
-    long HilbertHigh,
-    long HilbertLow,
-    int Codepoint,
-    double Distance)
-{
-    /// <summary>
-    /// The character this match represents (if valid Unicode scalar).
-    /// </summary>
-    public char? Character => Codepoint is >= 0 and <= 0xFFFF 
-        ? (char)Codepoint 
-        : null;
-
-    /// <summary>
-    /// The character as a string (handles surrogate pairs).
-    /// </summary>
-    public string CharacterString => char.ConvertFromUtf32(Codepoint);
 }

@@ -1,5 +1,7 @@
 using System.Text;
+using Hartonomous.Core.Models;
 using Hartonomous.Core.Native;
+using Hartonomous.Core.Services.Abstractions;
 
 namespace Hartonomous.Core.Services;
 
@@ -7,7 +9,7 @@ namespace Hartonomous.Core.Services;
 /// Database operations via native library.
 /// Provides direct access to the Hartonomous substrate without subprocess hacks.
 /// </summary>
-public sealed class DatabaseService
+public sealed class DatabaseService : IDatabaseService
 {
     private static readonly Lazy<DatabaseService> _instance = new(() => new DatabaseService());
     private bool _initialized;
@@ -217,31 +219,3 @@ public sealed class DatabaseService
         }
     }
 }
-
-/// <summary>
-/// A hop in the inference path.
-/// </summary>
-public readonly record struct InferenceHop(
-    string FromText,
-    string ToText,
-    double Weight);
-
-/// <summary>
-/// Database statistics.
-/// </summary>
-public readonly record struct DbStats(
-    long AtomCount,
-    long CompositionCount,
-    long RelationshipCount,
-    long DatabaseSizeBytes);
-
-/// <summary>
-/// Ingestion result.
-/// </summary>
-public readonly record struct IngestResult(
-    long FilesProcessed,
-    long BytesProcessed,
-    long CompositionsCreated,
-    long RelationshipsCreated,
-    long Errors,
-    TimeSpan Duration);

@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Text;
+using Hartonomous.Core.Models;
 using Hartonomous.Core.Native;
+using Hartonomous.Core.Services.Abstractions;
 
 namespace Hartonomous.Core.Services;
 
@@ -8,11 +10,11 @@ namespace Hartonomous.Core.Services;
 /// Trajectory operations - RLE-compressed paths through semantic space.
 /// "Hello" → H(1), e(1), l(2), o(1) - NOT 5 separate records.
 /// </summary>
-public sealed class TrajectoryService
+public sealed class TrajectoryService : ITrajectoryService
 {
-    private readonly DatabaseService _db;
+    private readonly IDatabaseService _db;
 
-    public TrajectoryService(DatabaseService? db = null)
+    public TrajectoryService(IDatabaseService? db = null)
     {
         _db = db ?? DatabaseService.Instance;
     }
@@ -45,8 +47,8 @@ public sealed class TrajectoryService
     /// The trajectory is stored as a LineStringZM geometry.
     /// </summary>
     public void StoreTrajectory(
-        NodeId from,
-        NodeId to,
+        NodeId source,
+        NodeId target,
         TrajectoryPoint[] points,
         double weight,
         RelationshipType type = RelationshipType.SemanticLink,
@@ -72,8 +74,8 @@ public sealed class TrajectoryService
         }
 
         var status = NativeInterop.StoreTrajectory(
-            from.High, from.Low,
-            to.High, to.Low,
+            source.High, source.Low,
+            target.High, target.Low,
             nativePoints, points.Length,
             weight,
             (short)type,
@@ -184,13 +186,3 @@ public sealed class TrajectoryService
         return result;
     }
 }
-
-/// <summary>
-/// RLE-compressed point in semantic trajectory.
-/// </summary>
-public readonly record struct TrajectoryPoint(
-    short Page,      // X: Unicode page
-    short Type,      // Y: Character type
-    int Base,        // Z: Base character
-    byte Variant,    // M: Variant (case/diacritical)
-    uint Count);     // RLE: repetition count

@@ -7,6 +7,7 @@
   </Project>
   <Project Path="Hartonomous.AppHost/Hartonomous.AppHost.csproj" />
   <Project Path="Hartonomous.CLI/Hartonomous.CLI.csproj" />
+  <Project Path="Hartonomous.Commands/Hartonomous.Commands.csproj" />
   <Project Path="Hartonomous.Core/Hartonomous.Core.csproj" />
   <Project Path="Hartonomous.Data/Hartonomous.Data.csproj" />
   <Project Path="Hartonomous.Infrastructure/Hartonomous.Infrastructure.csproj" />

@@ -1,3 +1,4 @@
+using Hartonomous.Commands;
 using Hartonomous.Core.Services;
 
 namespace Hartonomous.Terminal.Repl.Commands;
@@ -51,22 +52,14 @@ public sealed class CompleteReplCommand : IReplCommand
             return;
         }
 
-        var db = DatabaseService.Instance;
+        var output = new TextWriterCommandOutput(context.Output, context.Error);
 
-        try
-        {
-            context.Output.WriteLine($"Prompt: {prompt}");
-            context.Output.WriteLine($"Max tokens: {maxTokens}, Temperature: {temperature}");
-            context.Output.WriteLine();
-
-            var result = db.Complete(prompt, maxTokens, temperature, seed: 0);
-
-            context.Output.WriteLine("Completion:");
-            context.Output.WriteLine($"{prompt}{result}");
-        }
-        catch (Exception ex)
-        {
-            context.Error.WriteLine($"Error: {ex.Message}");
-        }
+        CompleteCommandHandler.Execute(
+            DatabaseService.Instance,
+            prompt,
+            maxTokens,
+            temperature,
+            seed: 0,
+            output);
     }
 }

@@ -1,3 +1,4 @@
+using Hartonomous.Commands;
 using Hartonomous.Core.Services;
 
 namespace Hartonomous.CLI.Commands;
@@ -65,33 +66,12 @@ public sealed class CompleteCommand : ICommand
             }
         }
 
-        if (string.IsNullOrWhiteSpace(prompt))
-        {
-            Console.Error.WriteLine("Error: Prompt required.");
-            return 1;
-        }
-
-        try
-        {
-            var db = DatabaseService.Instance;
-            db.Initialize();
-
-            Console.ForegroundColor = ConsoleColor.DarkGray;
-            Console.Write(prompt);
-            Console.ResetColor();
-
-            var generated = db.Complete(prompt, maxTokens, temperature, seed);
-
-            Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine(generated);
-            Console.ResetColor();
-
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"Error: {ex.Message}");
-            return 1;
-        }
+        return CompleteCommandHandler.Execute(
+            DatabaseService.Instance,
+            prompt,
+            maxTokens,
+            temperature,
+            seed,
+            ConsoleCommandOutput.Instance);
     }
 }

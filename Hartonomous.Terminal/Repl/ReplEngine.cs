@@ -1,3 +1,5 @@
+using Hartonomous.Commands;
+
 namespace Hartonomous.Terminal.Repl;
 
 /// <summary>
@@ -68,7 +70,7 @@ public sealed class ReplEngine
         }
 
         // If not a command, try to interpret as a codepoint directly
-        if (Commands.CodepointParser.TryParse(trimmed, out var codepoint))
+        if (CodepointParser.TryParse(trimmed, out var codepoint))
         {
             TryMapCodepoint(codepoint);
             return;
@@ -81,16 +83,8 @@ public sealed class ReplEngine
 
     private static void TryMapCodepoint(int codepoint)
     {
-        try
-        {
-            var atom = Hartonomous.Core.Entities.Atom.Create(codepoint);
-            Commands.MapCommand.PrintAtom(atom, Console.Out);
-            Console.WriteLine();
-        }
-        catch (ArgumentOutOfRangeException ex)
-        {
-            Console.Error.WriteLine($"Error: {ex.Message}");
-            Console.WriteLine();
-        }
+        var output = ConsoleCommandOutput.Instance;
+        MapCommandHandler.MapSingle(codepoint, output);
+        Console.WriteLine();
     }
 }

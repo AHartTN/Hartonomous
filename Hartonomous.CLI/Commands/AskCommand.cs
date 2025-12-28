@@ -1,3 +1,4 @@
+using Hartonomous.Commands;
 using Hartonomous.Core.Services;
 
 namespace Hartonomous.CLI.Commands;
@@ -61,61 +62,11 @@ public sealed class AskCommand : ICommand
             }
         }
 
-        if (string.IsNullOrWhiteSpace(question))
-        {
-            Console.Error.WriteLine("Error: Question required.");
-            return 1;
-        }
-
-        try
-        {
-            var db = DatabaseService.Instance;
-            db.Initialize();
-
-            Console.ForegroundColor = ConsoleColor.Cyan;
-            Console.Write("Q: ");
-            Console.ResetColor();
-            Console.WriteLine(question);
-
-            var (answer, confidence, path) = db.Ask(question, maxHops);
-
-            if (string.IsNullOrEmpty(answer))
-            {
-                Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.WriteLine("\nNo answer found in the knowledge graph.");
-                Console.WriteLine("Try ingesting more content or a model first.");
-                Console.ResetColor();
-                return 1;
-            }
-
-            Console.ForegroundColor = ConsoleColor.Green;
-            Console.Write("\nA: ");
-            Console.ResetColor();
-            Console.WriteLine(answer);
-
-            Console.ForegroundColor = ConsoleColor.DarkGray;
-            Console.WriteLine($"   Confidence: {confidence:P1}");
-            Console.ResetColor();
-
-            if (verbose && path.Length > 0)
-            {
-                Console.WriteLine();
-                Console.ForegroundColor = ConsoleColor.DarkGray;
-                Console.WriteLine("Inference path:");
-                for (int i = 0; i < path.Length; i++)
-                {
-                    var hop = path[i];
-                    Console.WriteLine($"  [{i + 1}] {hop.FromText} → {hop.ToText} (w={hop.Weight:F3})");
-                }
-                Console.ResetColor();
-            }
-
-            return 0;
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"Error: {ex.Message}");
-            return 1;
-        }
+        return AskCommandHandler.Execute(
+            DatabaseService.Instance,
+            question,
+            maxHops,
+            verbose,
+            ConsoleCommandOutput.Instance);
     }
 }

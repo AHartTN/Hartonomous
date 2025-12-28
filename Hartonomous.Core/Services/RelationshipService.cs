@@ -1,5 +1,7 @@
+using Hartonomous.Core.Models;
 using Hartonomous.Core.Native;
 using Hartonomous.Core.Primitives;
+using Hartonomous.Core.Services.Abstractions;
 
 namespace Hartonomous.Core.Services;
 
@@ -7,11 +9,11 @@ namespace Hartonomous.Core.Services;
 /// Relationship queries - sparse semantic graph traversal.
 /// Navigate edges between compositions in the universal substrate.
 /// </summary>
-public sealed class RelationshipService
+public sealed class RelationshipService : IRelationshipService
 {
-    private readonly DatabaseService _db;
+    private readonly IDatabaseService _db;
 
-    public RelationshipService(DatabaseService? db = null)
+    public RelationshipService(IDatabaseService? db = null)
     {
         _db = db ?? DatabaseService.Instance;
     }
@@ -21,8 +23,8 @@ public sealed class RelationshipService
     /// Sparse: only call for salient (non-zero) weights.
     /// </summary>
     public void Store(
-        NodeId from, 
-        NodeId to, 
+        NodeId source, 
+        NodeId target, 
         double weight,
         RelationshipType type = RelationshipType.SemanticLink,
         NodeId context = default)
@@ -30,8 +32,8 @@ public sealed class RelationshipService
         _db.Initialize();
 
         var status = NativeInterop.StoreRelationship(
-            from.High, from.Low,
-            to.High, to.Low,
+            source.High, source.Low,
+            target.High, target.Low,
             weight,
             (short)type,
             context.High, context.Low);
@@ -59,12 +61,12 @@ public sealed class RelationshipService
     /// <summary>
     /// Find relationships TO a node (incoming edges).
     /// </summary>
-    public Relationship[] FindTo(NodeId to, int limit = 100)
+    public Relationship[] FindTo(NodeId target, int limit = 100)
     {
         _db.Initialize();
 
         var results = new NativeInterop.NativeRelationship[limit];
-        var status = NativeInterop.FindTo(to.High, to.Low, results, limit, out var count);
+        var status = NativeInterop.FindTo(target.High, target.Low, results, limit, out var count);
 
         if (status < 0)
             throw new InvalidOperationException($"FindTo failed: error {status}");
@@ -107,13 +109,13 @@ public sealed class RelationshipService
     /// <summary>
     /// Get the weight between two specific nodes.
     /// </summary>
-    public double? GetWeight(NodeId from, NodeId to, NodeId context = default)
+    public double? GetWeight(NodeId source, NodeId target, NodeId context = default)
     {
         _db.Initialize();
 
         var status = NativeInterop.GetWeight(
-            from.High, from.Low,
-            to.High, to.Low,
+            source.High, source.Low,
+            target.High, target.Low,
             context.High, context.Low,
             out var weight);
 
@@ -139,40 +141,4 @@ public sealed class RelationshipService
         }
         return result;
     }
-}
-
-/// <summary>
-/// Relationship types in the semantic graph.
-/// </summary>
-public enum RelationshipType : short
-{
-    /// <summary>General semantic relationship.</summary>
-    SemanticLink = 0,
-    /// <summary>Neural network weight (sparse/salient only).</summary>
-    ModelWeight = 1,
-    /// <summary>Knowledge graph edge.</summary>
-    KnowledgeEdge = 2,
-    /// <summary>Sequence/temporal relationship.</summary>
-    TemporalNext = 3,
-    /// <summary>Spatial proximity.</summary>
-    SpatialNear = 4
-}
-
-/// <summary>
-/// A relationship between two nodes in the semantic graph.
-/// </summary>
-public readonly record struct Relationship(
-    NodeId From,
-    NodeId To,
-    double Weight,
-    RelationshipType Type,
-    NodeId Context);
-
-/// <summary>
-/// 128-bit node identifier in the universal substrate.
-/// </summary>
-public readonly record struct NodeId(long High, long Low)
-{
-    public static NodeId Empty => default;
-    public bool IsEmpty => High == 0 && Low == 0;
 }
