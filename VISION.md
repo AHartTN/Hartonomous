@@ -12,6 +12,62 @@ Modern AI is built on matrix multiplication. A transformer model with 70B parame
 
 Language is not a dense matrix. Meaning is sparse. Most words are unrelated to most other words. Yet we store and compute as if every relationship exists.
 
+---
+
+## The Core Insight: Models Are 99.75% Redundant
+
+A 400B parameter model like Llama 4 Maverick contains:
+
+| Component | Parameters | % of Model | What It Is |
+|-----------|-----------|------------|------------|
+| Embedding table | ~1B | 0.25% | Lookup table: token_id → arbitrary 8192D coordinates |
+| Attention weights | ~50B | 12% | Which tokens should attend to which |
+| MoE Expert weights | ~340B | 85% | How information transforms |
+| LayerNorms, etc | ~1B | <1% | Normalization constants |
+
+The embedding table is a **rounding error**. It's just an address book for the model's internal coordinate system.
+
+The weights encode **relationships** - but the same relationships get re-encoded 80+ times across layers and 128 times across experts:
+
+```
+Layer 1, Expert 7:  cat → animal, w=0.3
+Layer 20, Expert 23: cat → animal, w=0.5  →  ONE edge: cat → animal, w=aggregated
+Layer 60, Expert 89: cat → animal, w=0.7
+```
+
+After deduplication:
+
+| Model | Raw Parameters | Unique Relationships | Compression |
+|-------|---------------|---------------------|-------------|
+| MiniLM 22M | 22M | ~5M | 4x |
+| Llama 3 8B | 8B | ~200M | 40x |
+| Llama 3 70B | 70B | ~400M | 175x |
+| Llama 4 400B | 400B | ~500M | **800x** |
+
+**Hartonomous stores the knowledge, not the redundant computation paths.**
+
+---
+
+## Why Embeddings Are Worthless
+
+An embedding table like `embeddings.word_embeddings.weight: [30522, 384]` is just:
+
+```
+token_id → [x₀, x₁, x₂, ..., x₃₈₃]
+```
+
+Those 384 dimensions have **no inherent meaning**. Dimension 47 isn't "happiness" or "noun-ness". They're arbitrary coordinates that emerged from training such that `cosine(cat, dog) > cosine(cat, refrigerator)`.
+
+These coordinates are **useless outside that specific model**. Every model has its own arbitrary coordinate system. There's no universal meaning to "the 47th dimension."
+
+**Hartonomous explicitly skips embedding ingestion:**
+```cpp
+SKIPPING embedding tensor: embeddings.word_embeddings.weight
+(worthless coordinates in model's arbitrary space)
+```
+
+We have our own coordinate system - grounded in Unicode structure, deterministic, universal across all content.
+
 ## The Hartonomous Thesis
 
 **Replace matrix multiplication with indexed spatial queries.**

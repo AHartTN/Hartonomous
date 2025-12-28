@@ -17,7 +17,9 @@
       "Bash(./build/bin/hartonomous-seed.exe:*)",
       "Bash(timeout 60 ./build/bin/hartonomous-db-tests.exe:*)",
       "Bash(timeout 120 ./build/bin/hartonomous-db-tests.exe:*)",
-      "Bash(./build/bin/hartonomous-tests.exe:*)"
+      "Bash(./build/bin/hartonomous-tests.exe:*)",
+      "Bash(cd:*)",
+      "Bash(find:*)"
     ]
   }
 }
