@@ -13,9 +13,9 @@ public sealed class RelationshipService : IRelationshipService
 {
     private readonly IDatabaseService _db;
 
-    public RelationshipService(IDatabaseService? db = null)
+    public RelationshipService(IDatabaseService db)
     {
-        _db = db ?? DatabaseService.Instance;
+        _db = db ?? throw new ArgumentNullException(nameof(db));
     }
 
     /// <summary>

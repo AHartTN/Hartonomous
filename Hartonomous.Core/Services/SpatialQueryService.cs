@@ -13,9 +13,9 @@ public sealed class SpatialQueryService : ISpatialQueryService
 {
     private readonly IDatabaseService _db;
 
-    public SpatialQueryService(IDatabaseService? db = null)
+    public SpatialQueryService(IDatabaseService db)
     {
-        _db = db ?? DatabaseService.Instance;
+        _db = db ?? throw new ArgumentNullException(nameof(db));
     }
 
     /// <summary>

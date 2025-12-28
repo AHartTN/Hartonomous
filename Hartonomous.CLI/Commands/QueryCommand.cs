@@ -1,3 +1,4 @@
+using Hartonomous.Commands;
 using Hartonomous.Core.Services;
 
 namespace Hartonomous.CLI.Commands;
@@ -36,17 +37,19 @@ public sealed class QueryCommand : ICommand
         }
 
         var subcommand = args[0];
+        var db = DatabaseService.Instance;
+        var output = ConsoleCommandOutput.Instance;
 
         try
         {
             return subcommand switch
             {
-                "stats" => QueryStats(),
-                "exists" when args.Length > 1 => QueryExists(args[1]),
+                "stats" => QueryCommandHandler.QueryStats(db, output),
+                "exists" when args.Length > 1 => QueryCommandHandler.QueryExists(db, args[1], output),
                 "exists" => Error("Error: Text argument required for 'exists' subcommand."),
-                "encode" when args.Length > 1 => EncodeContent(args[1]),
+                "encode" when args.Length > 1 => QueryCommandHandler.EncodeContent(db, args[1], output),
                 "encode" => Error("Error: Text argument required for 'encode' subcommand."),
-                "decode" when args.Length > 1 => DecodeContent(args[1]),
+                "decode" when args.Length > 1 => QueryCommandHandler.DecodeContent(db, args[1], output),
                 "decode" => Error("Error: ID argument required for 'decode' subcommand."),
                 _ => Error($"Error: Unknown subcommand '{subcommand}'.")
             };
@@ -62,79 +65,5 @@ public sealed class QueryCommand : ICommand
     {
         Console.Error.WriteLine(message);
         return 1;
-    }
-
-    private static int QueryStats()
-    {
-        var db = DatabaseService.Instance;
-        var stats = db.GetStats();
-
-        Console.WriteLine("Hartonomous Substrate Statistics");
-        Console.WriteLine("================================");
-        Console.WriteLine($"{"Atoms:",-20} {stats.AtomCount:N0}");
-        Console.WriteLine($"{"Compositions:",-20} {stats.CompositionCount:N0}");
-        Console.WriteLine($"{"Relationships:",-20} {stats.RelationshipCount:N0}");
-        if (stats.DatabaseSizeBytes > 0)
-        {
-            Console.WriteLine($"{"Database Size:",-20} {FormatBytes(stats.DatabaseSizeBytes)}");
-        }
-
-        return 0;
-    }
-
-    private static int QueryExists(string text)
-    {
-        var db = DatabaseService.Instance;
-        var exists = db.ContentExists(text);
-
-        Console.WriteLine($"Content: \"{text}\"");
-        Console.WriteLine($"Exists:  {(exists ? "YES" : "NO")}");
-
-        return exists ? 0 : 1;
-    }
-
-    private static int EncodeContent(string text)
-    {
-        var db = DatabaseService.Instance;
-        var (high, low) = db.EncodeAndStore(text);
-
-        Console.WriteLine($"Content: \"{text}\"");
-        Console.WriteLine($"Root ID: {high}:{low}");
-
-        return 0;
-    }
-
-    private static int DecodeContent(string idStr)
-    {
-        var parts = idStr.Split(':');
-        if (parts.Length != 2 ||
-            !long.TryParse(parts[0], out var high) ||
-            !long.TryParse(parts[1], out var low))
-        {
-            Console.Error.WriteLine("Error: ID must be in format 'high:low' (e.g., 123456789:987654321)");
-            return 1;
-        }
-
-        var db = DatabaseService.Instance;
-        var text = db.Decode(high, low);
-
-        Console.WriteLine($"Root ID: {high}:{low}");
-        Console.WriteLine($"Content: \"{text}\"");
-        Console.WriteLine($"Length:  {text.Length} characters");
-
-        return 0;
-    }
-
-    private static string FormatBytes(long bytes)
-    {
-        string[] sizes = ["B", "KB", "MB", "GB", "TB"];
-        double len = bytes;
-        int order = 0;
-        while (len >= 1024 && order < sizes.Length - 1)
-        {
-            order++;
-            len /= 1024;
-        }
-        return $"{len:0.##} {sizes[order]}";
     }
 }

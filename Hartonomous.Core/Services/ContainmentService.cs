@@ -13,9 +13,9 @@ public sealed class ContainmentService : IContainmentService
 {
     private readonly IDatabaseService _db;
 
-    public ContainmentService(IDatabaseService? db = null)
+    public ContainmentService(IDatabaseService db)
     {
-        _db = db ?? DatabaseService.Instance;
+        _db = db ?? throw new ArgumentNullException(nameof(db));
     }
 
     /// <summary>

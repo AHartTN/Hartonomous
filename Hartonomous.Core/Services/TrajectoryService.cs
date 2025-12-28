@@ -14,9 +14,9 @@ public sealed class TrajectoryService : ITrajectoryService
 {
     private readonly IDatabaseService _db;
 
-    public TrajectoryService(IDatabaseService? db = null)
+    public TrajectoryService(IDatabaseService db)
     {
-        _db = db ?? DatabaseService.Instance;
+        _db = db ?? throw new ArgumentNullException(nameof(db));
     }
 
     /// <summary>
