@@ -200,6 +200,7 @@ if(BUILD_TESTING)
             tests/test_mlops_queries.cpp
             tests/test_mlops_proof.cpp
             tests/test_moby_dick.cpp
+            tests/test_cpe_debug.cpp
             tests/test_connection_pool.cpp
             tests/test_bulk_store.cpp
             tests/test_semantic_linker.cpp

@@ -365,10 +365,13 @@ TEST_CASE("Moby Dick: contains expected phrases", "[moby][content]") {
         "the sea"
     };
     
+    // With BPE encoding, arbitrary phrases may not have been merged into compositions.
+    // Use content_contains() for substring search (decode + find).
+    auto root = MobyDickEnv::root();
     for (const auto& phrase : must_exist) {
-        auto result = store.find_content(phrase);
+        bool found = store.content_contains(root, phrase);
         INFO("Checking: '" << phrase << "'");
-        REQUIRE(result.exists);
+        REQUIRE(found);
     }
 }
 
@@ -385,10 +388,12 @@ TEST_CASE("Moby Dick: chapter titles exist", "[moby][content]") {
         "The Whiteness of the Whale"
     };
     
+    // With BPE encoding, use content_contains() for substring search
+    auto root = MobyDickEnv::root();
     for (const auto& title : chapters) {
-        auto result = store.find_content(title);
+        bool found = store.content_contains(root, title);
         INFO("Chapter: '" << title << "'");
-        REQUIRE(result.exists);
+        REQUIRE(found);
     }
 }
 

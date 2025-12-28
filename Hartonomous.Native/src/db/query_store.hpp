@@ -110,10 +110,157 @@ class QueryStore {
 
     // Local cache for encoding - mirrors DB, enables batch operations
     std::unordered_map<std::uint64_t, std::pair<NodeRef, NodeRef>> composition_cache_;
+    
+    // CPE frequency threshold - pairs must occur this many times to become compositions
+    static constexpr std::uint32_t CPE_FREQUENCY_THRESHOLD = 2;
+    
+    // Maximum hierarchy depth (Z levels)
+    static constexpr double CPE_MAX_Z_LEVEL = 30.0;
+    
+    // Merge table: maps (left, right) pair keys → composition NodeRef
+    // Built during ingestion, used for consistent query encoding
+    std::unordered_map<std::uint64_t, NodeRef> merge_table_;
 
     static std::uint64_t make_key(std::int64_t high, std::int64_t low) noexcept {
         return static_cast<std::uint64_t>(high) ^
                (static_cast<std::uint64_t>(low) * 0x9e3779b97f4a7c15ULL);
+    }
+    
+    /// Atom with position for CPE processing
+    struct CpeAtom {
+        NodeRef ref;
+        double x, y, z, m;  // Semantic coordinates
+    };
+    
+    /// Apply RLE compression - collapse runs of identical atoms
+    static std::vector<CpeAtom> apply_rle(const std::vector<CpeAtom>& atoms) {
+        if (atoms.empty()) return {};
+        
+        std::vector<CpeAtom> compressed;
+        compressed.reserve(atoms.size());
+        
+        CpeAtom current = atoms[0];
+        double run_length = 1.0;
+        
+        for (std::size_t i = 1; i < atoms.size(); ++i) {
+            if (atoms[i].ref.id_high == current.ref.id_high && 
+                atoms[i].ref.id_low == current.ref.id_low) {
+                run_length += 1.0;
+            } else {
+                current.m = run_length;
+                compressed.push_back(current);
+                current = atoms[i];
+                run_length = 1.0;
+            }
+        }
+        current.m = run_length;
+        compressed.push_back(current);
+        
+        return compressed;
+    }
+    
+    /// Create pair key for HashMap lookup
+    static std::uint64_t make_pair_key(const NodeRef& left, const NodeRef& right) noexcept {
+        std::uint64_t lk = make_key(left.id_high, left.id_low);
+        std::uint64_t rk = make_key(right.id_high, right.id_low);
+        return lk ^ (rk * 0x9e3779b97f4a7c15ULL);
+    }
+    
+    /// Pair statistics for frequency counting
+    struct PairStats {
+        NodeRef left, right;
+        std::uint32_t count = 0;
+        double sum_dist = 0.0;  // Sum of distances for semantic coherence
+    };
+    
+    /// Count pairs in stream - O(n) single pass
+    std::unordered_map<std::uint64_t, PairStats> count_pairs(const std::vector<CpeAtom>& stream) {
+        std::unordered_map<std::uint64_t, PairStats> pair_counts;
+        if (stream.size() < 2) return pair_counts;
+        
+        pair_counts.reserve(stream.size() / 2);
+        
+        for (std::size_t i = 0; i + 1 < stream.size(); ++i) {
+            const auto& left = stream[i];
+            const auto& right = stream[i + 1];
+            
+            std::uint64_t key = make_pair_key(left.ref, right.ref);
+            auto& stats = pair_counts[key];
+            
+            if (stats.count == 0) {
+                stats.left = left.ref;
+                stats.right = right.ref;
+            }
+            stats.count++;
+            
+            // Semantic distance in XY plane
+            double dx = right.x - left.x;
+            double dy = right.y - left.y;
+            stats.sum_dist += std::sqrt(dx * dx + dy * dy);
+        }
+        
+        return pair_counts;
+    }
+    
+    /// Find best pairs above threshold, sorted by score
+    std::vector<std::pair<std::uint64_t, PairStats>> get_frequent_pairs(
+        const std::unordered_map<std::uint64_t, PairStats>& pair_counts)
+    {
+        std::vector<std::pair<std::uint64_t, PairStats>> frequent;
+        frequent.reserve(pair_counts.size());
+        
+        for (const auto& [key, stats] : pair_counts) {
+            if (stats.count >= CPE_FREQUENCY_THRESHOLD) {
+                frequent.emplace_back(key, stats);
+            }
+        }
+        
+        // Sort by score: frequency * coherence (low distance = high coherence)
+        std::sort(frequent.begin(), frequent.end(),
+            [](const auto& a, const auto& b) {
+                double avg_dist_a = a.second.sum_dist / a.second.count;
+                double avg_dist_b = b.second.sum_dist / b.second.count;
+                double score_a = a.second.count / (avg_dist_a + 1.0);
+                double score_b = b.second.count / (avg_dist_b + 1.0);
+                return score_a > score_b;
+            });
+        
+        return frequent;
+    }
+    
+    /// Rewrite stream - replace all matched pairs with compositions - O(n)
+    std::vector<CpeAtom> rewrite_stream(
+        const std::vector<CpeAtom>& stream,
+        const std::unordered_map<std::uint64_t, NodeRef>& pair_to_comp,
+        double z_level)
+    {
+        std::vector<CpeAtom> result;
+        result.reserve(stream.size());
+        
+        std::size_t i = 0;
+        while (i < stream.size()) {
+            if (i + 1 < stream.size()) {
+                std::uint64_t key = make_pair_key(stream[i].ref, stream[i + 1].ref);
+                auto it = pair_to_comp.find(key);
+                
+                if (it != pair_to_comp.end()) {
+                    // Replace pair with composition
+                    CpeAtom comp_atom;
+                    comp_atom.ref = it->second;
+                    comp_atom.x = (stream[i].x + stream[i + 1].x) / 2.0;
+                    comp_atom.y = (stream[i].y + stream[i + 1].y) / 2.0;
+                    comp_atom.z = z_level;
+                    comp_atom.m = stream[i].m + stream[i + 1].m;
+                    result.push_back(comp_atom);
+                    i += 2;
+                    continue;
+                }
+            }
+            result.push_back(stream[i]);
+            i++;
+        }
+        
+        return result;
     }
 
 public:
@@ -145,14 +292,15 @@ public:
             return CodepointAtomTable::instance().ref(codepoints[0]);
         }
 
-        // Build balanced binary tree on codepoints
-        return build_tree_codepoints(codepoints, 0, codepoints.size());
+        // BPE on codepoints
+        return compute_cpe_hash(codepoints, 0, codepoints.size());
     }
-
-    /// Build tree on codepoints (no collection, just compute hashes)
-    [[nodiscard]] NodeRef build_tree_codepoints(
+    
+    /// Compute CPE hash using proper O(n log n) BPE algorithm.
+    /// Must match build_cpe_and_collect exactly for content addressing to work.
+    [[nodiscard]] NodeRef compute_cpe_hash(
         const std::vector<std::int32_t>& codepoints,
-        std::size_t start, std::size_t end)
+        std::size_t start, std::size_t end) const
     {
         const auto& atoms = CodepointAtomTable::instance();
         std::size_t len = end - start;
@@ -160,21 +308,246 @@ public:
         if (len == 0) return NodeRef{};
         if (len == 1) return atoms.ref(codepoints[start]);
 
-        if (len == 2) {
-            NodeRef children[2] = {atoms.ref(codepoints[start]), atoms.ref(codepoints[start + 1])};
-            auto [h, l] = MerkleHash::compute(children, children + 2);
-            return NodeRef::comp(h, l);
+        // Same algorithm as build_cpe_and_collect, just without storing
+        
+        // Initialize stream with atoms
+        std::vector<CpeAtom> stream;
+        stream.reserve(len);
+        
+        for (std::size_t i = start; i < end; ++i) {
+            CpeAtom atom;
+            atom.ref = atoms.ref(codepoints[i]);
+            atom.x = static_cast<double>(i - start);
+            atom.y = 0.0;
+            atom.z = 0.0;
+            atom.m = 1.0;
+            stream.push_back(atom);
         }
-
-        std::size_t mid = start + len / 2;
-        NodeRef left = build_tree_codepoints(codepoints, start, mid);
-        NodeRef right = build_tree_codepoints(codepoints, mid, end);
-
-        NodeRef children[2] = {left, right};
-        auto [h, l] = MerkleHash::compute(children, children + 2);
-        return NodeRef::comp(h, l);
+        
+        double z_level = 1.0;
+        std::size_t prev_size = 0;
+        
+        // Process levels until convergence
+        while (stream.size() >= 2 && z_level <= CPE_MAX_Z_LEVEL) {
+            // NOTE: RLE removed - it was losing data
+            
+            if (stream.size() < 2) break;
+            
+            // Check for convergence
+            if (prev_size > 0) {
+                double ratio = static_cast<double>(stream.size()) / static_cast<double>(prev_size);
+                if (ratio > 0.999) break;
+            }
+            prev_size = stream.size();
+            
+            // Count pairs - O(n)
+            std::unordered_map<std::uint64_t, PairStats> pair_counts;
+            pair_counts.reserve(stream.size() / 2);
+            
+            for (std::size_t i = 0; i + 1 < stream.size(); ++i) {
+                const auto& left = stream[i];
+                const auto& right = stream[i + 1];
+                
+                std::uint64_t key = make_pair_key(left.ref, right.ref);
+                auto& stats = pair_counts[key];
+                
+                if (stats.count == 0) {
+                    stats.left = left.ref;
+                    stats.right = right.ref;
+                }
+                stats.count++;
+                
+                double dx = right.x - left.x;
+                double dy = right.y - left.y;
+                stats.sum_dist += std::sqrt(dx * dx + dy * dy);
+            }
+            
+            // Get frequent pairs
+            std::vector<std::pair<std::uint64_t, PairStats>> frequent;
+            frequent.reserve(pair_counts.size());
+            
+            for (const auto& [key, stats] : pair_counts) {
+                if (stats.count >= CPE_FREQUENCY_THRESHOLD) {
+                    frequent.emplace_back(key, stats);
+                }
+            }
+            
+            if (frequent.empty()) break;
+            
+            // Sort by score
+            std::sort(frequent.begin(), frequent.end(),
+                [](const auto& a, const auto& b) {
+                    double avg_dist_a = a.second.sum_dist / a.second.count;
+                    double avg_dist_b = b.second.sum_dist / b.second.count;
+                    double score_a = a.second.count / (avg_dist_a + 1.0);
+                    double score_b = b.second.count / (avg_dist_b + 1.0);
+                    return score_a > score_b;
+                });
+            
+            // Create compositions and build lookup map
+            std::unordered_map<std::uint64_t, NodeRef> pair_to_comp;
+            
+            for (const auto& [key, stats] : frequent) {
+                NodeRef children[2] = {stats.left, stats.right};
+                auto [h, l] = MerkleHash::compute(children, children + 2);
+                NodeRef comp = NodeRef::comp(h, l);
+                pair_to_comp[key] = comp;
+            }
+            
+            // Rewrite stream - O(n)
+            std::vector<CpeAtom> result;
+            result.reserve(stream.size());
+            
+            std::size_t i = 0;
+            while (i < stream.size()) {
+                if (i + 1 < stream.size()) {
+                    std::uint64_t key = make_pair_key(stream[i].ref, stream[i + 1].ref);
+                    auto it = pair_to_comp.find(key);
+                    
+                    if (it != pair_to_comp.end()) {
+                        CpeAtom comp_atom;
+                        comp_atom.ref = it->second;
+                        comp_atom.x = (stream[i].x + stream[i + 1].x) / 2.0;
+                        comp_atom.y = (stream[i].y + stream[i + 1].y) / 2.0;
+                        comp_atom.z = z_level;
+                        comp_atom.m = stream[i].m + stream[i + 1].m;
+                        result.push_back(comp_atom);
+                        i += 2;
+                        continue;
+                    }
+                }
+                result.push_back(stream[i]);
+                i++;
+            }
+            
+            stream = std::move(result);
+            z_level += 1.0;
+        }
+        
+        // Combine remaining atoms with binary tree
+        while (stream.size() > 1) {
+            std::vector<CpeAtom> next_level;
+            next_level.reserve((stream.size() + 1) / 2);
+            
+            for (std::size_t i = 0; i + 1 < stream.size(); i += 2) {
+                NodeRef children[2] = {stream[i].ref, stream[i + 1].ref};
+                auto [h, l] = MerkleHash::compute(children, children + 2);
+                NodeRef comp = NodeRef::comp(h, l);
+                
+                CpeAtom merged;
+                merged.ref = comp;
+                merged.x = (stream[i].x + stream[i + 1].x) / 2.0;
+                merged.y = (stream[i].y + stream[i + 1].y) / 2.0;
+                merged.z = z_level;
+                merged.m = stream[i].m + stream[i + 1].m;
+                next_level.push_back(merged);
+            }
+            
+            if (stream.size() % 2 == 1) {
+                next_level.push_back(stream.back());
+            }
+            
+            stream = std::move(next_level);
+            z_level += 1.0;
+        }
+        
+        return stream.empty() ? NodeRef{} : stream[0].ref;
     }
-
+    
+    /// Encode a query using the pre-built merge table from ingestion.
+    /// This ensures queries are encoded the same way as the ingested content.
+    /// Applies merges greedily until no more matches in the merge table.
+    [[nodiscard]] NodeRef encode_with_merge_table(
+        const std::vector<std::int32_t>& codepoints,
+        std::size_t start, std::size_t end) const
+    {
+        const auto& atoms = CodepointAtomTable::instance();
+        std::size_t len = end - start;
+        
+        if (len == 0) return NodeRef{};
+        if (len == 1) return atoms.ref(codepoints[start]);
+        
+        // Initialize stream with atoms
+        std::vector<NodeRef> stream;
+        stream.reserve(len);
+        
+        for (std::size_t i = start; i < end; ++i) {
+            stream.push_back(atoms.ref(codepoints[i]));
+        }
+        
+        // Apply merges from the table until no more matches
+        bool made_progress = true;
+        while (made_progress && stream.size() > 1) {
+            made_progress = false;
+            std::vector<NodeRef> next_stream;
+            next_stream.reserve(stream.size());
+            
+            std::size_t i = 0;
+            while (i < stream.size()) {
+                if (i + 1 < stream.size()) {
+                    std::uint64_t key = make_pair_key(stream[i], stream[i + 1]);
+                    auto it = merge_table_.find(key);
+                    
+                    if (it != merge_table_.end()) {
+                        // Found a known merge, apply it
+                        next_stream.push_back(it->second);
+                        i += 2;
+                        made_progress = true;
+                        continue;
+                    }
+                }
+                next_stream.push_back(stream[i]);
+                i++;
+            }
+            
+            stream = std::move(next_stream);
+        }
+        
+        // If we couldn't reduce to a single node, create a binary tree
+        // for the remaining elements (same as ingestion)
+        while (stream.size() > 1) {
+            std::vector<NodeRef> next_level;
+            next_level.reserve((stream.size() + 1) / 2);
+            
+            for (std::size_t i = 0; i + 1 < stream.size(); i += 2) {
+                NodeRef children[2] = {stream[i], stream[i + 1]};
+                auto [h, l] = MerkleHash::compute(children, children + 2);
+                next_level.push_back(NodeRef::comp(h, l));
+            }
+            
+            if (stream.size() % 2 == 1) {
+                next_level.push_back(stream.back());
+            }
+            
+            stream = std::move(next_level);
+        }
+        
+        return stream.empty() ? NodeRef{} : stream[0];
+    }
+    
+    /// Compute root using merge table if available, otherwise fallback to CPE hash
+    [[nodiscard]] NodeRef compute_root_for_query(const std::string& text) const {
+        auto codepoints = UTF8Decoder::decode(
+            reinterpret_cast<const std::uint8_t*>(text.data()), text.size());
+        
+        if (codepoints.empty()) return NodeRef{};
+        if (codepoints.size() == 1) {
+            return CodepointAtomTable::instance().ref(codepoints[0]);
+        }
+        
+        // If we have a merge table, use it
+        if (!merge_table_.empty()) {
+            return encode_with_merge_table(codepoints, 0, codepoints.size());
+        }
+        
+        // Fallback to recomputing CPE hash
+        return compute_cpe_hash(codepoints, 0, codepoints.size());
+    }
+    
+    static std::uint64_t compute_pair_key(NodeRef left, NodeRef right) {
+        return static_cast<std::uint64_t>(left.id_high ^ left.id_low) ^
+               (static_cast<std::uint64_t>(right.id_high ^ right.id_low) * 0x9e3779b97f4a7c15ULL);
+    }
     [[nodiscard]] NodeRef compute_root(const char* text) {
         return compute_root(reinterpret_cast<const std::uint8_t*>(text), std::strlen(text));
     }
@@ -233,10 +606,37 @@ public:
 
     /// Full content lookup: text → root → exists?
     /// This answers "does 'Captain Ahab' exist in the substrate?"
+    /// 
+    /// For BPE-style encoding, exact phrase lookup requires either:
+    /// 1. The phrase was encoded as a standalone unit (root exists)
+    /// 2. OR we find the phrase by decoding and searching
+    /// 
+    /// We try the fast path first (hash lookup), then fall back to decode search.
     [[nodiscard]] CompositionResult find_content(const std::string& text) {
-        NodeRef root = compute_root(text);
-        bool found = exists(root);
-        return {root, found, text.size()};
+        // Fast path: try merge table encoding
+        NodeRef root = compute_root_for_query(text);
+        if (exists(root)) {
+            return {root, true, text.size()};
+        }
+        
+        // Also try without merge table (for isolated encoding)
+        auto codepoints = UTF8Decoder::decode(
+            reinterpret_cast<const std::uint8_t*>(text.data()), text.size());
+        if (!codepoints.empty() && codepoints.size() > 1) {
+            NodeRef root2 = compute_cpe_hash(codepoints, 0, codepoints.size());
+            if (exists(root2)) {
+                return {root2, true, text.size()};
+            }
+        }
+        
+        return {root, false, text.size()};
+    }
+    
+    /// Check if ingested content contains a substring by decoding and searching.
+    /// This is the "true" find - it checks if the text appears in any stored content.
+    [[nodiscard]] bool content_contains(NodeRef content_root, const std::string& query) {
+        std::string decoded = decode_string(content_root);
+        return decoded.find(query) != std::string::npos;
     }
 
     // =========================================================================
@@ -1739,44 +2139,255 @@ private:
 public:
     std::vector<std::tuple<NodeRef, NodeRef, NodeRef>> pending_compositions_;
 
-    /// Build tree and collect compositions for batch insert.
-    /// Decodes UTF-8 → codepoints → builds tree on UNICODE atoms (1.1M), not bytes.
-    NodeRef build_and_collect(const std::uint8_t* data, std::size_t len) {
-        // Decode UTF-8 to codepoints - this is the CORRECT approach
-        auto codepoints = UTF8Decoder::decode(data, len);
-        return build_and_collect_codepoints(codepoints, 0, codepoints.size());
-    }
-
-    /// Build tree on codepoint range (recursive, balanced binary tree)
-    NodeRef build_and_collect_codepoints(
+    // =========================================================================
+    // CASCADING PAIR ENCODING (CPE) - BPE on Unicode codepoints
+    // =========================================================================
+    
+    /// Build CPE using proper O(n log n) BPE algorithm.
+    /// Per level: O(n) pair count → O(n) stream rewrite
+    /// Stream shrinks exponentially → ~log(n) levels
+    /// Total: O(n log n)
+    ///
+    /// Stores ALL intermediate compositions for substring queries.
+    NodeRef build_cpe_and_collect(
         const std::vector<std::int32_t>& codepoints,
         std::size_t start, std::size_t end)
     {
         const auto& atoms = CodepointAtomTable::instance();
         std::size_t len = end - start;
-
+        
         if (len == 0) return NodeRef{};
         if (len == 1) return atoms.ref(codepoints[start]);
-
-        if (len == 2) {
-            NodeRef left = atoms.ref(codepoints[start]);
-            NodeRef right = atoms.ref(codepoints[start + 1]);
-            NodeRef children[2] = {left, right};
+        
+        // Initialize stream with atoms
+        std::vector<CpeAtom> stream;
+        stream.reserve(len);
+        
+        for (std::size_t i = start; i < end; ++i) {
+            CpeAtom atom;
+            atom.ref = atoms.ref(codepoints[i]);
+            // Initial position: x = character index, y = 0, z = 0, m = 1
+            atom.x = static_cast<double>(i - start);
+            atom.y = 0.0;
+            atom.z = 0.0;
+            atom.m = 1.0;
+            stream.push_back(atom);
+        }
+        
+        double z_level = 1.0;
+        std::size_t prev_size = 0;
+        
+        // Process levels until convergence
+        while (stream.size() >= 2 && z_level <= CPE_MAX_Z_LEVEL) {
+            // NOTE: RLE was removed - it was collapsing identical atoms
+            // and losing data because run length wasn't encoded in tree
+            
+            if (stream.size() < 2) break;
+            
+            // Check for convergence (less than 0.1% compression)
+            if (prev_size > 0) {
+                double ratio = static_cast<double>(stream.size()) / static_cast<double>(prev_size);
+                if (ratio > 0.999) break;  // Not compressing anymore
+            }
+            prev_size = stream.size();
+            
+            // Count pairs - O(n)
+            auto pair_counts = count_pairs(stream);
+            
+            // Get frequent pairs above threshold, sorted by score
+            auto frequent_pairs = get_frequent_pairs(pair_counts);
+            
+            if (frequent_pairs.empty()) break;  // No pairs above threshold
+            
+            // Create compositions for all frequent pairs and build lookup map
+            std::unordered_map<std::uint64_t, NodeRef> pair_to_comp;
+            
+            for (const auto& [key, stats] : frequent_pairs) {
+                // Create composition: hash(left, right)
+                NodeRef children[2] = {stats.left, stats.right};
+                auto [h, l] = MerkleHash::compute(children, children + 2);
+                NodeRef comp = NodeRef::comp(h, l);
+                
+                // Store composition
+                pending_compositions_.emplace_back(comp, stats.left, stats.right);
+                pair_to_comp[key] = comp;
+                
+                // Add to global merge table for query encoding
+                merge_table_[key] = comp;
+            }
+            
+            // Rewrite stream - O(n)
+            stream = rewrite_stream(stream, pair_to_comp, z_level);
+            z_level += 1.0;
+        }
+        
+        // If still multiple atoms, create final composition chain
+        while (stream.size() > 1) {
+            // No frequent pairs, but still need to combine remainder
+            // Create binary tree for remaining atoms
+            std::vector<CpeAtom> next_level;
+            next_level.reserve((stream.size() + 1) / 2);
+            
+            for (std::size_t i = 0; i + 1 < stream.size(); i += 2) {
+                NodeRef children[2] = {stream[i].ref, stream[i + 1].ref};
+                auto [h, l] = MerkleHash::compute(children, children + 2);
+                NodeRef comp = NodeRef::comp(h, l);
+                pending_compositions_.emplace_back(comp, stream[i].ref, stream[i + 1].ref);
+                
+                CpeAtom merged;
+                merged.ref = comp;
+                merged.x = (stream[i].x + stream[i + 1].x) / 2.0;
+                merged.y = (stream[i].y + stream[i + 1].y) / 2.0;
+                merged.z = z_level;
+                merged.m = stream[i].m + stream[i + 1].m;
+                next_level.push_back(merged);
+            }
+            
+            // Handle odd element
+            if (stream.size() % 2 == 1) {
+                next_level.push_back(stream.back());
+            }
+            
+            stream = std::move(next_level);
+            z_level += 1.0;
+        }
+        
+        return stream.empty() ? NodeRef{} : stream[0].ref;
+    }
+    
+    /// Tokenize text using greedy longest-match against existing DB compositions.
+    /// Unknown sequences are CPE'd and stored, growing the vocabulary.
+    /// Returns vector of token NodeRefs.
+    /// Uses in-memory cache for greedy matching - NO DB CALLS during encoding.
+    /// Cache is populated from DB at startup and updated with new compositions.
+    /// 
+    /// CRITICAL: Respects word boundaries first, then applies CPE within words.
+    /// This ensures "Captain Ahab" creates compositions for both words AND the phrase.
+    std::vector<NodeRef> tokenize_greedy(const std::vector<std::int32_t>& codepoints) {
+        std::vector<NodeRef> tokens;
+        if (codepoints.empty()) return tokens;
+        
+        // First, split on word boundaries (whitespace/punctuation)
+        std::vector<std::pair<std::size_t, std::size_t>> word_ranges;
+        std::size_t word_start = 0;
+        bool in_word = false;
+        
+        auto is_word_char = [](std::int32_t cp) {
+            // Letters and digits are word characters
+            return (cp >= 'A' && cp <= 'Z') || 
+                   (cp >= 'a' && cp <= 'z') || 
+                   (cp >= '0' && cp <= '9') ||
+                   (cp >= 0x80);  // Non-ASCII treated as word chars
+        };
+        
+        for (std::size_t i = 0; i < codepoints.size(); ++i) {
+            bool is_word = is_word_char(codepoints[i]);
+            
+            if (is_word && !in_word) {
+                word_start = i;
+                in_word = true;
+            } else if (!is_word && in_word) {
+                word_ranges.push_back({word_start, i});
+                in_word = false;
+            }
+            
+            // Non-word chars (space, punctuation) become individual tokens
+            if (!is_word) {
+                NodeRef atom = CodepointAtomTable::instance().ref(codepoints[i]);
+                tokens.push_back(atom);
+            }
+        }
+        
+        if (in_word) {
+            word_ranges.push_back({word_start, codepoints.size()});
+        }
+        
+        // Now process each word - try cache first, then CPE
+        for (const auto& [start, end] : word_ranges) {
+            NodeRef word_ref = compute_cpe_hash(codepoints, start, end);
+            
+            if (!cache_contains(word_ref)) {
+                // Build and store the word with all intermediates
+                word_ref = build_cpe_and_collect(codepoints, start, end);
+            }
+            
+            tokens.push_back(word_ref);
+        }
+        
+        return tokens;
+    }
+    
+    /// Check if composition exists in local cache (O(1), no DB)
+    [[nodiscard]] bool cache_contains(NodeRef ref) const {
+        if (ref.is_atom) return true;
+        return composition_cache_.count(make_key(ref.id_high, ref.id_low)) > 0;
+    }
+    
+    /// Add to local cache (called after flush_pending)
+    void cache_add(NodeRef parent, NodeRef left, NodeRef right) {
+        composition_cache_[make_key(parent.id_high, parent.id_low)] = {left, right};
+    }
+    
+    /// Load existing compositions from DB into cache (call once at startup)
+    void load_composition_cache(std::size_t limit = 1000000) {
+        char query[256];
+        std::snprintf(query, sizeof(query),
+            "SELECT hilbert_high, hilbert_low, left_high, left_low, right_high, right_low "
+            "FROM composition LIMIT %zu", limit);
+        
+        PgResult res(PQexec(conn_.get(), query));
+        if (res.status() == PGRES_TUPLES_OK) {
+            for (int i = 0; i < res.row_count(); ++i) {
+                NodeRef parent, left, right;
+                parent.id_high = std::stoll(res.get_value(i, 0));
+                parent.id_low = std::stoll(res.get_value(i, 1));
+                parent.is_atom = false;
+                left.id_high = std::stoll(res.get_value(i, 2));
+                left.id_low = std::stoll(res.get_value(i, 3));
+                right.id_high = std::stoll(res.get_value(i, 4));
+                right.id_low = std::stoll(res.get_value(i, 5));
+                composition_cache_[make_key(parent.id_high, parent.id_low)] = {left, right};
+            }
+        }
+    }
+    
+    /// Build document structure from tokens using CPE.
+    /// Tokens → Sentence composition → Document composition
+    NodeRef compose_tokens(const std::vector<NodeRef>& tokens) {
+        if (tokens.empty()) return NodeRef{};
+        if (tokens.size() == 1) return tokens[0];
+        
+        NodeRef current = tokens[0];
+        for (std::size_t i = 1; i < tokens.size(); ++i) {
+            NodeRef children[2] = {current, tokens[i]};
             auto [h, l] = MerkleHash::compute(children, children + 2);
             NodeRef comp = NodeRef::comp(h, l);
-            pending_compositions_.emplace_back(comp, left, right);
-            return comp;
+            pending_compositions_.emplace_back(comp, current, tokens[i]);
+            current = comp;
         }
+        return current;
+    }
 
-        std::size_t mid = start + len / 2;
-        NodeRef left = build_and_collect_codepoints(codepoints, start, mid);
-        NodeRef right = build_and_collect_codepoints(codepoints, mid, end);
+    /// Build tree and collect compositions for batch insert.
+    /// CRITICAL: Must produce SAME hash as compute_root() for substring lookups to work.
+    /// Uses character-by-character CPE, same as compute_root.
+    NodeRef build_and_collect(const std::uint8_t* data, std::size_t len) {
+        auto codepoints = UTF8Decoder::decode(data, len);
+        if (codepoints.empty()) return NodeRef{};
+        if (codepoints.size() == 1) {
+            return CodepointAtomTable::instance().ref(codepoints[0]);
+        }
+        
+        // Use the SAME CPE algorithm as compute_root, but collect compositions
+        return build_cpe_and_collect(codepoints, 0, codepoints.size());
+    }
 
-        NodeRef children[2] = {left, right};
-        auto [h, l] = MerkleHash::compute(children, children + 2);
-        NodeRef comp = NodeRef::comp(h, l);
-        pending_compositions_.emplace_back(comp, left, right);
-        return comp;
+    /// Build CPE composition for codepoint range (for compute_root compatibility)
+    NodeRef build_and_collect_codepoints(
+        const std::vector<std::int32_t>& codepoints,
+        std::size_t start, std::size_t end)
+    {
+        return build_cpe_and_collect(codepoints, start, end);
     }
 
     /// Flush pending compositions to database - staging table + INSERT ON CONFLICT.
@@ -1823,6 +2434,9 @@ public:
             i16(6); i32(8); i64(p.id_high); i32(8); i64(p.id_low);
             i32(8); i64(l.id_high); i32(8); i64(l.id_low);
             i32(8); i64(r.id_high); i32(8); i64(r.id_low);
+            
+            // Also add to cache so future lookups don't hit DB
+            composition_cache_[make_key(p.id_high, p.id_low)] = {l, r};
         }
         i16(-1);
 
