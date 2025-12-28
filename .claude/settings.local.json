@@ -19,7 +19,12 @@
       "Bash(timeout 120 ./build/bin/hartonomous-db-tests.exe:*)",
       "Bash(./build/bin/hartonomous-tests.exe:*)",
       "Bash(cd:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(ls:*)",
+      "Bash(ninja:*)",
+      "Bash(./bin/hartonomous-tests.exe:*)",
+      "Bash(timeout 60 ./bin/hartonomous-tests.exe:*)"
     ]
   }
 }

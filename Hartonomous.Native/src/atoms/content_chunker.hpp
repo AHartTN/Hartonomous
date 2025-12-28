@@ -1,160 +1,128 @@
 #pragma once
 
-/// CONTENT-DEFINED CHUNKING
+/// UNIVERSAL TOKENIZATION
 ///
 /// The problem: Balanced binary tree splits "Captain Ahab" differently
 /// when it appears in Moby Dick vs standalone. Substring queries fail.
 ///
-/// The solution: Content-defined chunking using rolling hash.
-/// Split points are determined by content, not position.
-/// Same content = same chunks = same composition roots = queryable substrings.
+/// The solution: Tokenize based on character class, not position.
+/// - ASCII letters/digits → grouped as words ("Captain" is one token)
+/// - Whitespace → grouped as runs (" " or "  \n" is one token)
+/// - CJK/symbols/punctuation → one token per codepoint ("船" is one token)
 ///
-/// Uses Rabin fingerprinting with mask-based boundary detection.
+/// This works for ALL languages:
+/// - English: "Captain Ahab" → ["Captain", " ", "Ahab"]
+/// - Chinese: "船长白鲸" → ["船", "长", "白", "鲸"]
+/// - Mixed: "Hello世界" → ["Hello", "世", "界"]
+///
+/// Same text = same tokens = same composition = queryable substrings.
 
 #include <cstdint>
 #include <vector>
-#include <span>
+#include <string>
 
 namespace hartonomous {
 
-/// Content-defined chunk with RLE support
-struct Chunk {
+/// Token from universal tokenization
+struct Token {
     const std::uint8_t* data;
     std::size_t length;
-    std::uint32_t repeat_count;  // RLE: 1 = no repeat
 };
 
-/// Rabin fingerprint rolling hash for content-defined chunking
-class ContentChunker {
-    // Rabin polynomial parameters (proven prime)
-    static constexpr std::uint64_t PRIME = 0x3DA3358B4DC173ULL;
-    static constexpr std::uint64_t MOD = (1ULL << 48) - 1;
-
-    // Chunk size parameters
-    std::size_t min_chunk_;
-    std::size_t max_chunk_;
-    std::uint64_t mask_;  // Determines average chunk size
-
+/// Universal tokenizer that works for all languages.
+/// Guarantees: Same content = same tokens = same encoding.
+class UniversalTokenizer {
 public:
-    /// Create chunker with target average size (must be power of 2)
-    /// min = avg/4, max = avg*4
-    explicit ContentChunker(std::size_t avg_chunk_size = 64)
-        : min_chunk_(avg_chunk_size / 4)
-        , max_chunk_(avg_chunk_size * 4)
-        , mask_(avg_chunk_size - 1)  // Works when avg is power of 2
-    {
-        // Ensure minimum viable chunks
-        if (min_chunk_ < 4) min_chunk_ = 4;
-        if (max_chunk_ < 16) max_chunk_ = 256;
-    }
+    /// Tokenize into universal tokens.
+    /// ASCII words grouped, CJK/symbols split per-codepoint.
+    [[nodiscard]] std::vector<Token> tokenize(const std::uint8_t* data, std::size_t len) const {
+        std::vector<Token> tokens;
+        if (len == 0) return tokens;
 
-    /// Chunk data using content-defined boundaries
-    /// Returns chunks that will be consistent regardless of position in larger content
-    [[nodiscard]] std::vector<Chunk> chunk(const std::uint8_t* data, std::size_t len) const {
-        std::vector<Chunk> chunks;
-        if (len == 0) return chunks;
-
-        chunks.reserve(len / ((min_chunk_ + max_chunk_) / 2) + 1);
+        tokens.reserve(len / 2);  // Conservative estimate
 
         std::size_t pos = 0;
         while (pos < len) {
-            std::size_t chunk_end = find_boundary(data, len, pos);
+            std::size_t start = pos;
+            std::uint8_t first = data[pos];
 
-            Chunk c;
-            c.data = data + pos;
-            c.length = chunk_end - pos;
-            c.repeat_count = 1;
-
-            // RLE: Check if this chunk repeats
-            while (chunk_end + c.length <= len) {
-                bool matches = true;
-                for (std::size_t i = 0; i < c.length && matches; ++i) {
-                    if (data[chunk_end + i] != c.data[i]) matches = false;
-                }
-                if (matches) {
-                    c.repeat_count++;
-                    chunk_end += c.length;
+            if (first < 0x80) {
+                // ASCII byte
+                if (is_ascii_word_char(first)) {
+                    // ASCII word: group all consecutive ASCII word chars
+                    while (pos < len && data[pos] < 0x80 && is_ascii_word_char(data[pos])) {
+                        ++pos;
+                    }
+                } else if (is_ascii_whitespace(first)) {
+                    // Whitespace run
+                    while (pos < len && data[pos] < 0x80 && is_ascii_whitespace(data[pos])) {
+                        ++pos;
+                    }
                 } else {
-                    break;
+                    // ASCII punctuation/symbol: single character
+                    ++pos;
                 }
+            } else {
+                // Non-ASCII: decode one UTF-8 codepoint
+                // Each non-ASCII codepoint is its own token
+                pos += utf8_codepoint_length(first);
+                if (pos > len) pos = len;  // Bounds check
             }
 
-            chunks.push_back(c);
-            pos = chunk_end;
+            tokens.push_back({data + start, pos - start});
         }
 
-        return chunks;
+        return tokens;
     }
 
-    /// Chunk string data
-    [[nodiscard]] std::vector<Chunk> chunk(const char* data, std::size_t len) const {
-        return chunk(reinterpret_cast<const std::uint8_t*>(data), len);
+    [[nodiscard]] std::vector<Token> tokenize(const char* data, std::size_t len) const {
+        return tokenize(reinterpret_cast<const std::uint8_t*>(data), len);
     }
 
-    [[nodiscard]] std::vector<Chunk> chunk(const std::string& s) const {
-        return chunk(s.data(), s.size());
+    [[nodiscard]] std::vector<Token> tokenize(const std::string& s) const {
+        return tokenize(s.data(), s.size());
     }
 
 private:
-    /// Find content-defined boundary starting from pos
-    [[nodiscard]] std::size_t find_boundary(
-        const std::uint8_t* data, std::size_t len, std::size_t pos) const
-    {
-        std::size_t end = pos + min_chunk_;
-        if (end >= len) return len;
+    [[nodiscard]] static bool is_ascii_word_char(std::uint8_t c) {
+        return (c >= 'a' && c <= 'z') ||
+               (c >= 'A' && c <= 'Z') ||
+               (c >= '0' && c <= '9') ||
+               c == '_';
+    }
 
-        std::size_t max_end = pos + max_chunk_;
-        if (max_end > len) max_end = len;
+    [[nodiscard]] static bool is_ascii_whitespace(std::uint8_t c) {
+        return c == ' ' || c == '\t' || c == '\n' || c == '\r';
+    }
 
-        // Rolling hash
-        std::uint64_t hash = 0;
-
-        // Initialize hash with min_chunk bytes
-        for (std::size_t i = pos; i < end; ++i) {
-            hash = ((hash << 8) | data[i]) % MOD;
-        }
-
-        // Roll forward looking for boundary
-        while (end < max_end) {
-            // Boundary condition: low bits of hash match mask
-            if ((hash & mask_) == 0) {
-                return end;
-            }
-
-            // Roll hash forward
-            hash = ((hash << 8) | data[end]) % MOD;
-            ++end;
-        }
-
-        // Max chunk reached
-        return end;
+    /// Get UTF-8 codepoint length from first byte
+    [[nodiscard]] static std::size_t utf8_codepoint_length(std::uint8_t first) {
+        if ((first & 0x80) == 0x00) return 1;      // 0xxxxxxx - ASCII
+        if ((first & 0xE0) == 0xC0) return 2;      // 110xxxxx
+        if ((first & 0xF0) == 0xE0) return 3;      // 1110xxxx (CJK lives here)
+        if ((first & 0xF8) == 0xF0) return 4;      // 11110xxx (emoji lives here)
+        return 1;  // Invalid UTF-8, treat as single byte
     }
 };
 
-/// Hierarchical chunking: chunks of chunks for large content
-/// Creates natural paragraph/section boundaries
+// Compatibility wrapper
+struct Chunk {
+    const std::uint8_t* data;
+    std::size_t length;
+    std::uint32_t repeat_count;
+};
+
 class HierarchicalChunker {
-    ContentChunker level1_;  // ~64 byte chunks (words/phrases)
-    ContentChunker level2_;  // ~512 byte chunks (sentences/paragraphs)
-    ContentChunker level3_;  // ~4096 byte chunks (sections)
-
+    UniversalTokenizer tokenizer_;
 public:
-    HierarchicalChunker()
-        : level1_(64)
-        , level2_(512)
-        , level3_(4096)
-    {}
-
-    /// Get appropriate chunker for content size
-    [[nodiscard]] const ContentChunker& for_size(std::size_t len) const {
-        if (len < 256) return level1_;
-        if (len < 2048) return level2_;
-        return level3_;
-    }
-
-    /// Chunk with automatic level selection
     [[nodiscard]] std::vector<Chunk> chunk(const std::uint8_t* data, std::size_t len) const {
-        return for_size(len).chunk(data, len);
+        auto tokens = tokenizer_.tokenize(data, len);
+        std::vector<Chunk> chunks;
+        chunks.reserve(tokens.size());
+        for (const auto& t : tokens) {
+            chunks.push_back({t.data, t.length, 1});
+        }
+        return chunks;
     }
 };
 

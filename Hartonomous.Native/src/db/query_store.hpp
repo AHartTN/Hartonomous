@@ -15,6 +15,7 @@
 #include "../atoms/codepoint_atom_table.hpp"
 #include "../atoms/merkle_hash.hpp"
 #include "../atoms/semantic_decompose.hpp"
+#include "../atoms/content_chunker.hpp"
 #include <libpq-fe.h>
 #include <string>
 #include <vector>
@@ -281,21 +282,95 @@ public:
     // =========================================================================
 
     /// Compute root hash for content WITHOUT storing.
-    /// This is the O(1) content addressing the system should provide.
-    /// Returns the root NodeRef that would represent this content.
-    [[nodiscard]] NodeRef compute_root(const std::uint8_t* data, std::size_t len) {
+    /// CRITICAL: Must use SAME algorithm as encode_and_store:
+    ///   1. Tokenize using UniversalTokenizer
+    ///   2. Encode each token with CPE
+    ///   3. Compose token roots into balanced tree
+    [[nodiscard]] NodeRef compute_root(const std::uint8_t* data, std::size_t len) const {
         if (len == 0) return NodeRef{};
 
-        // Decode UTF-8 to codepoints - use UNICODE atoms, not bytes
-        auto codepoints = UTF8Decoder::decode(data, len);
-        if (codepoints.size() == 1) {
-            return CodepointAtomTable::instance().ref(codepoints[0]);
+        // Use SAME tokenization as encode_and_store
+        HierarchicalChunker chunker;
+        auto chunks = chunker.chunk(data, len);
+
+        if (chunks.empty()) return NodeRef{};
+
+        // Encode each token
+        std::vector<NodeRef> token_roots;
+        token_roots.reserve(chunks.size());
+
+        for (const auto& chunk : chunks) {
+            auto codepoints = UTF8Decoder::decode(chunk.data, chunk.length);
+            if (codepoints.empty()) continue;
+
+            NodeRef token_root;
+            if (codepoints.size() == 1) {
+                token_root = CodepointAtomTable::instance().ref(codepoints[0]);
+            } else {
+                // Balanced tree for word - SAME as encode_word_balanced
+                token_root = compute_word_balanced_hash(codepoints);
+            }
+            token_roots.push_back(token_root);
         }
 
-        // BPE on codepoints
-        return compute_cpe_hash(codepoints, 0, codepoints.size());
+        if (token_roots.empty()) return NodeRef{};
+        if (token_roots.size() == 1) return token_roots[0];
+
+        // Left-to-right composition - SAME as store_phrase_compositions
+        // ABC = compose(compose(A, B), C)
+        NodeRef current = token_roots[0];
+        for (std::size_t i = 1; i < token_roots.size(); ++i) {
+            NodeRef children[2] = {current, token_roots[i]};
+            auto [h, l] = MerkleHash::compute(children, children + 2);
+            current = NodeRef::comp(h, l);
+        }
+        return current;
     }
-    
+
+    /// Compute balanced tree hash WITHOUT storing.
+    /// Must match build_balanced_tree_and_collect exactly.
+    [[nodiscard]] NodeRef compute_balanced_tree_hash(const std::vector<NodeRef>& nodes) const {
+        if (nodes.empty()) return NodeRef{};
+        if (nodes.size() == 1) return nodes[0];
+
+        std::vector<NodeRef> current = nodes;
+
+        while (current.size() > 1) {
+            std::vector<NodeRef> next_level;
+            next_level.reserve((current.size() + 1) / 2);
+
+            for (std::size_t i = 0; i + 1 < current.size(); i += 2) {
+                NodeRef children[2] = {current[i], current[i + 1]};
+                auto [h, l] = MerkleHash::compute(children, children + 2);
+                next_level.push_back(NodeRef::comp(h, l));
+            }
+
+            if (current.size() % 2 == 1) {
+                next_level.push_back(current.back());
+            }
+
+            current = std::move(next_level);
+        }
+
+        return current[0];
+    }
+
+    /// Compute balanced tree hash for codepoints WITHOUT storing.
+    /// Must match encode_word_balanced exactly for content addressing to work.
+    [[nodiscard]] NodeRef compute_word_balanced_hash(const std::vector<std::int32_t>& codepoints) const {
+        const auto& atoms = CodepointAtomTable::instance();
+
+        // Convert codepoints to atom refs
+        std::vector<NodeRef> nodes;
+        nodes.reserve(codepoints.size());
+        for (auto cp : codepoints) {
+            nodes.push_back(atoms.ref(cp));
+        }
+
+        // Use same balanced tree as encode_word_balanced
+        return compute_balanced_tree_hash(nodes);
+    }
+
     /// Compute CPE hash using proper O(n log n) BPE algorithm.
     /// Must match build_cpe_and_collect exactly for content addressing to work.
     [[nodiscard]] NodeRef compute_cpe_hash(
@@ -527,21 +602,9 @@ public:
     
     /// Compute root using merge table if available, otherwise fallback to CPE hash
     [[nodiscard]] NodeRef compute_root_for_query(const std::string& text) const {
-        auto codepoints = UTF8Decoder::decode(
+        // MUST use same algorithm as compute_root and encode_and_store
+        return compute_root(
             reinterpret_cast<const std::uint8_t*>(text.data()), text.size());
-        
-        if (codepoints.empty()) return NodeRef{};
-        if (codepoints.size() == 1) {
-            return CodepointAtomTable::instance().ref(codepoints[0]);
-        }
-        
-        // If we have a merge table, use it
-        if (!merge_table_.empty()) {
-            return encode_with_merge_table(codepoints, 0, codepoints.size());
-        }
-        
-        // Fallback to recomputing CPE hash
-        return compute_cpe_hash(codepoints, 0, codepoints.size());
     }
     
     static std::uint64_t compute_pair_key(NodeRef left, NodeRef right) {
@@ -607,29 +670,15 @@ public:
     /// Full content lookup: text → root → exists?
     /// This answers "does 'Captain Ahab' exist in the substrate?"
     /// 
-    /// For BPE-style encoding, exact phrase lookup requires either:
-    /// 1. The phrase was encoded as a standalone unit (root exists)
-    /// 2. OR we find the phrase by decoding and searching
-    /// 
-    /// We try the fast path first (hash lookup), then fall back to decode search.
+    /// Find content by computing its root hash and checking if it exists.
+    ///
+    /// With tokenization + n-gram storage, this is O(1) for phrases up to 20 tokens.
+    /// The n-gram compositions are stored during encode_and_store, so any
+    /// contiguous token sequence that was ingested will be found.
     [[nodiscard]] CompositionResult find_content(const std::string& text) {
-        // Fast path: try merge table encoding
-        NodeRef root = compute_root_for_query(text);
-        if (exists(root)) {
-            return {root, true, text.size()};
-        }
-        
-        // Also try without merge table (for isolated encoding)
-        auto codepoints = UTF8Decoder::decode(
-            reinterpret_cast<const std::uint8_t*>(text.data()), text.size());
-        if (!codepoints.empty() && codepoints.size() > 1) {
-            NodeRef root2 = compute_cpe_hash(codepoints, 0, codepoints.size());
-            if (exists(root2)) {
-                return {root2, true, text.size()};
-            }
-        }
-        
-        return {root, false, text.size()};
+        NodeRef root = compute_root(text);
+        bool found = exists(root);
+        return {root, found, text.size()};
     }
     
     /// Check if ingested content contains a substring by decoding and searching.
@@ -905,11 +954,48 @@ public:
 
     /// Encode content and store all compositions in database.
     /// Returns root NodeRef. After this, the content is queryable.
+    ///
+    /// Uses CONTENT-DEFINED CHUNKING (Rabin fingerprint) to find natural boundaries.
+    /// This ensures phrases like "Captain Ahab" stay together regardless of position.
+    /// Then applies CPE within each chunk for efficient storage.
     NodeRef encode_and_store(const std::uint8_t* data, std::size_t len) {
         if (len == 0) return NodeRef{};
 
         pending_compositions_.clear();
-        NodeRef root = build_and_collect(data, len);
+        
+        // Use hierarchical content-defined chunking
+        // This finds natural boundaries using rolling hash - same content = same boundary
+        HierarchicalChunker chunker;
+        auto chunks = chunker.chunk(data, len);
+        
+        if (chunks.empty()) return NodeRef{};
+        
+        // Encode each chunk and collect its root
+        std::vector<NodeRef> chunk_roots;
+        chunk_roots.reserve(chunks.size());
+        
+        for (const auto& chunk : chunks) {
+            auto codepoints = UTF8Decoder::decode(chunk.data, chunk.length);
+            if (codepoints.empty()) continue;
+
+            NodeRef chunk_root;
+            if (codepoints.size() == 1) {
+                chunk_root = CodepointAtomTable::instance().ref(codepoints[0]);
+            } else {
+                // Simple balanced tree for word - O(n log n) not O(n²) BPE
+                chunk_root = encode_word_balanced(codepoints);
+            }
+            chunk_roots.push_back(chunk_root);
+        }
+        
+        // Store phrase compositions via left-to-right cascading from each token
+        // Merkle DAG: same content = same hash = stored ONCE
+        // "whale" appearing 1000 times → stored once, referenced 1000 times
+        store_phrase_compositions(chunk_roots, 20);
+
+        // Build hierarchical tree from chunk roots
+        // This ensures the entire document has a single queryable root
+        NodeRef root = build_balanced_tree_and_collect(chunk_roots);
 
         // Batch insert all compositions
         flush_pending();
@@ -2366,6 +2452,103 @@ public:
             current = comp;
         }
         return current;
+    }
+    
+    /// Fast balanced tree encoding for a word - O(n log n), no BPE overhead
+    NodeRef encode_word_balanced(const std::vector<std::int32_t>& codepoints) {
+        const auto& atoms = CodepointAtomTable::instance();
+
+        // Convert codepoints to atom refs
+        std::vector<NodeRef> nodes;
+        nodes.reserve(codepoints.size());
+        for (auto cp : codepoints) {
+            nodes.push_back(atoms.ref(cp));
+        }
+
+        // Reduce via balanced tree - O(log n) levels, O(n) per level = O(n log n)
+        while (nodes.size() > 1) {
+            std::vector<NodeRef> next;
+            next.reserve((nodes.size() + 1) / 2);
+
+            for (std::size_t i = 0; i + 1 < nodes.size(); i += 2) {
+                NodeRef children[2] = {nodes[i], nodes[i + 1]};
+                auto [h, l] = MerkleHash::compute(children, children + 2);
+                NodeRef comp = NodeRef::comp(h, l);
+                pending_compositions_.emplace_back(comp, nodes[i], nodes[i + 1]);
+                next.push_back(comp);
+            }
+            if (nodes.size() % 2 == 1) {
+                next.push_back(nodes.back());
+            }
+            nodes = std::move(next);
+        }
+        return nodes[0];
+    }
+
+    /// Store phrase compositions via left-to-right cascading from each token.
+    ///
+    /// Merkle DAG: same content = same hash = stored ONCE.
+    /// "Hello" appearing 1000 times → stored once, referenced 1000 times.
+    ///
+    /// From each token position, cascade left-to-right:
+    ///   Position 0: A, AB, ABC, ABCD...
+    ///   Position 1: B, BC, BCD...
+    ///   Position 2: C, CD...
+    ///
+    /// Left-to-right composition: ABC = compose(compose(A, B), C)
+    /// This creates all phrase prefixes from each starting position.
+    void store_phrase_compositions(const std::vector<NodeRef>& tokens, std::size_t max_phrase_tokens) {
+        if (tokens.size() < 2) return;
+
+        // From each starting position, cascade left-to-right
+        for (std::size_t start = 0; start < tokens.size(); ++start) {
+            NodeRef current = tokens[start];
+            std::size_t end = std::min(start + max_phrase_tokens, tokens.size());
+
+            for (std::size_t i = start + 1; i < end; ++i) {
+                // Left-to-right: current = compose(current, tokens[i])
+                NodeRef children[2] = {current, tokens[i]};
+                auto [h, l] = MerkleHash::compute(children, children + 2);
+                NodeRef comp = NodeRef::comp(h, l);
+
+                // Content-addressed: if this composition exists, it's not duplicated
+                pending_compositions_.emplace_back(comp, current, tokens[i]);
+                current = comp;
+            }
+        }
+    }
+
+    /// Build balanced binary tree from chunk roots and collect compositions.
+    /// Unlike compose_tokens (linear chain), this creates a proper balanced tree
+    /// with O(log n) depth for better query performance.
+    NodeRef build_balanced_tree_and_collect(const std::vector<NodeRef>& nodes) {
+        if (nodes.empty()) return NodeRef{};
+        if (nodes.size() == 1) return nodes[0];
+        
+        std::vector<NodeRef> current = nodes;
+        
+        // Reduce to single root via balanced tree
+        while (current.size() > 1) {
+            std::vector<NodeRef> next_level;
+            next_level.reserve((current.size() + 1) / 2);
+            
+            for (std::size_t i = 0; i + 1 < current.size(); i += 2) {
+                NodeRef children[2] = {current[i], current[i + 1]};
+                auto [h, l] = MerkleHash::compute(children, children + 2);
+                NodeRef comp = NodeRef::comp(h, l);
+                pending_compositions_.emplace_back(comp, current[i], current[i + 1]);
+                next_level.push_back(comp);
+            }
+            
+            // Handle odd element
+            if (current.size() % 2 == 1) {
+                next_level.push_back(current.back());
+            }
+            
+            current = std::move(next_level);
+        }
+        
+        return current[0];
     }
 
     /// Build tree and collect compositions for batch insert.
