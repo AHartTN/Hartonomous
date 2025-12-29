@@ -1102,7 +1102,7 @@ HARTONOMOUS_API int hartonomous_ask(
             } else {
                 tok_ref = cpe.compute_cpe_hash(codepoints, 0, codepoints.size());
             }
-            
+            query_refs.push_back(tok_ref);
         }
         
         if (query_refs.empty()) {
@@ -1193,7 +1193,7 @@ HARTONOMOUS_API int hartonomous_ask(
         // =====================================================================
         // PHASE 3: Aggregate and rank answers
         // =====================================================================
-        std::cerr << "[PHASE2] all_answers.size() = " << all_answers.size() << std::endl; std::unordered_map<std::uint64_t, ScoredAnswer> merged;
+        std::unordered_map<std::uint64_t, ScoredAnswer> merged;
         auto make_key2 = [](NodeRef r) {
             return static_cast<std::uint64_t>(r.id_high) ^
                    (static_cast<std::uint64_t>(r.id_low) * 0x9e3779b97f4a7c15ULL);
@@ -1238,7 +1238,9 @@ HARTONOMOUS_API int hartonomous_ask(
         
         for (const auto& ans : ranked) {
             try {
-                std::string decoded = store.decode_string(ans.ref); std::cerr << "[DECODE] " << decoded << " (score=" << ans.score << ")" << std::endl;
+                std::string decoded = store.decode_string(ans.ref);
+                for (unsigned char c : decoded) std::cerr << (int)c << " ";
+                std::cerr << std::endl;
                 
                 // Skip special tokens
                 if (is_special_token(decoded)) continue;
@@ -1249,20 +1251,26 @@ HARTONOMOUS_API int hartonomous_ask(
                 // Skip if starts with ## (wordpiece continuation)
                 if (decoded.size() >= 2 && decoded[0] == '#' && decoded[1] == '#') continue;
                 
-                bool has_alnum = false;
-                for (unsigned char c : decoded) {
-                    if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || 
-                        (c >= '0' && c <= '9') || c > 127) {
-                        has_alnum = true;
-                        break;
-                    }
+                // Accept any decoded content with at least 2 characters (not bytes)
+                // Count actual Unicode codepoints, not UTF-8 bytes
+                size_t char_count = 0;
+                for (size_t i = 0; i < decoded.size() && char_count < 2; ) {
+                    unsigned char c = decoded[i];
+                    if (c < 0x80) { ++i; }
+                    else if ((c & 0xE0) == 0xC0) { i += 2; }
+                    else if ((c & 0xF0) == 0xE0) { i += 3; }
+                    else if ((c & 0xF8) == 0xF0) { i += 4; }
+                    else { ++i; }
+                    ++char_count;
                 }
                 
-                if (has_alnum) {
+                if (char_count >= 2) {
                     answer = decoded;
                     best_score = ans.score;
                     break;
                 }
+            } catch (const std::exception& e) {
+                continue;
             } catch (...) {
                 continue;
             }
