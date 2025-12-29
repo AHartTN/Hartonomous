@@ -186,10 +186,13 @@ public:
         for (std::size_t i = start; i < end; ++i) {
             CpeAtom atom;
             atom.ref = atoms.ref(codepoints[i]);
-            atom.x = static_cast<double>(i - start);
-            atom.y = 0.0;
-            atom.z = 0.0;
-            atom.m = 1.0;
+            
+            // Use actual semantic coordinates from the codepoint
+            auto coord = SemanticDecompose::get_coord(codepoints[i]);
+            atom.x = static_cast<double>(coord.page);
+            atom.y = static_cast<double>(coord.type);
+            atom.z = static_cast<double>(coord.base);
+            atom.m = static_cast<double>(coord.variant);
             stream.push_back(atom);
         }
         

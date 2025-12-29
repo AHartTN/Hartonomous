@@ -147,7 +147,11 @@ public:
             }
         }
 
-        // Phase 5: Extract and store RELATIONSHIPS (word[i] → word[i+1])
+        // Phase 5: Store trajectories on TOKEN compositions (the roots)
+        // Each token_refs[i] gets token_trajectories[i]
+        store_composition_trajectories(token_refs, token_trajectories);
+
+        // Phase 6: Extract and store RELATIONSHIPS (word[i] → word[i+1])
         // Only word tokens, not punctuation
         store_relationships(word_refs, word_trajectories);
 
@@ -256,6 +260,73 @@ private:
         }
 
         res = PQexec(db_.connection(), "DROP TABLE IF EXISTS _comp_stage");
+        PQclear(res);
+    }
+
+    /// Store trajectories on composition records.
+    /// Updates existing compositions with their LineStringZM trajectory.
+    void store_composition_trajectories(
+        const std::vector<NodeRef>& refs,
+        const std::vector<db::Trajectory>& trajectories)
+    {
+        if (refs.empty()) return;
+        
+        // Build batch UPDATE via staging table
+        std::string data;
+        data.reserve(refs.size() * 200);
+        
+        for (std::size_t i = 0; i < refs.size() && i < trajectories.size(); ++i) {
+            const auto& ref = refs[i];
+            const auto& traj = trajectories[i];
+            
+            // Skip atoms (they don't have trajectories - they ARE points)
+            if (ref.is_atom) continue;
+            
+            // Skip empty trajectories
+            if (traj.points.empty()) continue;
+            
+            std::string wkt = traj.to_wkt();
+            if (wkt.empty() || wkt == "LINESTRINGZM EMPTY") continue;
+            
+            char buf[512];
+            char* p = buf;
+            p = db::DatabaseStore::write_int64(p, ref.id_high); *p++ = '\t';
+            p = db::DatabaseStore::write_int64(p, ref.id_low); *p++ = '\t';
+            // WKT needs to be escaped for COPY
+            std::memcpy(p, wkt.c_str(), wkt.size());
+            p += wkt.size();
+            *p++ = '\n';
+            data.append(buf, static_cast<std::size_t>(p - buf));
+        }
+        
+        if (data.empty()) return;
+        
+        // Stage and update
+        PGresult* res = PQexec(db_.connection(), "DROP TABLE IF EXISTS _traj_stage");
+        PQclear(res);
+        res = PQexec(db_.connection(),
+            "CREATE UNLOGGED TABLE _traj_stage ("
+            "h BIGINT, l BIGINT, wkt TEXT)");
+        PQclear(res);
+        
+        res = PQexec(db_.connection(), "COPY _traj_stage FROM STDIN");
+        if (PQresultStatus(res) == PGRES_COPY_IN) {
+            PQclear(res);
+            PQputCopyData(db_.connection(), data.c_str(), static_cast<int>(data.size()));
+            PQputCopyEnd(db_.connection(), nullptr);
+            PQclear(PQgetResult(db_.connection()));
+            
+            res = PQexec(db_.connection(),
+                "UPDATE composition c "
+                "SET trajectory = ST_GeomFromText(s.wkt) "
+                "FROM _traj_stage s "
+                "WHERE c.hilbert_high = s.h AND c.hilbert_low = s.l");
+            PQclear(res);
+        } else {
+            PQclear(res);
+        }
+        
+        res = PQexec(db_.connection(), "DROP TABLE IF EXISTS _traj_stage");
         PQclear(res);
     }
 

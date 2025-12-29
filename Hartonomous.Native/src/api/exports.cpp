@@ -1071,6 +1071,7 @@ HARTONOMOUS_API int hartonomous_ask(
     double* confidence)
 {
     if (!question || !buffer || !answer_len || !confidence || buffer_capacity <= 0) return -1;
+    (void)max_hops;  // Reserved for future multi-hop traversal
     
     try {
         auto& store = get_store();
@@ -1113,166 +1114,142 @@ HARTONOMOUS_API int hartonomous_ask(
         }
         
         // =====================================================================
-        // PHASE 2: Multi-hop graph traversal from each query token
+        // PHASE 2: TRAJECTORY-BASED SEMANTIC QUERY
         // =====================================================================
-        struct ScoredAnswer {
-            NodeRef ref;
-            double score;
-            std::size_t hop_distance;
-        };
-        std::vector<ScoredAnswer> all_answers;
+        // Build trajectory for the query and find similar trajectories.
+        // Use ST_FrechetDistance for trajectory similarity.
+        // Also use relationship intersection for disambiguation.
         
-        std::size_t max_depth = max_hops > 0 ? static_cast<std::size_t>(max_hops) : 2;
-        
-        for (const auto& query_ref : query_refs) {
-            // First, get ALL direct model relationships (semantic neighbors)
-            auto direct_rels = store.find_from(query_ref, 100);
-            bool has_model_rels = false;
-            
-            for (const auto& rel : direct_rels) {
-                if (rel.context.id_high != 0 || rel.context.id_low != 0) {
-                    // Only use embedding similarity relationships (weight in 0-1 range)
-                    if (rel.weight > 0.0 && rel.weight <= 1.0) {
-                        all_answers.push_back({rel.to, rel.weight * 100.0, 1});
-                        has_model_rels = true;
-                    }
-                }
-            }
-            
-            // Also check incoming model relationships
-            auto incoming_rels = store.find_to(query_ref, 100);
-            for (const auto& rel : incoming_rels) {
-                if (rel.context.id_high != 0 || rel.context.id_low != 0) {
-                    if (rel.weight > 0.0 && rel.weight <= 1.0) {
-                        all_answers.push_back({rel.from, rel.weight * 100.0, 1});
-                        has_model_rels = true;
-                    }
-                }
-            }
-            
-            // If no model relationships, use text relationships (sequential co-occurrence)
-            if (!has_model_rels) {
-                for (const auto& rel : direct_rels) {
-                    if (rel.context.id_high == 0 && rel.context.id_low == 0) {
-                        // Text relationship - use obs_count as weight proxy
-                        all_answers.push_back({rel.to, rel.weight * 10.0, 1});
-                    }
-                }
-                for (const auto& rel : incoming_rels) {
-                    if (rel.context.id_high == 0 && rel.context.id_low == 0) {
-                        all_answers.push_back({rel.from, rel.weight * 10.0, 1});
-                    }
-                }
-            }
-            
-            // BFS for multi-hop exploration (if max_depth > 1)
-            if (max_depth > 1) {
-                std::unordered_set<std::uint64_t> visited;
-                std::queue<std::tuple<NodeRef, double, std::size_t>> frontier;
-                
-                auto make_key = [](NodeRef r) {
-                    return static_cast<std::uint64_t>(r.id_high) ^
-                           (static_cast<std::uint64_t>(r.id_low) * 0x9e3779b97f4a7c15ULL);
-                };
-                
-                frontier.emplace(query_ref, 1.0, 0);
-                visited.insert(make_key(query_ref));
-                
-                while (!frontier.empty()) {
-                    auto [current, current_score, depth] = frontier.front();
-                    frontier.pop();
-                    
-                    if (depth >= max_depth) continue;
-                    
-                    auto rels = store.find_from(current, 30);
-                    
-                    for (const auto& rel : rels) {
-                        std::uint64_t key = make_key(rel.to);
-                        if (visited.count(key)) continue;
-                        visited.insert(key);
-                        
-                        bool is_model = (rel.context.id_high != 0 || rel.context.id_low != 0);
-                        bool is_similarity = (rel.weight > 0.0 && rel.weight <= 1.0);
-                        
-                        if (!is_model && depth > 0) continue;
-                        if (is_model && !is_similarity) continue;  // Skip tensor weights
-                        
-                        double edge_score = is_model ? rel.weight * 50.0 : rel.weight;
-                        double new_score = current_score * edge_score / (depth + 1);
-                        
-                        if (depth > 0) {
-                            all_answers.push_back({rel.to, new_score, depth + 1});
-                        }
-                        
-                        frontier.emplace(rel.to, new_score, depth + 1);
-                    }
-                }
-            }
-        }
-        
-        // =====================================================================
-        // PHASE 3: Aggregate and rank answers
-        // =====================================================================
-        std::unordered_map<std::uint64_t, ScoredAnswer> merged;
-        auto make_key2 = [](NodeRef r) {
+        auto make_key = [](NodeRef r) {
             return static_cast<std::uint64_t>(r.id_high) ^
                    (static_cast<std::uint64_t>(r.id_low) * 0x9e3779b97f4a7c15ULL);
         };
         
-        for (const auto& ans : all_answers) {
-            std::uint64_t key = make_key2(ans.ref);
-            auto it = merged.find(key);
-            if (it == merged.end()) {
-                merged[key] = ans;
-            } else {
-                it->second.score += ans.score;
+        // Build query trajectory from the question text
+        Trajectory query_traj = store.build_trajectory(question_str);
+        
+        struct ScoredAnswer {
+            NodeRef ref;
+            double score;
+            std::size_t query_hits;
+        };
+        std::unordered_map<std::uint64_t, ScoredAnswer> candidates;
+        
+        // METHOD 1: Find COMPOSITIONS with similar trajectories using ST_FrechetDistance
+        if (query_traj.expanded_length() >= 2) {
+            std::string query_wkt = query_traj.to_wkt();
+            
+            // Query compositions whose trajectories are geometrically similar
+            char sql[2048];
+            std::snprintf(sql, sizeof(sql),
+                "SELECT hilbert_high, hilbert_low, "
+                "       ST_FrechetDistance(trajectory, ST_GeomFromText('%s')) as dist, "
+                "       obs_count "
+                "FROM composition "
+                "WHERE trajectory IS NOT NULL "
+                "ORDER BY dist "
+                "LIMIT 100",
+                query_wkt.c_str());
+            
+            PGresult* res = PQexec(store.connection(), sql);
+            if (PQresultStatus(res) == PGRES_TUPLES_OK) {
+                int n = PQntuples(res);
+                for (int i = 0; i < n; ++i) {
+                    NodeRef comp_ref;
+                    comp_ref.id_high = std::stoll(PQgetvalue(res, i, 0));
+                    comp_ref.id_low = std::stoll(PQgetvalue(res, i, 1));
+                    comp_ref.is_atom = false;
+                    double dist = std::stod(PQgetvalue(res, i, 2));
+                    int obs = std::stoi(PQgetvalue(res, i, 3));
+                    
+                    // Score inversely proportional to Frechet distance, scaled by obs_count
+                    // Lower distance = more similar trajectory = higher score
+                    double score = static_cast<double>(obs) * 100.0 / (1.0 + dist);
+                    
+                    std::uint64_t key = make_key(comp_ref);
+                    auto it = candidates.find(key);
+                    if (it == candidates.end()) {
+                        candidates[key] = {comp_ref, score, 1};
+                    } else {
+                        it->second.score += score;
+                        it->second.query_hits++;
+                    }
+                }
+            }
+            PQclear(res);
+        }
+        
+        // METHOD 2: Relationship intersection for individual query tokens
+        for (const auto& query_ref : query_refs) {
+            auto outgoing = store.find_from(query_ref, 50);
+            auto incoming = store.find_to(query_ref, 50);
+            
+            for (const auto& rel : outgoing) {
+                std::uint64_t key = make_key(rel.to);
+                double score = static_cast<double>(rel.obs_count);
+                auto it = candidates.find(key);
+                if (it == candidates.end()) {
+                    candidates[key] = {rel.to, score, 1};
+                } else {
+                    it->second.score += score;
+                    it->second.query_hits++;
+                }
+            }
+            for (const auto& rel : incoming) {
+                std::uint64_t key = make_key(rel.from);
+                double score = static_cast<double>(rel.obs_count);
+                auto it = candidates.find(key);
+                if (it == candidates.end()) {
+                    candidates[key] = {rel.from, score, 1};
+                } else {
+                    it->second.score += score;
+                    it->second.query_hits++;
+                }
             }
         }
         
-        std::vector<ScoredAnswer> ranked;
-        ranked.reserve(merged.size());
-        for (const auto& [_, ans] : merged) {
-            ranked.push_back(ans);
+        // Convert to vector with intersection bonus
+        std::vector<ScoredAnswer> all_answers;
+        all_answers.reserve(candidates.size());
+        
+        for (const auto& [key, cand] : candidates) {
+            // Score = query_hits^3 * total_score (strong intersection bonus)
+            double intersection_bonus = static_cast<double>(cand.query_hits * cand.query_hits * cand.query_hits);
+            double final_score = intersection_bonus * cand.score;
+            all_answers.push_back({cand.ref, final_score, cand.query_hits});
         }
-        std::sort(ranked.begin(), ranked.end(),
+        
+        // =====================================================================
+        // PHASE 3: Sort by score (already aggregated above)
+        // =====================================================================
+        std::sort(all_answers.begin(), all_answers.end(),
             [](const auto& a, const auto& b) { return a.score > b.score; });
         
         // =====================================================================
-        // PHASE 4: Decode best answer (skip special tokens and punctuation)
+        // PHASE 4: Decode best answer (skip single chars and query echoes)
         // =====================================================================
         std::string answer;
         double best_score = 0.0;
         
-        // Special tokens to filter out
-        auto is_special_token = [](const std::string& s) -> bool {
-            if (s.empty()) return true;
-            // BERT-style special tokens
-            if (s[0] == '[' && s.back() == ']') return true;
-            // GPT-style special tokens
-            if (s[0] == '<' && s.back() == '>') return true;
-            // Specific patterns
-            if (s.find("unused") != std::string::npos) return true;
-            if (s.find("UNUSED") != std::string::npos) return true;
-            return false;
-        };
+        // Build set of query token keys to avoid echoing query back
+        std::unordered_set<std::uint64_t> query_keys;
+        for (const auto& qr : query_refs) {
+            query_keys.insert(make_key(qr));
+        }
         
-        for (const auto& ans : ranked) {
+        for (const auto& ans : all_answers) {
+            // Skip if this is one of the query tokens
+            if (query_keys.count(make_key(ans.ref))) continue;
+            
             try {
                 std::string decoded = store.decode_string(ans.ref);
                 
-                // Skip special tokens
-                if (is_special_token(decoded)) continue;
+                // Skip empty
+                if (decoded.empty()) continue;
                 
-                // Skip very short or punctuation-only
-                if (decoded.size() < 2) continue;
-                
-                // Skip if starts with ## (wordpiece continuation)
-                if (decoded.size() >= 2 && decoded[0] == '#' && decoded[1] == '#') continue;
-                
-                // Accept any decoded content with at least 2 characters (not bytes)
-                // Count actual Unicode codepoints, not UTF-8 bytes
+                // Count actual Unicode codepoints
                 size_t char_count = 0;
-                for (size_t i = 0; i < decoded.size() && char_count < 2; ) {
+                for (size_t i = 0; i < decoded.size(); ) {
                     unsigned char c = decoded[i];
                     if (c < 0x80) { ++i; }
                     else if ((c & 0xE0) == 0xC0) { i += 2; }
@@ -1282,13 +1259,13 @@ HARTONOMOUS_API int hartonomous_ask(
                     ++char_count;
                 }
                 
-                if (char_count >= 2) {
-                    answer = decoded;
-                    best_score = ans.score;
-                    break;
-                }
-            } catch (const std::exception& e) {
-                continue;
+                // Skip very short words (likely function words: a, an, the, is, of, to, in, etc.)
+                // Prefer content words with 4+ characters
+                if (char_count < 4) continue;
+                
+                answer = decoded;
+                best_score = ans.score;
+                break;
             } catch (...) {
                 continue;
             }

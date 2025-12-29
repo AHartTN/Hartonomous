@@ -972,6 +972,11 @@ public:
     [[nodiscard]] bool is_atom(std::int64_t high, std::int64_t low) const {
         return hartonomous::db::is_atom(high, low);
     }
+
+    /// Get raw database connection for direct queries.
+    [[nodiscard]] PGconn* connection() const {
+        return conn_.get();
+    }
 };
 
 } // namespace hartonomous::db
