@@ -9,7 +9,7 @@ using namespace hartonomous::test;
 using namespace hartonomous::db;
 
 TEST_CASE("DEBUG: CPE hash for Captain Ahab", "[debug][cpe]") {
-    REQUIRE(TestEnv::db_ready());
+    REQUIRE(TestEnv::data_ready());
     auto& store = TestEnv::store();
     
     std::string text = "Captain Ahab";

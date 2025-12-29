@@ -83,6 +83,9 @@ TEST_CASE("SafetensorReader: weight distribution", "[safetensor]") {
         else large++;
     }
     
+    // Verify we processed all elements
+    REQUIRE(near_zero + small + medium + large == count);
+    
     REQUIRE(count == 30522 * 384);
     REQUIRE(medium > small);  // Real embeddings have this distribution
 }

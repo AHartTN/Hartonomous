@@ -189,11 +189,7 @@ private:
             IngestedToken ingested;
             ingested.id = token.id;
             ingested.text = token.text;
-            ingested.ref = store_.compute_root(token.text);
-
-            store_.build_and_collect(
-                reinterpret_cast<const std::uint8_t*>(token.text.data()),
-                token.text.size());
+            ingested.ref = store_.encode_and_store(token.text);
 
             vocab_.push_back(std::move(ingested));
             result.ingested_count++;

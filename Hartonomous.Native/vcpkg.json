@@ -7,10 +7,19 @@
     {
       "name": "libpq",
       "version>=": "16.0"
+    },
+    {
+      "name": "catch2",
+      "version>=": "3.5.2"
     }
   ],
-  "overrides": [],
-  "builtin-baseline": "a34c873a9717a888f58dc05571dde15bfce32f15",
+  "overrides": [
+    {
+      "name": "catch2",
+      "version": "3.5.2"
+    }
+  ],
+  "builtin-baseline": "ab2977be50c702126336e5088f4836060733c899",
   "features": {
     "tests": {
       "description": "Build unit tests",

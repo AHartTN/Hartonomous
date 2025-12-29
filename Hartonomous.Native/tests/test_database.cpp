@@ -4,7 +4,7 @@
 /// They write data to PostgreSQL, clear memory, read it back, and verify.
 /// If these pass, the system actually works end-to-end.
 ///
-/// Uses default connection: postgresql://hartonomous:hartonomous@localhost:5432/hartonomous
+/// Uses default connection: postgresql://hartonomous:hartonomous@localhost:5433/hartonomous
 /// Override with: HARTONOMOUS_DB_URL environment variable
 
 #include <catch2/catch_test_macros.hpp>

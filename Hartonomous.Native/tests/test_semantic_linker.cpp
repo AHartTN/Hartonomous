@@ -10,101 +10,114 @@
 using namespace hartonomous::db;
 using namespace hartonomous::test;
 
-TEST_CASE("SemanticLinker concept encoding", "[linker][db]") {
+TEST_CASE("SemanticLinker concept encoding - encode creates valid concept", "[linker][db]") {
     REQUIRE_DB();
-    
+
     SemanticLinker linker(TestEnv::store());
-    
-    SECTION("encode creates valid concept") {
-        auto c = linker.encode("cat", "en");
-        
-        REQUIRE(c.ref.id_high != 0);
-        REQUIRE(c.text == "cat");
-        REQUIRE(c.language == "en");
-    }
-    
-    SECTION("identical text produces identical ref") {
-        auto c1 = linker.encode("dog", "en");
-        auto c2 = linker.encode("dog", "en");
-        
-        REQUIRE(c1.ref.id_high == c2.ref.id_high);
-        REQUIRE(c1.ref.id_low == c2.ref.id_low);
-    }
-    
-    SECTION("different text produces different ref") {
-        auto c1 = linker.encode("cat", "en");
-        auto c2 = linker.encode("dog", "en");
-        
-        bool same = (c1.ref.id_high == c2.ref.id_high) && (c1.ref.id_low == c2.ref.id_low);
-        REQUIRE_FALSE(same);
-    }
-    
-    SECTION("Unicode text supported") {
-        // Use std::string for UTF-8 to avoid C++20 char8_t issues
-        std::string chinese_cat = "\xE7\x8C\xAB";  // UTF-8 for 猫
-        auto c = linker.encode(chinese_cat, "zh");
-        REQUIRE(c.ref.id_high != 0);
-        REQUIRE(c.text == chinese_cat);
-        REQUIRE(c.language == "zh");
-    }
+
+    auto c = linker.encode("cat", "en");
+
+    REQUIRE(c.ref.id_high != 0);
+    REQUIRE(c.text == "cat");
+    REQUIRE(c.language == "en");
 }
 
-TEST_CASE("SemanticLinker translation links", "[linker][db]") {
+TEST_CASE("SemanticLinker concept encoding - identical text produces identical ref", "[linker][db]") {
     REQUIRE_DB();
-    
+
     SemanticLinker linker(TestEnv::store());
-    
+
+    auto c1 = linker.encode("dog", "en");
+    auto c2 = linker.encode("dog", "en");
+
+    REQUIRE(c1.ref.id_high == c2.ref.id_high);
+    REQUIRE(c1.ref.id_low == c2.ref.id_low);
+}
+
+TEST_CASE("SemanticLinker concept encoding - different text produces different ref", "[linker][db]") {
+    REQUIRE_DB();
+
+    SemanticLinker linker(TestEnv::store());
+
+    auto c1 = linker.encode("cat", "en");
+    auto c2 = linker.encode("dog", "en");
+
+    bool same = (c1.ref.id_high == c2.ref.id_high) && (c1.ref.id_low == c2.ref.id_low);
+    REQUIRE_FALSE(same);
+}
+
+TEST_CASE("SemanticLinker concept encoding - Unicode text supported", "[linker][db]") {
+    REQUIRE_DB();
+
+    SemanticLinker linker(TestEnv::store());
+
+    // Use std::string for UTF-8 to avoid C++20 char8_t issues
+    std::string chinese_cat = "\xE7\x8C\xAB";  // UTF-8 for 猫
+    auto c = linker.encode(chinese_cat, "zh");
+    REQUIRE(c.ref.id_high != 0);
+    REQUIRE(c.text == chinese_cat);
+    REQUIRE(c.language == "zh");
+}
+
+TEST_CASE("SemanticLinker translation links - bidirectional relationship", "[linker][db]") {
+    REQUIRE_DB();
+
+    SemanticLinker linker(TestEnv::store());
+
+    auto cat_en = linker.encode("cat", "en");
+    auto gato_es = linker.encode("gato", "es");
+
+    linker.link_translation(cat_en, gato_es, 1.0);
+
+    auto translations = linker.find_translations(cat_en);
+    REQUIRE(translations.size() >= 1);
+
+    // Should find gato from cat
+    bool found = false;
+    for (const auto& ref : translations) {
+        if (ref.id_high == gato_es.ref.id_high && ref.id_low == gato_es.ref.id_low) {
+            found = true;
+            break;
+        }
+    }
+    REQUIRE(found);
+}
+
+TEST_CASE("SemanticLinker translation links - multiple translations", "[linker][db]") {
+    REQUIRE_DB();
+
+    SemanticLinker linker(TestEnv::store());
+
     auto cat_en = linker.encode("cat", "en");
     auto gato_es = linker.encode("gato", "es");
     auto chat_fr = linker.encode("chat", "fr");
-    
-    SECTION("link_translation creates bidirectional relationship") {
-        linker.link_translation(cat_en, gato_es, 1.0);
-        
-        auto translations = linker.find_translations(cat_en);
-        REQUIRE(translations.size() >= 1);
-        
-        // Should find gato from cat
-        bool found = false;
-        for (const auto& ref : translations) {
-            if (ref.id_high == gato_es.ref.id_high && ref.id_low == gato_es.ref.id_low) {
-                found = true;
-                break;
-            }
-        }
-        REQUIRE(found);
-    }
-    
-    SECTION("multiple translations") {
-        linker.link_translation(cat_en, gato_es, 1.0);
-        linker.link_translation(cat_en, chat_fr, 1.0);
-        
-        auto translations = linker.find_translations(cat_en);
-        REQUIRE(translations.size() >= 2);
-    }
+
+    linker.link_translation(cat_en, gato_es, 1.0);
+    linker.link_translation(cat_en, chat_fr, 1.0);
+
+    auto translations = linker.find_translations(cat_en);
+    REQUIRE(translations.size() >= 2);
 }
 
-TEST_CASE("SemanticLinker synonym links", "[linker][db]") {
+TEST_CASE("SemanticLinker synonym links - link synonyms", "[linker][db]") {
     REQUIRE_DB();
-    
+
     SemanticLinker linker(TestEnv::store());
-    
+
     auto big = linker.encode("big", "en");
     auto large = linker.encode("large", "en");
     auto huge = linker.encode("huge", "en");
-    
-    SECTION("link synonyms") {
-        linker.link_synonym(big, large, 0.95);
-        linker.link_synonym(big, huge, 0.85);
-        
-        auto rels = linker.find_semantic(big);
-        REQUIRE(rels.size() >= 2);
-        
-        // Check weights are preserved
-        for (const auto& rel : rels) {
-            if (rel.to.id_high == large.ref.id_high && rel.to.id_low == large.ref.id_low) {
-                REQUIRE(rel.weight > 0.9);
-            }
+
+    linker.link_synonym(big, large, 0.95);
+    linker.link_synonym(big, huge, 0.85);
+
+    auto rels = linker.find_semantic(big);
+    REQUIRE(rels.size() >= 2);
+
+    // Check weights are preserved
+    for (const auto& rel : rels) {
+        if (rel.to.id_high == large.ref.id_high && rel.to.id_low == large.ref.id_low) {
+            REQUIRE(rel.weight > 0.9);
         }
     }
 }

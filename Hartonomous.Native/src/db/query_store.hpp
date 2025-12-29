@@ -360,7 +360,23 @@ public:
         }
         
         store_phrase_compositions(chunk_roots, 20);
-        NodeRef root = build_balanced_tree_and_collect(chunk_roots);
+        
+        // Use same composition logic as compute_root for consistent hashing
+        NodeRef root;
+        if (chunk_roots.size() == 1) {
+            root = chunk_roots[0];
+        } else {
+            // Left-to-right composition
+            NodeRef current = chunk_roots[0];
+            for (std::size_t i = 1; i < chunk_roots.size(); ++i) {
+                NodeRef children[2] = {current, chunk_roots[i]};
+                auto [h, l] = MerkleHash::compute(children, children + 2);
+                NodeRef comp = NodeRef::comp(h, l);
+                pending_compositions_.emplace_back(comp, current, chunk_roots[i]);
+                current = comp;
+            }
+            root = current;
+        }
         flush_pending();
         return root;
     }

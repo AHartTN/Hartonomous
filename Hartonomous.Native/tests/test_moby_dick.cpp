@@ -33,7 +33,7 @@ namespace {
         
     public:
         static bool ensure() {
-            if (!TestEnv::db_ready()) return false;
+            if (!TestEnv::data_ready()) return false;
             
             bool expected = false;
             if (!init_done_.compare_exchange_strong(expected, true)) {

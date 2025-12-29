@@ -29,7 +29,8 @@ if ($IsWindows -or $env:OS -match "Windows") {
     $TestPreset = "linux-clang-$BuildType"
 }
 
-$BuildDir = "$PSScriptRoot/out/build/$ConfigPreset"
+$BuildDir = "$PSScriptRoot/../artifacts/native/build/$ConfigPreset"
+$OutDir = "$PSScriptRoot/../artifacts/native/$ConfigPreset"
 
 # Clean if requested
 if ($Clean -and (Test-Path $BuildDir)) {
@@ -58,7 +59,7 @@ if ($Test) {
 
 # Seed if requested (requires HARTONOMOUS_DB_URL environment variable)
 if ($Seed) {
-    $SeedExe = "$BuildDir/bin/hartonomous-seed"
+    $SeedExe = "$OutDir/bin/hartonomous-seed"
     if ($IsWindows -or $env:OS -match "Windows") {
         $SeedExe = "$SeedExe.exe"
     }
@@ -78,7 +79,7 @@ if ($Seed) {
 
 # Ingest if requested
 if ($Ingest) {
-    $IngestExe = "$BuildDir/bin/hartonomous-ingest"
+    $IngestExe = "$OutDir/bin/hartonomous-ingest"
     if ($IsWindows -or $env:OS -match "Windows") {
         $IngestExe = "$IngestExe.exe"
     }
@@ -140,7 +141,7 @@ if ($Bench) {
     }
     
     # Run benchmark
-    $BenchExe = "$BuildDir/bin/bench-moby"
+    $BenchExe = "$OutDir/bin/bench-moby"
     if ($IsWindows -or $env:OS -match "Windows") {
         $BenchExe = "$BenchExe.exe"
     }

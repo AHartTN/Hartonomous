@@ -12,7 +12,7 @@ namespace hartonomous::db {
 struct ConnectionConfig {
     /// Default connection string for local development.
     static constexpr const char* DEFAULT_URL =
-        "postgresql://hartonomous:hartonomous@localhost:5432/hartonomous";
+        "postgresql://hartonomous:hartonomous@localhost:5433/hartonomous";
 
     static std::string connection_string() {
         const char* url = std::getenv("HARTONOMOUS_DB_URL");

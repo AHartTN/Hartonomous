@@ -20,7 +20,7 @@ namespace {
     // Schema validated once per test run
     static bool schema_ready = false;
     
-    void ensure_db_ready() {
+    void ensure_schema_ready() {
         if (schema_ready) return;
         
         SchemaManager mgr;
@@ -183,7 +183,7 @@ TEST_CASE("Query performance: microsecond lookup", "[content][performance]") {
 // =============================================================================
 
 TEST_CASE("Spatial query: find similar characters", "[spatial]") {
-    ensure_db_ready();
+    ensure_schema_ready();
     QueryStore store;
 
     SECTION("Find characters near 'a'") {
@@ -216,7 +216,7 @@ TEST_CASE("Spatial query: find similar characters", "[spatial]") {
 }
 
 TEST_CASE("Spatial query: semantic proximity", "[spatial]") {
-    ensure_db_ready();
+    ensure_schema_ready();
     QueryStore store;
 
     SECTION("Letters are closer to letters than to digits") {
@@ -245,7 +245,7 @@ TEST_CASE("Spatial query: semantic proximity", "[spatial]") {
 // =============================================================================
 
 TEST_CASE("Queries use proper indexes", "[db][index]") {
-    ensure_db_ready();
+    ensure_schema_ready();
     QueryStore store;
 
     SECTION("Composition lookup uses primary key index") {
@@ -336,7 +336,7 @@ TEST_CASE("The Captain Ahab query", "[content][usecase]") {
 // =============================================================================
 
 TEST_CASE("Weighted relationships", "[db][relationship]") {
-    ensure_db_ready();
+    ensure_schema_ready();
     QueryStore store;
 
     // Create some nodes

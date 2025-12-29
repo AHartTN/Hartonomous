@@ -17,6 +17,8 @@
 #include <atomic>
 #include <filesystem>
 #include <iostream>
+#include <chrono>
+#include <fstream>
 
 namespace hartonomous::test {
 
@@ -26,6 +28,8 @@ class TestEnv {
     static inline std::atomic<bool> db_available_{false};
     static inline std::unique_ptr<db::QueryStore> store_;
     
+    static inline std::atomic<bool> data_init_done_{false};
+    static inline std::atomic<bool> data_available_{false};
     static inline std::atomic<bool> model_init_done_{false};
     static inline std::atomic<bool> model_available_{false};
     static inline std::unique_ptr<model::ModelIngester> ingester_;
@@ -48,17 +52,34 @@ public:
         }
     }
     
-    static bool db_ready() { init_db(); return db_available_.load(); }
-    static db::QueryStore& store() { init_db(); return *store_; }
-    
-    static bool ensure_model() {
-        if (!db_ready()) return false;
-        
+    static void init_test_data() {
         bool expected = false;
-        if (!model_init_done_.compare_exchange_strong(expected, true)) {
-            return model_available_.load();
+        if (!data_init_done_.compare_exchange_strong(expected, true)) {
+            return;
         }
         
+        try {
+            std::cerr << "[TEST] Initializing test data..." << std::endl;
+            
+            // 1. Ingest MiniLM model
+            std::cerr << "[TEST] Ingesting MiniLM model..." << std::endl;
+            if (ingest_model()) {
+                model_available_ = true;
+                std::cerr << "[TEST] Model ready: " << model_result_.stored_weights << " weights" << std::endl;
+            }
+            
+            // 2. Ingest Moby Dick
+            std::cerr << "[TEST] Ingesting Moby Dick..." << std::endl;
+            ingest_moby_dick();
+            
+            data_available_ = true;
+            std::cerr << "[TEST] Test data initialization complete" << std::endl;
+        } catch (const std::exception& e) {
+            std::cerr << "[TEST] Data init failed: " << e.what() << std::endl;
+        }
+    }
+    
+    static bool ingest_model() {
 #ifdef TEST_DATA_DIR
         std::string base = std::string(TEST_DATA_DIR) + 
             "/embedding_models/models--sentence-transformers--all-MiniLM-L6-v2";
@@ -80,12 +101,42 @@ public:
         
         if (model_path_.empty()) return false;
         
-        std::cerr << "[TEST] Ingesting model ONCE: " << model_path_ << std::endl;
         ingester_ = std::make_unique<model::ModelIngester>(store(), 50.0);
         model_result_ = ingester_->ingest_package(model_path_);
-        model_available_ = true;
-        std::cerr << "[TEST] Model ready: " << model_result_.stored_weights << " weights" << std::endl;
         return true;
+    }
+    
+    static void ingest_moby_dick() {
+        // Ingest Moby Dick text for testing
+        std::string moby_path = "../test-data/moby_dick.txt";
+        if (!std::filesystem::exists(moby_path)) {
+            std::cerr << "[TEST] Moby Dick not found: " << moby_path << std::endl;
+            return;
+        }
+        
+        std::ifstream file(moby_path);
+        std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+        
+        if (content.empty()) {
+            std::cerr << "[TEST] Moby Dick file empty" << std::endl;
+            return;
+        }
+        
+        auto start = std::chrono::high_resolution_clock::now();
+        store_->encode_and_store(content);
+        auto end = std::chrono::high_resolution_clock::now();
+        
+        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+        std::cerr << "[TEST] Moby Dick ingested in " << ms << "ms" << std::endl;
+    }
+    
+    static bool data_ready() { init_test_data(); return data_available_.load(); }
+    static bool model_ready() { init_test_data(); return model_available_.load(); }
+    static db::QueryStore& store() { init_db(); return *store_; }
+    
+    static bool ensure_model() {
+        init_test_data();
+        return model_available_.load();
     }
     
     static model::ModelIngester& ingester() { return *ingester_; }
@@ -101,7 +152,8 @@ public:
 };
 CATCH_REGISTER_LISTENER(GlobalSetup)
 
-#define REQUIRE_DB() do { if (!TestEnv::db_ready()) { SKIP("Database unavailable"); } } while(0)
-#define REQUIRE_MODEL() do { if (!TestEnv::ensure_model()) { SKIP("Model unavailable"); } } while(0)
+#define REQUIRE_DB() do { TestEnv::init_db(); if (!TestEnv::data_ready()) { SKIP("Database unavailable"); } } while(0)
+#define REQUIRE_DATA() do { TestEnv::init_test_data(); if (!TestEnv::data_ready()) { SKIP("Test data unavailable"); } } while(0)
+#define REQUIRE_MODEL() do { TestEnv::init_test_data(); if (!TestEnv::model_ready()) { SKIP("Model unavailable"); } } while(0)
 
 } // namespace hartonomous::test

@@ -188,7 +188,10 @@ try {
 
         $SeedExe = Join-Path $BuildDir "bin\hartonomous-seed.exe"
         if (Test-Path $SeedExe) {
-            $env:HARTONOMOUS_DB_URL = "postgresql://hartonomous:hartonomous@localhost/hartonomous"
+            if (-not $env:HARTONOMOUS_DB_URL) {
+                # Default aligns with docker-compose/Aspire dev port mapping (host 5433 -> container 5432)
+                $env:HARTONOMOUS_DB_URL = "postgresql://hartonomous:hartonomous@localhost:5433/hartonomous"
+            }
             & $SeedExe
             if ($LASTEXITCODE -ne 0) { throw "Database seeding failed" }
             Write-Success "Database seeding complete"
