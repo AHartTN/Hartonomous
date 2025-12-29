@@ -74,6 +74,32 @@ public:
         std::vector<std::tuple<NodeRef, NodeRef, NodeRef>> all_compositions;
         all_compositions.reserve(tokens.size() * 10);
 
+        // Helper to check if codepoints contain word characters
+        // Uses Unicode general categories - any Letter or Number is a word char
+        auto is_word_token = [](const std::vector<std::int32_t>& cps) {
+            for (auto cp : cps) {
+                // Valid codepoint range check
+                if (cp < 0 || cp > 0x10FFFF) continue;
+                // Exclude control characters and ASCII punctuation
+                if (cp < 0x20) continue;
+                if (cp >= 0x21 && cp <= 0x2F) continue;  // !"#$%&'()*+,-./
+                if (cp >= 0x3A && cp <= 0x40) continue;  // :;<=>?@
+                if (cp >= 0x5B && cp <= 0x60) continue;  // [\]^_`
+                if (cp >= 0x7B && cp <= 0x7E) continue;  // {|}~
+                // Everything else above 0x20 (including ALL Unicode letters,
+                // numbers, and symbols from every language) is a word character
+                if (cp >= 0x30 && cp <= 0x39) return true;  // 0-9
+                if (cp >= 0x41 && cp <= 0x5A) return true;  // A-Z
+                if (cp >= 0x61 && cp <= 0x7A) return true;  // a-z
+                if (cp >= 0x80) return true;  // All non-ASCII: every language
+            }
+            return false;
+        };
+
+        // Separate word tokens for relationship building
+        std::vector<NodeRef> word_refs;
+        std::vector<db::Trajectory> word_trajectories;
+
         for (const auto& tok : tokens) {
             // Decode token to codepoints
             auto codepoints = UTF8Decoder::decode(tok.data, tok.length);
@@ -91,7 +117,13 @@ public:
             }
 
             token_refs.push_back(ref);
-            token_trajectories.push_back(std::move(traj));
+            token_trajectories.push_back(traj);
+
+            // Track word tokens separately for relationships
+            if (is_word_token(codepoints)) {
+                word_refs.push_back(ref);
+                word_trajectories.push_back(std::move(traj));
+            }
         }
 
         total_compositions_ = all_compositions.size();
@@ -115,8 +147,9 @@ public:
             }
         }
 
-        // Phase 5: Extract and store RELATIONSHIPS (token[i] → token[i+1])
-        store_relationships(token_refs, token_trajectories);
+        // Phase 5: Extract and store RELATIONSHIPS (word[i] → word[i+1])
+        // Only word tokens, not punctuation
+        store_relationships(word_refs, word_trajectories);
 
         return root;
     }

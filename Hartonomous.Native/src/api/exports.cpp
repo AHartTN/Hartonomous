@@ -221,14 +221,15 @@ HARTONOMOUS_API int hartonomous_ingest(
         std::int64_t errors = 0;
         
         if (std::filesystem::is_directory(p)) {
-            // Check if model package
+            // Check if model package (recursive search for HuggingFace cache structure)
             bool has_tokenizer = false;
             bool has_safetensor = false;
-            for (const auto& entry : std::filesystem::directory_iterator(p)) {
+            for (const auto& entry : std::filesystem::recursive_directory_iterator(p)) {
                 if (!entry.is_regular_file()) continue;
                 std::string name = entry.path().filename().string();
                 if (name == "tokenizer.json" || name == "vocab.txt") has_tokenizer = true;
                 if (entry.path().extension() == ".safetensors") has_safetensor = true;
+                if (has_tokenizer && has_safetensor) break;  // Found both, stop searching
             }
             
             if (has_tokenizer && has_safetensor) {
@@ -1074,7 +1075,6 @@ HARTONOMOUS_API int hartonomous_ask(
     try {
         auto& store = get_store();
         mlops::MLOps ops(store);
-        db::CpeEncoder cpe;
         
         // =====================================================================
         // PHASE 1: Encode query tokens
@@ -1100,7 +1100,8 @@ HARTONOMOUS_API int hartonomous_ask(
             if (codepoints.size() == 1) {
                 tok_ref = CodepointAtomTable::ref(codepoints[0]);
             } else {
-                tok_ref = cpe.compute_cpe_hash(codepoints, 0, codepoints.size());
+                // Use store's encoder for consistent hashing
+                tok_ref = store.compute_cpe_hash(codepoints, 0, codepoints.size());
             }
             query_refs.push_back(tok_ref);
         }
@@ -1126,11 +1127,14 @@ HARTONOMOUS_API int hartonomous_ask(
         for (const auto& query_ref : query_refs) {
             // First, get ALL direct model relationships (semantic neighbors)
             auto direct_rels = store.find_from(query_ref, 100);
+            bool has_model_rels = false;
+            
             for (const auto& rel : direct_rels) {
                 if (rel.context.id_high != 0 || rel.context.id_low != 0) {
                     // Only use embedding similarity relationships (weight in 0-1 range)
                     if (rel.weight > 0.0 && rel.weight <= 1.0) {
                         all_answers.push_back({rel.to, rel.weight * 100.0, 1});
+                        has_model_rels = true;
                     }
                 }
             }
@@ -1141,6 +1145,22 @@ HARTONOMOUS_API int hartonomous_ask(
                 if (rel.context.id_high != 0 || rel.context.id_low != 0) {
                     if (rel.weight > 0.0 && rel.weight <= 1.0) {
                         all_answers.push_back({rel.from, rel.weight * 100.0, 1});
+                        has_model_rels = true;
+                    }
+                }
+            }
+            
+            // If no model relationships, use text relationships (sequential co-occurrence)
+            if (!has_model_rels) {
+                for (const auto& rel : direct_rels) {
+                    if (rel.context.id_high == 0 && rel.context.id_low == 0) {
+                        // Text relationship - use obs_count as weight proxy
+                        all_answers.push_back({rel.to, rel.weight * 10.0, 1});
+                    }
+                }
+                for (const auto& rel : incoming_rels) {
+                    if (rel.context.id_high == 0 && rel.context.id_low == 0) {
+                        all_answers.push_back({rel.from, rel.weight * 10.0, 1});
                     }
                 }
             }
@@ -1239,8 +1259,6 @@ HARTONOMOUS_API int hartonomous_ask(
         for (const auto& ans : ranked) {
             try {
                 std::string decoded = store.decode_string(ans.ref);
-                for (unsigned char c : decoded) std::cerr << (int)c << " ";
-                std::cerr << std::endl;
                 
                 // Skip special tokens
                 if (is_special_token(decoded)) continue;

@@ -340,7 +340,7 @@ private:
         }
         tensor_count = f32_tensors.size();
 
-        // Find embedding tensor - we PROCESS it for token similarity, not skip
+        // Find embedding tensor - extract token similarity using FAST sampling
         std::size_t embedding_idx = find_embedding_tensor_index(f32_tensors);
 
         // Process each tensor (parallel via WeightCollector)
@@ -349,42 +349,47 @@ private:
             total_weights += SafetensorReader::element_count(meta);
 
             if (i == embedding_idx) {
-                // PROCESS embedding to extract token-to-token similarity
-                // The embeddings are TEMPORARY - we compute similarity then discard coordinates
+                // Extract token-to-token similarity using SAMPLED comparison (fast)
                 if (meta.shape.size() == 2 && !vocab_.empty()) {
                     std::size_t vocab_size = meta.shape[0];
                     std::size_t hidden_dim = meta.shape[1];
                     const float* data = reader.get_f32_data(meta);
                     
-                    std::cerr << "Processing embedding tensor for token-to-token similarity: "
+                    std::cerr << "Extracting token similarity (sampled): " 
                               << vocab_size << "x" << hidden_dim << std::endl;
                     
-                    // Build token ref lookup from vocab
                     auto get_token_ref = [this](std::size_t idx) -> NodeRef {
-                        if (idx < vocab_.size()) {
-                            return vocab_[idx].ref;
-                        }
+                        if (idx < vocab_.size()) return vocab_[idx].ref;
                         return NodeRef{};
                     };
                     
-                    // Extract top-k similar tokens for each token
-                    // similarity_threshold=0.5, max_neighbors=50
-                    stored_weights += WeightCollector::collect_embeddings(
+                    // Use sampled comparison: O(n*k) instead of O(n²)
+                    // Each token compares against 500 random tokens, keeps top 20
+                    stored_weights += WeightCollector::collect_embeddings_sampled(
                         data, vocab_size, hidden_dim,
-                        get_token_ref, 0.5, 50, all_weights);
+                        get_token_ref, 0.7, 20, 500, all_weights);
                 }
                 continue;
             }
 
             NodeRef tensor_ref = store_.compute_root(meta.name);
 
+            auto tensor_start = std::chrono::high_resolution_clock::now();
+            std::size_t tensor_stored = 0;
+            
             if (meta.shape.size() == 2) {
-                stored_weights += WeightCollector::collect_weight_matrix(
+                tensor_stored = WeightCollector::collect_weight_matrix(
                     reader, meta, tensor_ref, sparsity_percent_, all_weights);
             } else {
-                stored_weights += WeightCollector::collect_sparse_weights(
+                tensor_stored = WeightCollector::collect_sparse_weights(
                     reader, meta, tensor_ref, sparsity_percent_, all_weights);
             }
+            stored_weights += tensor_stored;
+            
+            auto tensor_end = std::chrono::high_resolution_clock::now();
+            auto tensor_ms = std::chrono::duration_cast<std::chrono::milliseconds>(tensor_end - tensor_start).count();
+            std::cerr << "  [" << i << "] " << meta.name << ": " << tensor_stored 
+                      << " weights in " << tensor_ms << "ms\n";
         }
 
         return {tensor_count, total_weights, stored_weights};

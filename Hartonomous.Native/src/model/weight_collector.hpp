@@ -20,6 +20,8 @@
 #include <algorithm>
 #include <atomic>
 #include <iostream>
+#include <random>
+#include <chrono>
 
 namespace hartonomous::model {
 
@@ -224,6 +226,128 @@ public:
 
         std::cerr << "collect_embeddings: compared " << pairs_compared.load()
                   << " pairs, stored " << stored << " relationships\n";
+
+        return stored;
+    }
+
+    /// FAST sampled embedding similarity - O(n*k) instead of O(n²)
+    /// Each token compares against sample_size random tokens
+    template<typename TokenRefFn>
+    [[nodiscard]] static std::size_t collect_embeddings_sampled(
+        const float* data,
+        std::size_t vocab_size,
+        std::size_t hidden_dim,
+        TokenRefFn get_token_ref,
+        double similarity_threshold,
+        std::size_t max_neighbors_per_token,
+        std::size_t sample_size,
+        std::vector<WeightTuple>& output)
+    {
+        auto start = std::chrono::high_resolution_clock::now();
+        
+        // Precompute L2 norms
+        std::vector<float> norms(vocab_size);
+        for (std::size_t i = 0; i < vocab_size; ++i) {
+            const float* embed = data + i * hidden_dim;
+            float sum = 0.0f;
+            for (std::size_t d = 0; d < hidden_dim; ++d) {
+                sum += embed[d] * embed[d];
+            }
+            norms[i] = std::sqrt(sum);
+        }
+
+        // Parallel: each thread handles a chunk of source tokens
+        std::size_t num_threads = Threading::default_thread_count();
+        std::size_t chunk_size = (vocab_size + num_threads - 1) / num_threads;
+        std::vector<std::vector<WeightTuple>> thread_weights(num_threads);
+
+        Threading::parallel_for(num_threads, [&](std::size_t tid) {
+            std::size_t start_idx = tid * chunk_size;
+            std::size_t end_idx = std::min(start_idx + chunk_size, vocab_size);
+            if (start_idx >= vocab_size) return;
+
+            auto& local = thread_weights[tid];
+            local.reserve((end_idx - start_idx) * max_neighbors_per_token * 2);
+
+            // Thread-local RNG for sampling
+            std::mt19937 rng(static_cast<unsigned>(tid * 12345 + 42));
+            std::vector<std::size_t> sample_indices(vocab_size);
+            for (std::size_t i = 0; i < vocab_size; ++i) sample_indices[i] = i;
+
+            std::vector<std::pair<double, std::size_t>> similarities;
+            similarities.reserve(sample_size);
+
+            for (std::size_t i = start_idx; i < end_idx; ++i) {
+                NodeRef from_ref = get_token_ref(i);
+                if (from_ref.id_high == 0 && from_ref.id_low == 0) continue;
+                if (norms[i] < 1e-8f) continue;
+
+                const float* embed_i = data + i * hidden_dim;
+                similarities.clear();
+
+                // Shuffle and sample (Fisher-Yates partial shuffle)
+                std::size_t effective_sample = std::min(sample_size, vocab_size - 1);
+                for (std::size_t s = 0; s < effective_sample; ++s) {
+                    std::size_t r = s + (rng() % (vocab_size - s));
+                    std::swap(sample_indices[s], sample_indices[r]);
+                }
+
+                // Compare with sampled tokens
+                for (std::size_t s = 0; s < effective_sample; ++s) {
+                    std::size_t j = sample_indices[s];
+                    if (j == i) continue;
+                    if (norms[j] < 1e-8f) continue;
+
+                    const float* embed_j = data + j * hidden_dim;
+
+                    float dot = 0.0f;
+                    for (std::size_t d = 0; d < hidden_dim; ++d) {
+                        dot += embed_i[d] * embed_j[d];
+                    }
+                    double sim = static_cast<double>(dot) /
+                                 (static_cast<double>(norms[i]) * static_cast<double>(norms[j]));
+
+                    if (sim > similarity_threshold) {
+                        similarities.emplace_back(sim, j);
+                    }
+                }
+
+                // Sort by similarity descending, take top-K
+                if (similarities.size() > max_neighbors_per_token) {
+                    std::partial_sort(similarities.begin(),
+                                     similarities.begin() + max_neighbors_per_token,
+                                     similarities.end(),
+                                     [](const auto& a, const auto& b) {
+                                         return a.first > b.first;
+                                     });
+                    similarities.resize(max_neighbors_per_token);
+                }
+
+                // Store as bidirectional relationships
+                for (const auto& [sim, j] : similarities) {
+                    NodeRef to_ref = get_token_ref(j);
+                    if (to_ref.id_high == 0 && to_ref.id_low == 0) continue;
+
+                    local.emplace_back(from_ref, to_ref, sim);
+                    local.emplace_back(to_ref, from_ref, sim);
+                }
+            }
+        });
+
+        // Merge thread results
+        std::size_t stored = 0;
+        for (auto& tw : thread_weights) {
+            stored += tw.size();
+            output.insert(output.end(),
+                std::make_move_iterator(tw.begin()),
+                std::make_move_iterator(tw.end()));
+        }
+
+        auto end = std::chrono::high_resolution_clock::now();
+        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+        std::cerr << "collect_embeddings_sampled: " << vocab_size << " tokens, "
+                  << sample_size << " samples each, " << stored << " relationships in " 
+                  << ms << "ms\n";
 
         return stored;
     }
