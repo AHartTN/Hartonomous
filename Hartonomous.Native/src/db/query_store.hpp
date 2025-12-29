@@ -337,8 +337,7 @@ public:
     NodeRef encode_and_store(const std::uint8_t* data, std::size_t len) {
         if (len == 0) return NodeRef{};
 
-        pending_compositions_.clear();
-        
+        // Don't clear pending - allow batching
         HierarchicalChunker chunker;
         auto chunks = chunker.chunk(data, len);
         if (chunks.empty()) return NodeRef{};
@@ -377,7 +376,12 @@ public:
             }
             root = current;
         }
-        flush_pending();
+        
+        // Auto-flush if pending buffer is getting large
+        if (pending_compositions_.size() > 50000) {
+            flush_pending();
+        }
+        
         return root;
     }
 
@@ -495,6 +499,55 @@ public:
         const std::vector<NodeRef>& token_refs, NodeRef model_context, RelType type = REL_DEFAULT) {
         bulk_ops_->store_embedding_trajectories(embeddings, vocab_size, hidden_dim,
             token_refs, model_context, type);
+    }
+
+    /// Bulk store compositions (parent, left, right)
+    void bulk_store_compositions(
+        const std::vector<std::tuple<NodeRef, NodeRef, NodeRef>>& compositions) {
+        if (compositions.empty()) return;
+        
+        // Build COPY data
+        std::string data;
+        data.reserve(compositions.size() * 80);
+        
+        for (const auto& [parent, left, right] : compositions) {
+            char buf[256];
+            char* p = buf;
+            p += std::sprintf(p, "%lld\t%lld\t%lld\t%lld\t%lld\t%lld\n",
+                static_cast<long long>(parent.id_high),
+                static_cast<long long>(parent.id_low),
+                static_cast<long long>(left.id_high),
+                static_cast<long long>(left.id_low),
+                static_cast<long long>(right.id_high),
+                static_cast<long long>(right.id_low));
+            data.append(buf, static_cast<std::size_t>(p - buf));
+        }
+        
+        // Stage and insert - use DISTINCT to avoid duplicate key in same batch
+        PQexec(conn_.get(), "DROP TABLE IF EXISTS _vocab_comp_stage");
+        PQexec(conn_.get(),
+            "CREATE UNLOGGED TABLE _vocab_comp_stage ("
+            "h BIGINT, l BIGINT, lh BIGINT, ll BIGINT, rh BIGINT, rl BIGINT)");
+        
+        PGresult* res = PQexec(conn_.get(), "COPY _vocab_comp_stage FROM STDIN");
+        if (PQresultStatus(res) == PGRES_COPY_IN) {
+            PQclear(res);
+            PQputCopyData(conn_.get(), data.c_str(), static_cast<int>(data.size()));
+            PQputCopyEnd(conn_.get(), nullptr);
+            PGresult* copy_res = PQgetResult(conn_.get());
+            PQclear(copy_res);
+            
+            // Use DISTINCT ON to dedup within batch
+            PGresult* ins_res = PQexec(conn_.get(),
+                "INSERT INTO composition (hilbert_high, hilbert_low, left_high, left_low, right_high, right_low, obs_count) "
+                "SELECT DISTINCT ON (h, l) h, l, lh, ll, rh, rl, 1 FROM _vocab_comp_stage "
+                "ON CONFLICT (hilbert_high, hilbert_low) DO UPDATE SET obs_count = composition.obs_count + 1");
+            PQclear(ins_res);
+        } else {
+            PQclear(res);
+        }
+        
+        PQexec(conn_.get(), "DROP TABLE IF EXISTS _vocab_comp_stage");
     }
 
     // =========================================================================
@@ -869,7 +922,12 @@ public:
         pending_compositions_.erase(new_end, pending_compositions_.end());
         if (pending_compositions_.empty()) return;
 
-        PGresult* res = PQexec(conn_.get(), "TRUNCATE _comp_stage");
+        // Create staging table if needed
+        PGresult* res = PQexec(conn_.get(), "DROP TABLE IF EXISTS _comp_stage");
+        PQclear(res);
+        res = PQexec(conn_.get(), 
+            "CREATE UNLOGGED TABLE _comp_stage ("
+            "h BIGINT, l BIGINT, lh BIGINT, ll BIGINT, rh BIGINT, rl BIGINT)");
         PQclear(res);
 
         res = PQexec(conn_.get(), "COPY _comp_stage FROM STDIN WITH (FORMAT binary)");
@@ -903,6 +961,11 @@ public:
             "INSERT INTO composition (hilbert_high, hilbert_low, left_high, left_low, right_high, right_low) "
             "SELECT h, l, lh, ll, rh, rl FROM _comp_stage ON CONFLICT DO NOTHING");
         PQclear(res);
+        
+        // Cleanup
+        res = PQexec(conn_.get(), "DROP TABLE IF EXISTS _comp_stage");
+        PQclear(res);
+        
         pending_compositions_.clear();
     }
 

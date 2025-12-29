@@ -28,7 +28,6 @@ WORKDIR /src
 
 # Copy only CMake files first for layer caching
 COPY Hartonomous.Native/CMakeLists.txt Hartonomous.Native/CMakePresets.json ./Hartonomous.Native/
-COPY Hartonomous.Native/vcpkg.json ./Hartonomous.Native/
 COPY CMakeLists.txt CMakePresets.json ./
 
 # Copy source files

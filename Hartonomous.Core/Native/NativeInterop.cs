@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Reflection;
 
 namespace Hartonomous.Core.Native;
 
@@ -10,11 +11,39 @@ namespace Hartonomous.Core.Native;
 /// </summary>
 internal static partial class NativeInterop
 {
-#if WINDOWS
     private const string LibraryName = "Hartonomous.Native";
-#else
-    private const string LibraryName = "libHartonomous.Native";
-#endif
+
+    static NativeInterop()
+    {
+        // Set DLL resolver to look in executable directory
+        NativeLibrary.SetDllImportResolver(typeof(NativeInterop).Assembly, DllImportResolver);
+    }
+
+    private static IntPtr DllImportResolver(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)
+    {
+        if (libraryName == LibraryName)
+        {
+            var assemblyDir = Path.GetDirectoryName(assembly.Location);
+            if (assemblyDir != null)
+            {
+                // Try with lib prefix (Linux/macOS)
+                var libPath = Path.Combine(assemblyDir, $"lib{libraryName}.so");
+                if (File.Exists(libPath) && NativeLibrary.TryLoad(libPath, out var handle))
+                    return handle;
+
+                // Try with .dylib (macOS)
+                libPath = Path.Combine(assemblyDir, $"lib{libraryName}.dylib");
+                if (File.Exists(libPath) && NativeLibrary.TryLoad(libPath, out handle))
+                    return handle;
+
+                // Try without lib prefix (Windows)
+                libPath = Path.Combine(assemblyDir, $"{libraryName}.dll");
+                if (File.Exists(libPath) && NativeLibrary.TryLoad(libPath, out handle))
+                    return handle;
+            }
+        }
+        return IntPtr.Zero;
+    }
 
     // =========================================================================
     // COORDINATE MAPPING

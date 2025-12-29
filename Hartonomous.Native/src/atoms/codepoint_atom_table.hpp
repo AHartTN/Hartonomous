@@ -41,78 +41,43 @@ struct CodepointAtom {
 
 /// Codepoint Atom Table - maps codepoints to atoms with semantic positions
 ///
-/// Unlike ByteAtomTable (256 entries), this handles the full Unicode range.
-/// Uses lazy initialization + caching since 1.1M atoms is too large for precomputation.
+/// Uses constexpr computation - no caching, no locks, just math.
+/// SemanticDecompose + SemanticHilbert are pure functions.
 class CodepointAtomTable {
-    mutable std::mutex mutex_;
-    mutable std::unordered_map<std::int32_t, CodepointAtom> cache_;
-
 public:
-    CodepointAtomTable() {
-        // Pre-warm cache with ASCII (most common)
-        for (std::int32_t cp = 0; cp < 128; ++cp) {
-            auto atom = compute_atom(cp);
-            cache_[cp] = atom;
-        }
-    }
+    CodepointAtomTable() = default;
 
-    /// Get atom for codepoint - lazy evaluation with caching
-    [[nodiscard]] CodepointAtom get(std::int32_t codepoint) const {
-        // Fast path: check cache with lock
-        {
-            std::unique_lock lock(mutex_);
-            auto it = cache_.find(codepoint);
-            if (it != cache_.end()) {
-                return it->second;
-            }
-        }
-
-        // Slow path: compute and cache with exclusive lock
-        auto atom = compute_atom(codepoint);
-        {
-            std::unique_lock lock(mutex_);
-            cache_[codepoint] = atom;
-        }
+    /// Get atom for codepoint - pure computation, no caching needed
+    [[nodiscard]] static constexpr CodepointAtom get(std::int32_t codepoint) noexcept {
+        CodepointAtom atom;
+        atom.codepoint = codepoint;
+        atom.coord = SemanticDecompose::get_coord(codepoint);
+        AtomId id = SemanticDecompose::get_atom_id(codepoint);
+        atom.ref = NodeRef::atom(id);
         return atom;
     }
 
-    /// Operator[] for convenience
-    [[nodiscard]] CodepointAtom operator[](std::int32_t codepoint) const {
+    /// Get atom for codepoint - alias
+    [[nodiscard]] constexpr CodepointAtom operator[](std::int32_t codepoint) const noexcept {
         return get(codepoint);
     }
 
-    /// Get NodeRef for codepoint (convenience)
-    [[nodiscard]] NodeRef ref(std::int32_t codepoint) const {
-        return get(codepoint).ref;
+    /// Get NodeRef for codepoint - inline pure computation
+    [[nodiscard]] static constexpr NodeRef ref(std::int32_t codepoint) noexcept {
+        AtomId id = SemanticDecompose::get_atom_id(codepoint);
+        return NodeRef::atom(id);
     }
 
     /// Check if codepoint is valid Unicode
-    [[nodiscard]] static bool is_valid(std::int32_t codepoint) {
+    [[nodiscard]] static constexpr bool is_valid(std::int32_t codepoint) noexcept {
         return codepoint >= 0 && codepoint <= 0x10FFFF &&
-               !(codepoint >= 0xD800 && codepoint <= 0xDFFF);  // Exclude surrogates
+               !(codepoint >= 0xD800 && codepoint <= 0xDFFF);
     }
 
-    /// Get singleton instance
-    static CodepointAtomTable& instance() {
+    /// Get singleton instance (for API compatibility)
+    static const CodepointAtomTable& instance() {
         static CodepointAtomTable table;
         return table;
-    }
-
-private:
-    /// Compute atom for codepoint (semantic decomposition + Hilbert encoding)
-    [[nodiscard]] static CodepointAtom compute_atom(std::int32_t codepoint) {
-        CodepointAtom atom;
-        atom.codepoint = codepoint;
-
-        // Step 1: Semantic decomposition (codepoint → 4D coordinates)
-        atom.coord = SemanticDecompose::get_coord(codepoint);
-
-        // Step 2: Get AtomId via SemanticDecompose (which uses SemanticHilbert)
-        // This ensures consistency with how atoms are seeded in the database
-        AtomId id = SemanticDecompose::get_atom_id(codepoint);
-
-        atom.ref = NodeRef::atom(id);
-        return atom;
     }
 };
 

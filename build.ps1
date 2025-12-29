@@ -35,10 +35,33 @@ $NativeDir = Join-Path $Root "Hartonomous.Native"
 $CLIDir = Join-Path $Root "Hartonomous.CLI"
 $TerminalDir = Join-Path $Root "Hartonomous.Terminal"
 
-# Determine preset based on mode
-$Preset = if ($Mode -eq "Release") { "windows-clang-release" } else { "windows-clang-debug" }
-$BuildDir = Join-Path $NativeDir "out\build\$Preset"
-$DllSource = Join-Path $BuildDir "bin\libHartonomous.Native.dll"
+# Determine preset and RID based on OS and mode
+$IsWindows = $IsWindows -or ($env:OS -eq "Windows_NT")
+$IsMacOS = $IsMacOS -or ($PSVersionTable.Platform -eq "Unix" -and (uname) -eq "Darwin")
+$IsLinux = $IsLinux -or ($PSVersionTable.Platform -eq "Unix" -and (uname) -eq "Linux")
+
+if ($IsWindows) {
+    $Preset = if ($Mode -eq "Release") { "windows-clang-release" } else { "windows-clang-debug" }
+    $RID = "win-x64"
+    $LibPrefix = ""
+    $LibExt = ".dll"
+} elseif ($IsMacOS) {
+    $Preset = if ($Mode -eq "Release") { "macos-clang-release" } else { "macos-clang-debug" }
+    $RID = "osx-x64"
+    $LibPrefix = "lib"
+    $LibExt = ".dylib"
+} elseif ($IsLinux) {
+    $Preset = if ($Mode -eq "Release") { "linux-clang-release" } else { "linux-clang-debug" }
+    $RID = "linux-x64"
+    $LibPrefix = "lib"
+    $LibExt = ".so"
+} else {
+    throw "Unsupported platform"
+}
+
+$BuildDir = Join-Path $Root "artifacts/native/build/$Preset"
+$LibName = "${LibPrefix}Hartonomous.Native${LibExt}"
+$LibSource = Join-Path $BuildDir "bin/$LibName"
 
 function Write-Step($message) {
     Write-Host "`n=== $message ===" -ForegroundColor Cyan
@@ -99,36 +122,33 @@ try {
     }
 
     # =========================================================================
-    # Copy DLL to .NET Projects
+    # Copy Native Library to .NET Projects
     # =========================================================================
-    Write-Step "Deploying Native DLL to .NET Projects"
+    Write-Step "Deploying Native Library to .NET Projects"
 
-    if (-not (Test-Path $DllSource)) {
-        throw "Native DLL not found: $DllSource. Run without -SkipNative."
+    if (-not (Test-Path $LibSource)) {
+        throw "Native library not found: $LibSource. Run without -SkipNative."
     }
 
     $DotNetConfig = $Mode
     $DotNetTargets = @(
-        @{ Project = $CLIDir; RID = "win-x64" },
-        @{ Project = $TerminalDir; RID = "win-x64" }
+        @{ Project = $CLIDir; RID = $RID },
+        @{ Project = $TerminalDir; RID = $RID }
     )
 
     foreach ($target in $DotNetTargets) {
-        $binDir = Join-Path $target.Project "bin\$DotNetConfig\net10.0\$($target.RID)"
+        $binDir = Join-Path $target.Project "bin/$DotNetConfig/net10.0/$($target.RID)"
         if (-not (Test-Path $binDir)) {
             New-Item -ItemType Directory -Path $binDir -Force | Out-Null
         }
 
-        # Copy as both names (lib prefix for Linux compat, without for Windows)
-        $destWithLib = Join-Path $binDir "libHartonomous.Native.dll"
-        $destNoLib = Join-Path $binDir "Hartonomous.Native.dll"
-        
-        Copy-Item $DllSource $destWithLib -Force
-        Copy-Item $DllSource $destNoLib -Force
-        Write-Host "  -> $destNoLib"
+        # Copy native library (name already platform-specific)
+        $dest = Join-Path $binDir $LibName
+        Copy-Item $LibSource $dest -Force
+        Write-Host "  -> $dest"
     }
 
-    Write-Success "DLL deployment complete"
+    Write-Success "Native library deployment complete"
 
     # =========================================================================
     # .NET Build
@@ -159,13 +179,25 @@ try {
 
     Write-Success ".NET build complete"
 
+    # Copy native lib to artifacts output directories
+    $ArtifactCLI = Join-Path $Root "artifacts/bin/Hartonomous.CLI/$($DotNetConfig.ToLower())"
+    $ArtifactTerminal = Join-Path $Root "artifacts/bin/Hartonomous.Terminal/$($DotNetConfig.ToLower())"
+    
+    foreach ($dir in @($ArtifactCLI, $ArtifactTerminal)) {
+        if (Test-Path $dir) {
+            Copy-Item $LibSource $dir -Force
+            Write-Host "Copied native lib to $dir"
+        }
+    }
+
     # =========================================================================
     # Tests
     # =========================================================================
     if ($Test) {
         Write-Step "Running Native Tests"
         
-        $TestExe = Join-Path $BuildDir "bin\hartonomous-tests.exe"
+        $TestExeName = if ($IsWindows) { "hartonomous-tests.exe" } else { "hartonomous-tests" }
+        $TestExe = Join-Path $BuildDir "bin/$TestExeName"
         if (Test-Path $TestExe) {
             & $TestExe
             if ($LASTEXITCODE -ne 0) { throw "Native tests failed" }
@@ -175,7 +207,7 @@ try {
         }
 
         Write-Step "Running .NET Tests"
-        dotnet test "$Root\Hartonomous.slnx" --configuration $DotNetConfig --no-build
+        dotnet test "$Root/Hartonomous.slnx" --configuration $DotNetConfig --no-build
         if ($LASTEXITCODE -ne 0) { throw ".NET tests failed" }
         Write-Success ".NET tests passed"
     }
@@ -186,7 +218,8 @@ try {
     if ($Seed) {
         Write-Step "Seeding Database"
 
-        $SeedExe = Join-Path $BuildDir "bin\hartonomous-seed.exe"
+        $SeedExeName = if ($IsWindows) { "hartonomous-seed.exe" } else { "hartonomous-seed" }
+        $SeedExe = Join-Path $BuildDir "bin/$SeedExeName"
         if (Test-Path $SeedExe) {
             if (-not $env:HARTONOMOUS_DB_URL) {
                 # Default aligns with docker-compose/Aspire dev port mapping (host 5433 -> container 5432)
@@ -210,8 +243,10 @@ try {
     Write-Host " BUILD SUCCESSFUL " -ForegroundColor Green -BackgroundColor DarkGreen
     Write-Host "========================================" -ForegroundColor Green
     Write-Host ""
-    Write-Host "Run CLI:      .\Hartonomous.CLI\bin\$DotNetConfig\net10.0\win-x64\hartonomous.exe"
-    Write-Host "Run Terminal: .\Hartonomous.Terminal\bin\$DotNetConfig\net10.0\win-x64\hartonomous-terminal.exe"
+    $CLIExe = if ($IsWindows) { "hartonomous.exe" } else { "hartonomous" }
+    $TerminalExe = if ($IsWindows) { "hartonomous-terminal.exe" } else { "hartonomous-terminal" }
+    Write-Host "Run CLI:      ./Hartonomous.CLI/bin/$DotNetConfig/net10.0/$RID/$CLIExe"
+    Write-Host "Run Terminal: ./Hartonomous.Terminal/bin/$DotNetConfig/net10.0/$RID/$TerminalExe"
     Write-Host ""
 
 } catch {

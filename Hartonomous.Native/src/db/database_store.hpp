@@ -112,13 +112,43 @@ public:
         return buf;
     }
     
-    /// Bulk COPY pre-built relation data directly to database
+    /// Bulk COPY pre-built relation data directly to database via staging table
     void bulk_copy_relations(const std::string& data) {
         if (data.empty()) return;
-        conn_.start_copy(Schema::COPY_COMPOSITIONS);
+        
+        // Ensure staging table exists (create once, reuse)
+        ensure_staging_table();
+        
+        // Truncate staging table (fast, no DDL)
+        PgResult trunc(PQexec(conn_.get(), "TRUNCATE _comp_stage"));
+        
+        // COPY to staging
+        conn_.start_copy("COPY _comp_stage FROM STDIN");
         conn_.put_copy_data(data);
-        conn_.end_copy().expect_ok("bulk copy relations");
+        conn_.end_copy().expect_ok("bulk copy to staging");
+        
+        // Upsert from staging with ON CONFLICT DO NOTHING
+        PgResult insert(PQexec(conn_.get(),
+            "INSERT INTO composition (hilbert_high, hilbert_low, left_high, left_low, right_high, right_low) "
+            "SELECT hilbert_high, hilbert_low, left_high, left_low, right_high, right_low FROM _comp_stage "
+            "ON CONFLICT (hilbert_high, hilbert_low) DO NOTHING"));
     }
+    
+    /// Create staging table if it doesn't exist
+    void ensure_staging_table() {
+        if (staging_table_ready_) return;
+        
+        PgResult drop(PQexec(conn_.get(), "DROP TABLE IF EXISTS _comp_stage"));
+        PgResult create(PQexec(conn_.get(), 
+            "CREATE UNLOGGED TABLE _comp_stage ("
+            "hilbert_high BIGINT, hilbert_low BIGINT, "
+            "left_high BIGINT, left_low BIGINT, "
+            "right_high BIGINT, right_low BIGINT)"));
+        
+        staging_table_ready_ = true;
+    }
+    
+    bool staging_table_ready_ = false;
     
     /// Fast bulk COPY with index optimization - drops indexes, copies, rebuilds
     void bulk_copy_relations_fast(const std::string& data) {

@@ -19,7 +19,9 @@
 /// - model_ingest.hpp     -> Orchestration and file iteration
 
 #include "../db/query_store.hpp"
+#include "../db/cpe_encoder.hpp"
 #include "../atoms/node_ref.hpp"
+#include "../atoms/codepoint_atom_table.hpp"
 #include "vocab_parser.hpp"
 #include "weight_collector.hpp"
 #include "safetensor.hpp"
@@ -181,18 +183,45 @@ private:
             ? VocabParser::parse_vocab_txt(content)
             : VocabParser::parse_vocab_json(content);
 
-        // Ingest tokens semantically
-        vocab_.reserve(parsed.size());
+        // Ingest tokens using CPE - same algorithm as query encoding
+        // Also stores compositions so they can be decoded later
+        // IMPORTANT: Preserve original indices for embedding matrix lookup
+        db::CpeEncoder cpe;
+        std::vector<std::tuple<NodeRef, NodeRef, NodeRef>> all_compositions;
+        all_compositions.reserve(parsed.size() * 10);
+        
+        vocab_.resize(parsed.size());  // Preserve indices!
         for (const auto& token : parsed.tokens) {
-            if (token.text.empty()) continue;
+            if (token.text.empty()) {
+                vocab_[token.id] = IngestedToken{token.id, "", NodeRef{}};
+                continue;
+            }
 
             IngestedToken ingested;
             ingested.id = token.id;
             ingested.text = token.text;
-            ingested.ref = store_.encode_and_store(token.text);
+            
+            // Use CPE to match query-time encoding
+            auto codepoints = UTF8Decoder::decode(
+                reinterpret_cast<const std::uint8_t*>(token.text.data()), 
+                token.text.size());
+            if (codepoints.size() == 1) {
+                ingested.ref = CodepointAtomTable::ref(codepoints[0]);
+            } else if (!codepoints.empty()) {
+                // Build CPE and collect compositions for storage
+                ingested.ref = cpe.build_cpe_and_collect(codepoints, 0, codepoints.size(), all_compositions);
+            } else {
+                vocab_[token.id] = IngestedToken{token.id, token.text, NodeRef{}};
+                continue;
+            }
 
-            vocab_.push_back(std::move(ingested));
+            vocab_[token.id] = std::move(ingested);
             result.ingested_count++;
+        }
+
+        // Store all vocab compositions
+        if (!all_compositions.empty()) {
+            store_.bulk_store_compositions(all_compositions);
         }
 
         // Single flush for all tokens
@@ -311,16 +340,43 @@ private:
         }
         tensor_count = f32_tensors.size();
 
-        // Find and skip embedding tensor (worthless coordinates in model's space)
+        // Find embedding tensor - we PROCESS it for token similarity, not skip
         std::size_t embedding_idx = find_embedding_tensor_index(f32_tensors);
 
         // Process each tensor (parallel via WeightCollector)
         for (std::size_t i = 0; i < f32_tensors.size(); ++i) {
-            if (i == embedding_idx) continue;
-
             const auto& meta = f32_tensors[i];
-            NodeRef tensor_ref = store_.compute_root(meta.name);
             total_weights += SafetensorReader::element_count(meta);
+
+            if (i == embedding_idx) {
+                // PROCESS embedding to extract token-to-token similarity
+                // The embeddings are TEMPORARY - we compute similarity then discard coordinates
+                if (meta.shape.size() == 2 && !vocab_.empty()) {
+                    std::size_t vocab_size = meta.shape[0];
+                    std::size_t hidden_dim = meta.shape[1];
+                    const float* data = reader.get_f32_data(meta);
+                    
+                    std::cerr << "Processing embedding tensor for token-to-token similarity: "
+                              << vocab_size << "x" << hidden_dim << std::endl;
+                    
+                    // Build token ref lookup from vocab
+                    auto get_token_ref = [this](std::size_t idx) -> NodeRef {
+                        if (idx < vocab_.size()) {
+                            return vocab_[idx].ref;
+                        }
+                        return NodeRef{};
+                    };
+                    
+                    // Extract top-k similar tokens for each token
+                    // similarity_threshold=0.5, max_neighbors=50
+                    stored_weights += WeightCollector::collect_embeddings(
+                        data, vocab_size, hidden_dim,
+                        get_token_ref, 0.5, 50, all_weights);
+                }
+                continue;
+            }
+
+            NodeRef tensor_ref = store_.compute_root(meta.name);
 
             if (meta.shape.size() == 2) {
                 stored_weights += WeightCollector::collect_weight_matrix(
@@ -334,7 +390,7 @@ private:
         return {tensor_count, total_weights, stored_weights};
     }
 
-    /// Find embedding tensor index (to skip it)
+    /// Find embedding tensor index (to process for token similarity)
     [[nodiscard]] std::size_t find_embedding_tensor_index(
         const std::vector<TensorMeta>& tensors) const
     {
@@ -346,8 +402,8 @@ private:
                 (meta.name == "embeddings.weight");
 
             if (is_word_embedding) {
-                std::cerr << "SKIPPING embedding tensor: " << meta.name
-                          << " (worthless coordinates in model's arbitrary space)\n";
+                std::cerr << "Found embedding tensor: " << meta.name
+                          << " (will extract token-to-token similarity)\n";
                 return i;
             }
         }

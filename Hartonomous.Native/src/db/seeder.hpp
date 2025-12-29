@@ -9,7 +9,6 @@
 #include "../logging/logger.hpp"
 #include "../atoms/semantic_decompose.hpp"
 #include "../atoms/atom_id.hpp"
-#include "../atoms/composition_store.hpp"
 #include <libpq-fe.h>
 #include <vector>
 #include <string>
@@ -209,102 +208,6 @@ public:
         }
 
         return {TOTAL_ATOMS, TOTAL_ATOMS - existing};
-    }
-
-    /// Seed compositions from a CompositionStore - IDEMPOTENT
-    size_t seed_compositions(const CompositionStore& store) {
-        auto start = std::chrono::steady_clock::now();
-
-        const auto& all_comps = store.all_compositions();
-        if (all_comps.empty()) return 0;
-
-        // Create temp tables
-        exec("DROP TABLE IF EXISTS comps_staging");
-        exec("DROP TABLE IF EXISTS struct_staging");
-        exec(Schema::CREATE_COMPS_STAGING);
-        exec(Schema::CREATE_STRUCT_STAGING);
-
-        // COPY compositions to staging
-        {
-            CopyBuilder data;
-            for (const auto& [pair, ref] : all_comps) {
-                data.field(ref.id_high)
-                    .field(ref.id_low)
-                    .null()
-                    .field(2)
-                    .null()
-                    .end_row();
-            }
-
-            start_copy(Schema::COPY_COMPS_STAGING);
-            std::string str = data.str();
-            if (PQputCopyData(conn_.get(), str.c_str(), static_cast<int>(str.size())) != 1) {
-                throw std::runtime_error("COPY comps failed");
-            }
-            if (PQputCopyEnd(conn_.get(), nullptr) != 1) {
-                throw std::runtime_error("COPY end failed");
-            }
-            PgResult res(PQgetResult(conn_.get()));
-            if (res.status() != PGRES_COMMAND_OK) {
-                throw std::runtime_error("COPY comps staging failed");
-            }
-        }
-
-        // COPY composition_relation to staging
-        {
-            CopyBuilder data;
-            for (const auto& [pair, ref] : all_comps) {
-                data.field(ref.id_high)
-                    .field(ref.id_low)
-                    .field(0)
-                    .field(pair.first.id_high)
-                    .field(pair.first.id_low)
-                    .field(1)
-                    .end_row();
-
-                data.field(ref.id_high)
-                    .field(ref.id_low)
-                    .field(1)
-                    .field(pair.second.id_high)
-                    .field(pair.second.id_low)
-                    .field(1)
-                    .end_row();
-            }
-
-            start_copy(Schema::COPY_STRUCT_STAGING);
-            std::string str = data.str();
-            if (PQputCopyData(conn_.get(), str.c_str(), static_cast<int>(str.size())) != 1) {
-                throw std::runtime_error("COPY composition_relation failed");
-            }
-            if (PQputCopyEnd(conn_.get(), nullptr) != 1) {
-                throw std::runtime_error("COPY end failed");
-            }
-            PgResult res(PQgetResult(conn_.get()));
-            if (res.status() != PGRES_COMMAND_OK) {
-                throw std::runtime_error("COPY composition_relation staging failed");
-            }
-        }
-
-        // INSERT with ON CONFLICT DO NOTHING
-        PgResult res(PQexec(conn_.get(), Schema::INSERT_COMPS_FROM_STAGING));
-        res.expect_ok("INSERT_COMPS_FROM_STAGING");
-        size_t inserted = res.affected_rows();
-
-        PgResult struct_res(PQexec(conn_.get(), Schema::INSERT_STRUCT_FROM_STAGING));
-        struct_res.expect_ok("INSERT_STRUCT_FROM_STAGING");
-
-        // Cleanup
-        exec("DROP TABLE IF EXISTS comps_staging");
-        exec("DROP TABLE IF EXISTS struct_staging");
-
-        auto end = std::chrono::steady_clock::now();
-        double elapsed = std::chrono::duration<double>(end - start).count();
-
-        if (!quiet_) {
-            hartonomous::log().info("Inserted ", inserted, " new compositions in ", elapsed, "s");
-        }
-
-        return inserted;
     }
 
     void begin() { exec("BEGIN"); }

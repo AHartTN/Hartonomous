@@ -61,17 +61,10 @@ public:
         try {
             std::cerr << "[TEST] Initializing test data..." << std::endl;
             
-            // 1. Ingest MiniLM model
-            std::cerr << "[TEST] Ingesting MiniLM model..." << std::endl;
-            if (ingest_model()) {
-                model_available_ = true;
-                std::cerr << "[TEST] Model ready: " << model_result_.stored_weights << " weights" << std::endl;
-            }
+            // Skip model ingestion by default - it takes too long
+            // Tests that need the model should use REQUIRE_MODEL() which calls ensure_model()
             
-            // 2. Ingest Moby Dick
-            std::cerr << "[TEST] Ingesting Moby Dick..." << std::endl;
-            ingest_moby_dick();
-            
+            // Just mark data as available (Moby Dick will be ingested lazily if needed)
             data_available_ = true;
             std::cerr << "[TEST] Test data initialization complete" << std::endl;
         } catch (const std::exception& e) {

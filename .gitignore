@@ -796,3 +796,4 @@ _TeamCity*
 ipch/
 *.sln.iml
 dlldata.c
+.env

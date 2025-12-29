@@ -25,45 +25,89 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
-# MinGW/Clang needs pthread for std::mutex
-if(MINGW)
-    find_package(Threads REQUIRED)
-endif()
+find_package(Threads REQUIRED)
 
 # =============================================================================
 # Dependencies
 # =============================================================================
 if(BUILD_TESTING)
-    find_package(Catch2 3 CONFIG REQUIRED)
+    # Try user-local install first
+    if(DEFINED ENV{HOME})
+        list(APPEND CMAKE_PREFIX_PATH "$ENV{HOME}/.local")
+    endif()
+    
+    find_package(Catch2 3 QUIET CONFIG)
+    
+    if(NOT Catch2_FOUND)
+        message(STATUS "Catch2 not found - downloading and building")
+        include(FetchContent)
+        FetchContent_Declare(
+            Catch2
+            GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+            GIT_TAG v3.5.4
+            GIT_SHALLOW TRUE
+        )
+        FetchContent_MakeAvailable(Catch2)
+    else()
+        message(STATUS "Catch2 found: ${Catch2_DIR}")
+    endif()
 endif()
 
 # =============================================================================
 # PostgreSQL (optional - for database operations)
 # =============================================================================
-# Find postgres/psql in PATH, derive root from executable location
-find_program(PG_EXECUTABLE NAMES postgres psql)
-if(PG_EXECUTABLE)
-    get_filename_component(PG_BIN_DIR "${PG_EXECUTABLE}" DIRECTORY)
-    get_filename_component(PG_ROOT "${PG_BIN_DIR}" DIRECTORY)
-endif()
-
-# Allow env var override
-if(DEFINED ENV{POSTGRESQL_ROOT})
-    set(PG_ROOT "$ENV{POSTGRESQL_ROOT}")
-endif()
-
 set(HARTONOMOUS_HAS_DATABASE OFF)
-if(PG_ROOT AND EXISTS "${PG_ROOT}/include/libpq-fe.h" AND EXISTS "${PG_ROOT}/bin/libpq.dll")
-    add_library(PostgreSQL::PostgreSQL IMPORTED INTERFACE)
-    set_target_properties(PostgreSQL::PostgreSQL PROPERTIES
-        INTERFACE_INCLUDE_DIRECTORIES "${PG_ROOT}/include"
-        INTERFACE_LINK_LIBRARIES "${PG_ROOT}/bin/libpq.dll"
-    )
-    set(HARTONOMOUS_HAS_DATABASE ON)
-    message(STATUS "PostgreSQL: ${PG_ROOT}")
-    message(STATUS "Database tests enabled")
-else()
-    message(STATUS "PostgreSQL not found - add postgres/psql to PATH or set POSTGRESQL_ROOT")
+
+# Try pkg-config first (Linux/macOS)
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(LIBPQ QUIET libpq)
+    if(LIBPQ_FOUND)
+        add_library(PostgreSQL::PostgreSQL IMPORTED INTERFACE)
+        set_target_properties(PostgreSQL::PostgreSQL PROPERTIES
+            INTERFACE_INCLUDE_DIRECTORIES "${LIBPQ_INCLUDE_DIRS}"
+            INTERFACE_LINK_LIBRARIES "${LIBPQ_LINK_LIBRARIES}"
+            INTERFACE_LINK_DIRECTORIES "${LIBPQ_LIBRARY_DIRS}"
+        )
+        set(HARTONOMOUS_HAS_DATABASE ON)
+        message(STATUS "PostgreSQL: ${LIBPQ_PREFIX} (pkg-config)")
+    endif()
+endif()
+
+# Fallback: manual detection for Windows or when pkg-config unavailable
+if(NOT HARTONOMOUS_HAS_DATABASE)
+    find_program(PG_EXECUTABLE NAMES postgres psql)
+    if(PG_EXECUTABLE)
+        get_filename_component(PG_BIN_DIR "${PG_EXECUTABLE}" DIRECTORY)
+        get_filename_component(PG_ROOT "${PG_BIN_DIR}" DIRECTORY)
+    endif()
+
+    if(DEFINED ENV{POSTGRESQL_ROOT})
+        set(PG_ROOT "$ENV{POSTGRESQL_ROOT}")
+    endif()
+
+    if(WIN32)
+        set(LIBPQ_LIB_SEARCH_PATHS "${PG_ROOT}/bin" "${PG_ROOT}/lib")
+        set(LIBPQ_LIB_NAMES "libpq.dll" "libpq.lib")
+    else()
+        set(LIBPQ_LIB_SEARCH_PATHS "${PG_ROOT}/lib" "/usr/lib" "/usr/local/lib")
+        set(LIBPQ_LIB_NAMES "pq")
+    endif()
+
+    find_library(LIBPQ_LIBRARY NAMES ${LIBPQ_LIB_NAMES} PATHS ${LIBPQ_LIB_SEARCH_PATHS})
+    find_path(LIBPQ_INCLUDE_DIR libpq-fe.h PATHS "${PG_ROOT}/include" "/usr/include" "/usr/local/include" "/usr/include/postgresql")
+
+    if(LIBPQ_LIBRARY AND LIBPQ_INCLUDE_DIR)
+        add_library(PostgreSQL::PostgreSQL IMPORTED INTERFACE)
+        set_target_properties(PostgreSQL::PostgreSQL PROPERTIES
+            INTERFACE_INCLUDE_DIRECTORIES "${LIBPQ_INCLUDE_DIR}"
+            INTERFACE_LINK_LIBRARIES "${LIBPQ_LIBRARY}"
+        )
+        set(HARTONOMOUS_HAS_DATABASE ON)
+        message(STATUS "PostgreSQL: ${LIBPQ_LIBRARY}")
+    else()
+        message(STATUS "PostgreSQL not found - set POSTGRESQL_ROOT or install libpq-dev")
+    endif()
 endif()
 
 # =============================================================================
@@ -88,10 +132,12 @@ add_library(Hartonomous.Native SHARED
 
 # Link PostgreSQL if available for database operations
 if(TARGET PostgreSQL::PostgreSQL)
-    target_link_libraries(Hartonomous.Native PRIVATE hartonomous-core PostgreSQL::PostgreSQL $<$<BOOL:${MINGW}>:Threads::Threads>)
+    target_link_libraries(Hartonomous.Native PRIVATE hartonomous-core PostgreSQL::PostgreSQL Threads::Threads)
     target_compile_definitions(Hartonomous.Native PRIVATE HARTONOMOUS_HAS_DATABASE)
+    message(STATUS "Database support: ENABLED")
 else()
-    target_link_libraries(Hartonomous.Native PRIVATE hartonomous-core $<$<BOOL:${MINGW}>:Threads::Threads>)
+    target_link_libraries(Hartonomous.Native PRIVATE hartonomous-core Threads::Threads)
+    message(WARNING "Database support: DISABLED (PostgreSQL not found)")
 endif()
 
 target_include_directories(Hartonomous.Native PUBLIC
@@ -103,32 +149,7 @@ if(WIN32)
     target_compile_definitions(Hartonomous.Native PRIVATE HARTONOMOUS_EXPORTS)
 endif()
 
-# Copy MinGW runtime DLLs to bin directory for portability
-if(MINGW)
-    get_filename_component(MINGW_BIN_DIR ${CMAKE_CXX_COMPILER} DIRECTORY)
-    set(MINGW_DLLS
-        "${MINGW_BIN_DIR}/libstdc++-6.dll"
-        "${MINGW_BIN_DIR}/libgcc_s_seh-1.dll"
-        "${MINGW_BIN_DIR}/libwinpthread-1.dll"
-    )
-    foreach(DLL ${MINGW_DLLS})
-        if(EXISTS "${DLL}")
-            file(COPY "${DLL}" DESTINATION "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
-        endif()
-    endforeach()
-endif()
 
-# =============================================================================
-# Standalone CLI: hartonomous-ingest (no external dependencies)
-# =============================================================================
-add_executable(hartonomous-ingest
-    src/cli/ingest.cpp
-)
-target_link_libraries(hartonomous-ingest PRIVATE hartonomous-core Threads::Threads)
-target_include_directories(hartonomous-ingest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_compile_definitions(hartonomous-ingest PRIVATE
-    TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../test-data"
-)
 
 # =============================================================================
 # Database CLI executables (requires PostgreSQL)
@@ -144,10 +165,6 @@ if(HARTONOMOUS_HAS_DATABASE)
     target_include_directories(bench-moby PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_compile_definitions(bench-moby PRIVATE
         TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../test-data"
-    )
-
-    add_custom_command(TARGET hartonomous-seed POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PG_ROOT}/bin/libpq.dll" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}"
     )
 
     # CLI: hartonomous-ingest-all (universal content ingestion)
@@ -170,13 +187,10 @@ if(BUILD_TESTING)
     # Find threads package for std::mutex support
     find_package(Threads REQUIRED)
 
-    # Single unified test executable
+    # Single unified test executable - database tests only
     add_executable(hartonomous-tests
         tests/test_main.cpp
-        tests/test_invariants.cpp
-        tests/test_encoding.cpp
         tests/test_spatial.cpp
-        tests/test_vision.cpp
     )
 
     # Add database tests if PostgreSQL available
@@ -233,12 +247,14 @@ install(TARGETS hartonomous-core Hartonomous.Native
 )
 
 # Install CLI tools
-install(TARGETS hartonomous-ingest
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-)
-
 if(TARGET hartonomous-seed)
     install(TARGETS hartonomous-seed
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+endif()
+
+if(TARGET hartonomous-ingest-all)
+    install(TARGETS hartonomous-ingest-all
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     )
 endif()

@@ -35,9 +35,7 @@
       "cacheVariables": {
         "CMAKE_C_COMPILER": "clang",
         "CMAKE_CXX_COMPILER": "clang++",
-        "CMAKE_MAKE_PROGRAM": "C:/Users/ahart/AppData/Local/Microsoft/WinGet/Packages/Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe/ninja.exe",
-        "CMAKE_CXX_FLAGS": "-Wall -Wextra",
-        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreadedDLL"
+        "CMAKE_CXX_FLAGS": "-Wall -Wextra"
       }
     },
     {

@@ -13,7 +13,6 @@
 #include "db/seeder.hpp"
 #include "db/connection.hpp"
 #include "atoms/database_encoder.hpp"
-#include "atoms/pair_encoding_engine.hpp"
 #include "atoms/codepoint_atom_table.hpp"
 #include <fstream>
 #include <cstdlib>
@@ -280,6 +279,26 @@ TEST_CASE_METHOD(DatabaseTestFixture, "Moby Dick: full database round-trip with 
     std::cerr << "Decoded SHA:    " << decoded_hash << "\n";
     std::cerr << "Decode time:    " << decode_ms << " ms\n";
     std::cerr << "BIT PERFECT:    " << (orig_hash == decoded_hash ? "YES" : "NO - FAIL") << "\n";
+    
+    // Debug: find first differing byte
+    if (orig_hash != decoded_hash) {
+        for (size_t i = 0; i < original.size() && i < decoded.size(); ++i) {
+            if (original[i] != decoded[i]) {
+                std::cerr << "FIRST DIFF at byte " << i << ": orig=0x" 
+                          << std::hex << (int)original[i] << " decoded=0x" << (int)decoded[i] << std::dec << "\n";
+                std::cerr << "Context original[" << i << "-" << std::min(i+20, original.size()) << "]: ";
+                for (size_t j = i; j < std::min(i+20, original.size()); ++j) {
+                    std::cerr << (char)original[j];
+                }
+                std::cerr << "\nContext decoded[" << i << "-" << std::min(i+20, decoded.size()) << "]: ";
+                for (size_t j = i; j < std::min(i+20, decoded.size()); ++j) {
+                    std::cerr << (char)decoded[j];
+                }
+                std::cerr << "\n";
+                break;
+            }
+        }
+    }
     std::cerr << "=====================================\n\n";
     
     REQUIRE(decoded.size() == original.size());

@@ -25,6 +25,8 @@ struct Schema {
             left_low BIGINT NOT NULL,
             right_high BIGINT NOT NULL,
             right_low BIGINT NOT NULL,
+            trajectory GEOMETRY(LINESTRINGZM, 0),
+            obs_count INTEGER NOT NULL DEFAULT 1,
             PRIMARY KEY (hilbert_high, hilbert_low)
         );
 
@@ -32,6 +34,7 @@ struct Schema {
         CREATE INDEX IF NOT EXISTS idx_atom_codepoint ON atom (codepoint) WHERE codepoint IS NOT NULL;
         CREATE INDEX IF NOT EXISTS idx_composition_left ON composition (left_high, left_low);
         CREATE INDEX IF NOT EXISTS idx_composition_right ON composition (right_high, right_low);
+        CREATE INDEX IF NOT EXISTS idx_composition_trajectory ON composition USING GIST (trajectory);
 
         -- WEIGHTED RELATIONSHIPS: A → B with weight/trajectory
         -- For storing model weights, semantic links, knowledge graph edges

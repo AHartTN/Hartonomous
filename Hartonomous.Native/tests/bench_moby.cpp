@@ -141,17 +141,12 @@ int main() {
     auto ingest_start = std::chrono::high_resolution_clock::now();
     
     DatabaseEncoder encoder(db);
-    NodeRef root = encoder.ingest_timed(data.data(), data.size());
+    NodeRef root = encoder.ingest(data.data(), data.size());
     
     auto ingest_end = std::chrono::high_resolution_clock::now();
     auto ingest_ms = std::chrono::duration_cast<std::chrono::milliseconds>(ingest_end - ingest_start).count();
     
     std::cout << "INGEST + DB:   " << ingest_ms << " ms\n";
-    std::cout << "    Encode:    " << encoder.last_encode_ms_ << " ms\n";
-    std::cout << "    Merge:     " << encoder.last_merge_ms_ << " ms\n";
-    std::cout << "    Tree:      " << encoder.last_tree_ms_ << " ms\n";
-    std::cout << "    String:    " << encoder.last_string_build_ms_ << " ms\n";
-    std::cout << "    DB COPY:   " << encoder.last_copy_ms_ << " ms\n";
     std::cout << "  Compositions: " << encoder.composition_count() << "\n";
     
     double ratio = static_cast<double>(data.size()) / static_cast<double>(encoder.composition_count());

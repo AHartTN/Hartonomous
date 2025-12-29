@@ -275,6 +275,7 @@ HARTONOMOUS_API int hartonomous_ingest(
                 DatabaseEncoder encoder(db);
                 encoder.ingest(content.data(), content.size());
                 compositions = static_cast<std::int64_t>(encoder.composition_count());
+                relationships = static_cast<std::int64_t>(encoder.relationship_count());
             }
             files = 1;
             bytes = static_cast<std::int64_t>(content.size());
@@ -295,7 +296,8 @@ HARTONOMOUS_API int hartonomous_ingest(
         }
         
         return 0;
-    } catch (const std::exception&) {
+    } catch (const std::exception& e) {
+        std::cerr << "[hartonomous_ingest ERROR] " << e.what() << std::endl;
         return -2;
     }
 }
@@ -1072,28 +1074,201 @@ HARTONOMOUS_API int hartonomous_ask(
     try {
         auto& store = get_store();
         mlops::MLOps ops(store);
+        db::CpeEncoder cpe;
         
-        // Encode question
+        // =====================================================================
+        // PHASE 1: Encode query tokens
+        // =====================================================================
         std::string question_str(question, static_cast<std::size_t>(question_len));
-        auto question_ref = store.encode_and_store(question_str);
+        UniversalTokenizer tokenizer;
+        auto tokens = tokenizer.tokenize(
+            reinterpret_cast<const std::uint8_t*>(question_str.data()), 
+            question_str.size());
         
-        // Run inference to find answer path
-        auto result = ops.infer(question_ref, static_cast<std::size_t>(max_hops));
+        std::vector<NodeRef> query_refs;
+        query_refs.reserve(tokens.size());
         
-        if (!result.success()) {
-            *answer_len = 0;
-            *confidence = 0.0;
-            return 1;  // No answer found
+        for (const auto& tok : tokens) {
+            if (tok.length == 1 && (tok.data[0] == ' ' || tok.data[0] == '\n' || tok.data[0] == '\t')) {
+                continue;
+            }
+            
+            auto codepoints = UTF8Decoder::decode(tok.data, tok.length);
+            if (codepoints.empty()) continue;
+            
+            NodeRef tok_ref;
+            if (codepoints.size() == 1) {
+                tok_ref = CodepointAtomTable::ref(codepoints[0]);
+            } else {
+                tok_ref = cpe.compute_cpe_hash(codepoints, 0, codepoints.size());
+            }
+            
         }
         
-        // The output of inference is the answer
-        auto& last_hop = result.path.back();
+        if (query_refs.empty()) {
+            *answer_len = 0;
+            *confidence = 0.0;
+            return 1;
+        }
         
-        // Decode answer
+        // =====================================================================
+        // PHASE 2: Multi-hop graph traversal from each query token
+        // =====================================================================
+        struct ScoredAnswer {
+            NodeRef ref;
+            double score;
+            std::size_t hop_distance;
+        };
+        std::vector<ScoredAnswer> all_answers;
+        
+        std::size_t max_depth = max_hops > 0 ? static_cast<std::size_t>(max_hops) : 2;
+        
+        for (const auto& query_ref : query_refs) {
+            // First, get ALL direct model relationships (semantic neighbors)
+            auto direct_rels = store.find_from(query_ref, 100);
+            for (const auto& rel : direct_rels) {
+                if (rel.context.id_high != 0 || rel.context.id_low != 0) {
+                    // Only use embedding similarity relationships (weight in 0-1 range)
+                    if (rel.weight > 0.0 && rel.weight <= 1.0) {
+                        all_answers.push_back({rel.to, rel.weight * 100.0, 1});
+                    }
+                }
+            }
+            
+            // Also check incoming model relationships
+            auto incoming_rels = store.find_to(query_ref, 100);
+            for (const auto& rel : incoming_rels) {
+                if (rel.context.id_high != 0 || rel.context.id_low != 0) {
+                    if (rel.weight > 0.0 && rel.weight <= 1.0) {
+                        all_answers.push_back({rel.from, rel.weight * 100.0, 1});
+                    }
+                }
+            }
+            
+            // BFS for multi-hop exploration (if max_depth > 1)
+            if (max_depth > 1) {
+                std::unordered_set<std::uint64_t> visited;
+                std::queue<std::tuple<NodeRef, double, std::size_t>> frontier;
+                
+                auto make_key = [](NodeRef r) {
+                    return static_cast<std::uint64_t>(r.id_high) ^
+                           (static_cast<std::uint64_t>(r.id_low) * 0x9e3779b97f4a7c15ULL);
+                };
+                
+                frontier.emplace(query_ref, 1.0, 0);
+                visited.insert(make_key(query_ref));
+                
+                while (!frontier.empty()) {
+                    auto [current, current_score, depth] = frontier.front();
+                    frontier.pop();
+                    
+                    if (depth >= max_depth) continue;
+                    
+                    auto rels = store.find_from(current, 30);
+                    
+                    for (const auto& rel : rels) {
+                        std::uint64_t key = make_key(rel.to);
+                        if (visited.count(key)) continue;
+                        visited.insert(key);
+                        
+                        bool is_model = (rel.context.id_high != 0 || rel.context.id_low != 0);
+                        bool is_similarity = (rel.weight > 0.0 && rel.weight <= 1.0);
+                        
+                        if (!is_model && depth > 0) continue;
+                        if (is_model && !is_similarity) continue;  // Skip tensor weights
+                        
+                        double edge_score = is_model ? rel.weight * 50.0 : rel.weight;
+                        double new_score = current_score * edge_score / (depth + 1);
+                        
+                        if (depth > 0) {
+                            all_answers.push_back({rel.to, new_score, depth + 1});
+                        }
+                        
+                        frontier.emplace(rel.to, new_score, depth + 1);
+                    }
+                }
+            }
+        }
+        
+        // =====================================================================
+        // PHASE 3: Aggregate and rank answers
+        // =====================================================================
+        std::cerr << "[PHASE2] all_answers.size() = " << all_answers.size() << std::endl; std::unordered_map<std::uint64_t, ScoredAnswer> merged;
+        auto make_key2 = [](NodeRef r) {
+            return static_cast<std::uint64_t>(r.id_high) ^
+                   (static_cast<std::uint64_t>(r.id_low) * 0x9e3779b97f4a7c15ULL);
+        };
+        
+        for (const auto& ans : all_answers) {
+            std::uint64_t key = make_key2(ans.ref);
+            auto it = merged.find(key);
+            if (it == merged.end()) {
+                merged[key] = ans;
+            } else {
+                it->second.score += ans.score;
+            }
+        }
+        
+        std::vector<ScoredAnswer> ranked;
+        ranked.reserve(merged.size());
+        for (const auto& [_, ans] : merged) {
+            ranked.push_back(ans);
+        }
+        std::sort(ranked.begin(), ranked.end(),
+            [](const auto& a, const auto& b) { return a.score > b.score; });
+        
+        // =====================================================================
+        // PHASE 4: Decode best answer (skip special tokens and punctuation)
+        // =====================================================================
         std::string answer;
-        try {
-            answer = store.decode_string(last_hop.to);
-        } catch (...) {
+        double best_score = 0.0;
+        
+        // Special tokens to filter out
+        auto is_special_token = [](const std::string& s) -> bool {
+            if (s.empty()) return true;
+            // BERT-style special tokens
+            if (s[0] == '[' && s.back() == ']') return true;
+            // GPT-style special tokens
+            if (s[0] == '<' && s.back() == '>') return true;
+            // Specific patterns
+            if (s.find("unused") != std::string::npos) return true;
+            if (s.find("UNUSED") != std::string::npos) return true;
+            return false;
+        };
+        
+        for (const auto& ans : ranked) {
+            try {
+                std::string decoded = store.decode_string(ans.ref); std::cerr << "[DECODE] " << decoded << " (score=" << ans.score << ")" << std::endl;
+                
+                // Skip special tokens
+                if (is_special_token(decoded)) continue;
+                
+                // Skip very short or punctuation-only
+                if (decoded.size() < 2) continue;
+                
+                // Skip if starts with ## (wordpiece continuation)
+                if (decoded.size() >= 2 && decoded[0] == '#' && decoded[1] == '#') continue;
+                
+                bool has_alnum = false;
+                for (unsigned char c : decoded) {
+                    if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || 
+                        (c >= '0' && c <= '9') || c > 127) {
+                        has_alnum = true;
+                        break;
+                    }
+                }
+                
+                if (has_alnum) {
+                    answer = decoded;
+                    best_score = ans.score;
+                    break;
+                }
+            } catch (...) {
+                continue;
+            }
+        }
+        
+        if (answer.empty()) {
             *answer_len = 0;
             *confidence = 0.0;
             return 1;
@@ -1105,8 +1280,8 @@ HARTONOMOUS_API int hartonomous_ask(
         }
         std::memcpy(buffer, answer.data(), static_cast<std::size_t>(*answer_len));
         
-        // Confidence based on path weight
-        *confidence = 1.0 / (1.0 + std::exp(-result.total_weight));  // Sigmoid
+        // Confidence based on aggregated score
+        *confidence = std::min(1.0, best_score);
         
         return 0;
     } catch (const std::exception&) {

@@ -18,7 +18,6 @@ WORKDIR /src
 
 # Copy CMake files
 COPY Hartonomous.Native/CMakeLists.txt Hartonomous.Native/CMakePresets.json ./Hartonomous.Native/
-COPY Hartonomous.Native/vcpkg.json ./Hartonomous.Native/
 
 # Copy source files
 COPY Hartonomous.Native/src ./Hartonomous.Native/src
