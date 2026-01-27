@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 6,
   "cmakeMinimumRequired": {
     "major": 3,
     "minor": 25,
@@ -7,57 +7,171 @@
   },
   "configurePresets": [
     {
-      "name": "linux-base",
+      "name": "windows-base",
       "hidden": true,
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/${presetName}",
-      "installDir": "${sourceDir}/install/${presetName}",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
-        "CMAKE_CXX_FLAGS": "-march=native",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
-      },
-      "environment": {
-        "MKL_THREADING_LAYER": "TBB"
-      }
-    },
-    {
-      "name": "linux-release",
-      "inherits": "linux-base",
-      "displayName": "Linux Release (GCC/Clang)",
-      "description": "Release build for Linux using system compiler and native optimizations"
-    },
-    {
-      "name": "windows-base",
-      "hidden": true,
-      "generator": "Visual Studio 17 2022",
-      "binaryDir": "${sourceDir}/build/${presetName}",
-      "installDir": "${sourceDir}/install/${presetName}",
       "architecture": {
         "value": "x64",
         "strategy": "set"
       },
       "cacheVariables": {
-        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreadedDLL",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
       }
     },
     {
-      "name": "windows-release",
+      "name": "windows-release-max-perf",
+      "displayName": "Windows Release (Maximum Performance)",
+      "description": "Release build with all performance optimizations enabled (AVX-512, native arch, fast math)",
       "inherits": "windows-base",
-      "displayName": "Windows Release (MSVC)",
-      "description": "Release build for Windows targeting x64"
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "HARTONOMOUS_ENABLE_NATIVE_ARCH": "ON",
+        "HARTONOMOUS_ENABLE_FAST_MATH": "ON",
+        "HARTONOMOUS_MKL_THREADING": "SEQUENTIAL",
+        "HARTONOMOUS_MKL_INTERFACE": "LP64",
+        "HARTONOMOUS_HNSW_SIMD": "AUTO"
+      }
+    },
+    {
+      "name": "windows-release-portable",
+      "displayName": "Windows Release (Portable)",
+      "description": "Release build optimized for portability (AVX2 only, no native arch)",
+      "inherits": "windows-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "HARTONOMOUS_ENABLE_NATIVE_ARCH": "OFF",
+        "HARTONOMOUS_ENABLE_FAST_MATH": "OFF",
+        "HARTONOMOUS_MKL_THREADING": "SEQUENTIAL",
+        "HARTONOMOUS_MKL_INTERFACE": "LP64",
+        "HARTONOMOUS_HNSW_SIMD": "AVX2"
+      }
+    },
+    {
+      "name": "windows-release-threaded",
+      "displayName": "Windows Release (Multi-threaded MKL)",
+      "description": "Release build with Intel MKL threading for parallel linear algebra",
+      "inherits": "windows-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "HARTONOMOUS_ENABLE_NATIVE_ARCH": "ON",
+        "HARTONOMOUS_ENABLE_FAST_MATH": "ON",
+        "HARTONOMOUS_MKL_THREADING": "INTEL",
+        "HARTONOMOUS_MKL_INTERFACE": "LP64",
+        "HARTONOMOUS_HNSW_SIMD": "AUTO"
+      }
+    },
+    {
+      "name": "windows-debug",
+      "displayName": "Windows Debug",
+      "description": "Debug build with optimizations disabled",
+      "inherits": "windows-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "HARTONOMOUS_ENABLE_NATIVE_ARCH": "OFF",
+        "HARTONOMOUS_ENABLE_FAST_MATH": "OFF",
+        "HARTONOMOUS_MKL_THREADING": "SEQUENTIAL",
+        "HARTONOMOUS_MKL_INTERFACE": "LP64",
+        "HARTONOMOUS_HNSW_SIMD": "SSE"
+      }
+    },
+    {
+      "name": "linux-base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "linux-release-max-perf",
+      "displayName": "Linux Release (Maximum Performance)",
+      "description": "Release build with all performance optimizations (-march=native, -ffast-math)",
+      "inherits": "linux-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "HARTONOMOUS_ENABLE_NATIVE_ARCH": "ON",
+        "HARTONOMOUS_ENABLE_FAST_MATH": "ON",
+        "HARTONOMOUS_MKL_THREADING": "SEQUENTIAL",
+        "HARTONOMOUS_MKL_INTERFACE": "LP64",
+        "HARTONOMOUS_HNSW_SIMD": "AUTO"
+      }
+    },
+    {
+      "name": "linux-release-portable",
+      "displayName": "Linux Release (Portable)",
+      "description": "Release build optimized for portability (AVX2 only)",
+      "inherits": "linux-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "HARTONOMOUS_ENABLE_NATIVE_ARCH": "OFF",
+        "HARTONOMOUS_ENABLE_FAST_MATH": "OFF",
+        "HARTONOMOUS_MKL_THREADING": "SEQUENTIAL",
+        "HARTONOMOUS_MKL_INTERFACE": "LP64",
+        "HARTONOMOUS_HNSW_SIMD": "AVX2"
+      }
+    },
+    {
+      "name": "linux-debug",
+      "displayName": "Linux Debug",
+      "description": "Debug build with sanitizers",
+      "inherits": "linux-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "HARTONOMOUS_ENABLE_NATIVE_ARCH": "OFF",
+        "HARTONOMOUS_ENABLE_FAST_MATH": "OFF",
+        "HARTONOMOUS_MKL_THREADING": "SEQUENTIAL",
+        "HARTONOMOUS_MKL_INTERFACE": "LP64",
+        "HARTONOMOUS_HNSW_SIMD": "SSE"
+      }
     }
   ],
   "buildPresets": [
     {
-      "name": "linux-release",
-      "configurePreset": "linux-release"
+      "name": "windows-release-max-perf",
+      "configurePreset": "windows-release-max-perf",
+      "configuration": "Release"
     },
     {
-      "name": "windows-release",
-      "configurePreset": "windows-release",
+      "name": "windows-release-portable",
+      "configurePreset": "windows-release-portable",
       "configuration": "Release"
+    },
+    {
+      "name": "windows-release-threaded",
+      "configurePreset": "windows-release-threaded",
+      "configuration": "Release"
+    },
+    {
+      "name": "windows-debug",
+      "configurePreset": "windows-debug",
+      "configuration": "Debug"
+    },
+    {
+      "name": "linux-release-max-perf",
+      "configurePreset": "linux-release-max-perf",
+      "configuration": "Release"
+    },
+    {
+      "name": "linux-release-portable",
+      "configurePreset": "linux-release-portable",
+      "configuration": "Release"
+    },
+    {
+      "name": "linux-debug",
+      "configurePreset": "linux-debug",
+      "configuration": "Debug"
     }
   ]
 }
