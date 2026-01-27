@@ -1,0 +1,13 @@
+set(CMAKE_SYSTEM_NAME Linux)
+
+set(CMAKE_C_COMPILER   /usr/bin/clang)
+set(CMAKE_CXX_COMPILER /usr/bin/clang++)
+
+set(CMAKE_C_STANDARD 17)
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
+set(CMAKE_C_FLAGS   "${CMAKE_C_FLAGS}   -O3 -fPIC -march=native")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -fPIC -march=native")
+
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)

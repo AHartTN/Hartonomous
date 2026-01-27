@@ -14,7 +14,8 @@
       "installDir": "${sourceDir}/install/${presetName}",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "CMAKE_CXX_FLAGS": "-march=native"
+        "CMAKE_CXX_FLAGS": "-march=native",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       },
       "environment": {
         "MKL_THREADING_LAYER": "TBB"
@@ -37,7 +38,8 @@
         "strategy": "set"
       },
       "cacheVariables": {
-        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreadedDLL"
+        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreadedDLL",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       }
     },
     {

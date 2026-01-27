@@ -1,0 +1,5 @@
+include(${CMAKE_SOURCE_DIR}/cmake/mkl-config.cmake)
+include(${CMAKE_SOURCE_DIR}/cmake/eigen-config.cmake)
+include(${CMAKE_SOURCE_DIR}/cmake/spectra-config.cmake)
+include(${CMAKE_SOURCE_DIR}/cmake/hnsw-config.cmake)
+include(${CMAKE_SOURCE_DIR}/cmake/blake3-config.cmake)
