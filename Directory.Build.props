@@ -1,0 +1,26 @@
+<Project>
+  <PropertyGroup>
+    <!-- Force deterministic builds -->
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+
+    <!-- Disable Intel VC toolchain injection for C# projects -->
+    <DisableIntelOneAPIVCTools>true</DisableIntelOneAPIVCTools>
+
+    <!-- Treat warnings as errors for your code, not dependencies -->
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+
+    <!-- Default language version -->
+    <LangVersion>latest</LangVersion>
+
+    <!-- Enable nullable everywhere -->
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!-- Shared global usings for all Hartonomous projects -->
+  <ItemGroup>
+    <Using Include="System" />
+    <Using Include="System.Collections.Generic" />
+    <Using Include="System.Threading.Tasks" />
+  </ItemGroup>
+</Project>

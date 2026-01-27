@@ -1,0 +1,6 @@
+<Project>
+  <Target Name="HartonomousPostBuild" AfterTargets="Build">
+    <!-- Example: copy shared assets or enforce structure -->
+    <Message Text="Hartonomous build complete: $(MSBuildProjectName)" Importance="low" />
+  </Target>
+</Project>

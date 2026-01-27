@@ -1,0 +1,1 @@
+./Marshal/ is for the C# wrapper for the C++ Hartonomous.Engine... This is the middle-man between C++ and C# so we expose things in a nice, clean, and consistent manner for anything that needs direct access like this

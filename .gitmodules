@@ -1,0 +1,12 @@
+[submodule "Engine/external/blake3"]
+	path = Engine/external/blake3
+	url = https://github.com/BLAKE3-team/BLAKE3.git
+[submodule "Engine/external/eigen"]
+	path = Engine/external/eigen
+	url = https://gitlab.com/libeigen/eigen.git
+[submodule "Engine/external/hnswlib"]
+	path = Engine/external/hnswlib
+	url = https://github.com/nmslib/hnswlib.git
+[submodule "Engine/external/spectra"]
+	path = Engine/external/spectra
+	url = https://github.com/yixuan/spectra.git

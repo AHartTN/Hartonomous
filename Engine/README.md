@@ -1,0 +1,1 @@
+./CPP/engine is where the primary C++ Hartonomous engine resides. This is where all of the heavy lifting, complex math, recursion, etc. all take place... the postgres_ext folder contains the wrapper to this for Postgres and the Hartonomous.Marshal project (to be created if not already) will wrap this project for C#.
