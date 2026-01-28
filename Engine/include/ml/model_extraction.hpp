@@ -165,7 +165,8 @@ public:
         const std::vector<uint64_t>& tokens
     ) {
         // Aggregate attention across heads
-        std::unordered_map<std::pair<uint64_t, uint64_t>, double> edge_weights;
+        // Use map instead of unordered_map (std::hash doesn't support pairs)
+        std::map<std::pair<uint64_t, uint64_t>, double> edge_weights;
 
         for (const auto& attn : attention_weights) {
             for (int i = 0; i < attn.rows(); ++i) {

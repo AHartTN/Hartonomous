@@ -1,7 +1,18 @@
 {
   "permissions": {
     "allow": [
-      "Bash(test:*)"
+      "Bash(test:*)",
+      "Bash(chmod:*)",
+      "Bash(git submodule add:*)",
+      "Bash(git add:*)",
+      "Bash(git submodule:*)",
+      "Bash(./scripts/verify-setup.sh:*)",
+      "Bash(bash:*)",
+      "Bash(tee:*)",
+      "Bash(git clone:*)",
+      "Bash(powershell -NoProfile -ExecutionPolicy Bypass -File build-windows.ps1:*)",
+      "Bash(ninja:*)",
+      "Bash(powershell \"cd build\\\\windows-release-max-perf; cmake ..; ninja\")"
     ]
   }
 }

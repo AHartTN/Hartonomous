@@ -5,6 +5,16 @@
 #include <array>
 #include <stdexcept>
 
+// Cross-platform count trailing zeros
+#ifdef _MSC_VER
+    #include <intrin.h>
+    inline uint32_t __builtin_ctz(uint32_t x) {
+        unsigned long index;
+        _BitScanForward(&index, x);
+        return static_cast<uint32_t>(index);
+    }
+#endif
+
 namespace hartonomous::spatial {
 
 /**

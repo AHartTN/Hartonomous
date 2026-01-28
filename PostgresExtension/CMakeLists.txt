@@ -5,6 +5,21 @@ project(HartonomousPostgresExt LANGUAGES C CXX)
 # ==============================================================================
 #  FIND POSTGRESQL
 # ==============================================================================
+
+# Help CMake find PostgreSQL on Windows
+if(WIN32)
+    # Find the PostgreSQL installation
+    set(PG_VERSIONS 18 17 16 15 14 13)
+    foreach(PG_VER ${PG_VERSIONS})
+        if(EXISTS "C:/Program Files/PostgreSQL/${PG_VER}/include")
+            set(PostgreSQL_ROOT "C:/Program Files/PostgreSQL/${PG_VER}")
+            break()
+        endif()
+    endforeach()
+endif()
+
+find_package(PostgreSQL REQUIRED)
+
 find_program(PG_CONFIG pg_config)
 
 if(NOT PG_CONFIG)
@@ -38,11 +53,14 @@ target_include_directories(${EXTENSION_NAME}
     PRIVATE
         ${PG_SERVER_INCLUDE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/Engine/include
 )
 
+# Link only the engine library - it contains all dependencies internally
 target_link_libraries(${EXTENSION_NAME}
     PRIVATE
         Hartonomous::Engine
+        PostgreSQL::PostgreSQL
 )
 
 # ==============================================================================

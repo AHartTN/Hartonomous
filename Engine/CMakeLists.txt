@@ -35,18 +35,53 @@ target_include_directories(engine
 # ==============================================================================
 #  LINKING
 # ==============================================================================
+
+# Find PostgreSQL client library (libpq)
+# Help CMake find PostgreSQL on Windows
+if(WIN32)
+    # Find the PostgreSQL installation
+    set(PG_VERSIONS 18 17 16 15 14 13)
+    foreach(PG_VER ${PG_VERSIONS})
+        if(EXISTS "C:/Program Files/PostgreSQL/${PG_VER}/include")
+            set(PostgreSQL_ROOT "C:/Program Files/PostgreSQL/${PG_VER}")
+            break()
+        endif()
+    endforeach()
+endif()
+
+find_package(PostgreSQL REQUIRED)
+
 # Explicitly link all required libraries.
 # - Spectra pulls in Eigen (which pulls in MKL)
 # - HNSW is now standalone (as it should be)
 # - BLAKE3 is standalone
+# - PostgreSQL for database connection
+# NOTE: All dependencies are PRIVATE to prevent leaking into PostgresExtension
 target_link_libraries(engine
-    PUBLIC
+    PRIVATE
         Spectra::Spectra
         HNSW::HNSW
         BLAKE3::BLAKE3
         Eigen3::Eigen  # Explicitly added back since HNSW doesn't carry it
         MKL::MKL       # Explicitly added back for safety
+        PostgreSQL::PostgreSQL
+        nlohmann_json::nlohmann_json
 )
+
+# ==============================================================================
+#  COGNITIVE & AI OPS
+# ==============================================================================
+file(GLOB_RECURSE COGNITIVE_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/cognitive/*.cpp"
+)
+
+list(APPEND ENGINE_SOURCES ${COGNITIVE_SOURCES})
+
+# ==============================================================================
+#  TOOLS
+# ==============================================================================
+# Temporarily disabled due to MKL linkage issue
+# add_subdirectory(tools)
 
 # ==============================================================================
 #  COMPILER OPTIONS (HIGH PERFORMANCE)

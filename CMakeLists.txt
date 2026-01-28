@@ -16,6 +16,7 @@ option(HARTONOMOUS_ENABLE_NATIVE_ARCH
 
 set(HARTONOMOUS_MKL_THREADING "SEQUENTIAL" CACHE STRING
     "MKL threading layer: SEQUENTIAL, INTEL, TBB, GNU")
+    
 set_property(CACHE HARTONOMOUS_MKL_THREADING PROPERTY STRINGS
     SEQUENTIAL INTEL TBB GNU)
 
@@ -74,10 +75,14 @@ include(cmake/eigen-config.cmake)
 include(cmake/spectra-config.cmake)
 include(cmake/hnsw-config.cmake)
 include(cmake/blake3-config.cmake)
+include(cmake/json-config.cmake)
 
 # ==============================================================================
 #  SUBPROJECTS
 # ==============================================================================
 
 add_subdirectory(Engine)
-add_subdirectory(PostgresExtension)
+
+# PostgresExtension: Disabled C++ build on Windows due to server header incompatibilities
+# Using SQL-only extension instead - see PostgresExtension/sql/
+# add_subdirectory(PostgresExtension)
