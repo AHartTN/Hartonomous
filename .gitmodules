@@ -10,3 +10,6 @@
 [submodule "Engine/external/spectra"]
 	path = Engine/external/spectra
 	url = https://github.com/yixuan/spectra.git
+[submodule "Engine/external/json"]
+	path = Engine/external/json
+	url = https://github.com/nlohmann/json.git
