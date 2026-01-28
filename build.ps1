@@ -9,7 +9,7 @@
 #   .\build.ps1 release-portable   # Portable build (no -march=native)
 
 param(
-    [string]$Preset = "windows-release-max-perf",
+    [string]$Preset = "windows-release-threaded",
     [string]$Target = "",
     [int]$Jobs = 0,
     [switch]$Clean,
@@ -25,9 +25,15 @@ Hartonomous Build Script
 Usage: .\build.ps1 [OPTIONS]
 
 Options:
-  -Preset <name>    Build preset (default: release-native)
-                    Available: release-native, release-portable, release-avx512,
-                              release-avx2, debug, relwithdebinfo
+  -Preset <name>    Build preset (default: windows-release-threaded)
+                    Available:
+                        windows-release-threaded
+                        windows-release-max-perf
+                        windows-release-portable
+                        windows-debug
+                        linux-release-max-perf
+                        linux-release-portable
+                        linux-debug
   -Target <name>    Specific target to build (default: all)
   -Jobs <N>         Number of parallel jobs (default: auto)
   -Clean            Clean build directory before building
