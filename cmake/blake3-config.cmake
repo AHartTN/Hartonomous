@@ -24,8 +24,10 @@ if(NOT TARGET BLAKE3::BLAKE3)
 
     set_target_properties(blake3_impl PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
+    # CRITICAL: Make include directory PUBLIC so consumers can find blake3.h
     target_include_directories(blake3_impl PUBLIC
-        "${BLAKE3_ROOT}/c"
+        $<BUILD_INTERFACE:${BLAKE3_ROOT}/c>
+        $<INSTALL_INTERFACE:include>
     )
 
     # ==================== SIMD VARIANTS ====================

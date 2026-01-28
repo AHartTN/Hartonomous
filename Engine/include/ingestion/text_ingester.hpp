@@ -72,7 +72,7 @@ private:
         char32_t codepoint;
         BLAKE3Pipeline::Hash hash;
         Vec4 s3_position;
-        uint64_t hilbert_index;
+        HilbertCurve4D::HilbertIndex hilbert_index;
     };
 
     struct Composition {
@@ -80,13 +80,14 @@ private:
         BLAKE3Pipeline::Hash hash;
         std::vector<BLAKE3Pipeline::Hash> atom_hashes;
         Vec4 centroid;
-        uint64_t hilbert_index;
+        HilbertCurve4D::HilbertIndex hilbert_index;
     };
 
     struct Relation {
         std::vector<BLAKE3Pipeline::Hash> composition_hashes;
         BLAKE3Pipeline::Hash hash;
         Vec4 centroid;
+        HilbertCurve4D::HilbertIndex hilbert_index;
     };
 
     // Decomposition

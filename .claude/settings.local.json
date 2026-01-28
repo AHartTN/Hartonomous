@@ -12,7 +12,15 @@
       "Bash(git clone:*)",
       "Bash(powershell -NoProfile -ExecutionPolicy Bypass -File build-windows.ps1:*)",
       "Bash(ninja:*)",
-      "Bash(powershell \"cd build\\\\windows-release-max-perf; cmake ..; ninja\")"
+      "Bash(powershell \"cd build\\\\windows-release-max-perf; cmake ..; ninja\")",
+      "Bash(pg_config:*)",
+      "Bash(cmake:*)",
+      "Bash(apt list:*)",
+      "Bash(awk:*)",
+      "Bash(./scripts/01-rebuild-database.sh:*)",
+      "Bash(psql -d hypercube -c \"CREATE EXTENSION hartonomous; SELECT hartonomous_version\\(\\);\")",
+      "Bash(nm -D:*)",
+      "Bash(psql:*)"
     ]
   }
 }

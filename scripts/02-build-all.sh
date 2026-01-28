@@ -10,18 +10,21 @@ print_header "Building Hartonomous"
 REPO_ROOT="$(get_repo_root)"
 cd "$REPO_ROOT"
 
-BUILD_TYPE=${1:-Release}
+# Parse arguments
+PRESET=${1:-linux-release-max-perf}
 
-# Detect platform and choose appropriate preset
-if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]] || uname -s | grep -q "MINGW\|MSYS\|CYGWIN"; then
-    PRESET=${2:-windows-release-max-perf}
-elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
-    PRESET=${2:-linux-release-max-perf}
-elif [[ "$OSTYPE" == "darwin"* ]]; then
-    print_error "macOS presets not yet configured in CMakePresets.json"
-    exit 1
-else
-    PRESET=${2:-windows-release-max-perf}
+# Auto-detect platform if not specified
+if [ "$PRESET" = "auto" ]; then
+    if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]] || uname -s | grep -q "MINGW\|MSYS\|CYGWIN"; then
+        PRESET="windows-release-max-perf"
+    elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        PRESET="linux-release-max-perf"
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+        print_error "macOS presets not yet configured in CMakePresets.json"
+        exit 1
+    else
+        PRESET="linux-release-max-perf"
+    fi
 fi
 
 print_info "Platform: $(uname -s)"
@@ -110,15 +113,39 @@ print_success "Build complete"
 # Verify build output exists
 BUILD_DIR="build/$PRESET"
 
+print_step "Verifying build outputs..."
+
 if [ -f "$BUILD_DIR/Engine/libengine.a" ]; then
-    print_success "Engine library built: $BUILD_DIR/Engine/libengine.a"
+    print_success "Engine library: $BUILD_DIR/Engine/libengine.a"
+    ls -lh "$BUILD_DIR/Engine/libengine.a"
 else
     print_error "Engine library not found"
+    exit 1
+fi
+
+if [ -f "$BUILD_DIR/libblake3_impl.a" ]; then
+    print_success "BLAKE3 library: $BUILD_DIR/libblake3_impl.a"
+    ls -lh "$BUILD_DIR/libblake3_impl.a"
+else
+    print_error "BLAKE3 library not found"
+    exit 1
+fi
+
+if [ -f "$BUILD_DIR/PostgresExtension/hartonomous.so" ]; then
+    print_success "PostgreSQL extension: $BUILD_DIR/PostgresExtension/hartonomous.so"
+    ls -lh "$BUILD_DIR/PostgresExtension/hartonomous.so"
+else
+    print_error "PostgreSQL extension not found"
     exit 1
 fi
 
 print_complete "Build successful!"
 echo ""
 print_info "Build directory: $BUILD_DIR"
-print_info "Next step: ./scripts/03-install-extension.sh"
+print_info "Artifacts:"
+print_info "  - Engine: $BUILD_DIR/Engine/libengine.a"
+print_info "  - BLAKE3: $BUILD_DIR/libblake3_impl.a"
+print_info "  - Extension: $BUILD_DIR/PostgresExtension/hartonomous.so"
+echo ""
+print_info "Next step: sudo ./scripts/03-install-extension.sh $PRESET"
 echo ""

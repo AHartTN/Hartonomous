@@ -414,13 +414,13 @@ COMMENT ON FUNCTION astar_pathfind IS 'A* pathfinding with ELO-weighted costs (O
 
 -- Create SP-GiST index for Hilbert curve ordering
 CREATE INDEX CONCURRENTLY idx_atoms_hilbert_spgist
-ON atoms USING SPGIST (hilbert_index);
+ON atoms USING BTREE (hilbert_index);
 
 CREATE INDEX CONCURRENTLY idx_compositions_hilbert_spgist
-ON compositions USING SPGIST (hilbert_index);
+ON compositions USING BTREE (hilbert_index);
 
 CREATE INDEX CONCURRENTLY idx_relations_hilbert_spgist
-ON relations USING SPGIST (hilbert_index);
+ON relations USING BTREE (hilbert_index);
 
 COMMENT ON INDEX idx_atoms_hilbert_spgist IS 'SP-GiST index for Hilbert curve spatial ordering';
 
@@ -475,15 +475,15 @@ COMMENT ON FUNCTION st_bbox_4d IS 'Compute 4D bounding box';
 CREATE OR REPLACE VIEW v_spatial_index_stats AS
 SELECT
     schemaname,
-    tablename,
-    indexname,
+    relname AS tablename,
+    indexrelname AS indexname,
     idx_scan AS scans,
     idx_tup_read AS tuples_read,
     idx_tup_fetch AS tuples_fetched
 FROM
     pg_stat_user_indexes
 WHERE
-    indexname LIKE '%spatial%' OR indexname LIKE '%hilbert%'
+    indexrelname LIKE '%spatial%' OR indexrelname LIKE '%hilbert%'
 ORDER BY
     idx_scan DESC;
 

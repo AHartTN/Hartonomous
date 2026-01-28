@@ -3,10 +3,13 @@
  * @brief PostgreSQL extension entry point
  */
 
-#include "hartonomous_functions.hpp"
+// Must include PostgreSQL headers BEFORE C++ headers for proper linkage
+extern "C" {
+#include <postgres.h>
+#include <fmgr.h>
 
-// Extension magic - required by PostgreSQL
+// Extension magic - MUST be in extern "C" block
 PG_MODULE_MAGIC;
+}
 
 // All function implementations are in hartonomous_functions.cpp
-// This file just provides the extension entry point

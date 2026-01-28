@@ -24,7 +24,8 @@ CREATE TABLE IF NOT EXISTS atoms (
     centroid GEOMETRY(POINTZM, 0) NOT NULL,
 
     -- Hilbert curve index for spatial ordering
-    hilbert_index BIGINT NOT NULL,
+    hilbert_hi BIGINT NOT NULL,
+    hilbert_lo BIGINT NOT NULL,
 
     -- Metadata
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -40,7 +41,7 @@ CREATE TABLE IF NOT EXISTS atoms (
 
 -- Spatial index using GIST
 CREATE INDEX IF NOT EXISTS idx_atoms_centroid ON atoms USING GIST(centroid);
-CREATE INDEX IF NOT EXISTS idx_atoms_hilbert ON atoms(hilbert_index);
+CREATE INDEX IF NOT EXISTS idx_atoms_hilbert ON atoms(hilbert_hi, hilbert_lo);
 CREATE INDEX IF NOT EXISTS idx_atoms_codepoint ON atoms(codepoint);
 
 -- ==============================================================================
@@ -64,7 +65,8 @@ CREATE TABLE IF NOT EXISTS compositions (
     path GEOMETRY(LINESTRINGZM, 0),
 
     -- Hilbert curve index
-    hilbert_index BIGINT NOT NULL,
+    hilbert_hi BIGINT NOT NULL,
+    hilbert_lo BIGINT NOT NULL,
 
     -- Metadata
     length INTEGER NOT NULL DEFAULT 0,
@@ -83,7 +85,7 @@ CREATE TABLE IF NOT EXISTS compositions (
 -- Spatial indexes
 CREATE INDEX IF NOT EXISTS idx_compositions_centroid ON compositions USING GIST(centroid);
 CREATE INDEX IF NOT EXISTS idx_compositions_path ON compositions USING GIST(path);
-CREATE INDEX IF NOT EXISTS idx_compositions_hilbert ON compositions(hilbert_index);
+CREATE INDEX IF NOT EXISTS idx_compositions_hilbert ON compositions(hilbert_hi, hilbert_lo);
 CREATE INDEX IF NOT EXISTS idx_compositions_text ON compositions USING gin(to_tsvector('english', text));
 CREATE INDEX IF NOT EXISTS idx_compositions_hash ON compositions(hash);
 
@@ -120,6 +122,10 @@ CREATE TABLE IF NOT EXISTS relations (
     -- PostGIS 4D geometry (SRID 0 for abstract space)
     centroid GEOMETRY(POINTZM, 0) NOT NULL,
 
+    -- Hilbert curve index (128-bit split)
+    hilbert_hi BIGINT NOT NULL,
+    hilbert_lo BIGINT NOT NULL,
+
     -- 4D path through children
     path GEOMETRY(LINESTRINGZM, 0),
 
@@ -142,6 +148,7 @@ CREATE TABLE IF NOT EXISTS relations (
 CREATE INDEX IF NOT EXISTS idx_relations_centroid ON relations USING GIST(centroid);
 CREATE INDEX IF NOT EXISTS idx_relations_path ON relations USING GIST(path);
 CREATE INDEX IF NOT EXISTS idx_relations_level ON relations(level);
+CREATE INDEX IF NOT EXISTS idx_relations_hilbert ON relations(hilbert_hi, hilbert_lo);
 CREATE INDEX IF NOT EXISTS idx_relations_hash ON relations(hash);
 
 -- ==============================================================================

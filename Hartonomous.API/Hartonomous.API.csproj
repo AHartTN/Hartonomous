@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>aspnet-Hartonomous.API-c5bf795e-11ab-45d5-a357-7dc0dce1467a</UserSecretsId>
@@ -9,8 +9,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.23" NoWarn="NU1605" />
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="8.0.23" NoWarn="NU1605" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.2" NoWarn="NU1605" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="10.0.2" NoWarn="NU1605" />
     <PackageReference Include="Microsoft.Identity.Web" Version="4.3.0" />
     <PackageReference Include="Microsoft.Identity.Web.DownstreamApi" Version="4.3.0" />
     <PackageReference Include="Microsoft.Identity.Web.MicrosoftGraph" Version="4.3.0" />
@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Hartonomous.ServiceDefaults\Hartonomous.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\Hartonomous.Marshal\Hartonomous.Marshal.csproj" />
   </ItemGroup>
 
 </Project>

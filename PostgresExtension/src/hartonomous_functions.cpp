@@ -11,8 +11,29 @@
 #include <geometry/super_fibonacci.hpp>
 #include <spatial/hilbert_curve_4d.hpp>
 
+extern "C" {
+#include <utils/array.h>
+#include <utils/lsyscache.h>
+#include <catalog/pg_type.h>
+}
+
 using namespace Hartonomous;
 using namespace Hartonomous::PG;
+
+// ==============================================================================
+//  Function Info Declarations - MUST be extern "C"
+// ==============================================================================
+
+extern "C" {
+PG_FUNCTION_INFO_V1(hartonomous_version);
+PG_FUNCTION_INFO_V1(blake3_hash);
+PG_FUNCTION_INFO_V1(blake3_hash_codepoint);
+PG_FUNCTION_INFO_V1(codepoint_to_s3);
+PG_FUNCTION_INFO_V1(codepoint_to_hilbert);
+PG_FUNCTION_INFO_V1(compute_centroid);
+PG_FUNCTION_INFO_V1(ingest_text);
+PG_FUNCTION_INFO_V1(semantic_search);
+}
 
 // ==============================================================================
 //  Version Info
@@ -115,14 +136,21 @@ extern "C" Datum codepoint_to_hilbert(PG_FUNCTION_ARGS) {
 extern "C" Datum compute_centroid(PG_FUNCTION_ARGS) {
     return safe_call(fcinfo, [](FunctionCallInfo fcinfo) -> Datum {
         // Get array of points (array of composite types with x,y,z,w)
-        ArrayType* array = PG_GETARG_ARRAYTYPE_P(0);
+        ArrayType* array = DatumGetArrayTypeP(PG_GETARG_DATUM(0));
+
+        // Get array element type info
+        Oid element_type = ARR_ELEMTYPE(array);
+        int16 typlen;
+        bool typbyval;
+        char typalign;
+        get_typlenbyvalalign(element_type, &typlen, &typbyval, &typalign);
 
         // Decode array
         int nelems;
         Datum* elems;
         bool* nulls;
 
-        deconstruct_array(array, RECORDOID, -1, false, 'd',
+        deconstruct_array(array, element_type, typlen, typbyval, typalign,
                          &elems, &nulls, &nelems);
 
         if (nelems == 0) {
@@ -135,11 +163,26 @@ extern "C" Datum compute_centroid(PG_FUNCTION_ARGS) {
         for (int i = 0; i < nelems; i++) {
             if (nulls[i]) continue;
 
-            HeapTupleHeader tuple = DatumGetHeapTupleHeader(elems[i]);
+            HeapTupleHeader tup_header = DatumGetHeapTupleHeader(elems[i]);
+
+            // Get tuple descriptor from the tuple header
+            Oid tupType = HeapTupleHeaderGetTypeId(tup_header);
+            int32 tupTypmod = HeapTupleHeaderGetTypMod(tup_header);
+            TupleDesc tupdesc = lookup_rowtype_tupdesc(tupType, tupTypmod);
+
             Datum values[4];
             bool val_nulls[4];
 
-            heap_deform_tuple((HeapTupleData*)tuple, nullptr, 4, values, val_nulls);
+            // Build a HeapTupleData structure to pass to heap_deform_tuple
+            HeapTupleData tup_data;
+            tup_data.t_len = HeapTupleHeaderGetDatumLength(tup_header);
+            tup_data.t_data = tup_header;
+            ItemPointerSetInvalid(&(tup_data.t_self));
+            tup_data.t_tableOid = InvalidOid;
+
+            heap_deform_tuple(&tup_data, tupdesc, values, val_nulls);
+
+            ReleaseTupleDesc(tupdesc);
 
             if (!val_nulls[0] && !val_nulls[1] && !val_nulls[2] && !val_nulls[3]) {
                 sum[0] += DatumGetFloat8(values[0]);

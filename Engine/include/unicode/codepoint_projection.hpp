@@ -57,7 +57,7 @@ public:
         Vec4 s3_position;                ///< Position on 3-sphere (S³)
         Vec3 s2_projection;              ///< Hopf projection to 2-sphere (S²)
         Vec4 hypercube_coords;           ///< Coordinates in 4D hypercube [0,1]⁴
-        uint64_t hilbert_index;          ///< Hilbert curve index (spatial key)
+        HilbertCurve::HilbertIndex hilbert_index;          ///< Hilbert curve index (spatial key)
 
         /**
          * @brief Get a short identifier string (first 8 bytes of hash, hex)

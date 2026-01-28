@@ -5,7 +5,7 @@
 set -e  # Exit on error
 
 # Default values
-PRESET="release-native"
+PRESET="linux-release-max-perf"
 TARGET=""
 JOBS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 CLEAN=false
@@ -132,7 +132,9 @@ else
 fi
 
 # Check Intel OneAPI
-if [ -f "/opt/intel/oneapi/setvars.sh" ]; then
+if [ -n "$MKLROOT" ]; then
+    print_success "✓ Intel OneAPI already initialized"
+elif [ -f "/opt/intel/oneapi/setvars.sh" ]; then
     print_success "✓ Intel OneAPI found"
     source /opt/intel/oneapi/setvars.sh > /dev/null 2>&1
 elif [ -f "/opt/intel/oneapi/mkl/latest/env/vars.sh" ]; then
@@ -150,6 +152,7 @@ SUBMODULES=(
     "Engine/external/eigen"
     "Engine/external/hnswlib"
     "Engine/external/spectra"
+    "Engine/external/json"
 )
 
 MISSING_SUBMODULES=()
@@ -177,6 +180,10 @@ if [ "$CLEAN" = true ]; then
         rm -rf "$BUILD_DIR"
         print_success "✓ Cleaned $BUILD_DIR"
     fi
+    # Also clean .NET artifacts
+    print_info "Cleaning .NET artifacts..."
+    find . -type d -name "bin" -o -name "obj" | xargs rm -rf
+    print_success "✓ Cleaned .NET artifacts"
 fi
 
 # Configure
@@ -189,7 +196,7 @@ else
     exit 1
 fi
 
-# Build
+# Build C++
 echo ""
 BUILD_DIR="build/$PRESET"
 
@@ -197,14 +204,38 @@ if [ -n "$TARGET" ]; then
     print_info "Building target: $TARGET..."
     BUILD_CMD="cmake --build $BUILD_DIR --target $TARGET -j $JOBS"
 else
-    print_info "Building all targets..."
+    print_info "Building all C++ targets..."
     BUILD_CMD="cmake --build $BUILD_DIR -j $JOBS"
 fi
 
 if $BUILD_CMD; then
-    print_success "✓ Build complete"
+    print_success "✓ C++ Build complete"
 else
-    print_error "✗ Build failed"
+    print_error "✗ C++ Build failed"
+    exit 1
+fi
+
+# Build .NET
+echo ""
+print_info "Building .NET Solution..."
+if command -v dotnet &> /dev/null; then
+    print_info "Restoring dependencies..."
+    if dotnet restore Hartonomous.sln; then
+        print_success "✓ Restore complete"
+    else
+        print_error "✗ Restore failed"
+        exit 1
+    fi
+
+    print_info "Building (Release)..."
+    if dotnet build Hartonomous.sln -c Release --no-restore; then
+        print_success "✓ .NET Build complete"
+    else
+        print_error "✗ .NET Build failed"
+        exit 1
+    fi
+else
+    print_error "✗ 'dotnet' command not found. Skipping .NET build (Installation required)."
     exit 1
 fi
 

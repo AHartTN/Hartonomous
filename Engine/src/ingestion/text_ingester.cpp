@@ -137,6 +137,9 @@ std::vector<TextIngester::Relation> TextIngester::decompose_relations(
 
     // Centroid of all composition centroids
     rel.centroid = compute_centroid(centroids);
+    
+    // Compute Hilbert index
+    rel.hilbert_index = HilbertCurve4D::encode(rel.centroid, 16);
 
     relations.push_back(rel);
 
@@ -166,8 +169,8 @@ void TextIngester::store_atoms(const std::vector<Atom>& atoms, IngestionStats& s
 
         // Insert new atom
         db_.execute(
-            "INSERT INTO hartonomous.atoms (hash, codepoint, centroid_x, centroid_y, centroid_z, centroid_w, centroid, hilbert_index) "
-            "VALUES ($1, $2, $3, $4, $5, $6, ST_SetSRID(ST_MakePoint($3, $4, $5, $6), 0), $7)",
+            "INSERT INTO hartonomous.atoms (hash, codepoint, centroid_x, centroid_y, centroid_z, centroid_w, centroid, hilbert_hi, hilbert_lo) "
+            "VALUES ($1, $2, $3, $4, $5, $6, ST_SetSRID(ST_MakePoint($3::float8, $4::float8, $5::float8, $6::float8), 0), $7, $8)",
             {
                 hash_hex,
                 std::to_string((int)atom.codepoint),
@@ -175,7 +178,8 @@ void TextIngester::store_atoms(const std::vector<Atom>& atoms, IngestionStats& s
                 std::to_string(atom.s3_position[1]),
                 std::to_string(atom.s3_position[2]),
                 std::to_string(atom.s3_position[3]),
-                std::to_string(atom.hilbert_index)
+                std::to_string((int64_t)atom.hilbert_index.hi),
+                std::to_string((int64_t)atom.hilbert_index.lo)
             }
         );
 
@@ -207,8 +211,8 @@ void TextIngester::store_compositions(const std::vector<Composition>& compositio
 
         // Insert composition
         db_.execute(
-            "INSERT INTO hartonomous.compositions (hash, text, centroid_x, centroid_y, centroid_z, centroid_w, centroid, hilbert_index, length) "
-            "VALUES ($1, $2, $3, $4, $5, $6, ST_SetSRID(ST_MakePoint($3, $4, $5, $6), 0), $7, $8)",
+            "INSERT INTO hartonomous.compositions (hash, text, centroid_x, centroid_y, centroid_z, centroid_w, centroid, hilbert_hi, hilbert_lo, length) "
+            "VALUES ($1, $2, $3, $4, $5, $6, ST_SetSRID(ST_MakePoint($3::float8, $4::float8, $5::float8, $6::float8), 0), $7, $8, $9)",
             {
                 hash_hex,
                 comp.text,
@@ -216,7 +220,8 @@ void TextIngester::store_compositions(const std::vector<Composition>& compositio
                 std::to_string(comp.centroid[1]),
                 std::to_string(comp.centroid[2]),
                 std::to_string(comp.centroid[3]),
-                std::to_string(comp.hilbert_index),
+                std::to_string((int64_t)comp.hilbert_index.hi),
+                std::to_string((int64_t)comp.hilbert_index.lo),
                 std::to_string(comp.text.size())
             }
         );
@@ -241,8 +246,8 @@ void TextIngester::store_relations(const std::vector<Relation>& relations, Inges
 
         // Insert relation
         db_.execute(
-            "INSERT INTO hartonomous.relations (hash, level, length, centroid_x, centroid_y, centroid_z, centroid_w, centroid, parent_type) "
-            "VALUES ($1, $2, $3, $4, $5, $6, $7, ST_SetSRID(ST_MakePoint($4, $5, $6, $7), 0), $8)",
+            "INSERT INTO hartonomous.relations (hash, level, length, centroid_x, centroid_y, centroid_z, centroid_w, centroid, parent_type, hilbert_hi, hilbert_lo) "
+            "VALUES ($1, $2, $3, $4, $5, $6, $7, ST_SetSRID(ST_MakePoint($4::float8, $5::float8, $6::float8, $7::float8), 0), $8, $9, $10)",
             {
                 hash_hex,
                 "1",  // Level 1 relation
@@ -251,7 +256,9 @@ void TextIngester::store_relations(const std::vector<Relation>& relations, Inges
                 std::to_string(rel.centroid[1]),
                 std::to_string(rel.centroid[2]),
                 std::to_string(rel.centroid[3]),
-                "composition"
+                "composition",
+                std::to_string((int64_t)rel.hilbert_index.hi),
+                std::to_string((int64_t)rel.hilbert_index.lo)
             }
         );
 

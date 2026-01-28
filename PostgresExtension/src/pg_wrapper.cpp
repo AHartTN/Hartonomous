@@ -117,7 +117,15 @@ void TupleBuilder::add_null() {
 }
 
 HeapTuple TupleBuilder::build() {
-    return heap_form_tuple(tupdesc_, values_.data(), nulls_.data());
+    // vector<bool> doesn't have contiguous storage, so we need to convert
+    size_t n = nulls_.size();
+    bool* nulls_array = (bool*)palloc(n * sizeof(bool));
+    for (size_t i = 0; i < n; i++) {
+        nulls_array[i] = nulls_[i];
+    }
+    HeapTuple result = heap_form_tuple(tupdesc_, values_.data(), nulls_array);
+    pfree(nulls_array);
+    return result;
 }
 
 // ==============================================================================
@@ -126,8 +134,11 @@ HeapTuple TupleBuilder::build() {
 
 MemoryContext::MemoryContext(const char* name)
     : old_context_(nullptr) {
+    // PostgreSQL 18 requires compile-time constant strings for context names
+    // Use a generic name since we can't use runtime strings
+    (void)name;  // Suppress unused parameter warning
     context_ = AllocSetContextCreate(CurrentMemoryContext,
-                                      name,
+                                      "HartonomousContext",
                                       ALLOCSET_DEFAULT_SIZES);
 }
 

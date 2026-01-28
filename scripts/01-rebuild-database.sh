@@ -8,28 +8,24 @@ source "$(dirname "$0")/common.sh"
 print_header "Rebuilding Database: hypercube"
 
 # Get database connection info from environment or use defaults
-PGHOST=${PGHOST:-localhost}
-PGPORT=${PGPORT:-5432}
 PGDATABASE=${PGDATABASE:-hypercube}
-PGUSER=${PGUSER:-postgres}
 
 print_info "Database: $PGDATABASE"
-print_info "Host: $PGHOST:$PGPORT"
-print_info "User: $PGUSER"
+print_info "Using peer authentication (no password required)"
 
 # Drop existing database
 print_step "Dropping existing database..."
-psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d postgres -c "DROP DATABASE IF EXISTS $PGDATABASE;" 2>/dev/null || true
+psql -U postgres -d postgres -c "DROP DATABASE IF EXISTS $PGDATABASE;" 2>/dev/null || true
 print_success "Database dropped"
 
 # Create new database
 print_step "Creating new database..."
-psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d postgres -c "CREATE DATABASE $PGDATABASE;"
+psql -U postgres -d postgres -c "CREATE DATABASE $PGDATABASE;"
 print_success "Database created"
 
 # Install PostGIS extension
 print_step "Installing PostGIS extension..."
-psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -c "CREATE EXTENSION IF NOT EXISTS postgis;"
+psql -U postgres -d "$PGDATABASE" -c "CREATE EXTENSION IF NOT EXISTS postgis;"
 print_success "PostGIS installed"
 
 # Apply schema
@@ -45,7 +41,7 @@ for schema_file in \
 do
     if [ -f "$schema_file" ]; then
         print_info "  Applying $(basename "$schema_file")..."
-        psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -f "$schema_file" || {
+        psql -U postgres -d "$PGDATABASE" -f "$schema_file" || {
             print_error "Failed to apply $(basename "$schema_file")"
             exit 1
         }
@@ -59,7 +55,7 @@ print_success "Schema applied"
 # Create indexes
 print_step "Creating indexes..."
 
-psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" << 'EOF'
+psql -U postgres -d "$PGDATABASE" << 'EOF'
 -- Spatial indexes
 CREATE INDEX IF NOT EXISTS idx_atoms_s3_position
     ON atoms USING GIST (st_makepoint(s3_x, s3_y, s3_z));
@@ -93,7 +89,7 @@ print_success "Indexes created"
 
 # Verify
 print_step "Verifying database..."
-TABLE_COUNT=$(psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -t -c \
+TABLE_COUNT=$(psql -U postgres -d "$PGDATABASE" -t -c \
     "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE';")
 
 print_success "Verification complete: $TABLE_COUNT tables created"

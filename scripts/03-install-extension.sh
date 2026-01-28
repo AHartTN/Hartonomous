@@ -10,8 +10,15 @@ print_header "Installing PostgreSQL Extension"
 REPO_ROOT="$(get_repo_root)"
 cd "$REPO_ROOT"
 
-PRESET=${1:-release-native}
+PRESET=${1:-linux-release-max-perf}
 BUILD_DIR="build/$PRESET"
+
+# Check if running as root/sudo
+if [ "$EUID" -ne 0 ]; then
+    print_error "This script must be run with sudo for installing PostgreSQL extensions"
+    print_info "Usage: sudo ./scripts/03-install-extension.sh [$PRESET]"
+    exit 1
+fi
 
 # Check if PostgreSQL is installed
 if ! command_exists pg_config; then
@@ -38,15 +45,31 @@ if [ ! -d "$BUILD_DIR" ]; then
     exit 1
 fi
 
-# Create simple PostgreSQL extension (for now, just install SQL functions)
-print_step "Installing SQL functions..."
+# Check if compiled extension exists
+EXTENSION_SO="$BUILD_DIR/PostgresExtension/hartonomous.so"
+if [ ! -f "$EXTENSION_SO" ]; then
+    print_error "Extension library not found: $EXTENSION_SO"
+    print_info "Run ./scripts/02-build-all.sh first"
+    exit 1
+fi
+
+print_success "Found extension library: $EXTENSION_SO"
+
+# Install extension files
+print_step "Installing extension files..."
 
 EXT_DIR="$SHAREDIR/extension"
-sudo mkdir -p "$EXT_DIR"
+mkdir -p "$EXT_DIR"
+
+# Copy compiled extension to PostgreSQL lib directory
+print_info "Installing hartonomous.so..."
+cp "$EXTENSION_SO" "$PKGLIBDIR/hartonomous.so"
+chmod 755 "$PKGLIBDIR/hartonomous.so"
+print_success "Extension library installed: $PKGLIBDIR/hartonomous.so"
 
 # Create hartonomous.control
 print_info "Creating hartonomous.control..."
-sudo tee "$EXT_DIR/hartonomous.control" > /dev/null << EOF
+tee "$EXT_DIR/hartonomous.control" > /dev/null << EOF
 # Hartonomous extension
 comment = 'Hartonomous - Universal substrate for intelligence'
 default_version = '0.1.0'
@@ -57,67 +80,84 @@ EOF
 
 # Create hartonomous--0.1.0.sql
 print_info "Creating hartonomous--0.1.0.sql..."
-sudo tee "$EXT_DIR/hartonomous--0.1.0.sql" > /dev/null << 'EOF'
+tee "$EXT_DIR/hartonomous--0.1.0.sql" > /dev/null << 'EOF'
 -- Hartonomous Extension SQL
+-- This file defines the SQL interface to the C++ functions
 
 -- Version function
 CREATE OR REPLACE FUNCTION hartonomous_version()
 RETURNS TEXT
-LANGUAGE SQL
-IMMUTABLE
-AS $$
-    SELECT '0.1.0'::TEXT;
-$$;
+LANGUAGE C STRICT
+AS 'MODULE_PATHNAME', 'hartonomous_version';
 
--- Helper: Ingest text (placeholder - actual implementation in C++)
-CREATE OR REPLACE FUNCTION ingest_text_placeholder(input_text TEXT)
-RETURNS JSONB
-LANGUAGE PLPGSQL
-AS $$
-DECLARE
-    result JSONB;
-BEGIN
-    -- Placeholder: This would call C++ implementation
-    -- For now, return mock stats
-    result := jsonb_build_object(
-        'atoms_new', 0,
-        'compositions_new', 0,
-        'relations_new', 0,
-        'status', 'Use C++ ingester for now'
-    );
-    RETURN result;
-END;
-$$;
+-- BLAKE3 hashing functions
+CREATE OR REPLACE FUNCTION blake3_hash(TEXT)
+RETURNS BYTEA
+LANGUAGE C STRICT
+AS 'MODULE_PATHNAME', 'blake3_hash';
 
--- Helper: Semantic query (placeholder)
-CREATE OR REPLACE FUNCTION semantic_query_placeholder(query_text TEXT)
+CREATE OR REPLACE FUNCTION blake3_hash_codepoint(INTEGER)
+RETURNS BYTEA
+LANGUAGE C STRICT
+AS 'MODULE_PATHNAME', 'blake3_hash_codepoint';
+
+-- Codepoint projection functions
+CREATE TYPE s3_point AS (
+    x DOUBLE PRECISION,
+    y DOUBLE PRECISION,
+    z DOUBLE PRECISION,
+    w DOUBLE PRECISION
+);
+
+CREATE OR REPLACE FUNCTION codepoint_to_s3(INTEGER)
+RETURNS s3_point
+LANGUAGE C STRICT
+AS 'MODULE_PATHNAME', 'codepoint_to_s3';
+
+CREATE OR REPLACE FUNCTION codepoint_to_hilbert(INTEGER)
+RETURNS BIGINT
+LANGUAGE C STRICT
+AS 'MODULE_PATHNAME', 'codepoint_to_hilbert';
+
+-- Centroid computation
+CREATE OR REPLACE FUNCTION compute_centroid(s3_point[])
+RETURNS s3_point
+LANGUAGE C STRICT
+AS 'MODULE_PATHNAME', 'compute_centroid';
+
+-- Ingestion stats type
+CREATE TYPE ingestion_stats AS (
+    atoms_new BIGINT,
+    compositions_new BIGINT,
+    relations_new BIGINT,
+    original_bytes BIGINT,
+    stored_bytes BIGINT,
+    compression_ratio DOUBLE PRECISION
+);
+
+-- Text ingestion
+CREATE OR REPLACE FUNCTION ingest_text(TEXT)
+RETURNS ingestion_stats
+LANGUAGE C STRICT
+AS 'MODULE_PATHNAME', 'ingest_text';
+
+-- Semantic search
+CREATE OR REPLACE FUNCTION semantic_search(TEXT)
 RETURNS TABLE(result_text TEXT, confidence DOUBLE PRECISION)
-LANGUAGE SQL
-AS $$
-    SELECT
-        c.text,
-        1.0 AS confidence
-    FROM compositions c
-    WHERE c.text ILIKE '%' || query_text || '%'
-    LIMIT 10;
-$$;
+LANGUAGE C STRICT
+AS 'MODULE_PATHNAME', 'semantic_search';
 
 EOF
 
-print_success "Extension files created"
+print_success "Extension SQL file created"
 
 # Test installation
 print_step "Testing extension installation..."
 
-PGHOST=${PGHOST:-localhost}
-PGPORT=${PGPORT:-5432}
-PGUSER=${PGUSER:-postgres}
 PGDATABASE=${PGDATABASE:-hypercube}
 
-psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" << 'EOF' || {
-    print_error "Extension installation test failed"
-    exit 1
-}
+# Use peer authentication (no password needed for local connections)
+psql -U postgres -d "$PGDATABASE" << 'EOF'
 -- Drop if exists
 DROP EXTENSION IF EXISTS hartonomous CASCADE;
 
@@ -127,6 +167,11 @@ CREATE EXTENSION hartonomous;
 -- Test version function
 SELECT hartonomous_version();
 EOF
+
+if [ $? -ne 0 ]; then
+    print_error "Extension installation test failed"
+    exit 1
+fi
 
 print_success "Extension installed and tested"
 

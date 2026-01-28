@@ -18,8 +18,13 @@ file(GLOB_RECURSE ENGINE_HEADERS
 # ==============================================================================
 #  TARGET
 # ==============================================================================
-add_library(engine STATIC ${ENGINE_SOURCES} ${ENGINE_HEADERS})
+add_library(engine SHARED ${ENGINE_SOURCES} ${ENGINE_HEADERS})
 add_library(Hartonomous::Engine ALIAS engine)
+
+set_target_properties(engine PROPERTIES OUTPUT_NAME "engine")
+if(MSVC)
+    target_compile_definitions(engine PRIVATE "HARTONOMOUS_EXPORT")
+endif()
 
 # ==============================================================================
 #  INCLUDES
@@ -56,14 +61,20 @@ find_package(PostgreSQL REQUIRED)
 # - HNSW is now standalone (as it should be)
 # - BLAKE3 is standalone
 # - PostgreSQL for database connection
-# NOTE: All dependencies are PRIVATE to prevent leaking into PostgresExtension
+# Link dependencies
+# NOTE: Some dependencies must be PUBLIC because they're used in public headers
+# that are included by PostgresExtension:
+#   - BLAKE3::BLAKE3: blake3_pipeline.hpp includes blake3.h
+#   - Eigen3::Eigen: geometry headers (hopf_fibration.hpp, etc.) include Eigen
+#   - HNSW::HNSW: may be used in spatial headers
 target_link_libraries(engine
+    PUBLIC
+        BLAKE3::BLAKE3  # PUBLIC: blake3_pipeline.hpp includes blake3.h
+        Eigen3::Eigen   # PUBLIC: geometry headers include Eigen
+        HNSW::HNSW      # PUBLIC: spatial headers may use HNSW
     PRIVATE
         Spectra::Spectra
-        HNSW::HNSW
-        BLAKE3::BLAKE3
-        Eigen3::Eigen  # Explicitly added back since HNSW doesn't carry it
-        MKL::MKL       # Explicitly added back for safety
+        MKL::MKL
         PostgreSQL::PostgreSQL
         nlohmann_json::nlohmann_json
 )
@@ -80,8 +91,7 @@ list(APPEND ENGINE_SOURCES ${COGNITIVE_SOURCES})
 # ==============================================================================
 #  TOOLS
 # ==============================================================================
-# Temporarily disabled due to MKL linkage issue
-# add_subdirectory(tools)
+add_subdirectory(tools)
 
 # ==============================================================================
 #  COMPILER OPTIONS (HIGH PERFORMANCE)
@@ -154,3 +164,16 @@ else()
         $<$<CONFIG:Debug>:-g3>    # Full debug info
     )
 endif()
+
+# ==============================================================================
+#  INSTALLATION
+# ==============================================================================
+include(GNUInstallDirs)
+
+install(TARGETS engine
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/hartonomous)

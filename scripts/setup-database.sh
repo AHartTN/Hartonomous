@@ -104,7 +104,7 @@ fi
 PG_VERSION=$(psql --version | grep -oP '\d+\.\d+' | head -1)
 print_success "✓ PostgreSQL found: $PG_VERSION"
 
-if (( $(echo "$PG_VERSION < 15.0" | bc -l) )); then
+if awk "BEGIN {exit !($PG_VERSION < 15.0)}"; then
     print_warning "⚠ PostgreSQL 15+ recommended (found $PG_VERSION)"
 fi
 
@@ -163,10 +163,9 @@ echo ""
 print_info "Applying database schema..."
 
 SCHEMA_FILES=(
-    "PostgresExtension/schema/hartonomous_schema.sql"
-    "PostgresExtension/schema/relations_schema.sql"
-    "PostgresExtension/schema/postgis_spatial_functions.sql"
-    "PostgresExtension/schema/security_model.sql"
+    "schema/00-foundation.sql"
+    "schema/01-core-tables.sql"
+    "schema/03-functions.sql"
 )
 
 for SCHEMA_FILE in "${SCHEMA_FILES[@]}"; do
@@ -183,46 +182,13 @@ for SCHEMA_FILE in "${SCHEMA_FILES[@]}"; do
     fi
 done
 
-# Create indexes
-echo ""
-print_info "Creating indexes..."
-INDEX_SQL="
--- Spatial indexes
-CREATE INDEX IF NOT EXISTS idx_atoms_s3_position
-    ON atoms USING GIST (st_makepoint(s3_x, s3_y, s3_z));
-
-CREATE INDEX IF NOT EXISTS idx_compositions_centroid
-    ON compositions USING GIST (st_makepoint(centroid_x, centroid_y, centroid_z));
-
--- Hilbert indexes
-CREATE INDEX IF NOT EXISTS idx_atoms_hilbert
-    ON atoms USING BTREE (hilbert_index);
-
-CREATE INDEX IF NOT EXISTS idx_compositions_hilbert
-    ON compositions USING BTREE (hilbert_index);
-
--- Hash indexes
-CREATE INDEX IF NOT EXISTS idx_atoms_hash
-    ON atoms USING BTREE (hash);
-
-CREATE INDEX IF NOT EXISTS idx_compositions_hash
-    ON compositions USING BTREE (hash);
-
-CREATE INDEX IF NOT EXISTS idx_relations_hash
-    ON relations USING BTREE (hash);
-"
-
-if psql -U "$DB_USER" -h "$DB_HOST" -p "$DB_PORT" -d "$DB_NAME" -c "$INDEX_SQL"; then
-    print_success "✓ Indexes created"
-else
-    print_error "✗ Failed to create indexes"
-    exit 1
-fi
+# Indexes are already created by schema/01-core-tables.sql
+print_info "Indexes created by schema definitions."
 
 # Verify installation
 echo ""
 print_info "Verifying installation..."
-VERIFY_SQL="SELECT COUNT(*) AS table_count FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE';"
+VERIFY_SQL="SELECT COUNT(*) AS table_count FROM information_schema.tables WHERE table_schema = 'hartonomous' AND table_type = 'BASE TABLE';"
 
 TABLE_COUNT=$(psql -U "$DB_USER" -h "$DB_HOST" -p "$DB_PORT" -d "$DB_NAME" -t -c "$VERIFY_SQL" | xargs)
 print_success "✓ Verification complete: $TABLE_COUNT tables created"
