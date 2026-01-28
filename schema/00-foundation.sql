@@ -10,6 +10,9 @@ CREATE EXTENSION IF NOT EXISTS postgis;
 -- Enable pgcrypto for hashing functions
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
+-- Enable Hartonomous extension (BLAKE3, S³ projection, etc.)
+CREATE EXTENSION IF NOT EXISTS hartonomous;
+
 -- Create custom types (idempotent)
 
 -- 4D point on S³ sphere

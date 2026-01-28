@@ -5,6 +5,13 @@
 
 #pragma once
 
+// Windows compatibility: Include winsock2.h BEFORE postgres.h
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#endif
+
 extern "C" {
 #include <postgres.h>
 #include <fmgr.h>

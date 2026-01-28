@@ -63,12 +63,22 @@ target_link_libraries(${EXTENSION_NAME}
         PostgreSQL::PostgreSQL
 )
 
+# Windows-specific networking library
+if(WIN32)
+    target_link_libraries(${EXTENSION_NAME} PRIVATE ws2_32)
+endif()
+
 # ==============================================================================
 #  PROPERTIES
 # ==============================================================================
 if(MSVC)
-    target_compile_definitions(${EXTENSION_NAME} PRIVATE "DLLEXPORT=__declspec(dllexport)")
-    
+    target_compile_definitions(${EXTENSION_NAME} PRIVATE
+        "DLLEXPORT=__declspec(dllexport)"
+        "WIN32"
+        "_WIN32"
+        "WIN32_LEAN_AND_MEAN"
+    )
+
     # CRITICAL FIX: Explicitly ignore Static CRT to prevent LNK4098 warning
     # This ensures no static libraries (LIBCMT) accidentally get linked into our DLL.
     target_link_options(${EXTENSION_NAME} PRIVATE "/NODEFAULTLIB:LIBCMT")

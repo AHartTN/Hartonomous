@@ -77,12 +77,13 @@ include(cmake/hnsw-config.cmake)
 include(cmake/blake3-config.cmake)
 include(cmake/json-config.cmake)
 
+# PostgreSQL (required for extension)
+find_package(PostgreSQL REQUIRED)
+message(STATUS "Found PostgreSQL: ${PostgreSQL_LIBRARY}")
+
 # ==============================================================================
 #  SUBPROJECTS
 # ==============================================================================
 
 add_subdirectory(Engine)
-
-# PostgresExtension: Disabled C++ build on Windows due to server header incompatibilities
-# Using SQL-only extension instead - see PostgresExtension/sql/
-# add_subdirectory(PostgresExtension)
+add_subdirectory(PostgresExtension)
