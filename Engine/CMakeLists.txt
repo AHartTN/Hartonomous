@@ -33,6 +33,8 @@ target_include_directories(engine
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
+        ${CMAKE_CURRENT_SOURCE_DIR}/external/hilbert
+        ${CMAKE_CURRENT_SOURCE_DIR}/external/xoshiro
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
@@ -92,6 +94,13 @@ list(APPEND ENGINE_SOURCES ${COGNITIVE_SOURCES})
 #  TOOLS
 # ==============================================================================
 add_subdirectory(tools)
+
+# ==============================================================================
+#  TESTING
+# ==============================================================================
+enable_testing()
+add_subdirectory(tests)
+
 
 # ==============================================================================
 #  COMPILER OPTIONS (HIGH PERFORMANCE)

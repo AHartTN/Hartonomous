@@ -1,0 +1,23 @@
+{
+  "mcpServers": {
+    "qdrant": {
+      "command": "node",
+      "args": ["/home/ahart/Projects/qdrant-mcp-server/build/index.js"],
+      "env": {
+        "QDRANT_URL": "http://hart-server:6333",
+        "COLLECTION_NAME": "ws-4fd5b15514763498",
+        "EMBEDDING_PROVIDER": "openai",
+        "OPENAI_API_KEY": "Welcome!123",
+        "EMBEDDING_BASE_URL": "http://hart-desktop:8711/v1/embeddings",
+        "EMBEDDING_MODEL": "Embedding"
+      }
+    },
+    "pinecone": {
+      "command": "npx",
+      "args": ["-y", "@pinecone-database/mcp"],
+      "env": {
+        "PINECONE_API_KEY": "Welcome!123"
+      }
+    }
+  }
+}

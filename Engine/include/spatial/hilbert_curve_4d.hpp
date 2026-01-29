@@ -1,133 +1,128 @@
 #pragma once
 
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
+#endif
+
 #include <Eigen/Core>
 #include <cstdint>
 #include <array>
 #include <stdexcept>
+#include <algorithm> // For std::clamp
 
-// Cross-platform count trailing zeros
-#ifdef _MSC_VER
-    #include <intrin.h>
-    inline uint32_t __builtin_ctz(uint32_t x) {
-        unsigned long index;
-        _BitScanForward(&index, x);
-        return static_cast<uint32_t>(index);
-    }
-#endif
+// Correctly include the header from the 'spectral3d/hilbert_hpp' submodule.
+#include "hilbert.hpp"
 
 namespace hartonomous::spatial {
 
 /**
  * @brief 4D Hilbert Space-Filling Curve
  *
- * The Hilbert curve is a continuous fractal space-filling curve that maps
- * a 1-dimensional interval to an N-dimensional space while preserving locality.
+ * This class maps 4D coordinates to a 128-bit Hilbert curve index.
+ * This implementation uses the 'spectral3d/hilbert_hpp' library, which is a
+ * high-performance C++ implementation of the algorithm described in the paper
+ * "Programming the Hilbert Curve" by John Skilling.
  *
- * Key Properties:
- *   - Locality preservation: Nearby points in 4D space → nearby curve values
- *   - Surjective: Covers the entire 4D hypercube
- *   - Fractal structure: Self-similar at all scales
- *   - Better locality than Z-order (Morton) curves
- *
- * Use Cases:
- *   - Spatial indexing for nearest-neighbor queries
- *   - Database key generation for multidimensional data
- *   - Cache-efficient data structures
- *
- * IMPORTANT: This implementation provides ONLY the forward mapping
- * (coordinates → curve value). The inverse is intentionally NOT provided
- * as per requirements.
- *
- * Implementation:
- *   Uses the compact Hilbert curve algorithm with bit interleaving and
- *   Gray code transformations for efficient computation.
+ * The v2 implementation (template metaprogramming) is used for maximum
+ * performance.
  */
 class HilbertCurve4D {
 public:
-    using Vec4i = Eigen::Vector4i;
     using Vec4 = Eigen::Vector4d;
 
+    // The number of bits per dimension for the Hilbert curve.
+    // 32 bits per dimension * 4 dimensions = 128 bits total index size.
+    static constexpr uint32_t BITS_PER_DIMENSION = 32;
+
+    /**
+     * @brief Represents a 128-bit Hilbert index.
+     * Stored as two 64-bit integers for database compatibility.
+     */
     struct HilbertIndex {
         uint64_t hi;
         uint64_t lo;
+
+        // Use the non-standard but widely supported `unsigned __int128` for arithmetic.
+        unsigned __int128 to_uint128() const {
+            return (static_cast<unsigned __int128>(hi) << 64) | lo;
+        }
+
+        // Comparison operators
+        bool operator==(const HilbertIndex& other) const {
+            return hi == other.hi && lo == other.lo;
+        }
+        bool operator!=(const HilbertIndex& other) const {
+            return !(*this == other);
+        }
+        bool operator>(const HilbertIndex& other) const {
+            return to_uint128() > other.to_uint128();
+        }
+        bool operator<(const HilbertIndex& other) const {
+            return to_uint128() < other.to_uint128();
+        }
+        bool operator>=(const HilbertIndex& other) const {
+            return to_uint128() >= other.to_uint128();
+        }
+        bool operator<=(const HilbertIndex& other) const {
+            return to_uint128() <= other.to_uint128();
+        }
     };
 
-    static HilbertIndex encode(const Vec4i& coords, uint32_t bits = 32) {
-        if (bits > 32) {
-            throw std::invalid_argument("Maximum 32 bits per dimension for 4D (128-bit output)");
+    /**
+     * @brief Encodes a 4D point into a 128-bit Hilbert index.
+     *
+     * @param coords A 4D vector with each component normalized to the range [0.0, 1.0].
+     * @return HilbertIndex The resulting 128-bit Hilbert index.
+     */
+    static HilbertIndex encode(const Vec4& coords) {
+        // 1. Discretize the floating-point coordinates into a 4-element array of 32-bit integers.
+        constexpr uint64_t max_val = (1ULL << BITS_PER_DIMENSION) - 1;
+        std::array<uint32_t, 4> discrete_coords;
+        for(int i = 0; i < 4; ++i) {
+            double v = std::clamp(coords[i], 0.0, 1.0);
+            discrete_coords[i] = static_cast<uint32_t>(v * max_val);
         }
 
-        // Use __int128 for 128-bit calculation
-        unsigned __int128 result = 0;
-        
-        for (int i = bits - 1; i >= 0; --i) {
-            uint32_t mask = 0;
-            for (int d = 0; d < 4; ++d) {
-                if ((coords[d] >> i) & 1) {
-                    mask |= (1U << d);
-                }
-            }
-            
-            // Simplified Hilbert logic (Placeholder for full rotation - assumes basic interleaving for now
-            // to ensure 128-bit utilization without complex rotation table lookup which requires 4D tables)
-            // Ideally this uses a proper state machine.
-            // For now, we simply Interleave bits which preserves basic locality (Z-order)
-            // A full Hilbert implementation requires ~4KB of tables for 4D.
-            // Z-order is sufficient for basic locality and fits in 128 bits.
-            // NOTE: Changing to Z-order (Morton) temporarily to guarantee 128-bit correctness 
-            // without complex Hilbert bugs. Morton is also spatial.
-            
-            result = (result << 4) | mask;
-        }
+        // 2. Call the PositionToIndex function from the hilbert.hpp library.
+        //    We use the v2 (template metaprogramming) version for performance.
+        //    It returns the Hilbert index in a "transposed" format, as an array of four 32-bit integers.
+        std::array<uint32_t, 4> transposed_index = hilbert::v2::PositionToIndex<uint32_t, 4>(discrete_coords);
 
+        // 3. Pack the transposed array into a single 128-bit integer.
+        //    The library documentation states the index is lexographically sorted
+        //    with the most significant objects first.
+        unsigned __int128 index_val = 0;
+        index_val |= static_cast<unsigned __int128>(transposed_index[0]) << 96;
+        index_val |= static_cast<unsigned __int128>(transposed_index[1]) << 64;
+        index_val |= static_cast<unsigned __int128>(transposed_index[2]) << 32;
+        index_val |= static_cast<unsigned __int128>(transposed_index[3]);
+
+        // 4. Split the 128-bit index into two 64-bit parts for storage.
         return {
-            static_cast<uint64_t>(result >> 64),
-            static_cast<uint64_t>(result)
+            static_cast<uint64_t>(index_val >> 64),
+            static_cast<uint64_t>(index_val)
         };
     }
 
-    static HilbertIndex encode(const Vec4& coords, uint32_t bits = 32) {
-        uint64_t max_val = (1ULL << bits) - 1;
-        Vec4i discrete;
-        for(int i=0; i<4; ++i) {
-            double v = std::clamp(coords[i], 0.0, 1.0);
-            discrete[i] = static_cast<int>(v * max_val);
-        }
-        return encode(discrete, bits);
-    }
-};
-
-/**
- * @brief Hilbert curve utilities and statistics
- */
-class HilbertUtils {
-public:
     /**
-     * @brief Compute the theoretical maximum Hilbert index for given bit depth
-     *
-     * @param bits Bits per dimension
-     * @param dimensions Number of dimensions (4 for our case)
-     * @return uint64_t Maximum index value
+     * @brief Calculates the absolute distance between two curve indices.
+     * @return HilbertIndex A 128-bit value representing the distance.
      */
-    static uint64_t max_index(uint32_t bits, uint32_t dimensions = 4) {
-        return (1ULL << (bits * dimensions)) - 1;
-    }
+    static HilbertIndex curve_distance(HilbertIndex a, HilbertIndex b) {
+        unsigned __int128 val_a = a.to_uint128();
+        unsigned __int128 val_b = b.to_uint128();
+        unsigned __int128 diff = (val_a > val_b) ? (val_a - val_b) : (val_b - val_a);
 
-    /**
-     * @brief Estimate the number of curve segments within a hypercube region
-     *
-     * Useful for query planning and performance estimation.
-     *
-     * @param region_size Size of the hypercube region (in normalized coordinates)
-     * @param bits Discretization bits
-     * @return uint64_t Estimated number of curve segments
-     */
-    static uint64_t segments_in_region(double region_size, uint32_t bits = 16) {
-        // Approximate: Hilbert curve has excellent locality, so a hypercube
-        // of side length 's' intersects roughly O(s^(n-1)) segments for n dimensions
-        uint32_t discrete_size = static_cast<uint32_t>(region_size * ((1U << bits) - 1));
-        return static_cast<uint64_t>(std::pow(discrete_size, 3.0)); // n-1 = 3 for 4D
+        return {
+            static_cast<uint64_t>(diff >> 64),
+            static_cast<uint64_t>(diff)
+        };
     }
 };
 
 } // namespace hartonomous::spatial
+
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif

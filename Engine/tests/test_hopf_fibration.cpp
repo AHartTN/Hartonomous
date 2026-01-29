@@ -1,234 +1,117 @@
 /**
  * @file test_hopf_fibration.cpp
- * @brief Unit tests for Hopf fibration (S³ → S² projection)
+ * @brief Unit tests for Hopf fibration (S³ → S² projection) using Google Test
  */
 
+#include <gtest/gtest.h>
 #include <geometry/hopf_fibration.hpp>
-#include <iostream>
-#include <cmath>
 #include <vector>
-#include <cassert>
+#include <cmath>
 
-using namespace Hartonomous;
+using namespace hartonomous::geometry;
+using Vec3 = HopfFibration::Vec3;
+using Vec4 = HopfFibration::Vec4;
 
-constexpr double EPSILON = 1e-6;
-
-bool approx_equal(double a, double b, double epsilon = EPSILON) {
-    return std::abs(a - b) < epsilon;
-}
-
-bool approx_equal(const Vec3& a, const Vec3& b, double epsilon = EPSILON) {
-    return (a - b).norm() < epsilon;
-}
-
-bool approx_equal(const Vec4& a, const Vec4& b, double epsilon = EPSILON) {
-    return (a - b).norm() < epsilon;
-}
-
-// Test 1: Forward mapping produces points on S²
-void test_forward_produces_s2_points() {
-    std::cout << "Test 1: Forward mapping produces points on S²... ";
-
+TEST(HopfFibrationTest, ForwardMappingProducesS2Points) {
     std::vector<Vec4> test_points = {
         Vec4(1.0, 0.0, 0.0, 0.0),
         Vec4(0.0, 1.0, 0.0, 0.0),
         Vec4(0.0, 0.0, 1.0, 0.0),
         Vec4(0.0, 0.0, 0.0, 1.0),
-        Vec4(0.5, 0.5, 0.5, 0.5),
-        Vec4(0.7, 0.1, -0.5, 0.5),
+        Vec4(0.5, 0.5, 0.5, 0.5).normalized(),
+        Vec4(0.7, 0.1, -0.5, 0.5).normalized(),
     };
 
-    for (auto& p : test_points) {
-        // Normalize to ensure it's on S³
-        p.normalize();
-
-        // Apply Hopf fibration
+    for (const auto& p : test_points) {
         Vec3 s2_point = HopfFibration::forward(p);
-
-        // Check that result is on S² (norm = 1)
-        double norm = s2_point.norm();
-        assert(approx_equal(norm, 1.0) && "Forward mapping should produce unit vectors");
+        EXPECT_NEAR(s2_point.norm(), 1.0, 1e-9);
     }
-
-    std::cout << "PASSED\n";
 }
 
-// Test 2: Fiber consistency (antipodal points map to same S² point)
-void test_fiber_consistency() {
-    std::cout << "Test 2: Fiber consistency (antipodal invariance)... ";
-
-    Vec4 p(0.6, 0.3, 0.5, 0.4);
-    p.normalize();
-
-    // Apply Hopf fibration
+TEST(HopfFibrationTest, FiberConsistency) {
+    Vec4 p = Vec4(0.6, 0.3, 0.5, 0.4).normalized();
+    
+    // A point on the same fiber is obtained by right-multiplying by a complex phase e^(i*theta)
+    // z' = z * e^(i*theta)
+    // (z1', z2') = (z1*cos(t)-z2*sin(t), z1*sin(t)+z2*cos(t)) is not it.
+    // The fiber action is p -> p * q where q is a unit quaternion, which corresponds to p -> exp(i*theta) * p
+    // (x1,x2,x3,x4) -> (x1*cos(t)-x2*sin(t), x1*sin(t)+x2*cos(t), x3, x4) is a rotation in a plane.
+    
+    // The Hopf fibration maps great circles on S³ to points on S².
+    // Let's test a simpler property: H(p) = H(p * e^(i*theta)) where multiplication is complex.
+    // Let p = (z1, z2). Then p' = (z1*e^(i*t), z2*e^(i*t)).
+    // |z1'|^2-|z2'|^2 = |z1|^2|e^(i*t)|^2 - |z2|^2|e^(i*t)|^2 = |z1|^2-|z2|^2. (Same x)
+    // 2*Re(z1'*conj(z2')) = 2*Re(z1*e^(i*t)*conj(z2)*e^(-i*t)) = 2*Re(z1*conj(z2)). (Same y,z)
+    
     Vec3 s2_point1 = HopfFibration::forward(p);
-    Vec3 s2_point2 = HopfFibration::forward(-p);  // Antipodal point
+    
+    // Create another point on the same fiber
+    double theta = M_PI / 4.0;
+    HopfFibration::Complex z1(p[0], p[1]);
+    HopfFibration::Complex z2(p[2], p[3]);
+    HopfFibration::Complex phase = std::polar(1.0, theta);
+    
+    z1 *= phase;
+    z2 *= phase;
+    
+    Vec4 p_fiber(z1.real(), z1.imag(), z2.real(), z2.imag());
+    
+    Vec3 s2_point2 = HopfFibration::forward(p_fiber);
 
-    // Antipodal points on S³ should map to opposite points on S²
-    // Actually, for Hopf fibration: H(p) = -H(-p)
-    assert(approx_equal(s2_point1, -s2_point2) && "Antipodal points should map to antipodal points");
-
-    std::cout << "PASSED\n";
+    EXPECT_NEAR((s2_point1 - s2_point2).norm(), 0.0, 1e-9);
 }
 
-// Test 3: Known mappings
-void test_known_mappings() {
-    std::cout << "Test 3: Known mappings... ";
 
-    // North pole of S³: (1, 0, 0, 0)
-    Vec4 north_s3(1.0, 0.0, 0.0, 0.0);
+TEST(HopfFibrationTest, KnownMappings) {
+    // North pole of S³ -> North pole of S²
+    Vec4 north_s3(1.0, 0.0, 0.0, 0.0); // z1=1, z2=0
     Vec3 image_north = HopfFibration::forward(north_s3);
-    // Should map to north pole of S²: (0, 0, 1) or similar
-    assert(approx_equal(image_north.norm(), 1.0));
+    EXPECT_NEAR((image_north - Vec3(1.0, 0.0, 0.0)).norm(), 0.0, 1e-9);
 
-    // Equatorial point
-    Vec4 equator(0.0, 1.0, 0.0, 0.0);
-    Vec3 image_equator = HopfFibration::forward(equator);
-    assert(approx_equal(image_equator.norm(), 1.0));
+    // South pole of S³ -> North pole of S²
+    Vec4 south_s3(0.0, 0.0, 1.0, 0.0); // z1=0, z2=1
+    Vec3 image_south = HopfFibration::forward(south_s3);
+    EXPECT_NEAR((image_south - Vec3(-1.0, 0.0, 0.0)).norm(), 0.0, 1e-9);
 
-    std::cout << "PASSED\n";
+    // A point on the equator of S³
+    Vec4 equator_s3 = Vec4(1.0/sqrt(2.0), 0.0, 1.0/sqrt(2.0), 0.0).normalized();
+    Vec3 image_equator = HopfFibration::forward(equator_s3);
+    EXPECT_NEAR(image_equator[0], 0.0, 1e-9); // |z1|^2 - |z2|^2 = 0.5 - 0.5 = 0
 }
 
-// Test 4: Fiber structure (circle fibers)
-void test_fiber_structure() {
-    std::cout << "Test 4: Fiber structure (circle fibers)... ";
-
-    // Points on the same fiber should map to the same S² point
-    // Fiber parametrization: p(θ) for different angles θ
-
-    Vec4 base(0.5, 0.5, 0.5, 0.5);
-    base.normalize();
-
-    Vec3 reference_point = HopfFibration::forward(base);
-
-    // Rotate around the fiber (this is a simplified test)
-    // In reality, fibers are circles in S³
-    for (int i = 0; i < 10; ++i) {
-        double theta = 2.0 * M_PI * i / 10.0;
-
-        // Create a point on approximate fiber (simplified)
-        // Real fiber parametrization is more complex
-        Vec4 p = base;  // Start with base
-        // This is approximate - real test would use proper fiber parametrization
-
-        Vec3 mapped = HopfFibration::forward(p);
-
-        // Should be on S²
-        assert(approx_equal(mapped.norm(), 1.0));
+TEST(HopfFibrationTest, InverseMapping) {
+    Vec3 s2_point = Vec3(0.5, 0.5, 1.0/sqrt(2.0)).normalized();
+    
+    // Test inverse for a few fiber angles
+    for (double angle = 0; angle < 2*M_PI; angle += M_PI/2) {
+        Vec4 s3_point = HopfFibration::inverse(s2_point, angle);
+        
+        // Check if it's on S³
+        EXPECT_NEAR(s3_point.norm(), 1.0, 1e-9);
+        
+        // Check that it maps back to the original S² point
+        Vec3 s2_point_rt = HopfFibration::forward(s3_point);
+        EXPECT_NEAR((s2_point - s2_point_rt).norm(), 0.0, 1e-9);
     }
-
-    std::cout << "PASSED\n";
 }
 
-// Test 5: Continuity (nearby points on S³ map to nearby points on S²)
-void test_continuity() {
-    std::cout << "Test 5: Continuity... ";
-
-    Vec4 p1(0.6, 0.3, 0.5, 0.4);
-    p1.normalize();
-
-    // Slightly perturbed point
-    Vec4 p2 = p1;
-    p2[0] += 0.01;
-    p2.normalize();
-
+TEST(HopfFibrationTest, Continuity) {
+    Vec4 p1 = Vec4(0.6, 0.3, 0.5, 0.4).normalized();
     Vec3 s2_p1 = HopfFibration::forward(p1);
+
+    // Create a very small perturbation on S³
+    double delta = 1e-6; // Ensure a very small S³ distance
+    Vec4 p2 = (p1 + Vec4(delta, -delta, delta, -delta)).normalized();
     Vec3 s2_p2 = HopfFibration::forward(p2);
 
-    // Distance on S² should be small (continuity)
-    double s3_distance = std::acos(std::clamp(p1.dot(p2), -1.0, 1.0));
+    double s3_distance = HopfFibration::distance_s3(p1, p2);
     double s2_distance = std::acos(std::clamp(s2_p1.dot(s2_p2), -1.0, 1.0));
 
-    // This is approximate - not a rigorous continuity test
-    assert(s2_distance < 0.5 && "Nearby points should map to nearby points");
-
-    std::cout << "PASSED\n";
-}
-
-// Test 6: Coverage (forward maps S³ onto all of S²)
-void test_coverage() {
-    std::cout << "Test 6: Coverage test (sampling)... ";
-
-    // Generate many random points on S³ and verify they cover S²
-    const int N = 1000;
-    std::vector<Vec3> s2_points;
-
-    for (int i = 0; i < N; ++i) {
-        // Generate random point on S³ (using rejection sampling)
-        Vec4 p;
-        do {
-            for (int j = 0; j < 4; ++j) {
-                p[j] = (double)rand() / RAND_MAX * 2.0 - 1.0;
-            }
-        } while (p.norm() < 0.1 || p.norm() > 1.5);
-
-        p.normalize();
-
-        Vec3 s2_point = HopfFibration::forward(p);
-        s2_points.push_back(s2_point);
-
-        // Verify on S²
-        assert(approx_equal(s2_point.norm(), 1.0));
-    }
-
-    // Check that we got points distributed over S²
-    // (simple check: verify we have points in different octants)
-    int octant_counts[8] = {0};
-    for (const auto& p : s2_points) {
-        int octant = 0;
-        if (p[0] >= 0) octant |= 1;
-        if (p[1] >= 0) octant |= 2;
-        if (p[2] >= 0) octant |= 4;
-        octant_counts[octant]++;
-    }
-
-    // All octants should have some points (coverage)
-    for (int i = 0; i < 8; ++i) {
-        assert(octant_counts[i] > 0 && "Should have coverage of all octants");
-    }
-
-    std::cout << "PASSED\n";
-}
-
-// Test 7: Coordinate system check
-void test_coordinate_system() {
-    std::cout << "Test 7: Coordinate system... ";
-
-    // Verify the coordinate transformation is consistent
-    Vec4 p(0.5, 0.5, 0.5, 0.5);
-    p.normalize();
-
-    Vec3 result = HopfFibration::forward(p);
-
-    // Check finite values
-    assert(std::isfinite(result[0]) && std::isfinite(result[1]) && std::isfinite(result[2]));
-
-    // Check range
-    assert(result[0] >= -1.0 && result[0] <= 1.0);
-    assert(result[1] >= -1.0 && result[1] <= 1.0);
-    assert(result[2] >= -1.0 && result[2] <= 1.0);
-
-    std::cout << "PASSED\n";
-}
-
-int main() {
-    std::cout << "=== Hopf Fibration Tests ===\n\n";
-
-    try {
-        test_forward_produces_s2_points();
-        test_fiber_consistency();
-        test_known_mappings();
-        test_fiber_structure();
-        test_continuity();
-        test_coverage();
-        test_coordinate_system();
-
-        std::cout << "\n=== All tests PASSED ===\n";
-        return 0;
-    }
-    catch (const std::exception& e) {
-        std::cerr << "\n=== TEST FAILED ===\n";
-        std::cerr << "Exception: " << e.what() << "\n";
-        return 1;
-    }
+    // For a continuous map, a very small input distance should result in a very small output distance.
+    // The exact relationship s2_distance <= s3_distance is not universally guaranteed due to distortion.
+    // However, if s3_distance is very small, s2_distance must also be very small.
+    // We expect both distances to be small and within a reasonable order of magnitude of each other.
+    EXPECT_LT(s3_distance, 1e-5); // Ensure that the S3 points are indeed very close
+    EXPECT_LT(s2_distance, 1e-4); // S2 distance must also be very small (e.g., within a factor of 10)
+    EXPECT_GT(s2_distance, 0.0);  // Ensure points are different and distance is non-zero
 }

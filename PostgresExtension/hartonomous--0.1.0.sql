@@ -46,8 +46,13 @@ LANGUAGE C IMMUTABLE STRICT;
 
 COMMENT ON FUNCTION codepoint_to_s3(integer) IS 'Project Unicode codepoint to 4D unit sphere (S³)';
 
+CREATE TYPE hilbert_index_128 AS (
+    hi bigint,
+    lo bigint
+);
+
 CREATE FUNCTION codepoint_to_hilbert(integer)
-RETURNS bigint
+RETURNS hilbert_index_128
 AS 'MODULE_PATHNAME', 'codepoint_to_hilbert'
 LANGUAGE C IMMUTABLE STRICT;
 

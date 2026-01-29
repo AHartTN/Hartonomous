@@ -1,7 +1,5 @@
 # Hartonomous Engine Tests
 
-enable_testing()
-
 # Google Test integration (optional, falls back to basic tests if not available)
 find_package(GTest QUIET)
 
@@ -36,16 +34,17 @@ macro(add_hartonomous_test TEST_NAME)
 
     if(USE_GTEST)
         # Google Test integration
-        gtest_discover_tests(${TEST_NAME})
+        gtest_discover_tests(
+            ${TEST_NAME}
+            PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        )
     else()
         # Basic CTest integration
         add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+        set_tests_properties(${TEST_NAME} PROPERTIES
+            WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        )
     endif()
-
-    # Set working directory for tests
-    set_tests_properties(${TEST_NAME} PROPERTIES
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-    )
 endmacro()
 
 # Geometry tests
@@ -57,18 +56,8 @@ add_hartonomous_test(test_hilbert_curve_4d)
 add_hartonomous_test(test_codepoint_projection)
 
 # Benchmark executables (not part of CTest)
-add_executable(benchmark_blake3 benchmark_blake3.cpp)
-target_link_libraries(benchmark_blake3 PRIVATE ${TEST_LINK_LIBS})
-
-add_executable(benchmark_hilbert benchmark_hilbert.cpp)
-target_link_libraries(benchmark_hilbert PRIVATE ${TEST_LINK_LIBS})
-
-add_executable(benchmark_geometry benchmark_geometry.cpp)
-target_link_libraries(benchmark_geometry PRIVATE ${TEST_LINK_LIBS})
 
 # Example programs
-add_executable(example_hopf_visualization example_hopf_visualization.cpp)
-target_link_libraries(example_hopf_visualization PRIVATE ${TEST_LINK_LIBS})
 
 add_executable(example_unicode_projection example_unicode_projection.cpp)
 target_link_libraries(example_unicode_projection PRIVATE ${TEST_LINK_LIBS})

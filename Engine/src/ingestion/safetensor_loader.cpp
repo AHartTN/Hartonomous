@@ -14,6 +14,8 @@ using json = nlohmann::json;
 
 namespace Hartonomous {
 
+using namespace std;
+
 SafetensorLoader::SafetensorLoader(const std::string& model_dir) : model_dir_(model_dir) {
     load_metadata();
     load_safetensors();

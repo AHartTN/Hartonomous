@@ -9,6 +9,10 @@
 #include <array>
 #include <string>
 #include <optional>
+#include <vector>
+#include <thread>
+#include <future>
+#include <numeric>
 
 namespace hartonomous::unicode {
 
@@ -83,8 +87,7 @@ public:
      */
     static ProjectionResult project(
         uint32_t codepoint,
-        const std::string& context = "",
-        uint32_t hilbert_bits = 16
+        const std::string& context = ""
     ) {
         // Validate Unicode codepoint
         if (codepoint > 0x10FFFF) {
@@ -107,35 +110,71 @@ public:
         result.hypercube_coords = s3_to_hypercube(result.s3_position);
 
         // Step 5: Encode as Hilbert curve index
-        result.hilbert_index = HilbertCurve::encode(result.hypercube_coords, hilbert_bits);
+        result.hilbert_index = HilbertCurve::encode(result.hypercube_coords);
 
         return result;
     }
 
     /**
-     * @brief Project multiple codepoints (batch processing)
+     * @brief Project multiple codepoints in parallel (batch processing)
      *
-     * More efficient than calling project() repeatedly.
+     * This high-performance implementation partitions the work across all
+     * available hardware threads to maximize throughput.
      *
      * @param codepoints Vector of Unicode codepoints
      * @param context Shared context string (optional)
-     * @param hilbert_bits Hilbert discretization bits
      * @return std::vector<ProjectionResult> Projection results
      */
     static std::vector<ProjectionResult> project_batch(
         const std::vector<uint32_t>& codepoints,
-        const std::string& context = "",
-        uint32_t hilbert_bits = 16
+        const std::string& context = ""
     ) {
+        if (codepoints.empty()) {
+            return {};
+        }
+
+        // Determine the optimal number of threads
+        unsigned int num_threads = std::thread::hardware_concurrency();
+        if (num_threads == 0) {
+            num_threads = 1;
+        }
+        
+        // If the job is small, don't bother with threading overhead
+        if (codepoints.size() < num_threads * 4) {
+             num_threads = 1;
+        }
+
         std::vector<ProjectionResult> results;
         results.reserve(codepoints.size());
 
-        for (uint32_t cp : codepoints) {
-            results.push_back(project(cp, context, hilbert_bits));
+        std::vector<std::future<std::vector<ProjectionResult>>> futures;
+        
+        // Split the work into chunks for each thread
+        size_t chunk_size = (codepoints.size() + num_threads - 1) / num_threads;
+        for (size_t i = 0; i < codepoints.size(); i += chunk_size) {
+            auto chunk_begin = codepoints.begin() + i;
+            auto chunk_end = codepoints.begin() + std::min(i + chunk_size, codepoints.size());
+            
+            // Each chunk is processed asynchronously
+            futures.push_back(std::async(std::launch::async, [=] {
+                std::vector<ProjectionResult> partial_results;
+                partial_results.reserve(chunk_end - chunk_begin);
+                for (auto it = chunk_begin; it != chunk_end; ++it) {
+                    partial_results.push_back(project(*it, context));
+                }
+                return partial_results;
+            }));
+        }
+
+        // Collect the results from all futures
+        for (auto& f : futures) {
+            auto partial_results = f.get();
+            results.insert(results.end(), partial_results.begin(), partial_results.end());
         }
 
         return results;
     }
+
 
     /**
      * @brief Project a UTF-8 string to a sequence of geometric points
@@ -145,11 +184,10 @@ public:
      * @return std::vector<ProjectionResult> One result per codepoint
      */
     static std::vector<ProjectionResult> project_string(
-        const std::string& utf8_string,
-        uint32_t hilbert_bits = 16
+        const std::string& utf8_string
     ) {
         auto codepoints = utf8_to_codepoints(utf8_string);
-        return project_batch(codepoints, utf8_string, hilbert_bits);
+        return project_batch(codepoints, utf8_string);
     }
 
     /**
@@ -168,13 +206,14 @@ public:
     /**
      * @brief Compute Hilbert curve distance (1D approximation)
      *
-     * Fast approximate distance using curve indices.
+     * Fast approximate distance using curve indices. The returned distance is a
+     * 128-bit value.
      *
      * @param p1 First projection result
      * @param p2 Second projection result
-     * @return uint64_t Curve distance
+     * @return HilbertCurve::HilbertIndex Curve distance
      */
-    static uint64_t hilbert_distance(const ProjectionResult& p1, const ProjectionResult& p2) {
+    static HilbertCurve::HilbertIndex hilbert_distance(const ProjectionResult& p1, const ProjectionResult& p2) {
         return HilbertCurve::curve_distance(p1.hilbert_index, p2.hilbert_index);
     }
 

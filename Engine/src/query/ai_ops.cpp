@@ -29,7 +29,7 @@ std::vector<TextGenerationResult> AIOps::generate_text(
         gen.reasoning_path = extract_reasoning_path(BLAKE3Pipeline::to_hex(BLAKE3Pipeline::hash(prompt)));
         results.push_back(gen);
 
-        if (results.size() >= config.num_results) break;
+        if (results.size() >= static_cast<size_t>(config.num_results)) break;
     }
 
     return results;
@@ -44,7 +44,7 @@ std::vector<TextGenerationResult> AIOps::complete_text(
 
 std::string AIOps::answer_question(
     const std::string& question,
-    const std::string& context
+    [[maybe_unused]] const std::string& context
 ) {
     SemanticQuery query(db_);
     auto answer = query.answer_question(question);
@@ -60,7 +60,7 @@ std::vector<ImageGenerationResult> AIOps::generate_image(
     const std::string& prompt,
     int width,
     int height,
-    const GenerationConfig& config
+    [[maybe_unused]] const GenerationConfig& config
 ) {
     std::vector<ImageGenerationResult> results;
 
@@ -77,7 +77,7 @@ std::vector<ImageGenerationResult> AIOps::generate_image(
 }
 
 std::vector<ImageGenerationResult> AIOps::edit_image(
-    const std::vector<uint8_t>& image,
+    [[maybe_unused]] const std::vector<uint8_t>& image,
     const std::string& prompt,
     const GenerationConfig& config
 ) {
@@ -85,9 +85,9 @@ std::vector<ImageGenerationResult> AIOps::edit_image(
 }
 
 std::vector<AudioGenerationResult> AIOps::generate_audio(
-    const std::string& prompt,
+    [[maybe_unused]] const std::string& prompt,
     int duration_ms,
-    const GenerationConfig& config
+    [[maybe_unused]] const GenerationConfig& config
 ) {
     std::vector<AudioGenerationResult> results;
 
@@ -103,15 +103,15 @@ std::vector<AudioGenerationResult> AIOps::generate_audio(
 
 std::vector<AudioGenerationResult> AIOps::text_to_speech(
     const std::string& text,
-    const std::string& voice_style
+    [[maybe_unused]] const std::string& voice_style
 ) {
     return generate_audio(text, 5000);
 }
 
 std::vector<VideoGenerationResult> AIOps::generate_video(
-    const std::string& prompt,
+    [[maybe_unused]] const std::string& prompt,
     int duration_ms,
-    const GenerationConfig& config
+    [[maybe_unused]] const GenerationConfig& config
 ) {
     std::vector<VideoGenerationResult> results;
 
@@ -128,13 +128,13 @@ std::vector<VideoGenerationResult> AIOps::generate_video(
 }
 
 std::vector<VideoGenerationResult> AIOps::animate_image(
-    const std::vector<uint8_t>& image,
+    [[maybe_unused]] const std::vector<uint8_t>& image,
     const std::string& motion_prompt
 ) {
     return generate_video(motion_prompt, 5000);
 }
 
-std::vector<std::string> AIOps::list_available_models(const std::string& modality) {
+std::vector<std::string> AIOps::list_available_models([[maybe_unused]] const std::string& modality) {
     std::vector<std::string> models;
 
     std::string sql = "SELECT DISTINCT value->>'model_name' FROM hartonomous.metadata WHERE key = 'model_info'";

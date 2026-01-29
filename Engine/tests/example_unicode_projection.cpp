@@ -16,13 +16,15 @@
 #include <string>
 #include <vector>
 
-using namespace Hartonomous;
+using namespace hartonomous::unicode;
+using namespace hartonomous::geometry;
+using Vec3 = HopfFibration::Vec3;
 
 void print_separator() {
     std::cout << std::string(80, '=') << "\n";
 }
 
-void print_hash(const std::vector<uint8_t>& hash) {
+void print_hash(const std::array<uint8_t, 32>& hash) {
     std::cout << "0x";
     for (size_t i = 0; i < std::min(size_t(8), hash.size()); ++i) {
         std::cout << std::hex << std::setw(2) << std::setfill('0')
@@ -51,9 +53,9 @@ void project_and_display(const std::u32string& text) {
     std::cout << std::setw(10) << "Char"
               << std::setw(20) << "Hash (first 8 bytes)"
               << std::setw(45) << "4D Position (x, y, z, w)"
-              << std::setw(20) << "Hilbert Index"
+              << std::setw(30) << "Hilbert Index (hi lo)"
               << "\n";
-    std::cout << std::string(95, '-') << "\n";
+    std::cout << std::string(105, '-') << "\n";
 
     for (size_t i = 0; i < text.size(); ++i) {
         char32_t cp = text[i];
@@ -83,7 +85,7 @@ void project_and_display(const std::u32string& text) {
                   << result.s3_position[3] << ")";
 
         // Display Hilbert index
-        std::cout << "  " << result.hilbert_index;
+        std::cout << "  " << result.hilbert_index.hi << " " << result.hilbert_index.lo;
 
         std::cout << "\n";
     }
@@ -146,7 +148,7 @@ void analyze_hilbert_ordering(const std::u32string& text) {
     std::cout << "Hilbert Curve Ordering Analysis\n";
     print_separator();
 
-    std::vector<std::pair<char32_t, uint64_t>> char_indices;
+    std::vector<std::pair<char32_t, CodepointProjection::HilbertCurve::HilbertIndex>> char_indices;
 
     for (char32_t cp : text) {
         auto result = CodepointProjection::project(cp);
@@ -158,11 +160,11 @@ void analyze_hilbert_ordering(const std::u32string& text) {
               [](const auto& a, const auto& b) { return a.second < b.second; });
 
     std::cout << "\nCharacters sorted by Hilbert index (spatial ordering):\n\n";
-    std::cout << std::setw(15) << "Hilbert Index" << "  Character\n";
-    std::cout << std::string(30, '-') << "\n";
+    std::cout << std::setw(35) << "Hilbert Index (hi lo)" << "  Character\n";
+    std::cout << std::string(50, '-') << "\n";
 
     for (const auto& [cp, index] : char_indices) {
-        std::cout << std::setw(15) << index << "  ";
+        std::cout << std::setw(17) << index.hi << " " << std::setw(17) << index.lo << "  ";
         if (cp < 128 && cp >= 32) {
             std::cout << "'" << (char)cp << "'";
         } else if (cp == U' ') {

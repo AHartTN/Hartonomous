@@ -30,8 +30,7 @@ int main() {
             int batch_end = std::min(batch_start + BATCH_SIZE, TOTAL_CODEPOINTS);
 
             std::ostringstream sql;
-            sql << "INSERT INTO atoms (hash, codepoint, s3_x, s3_y, s3_z, s3_w, s2_x, s2_y, s2_z, "
-                << "hypercube_x, hypercube_y, hypercube_z, hypercube_w, hilbert_index, category) VALUES ";
+            sql << "INSERT INTO atoms (hash, codepoint, centroid_x, centroid_y, centroid_z, centroid_w, centroid, hilbert_hi, hilbert_lo) VALUES ";
 
             for (int i = batch_start; i < batch_end; i++) {
                 auto result = CodepointProjection::project(static_cast<char32_t>(i));
@@ -44,10 +43,16 @@ int main() {
                     snprintf(buf, 3, "%02x", byte);
                     sql << buf;
                 }
-                sql << "','hex')," << result.codepoint << ","
+                sql << "','hex'),"
+                    << result.codepoint << ","
                     << result.s3_position[0] << "," << result.s3_position[1] << ","
                     << result.s3_position[2] << "," << result.s3_position[3] << ","
-                    << "0.0,0.0,0.0,0.5,0.5,0.5,0.5," << result.hilbert_index << ",'unicode')";
+                    << "ST_MakePointZM("
+                        << result.s3_position[0] << "," << result.s3_position[1] << ","
+                        << result.s3_position[2] << "," << result.s3_position[3]
+                    << "),"
+                    << static_cast<int64_t>(result.hilbert_index.hi) << ","
+                    << static_cast<int64_t>(result.hilbert_index.lo) << ")";
             }
 
             sql << " ON CONFLICT (hash) DO NOTHING";

@@ -125,7 +125,20 @@ extern "C" Datum codepoint_to_hilbert(PG_FUNCTION_ARGS) {
             static_cast<char32_t>(codepoint)
         );
 
-        PG_RETURN_INT64(result.hilbert_index);
+        // Build result tuple (hi, lo)
+        TupleDesc tupdesc;
+        if (get_call_result_type(fcinfo, nullptr, &tupdesc) != TYPEFUNC_COMPOSITE) {
+            throw PostgresException("Function must return composite type");
+        }
+
+        Datum values[2];
+        bool nulls[2] = {false, false};
+
+        values[0] = Int64GetDatum(static_cast<int64_t>(result.hilbert_index.hi));
+        values[1] = Int64GetDatum(static_cast<int64_t>(result.hilbert_index.lo));
+
+        HeapTuple tuple = heap_form_tuple(tupdesc, values, nulls);
+        PG_RETURN_DATUM(HeapTupleGetDatum(tuple));
     });
 }
 

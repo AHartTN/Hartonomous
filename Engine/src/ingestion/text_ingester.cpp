@@ -106,7 +106,7 @@ std::vector<TextIngester::Composition> TextIngester::decompose_compositions(cons
         comp.centroid = compute_centroid(positions);
 
         // Compute Hilbert index
-        comp.hilbert_index = HilbertCurve4D::encode(comp.centroid, 16);
+        comp.hilbert_index = HilbertCurve4D::encode(comp.centroid);
 
         compositions.push_back(comp);
     }
@@ -139,7 +139,7 @@ std::vector<TextIngester::Relation> TextIngester::decompose_relations(
     rel.centroid = compute_centroid(centroids);
     
     // Compute Hilbert index
-    rel.hilbert_index = HilbertCurve4D::encode(rel.centroid, 16);
+    rel.hilbert_index = HilbertCurve4D::encode(rel.centroid);
 
     relations.push_back(rel);
 
@@ -240,7 +240,7 @@ void TextIngester::store_compositions(const std::vector<Composition>& compositio
     }
 }
 
-void TextIngester::store_relations(const std::vector<Relation>& relations, IngestionStats& stats) {
+void TextIngester::store_relations(const std::vector<Relation>& relations, [[maybe_unused]] IngestionStats& stats) {
     for (const auto& rel : relations) {
         std::string hash_hex = BLAKE3Pipeline::to_hex(rel.hash);
 
