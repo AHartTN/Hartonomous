@@ -27,9 +27,10 @@ CREATE SCHEMA IF NOT EXISTS hartonomous_internal;
 -- Set search path
 SET search_path TO hartonomous, public;
 
-\i domains/uint.sql
-\i domains/ubigint.sql
-\i domains/hilbert128.sql
+\i domains/uint16.sql
+\i domains/uint32.sql
+\i domains/uint64.sql
+\i domains/uint128.sql
 
 \i types/ingestion_stats.sql
 \i types/query_results.sql

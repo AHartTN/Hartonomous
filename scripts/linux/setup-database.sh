@@ -163,9 +163,9 @@ echo ""
 print_info "Applying database schema..."
 
 SCHEMA_FILES=(
-    "schema/00-foundation.sql"
-    "schema/01-core-tables.sql"
-    "schema/03-functions.sql"
+    "../sql/00-foundation.sql"
+    "../sql/01-core-tables.sql"
+    "../sql/02-functions.sql"
 )
 
 for SCHEMA_FILE in "${SCHEMA_FILES[@]}"; do

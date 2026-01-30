@@ -3,11 +3,11 @@
 -- ==============================================================================
 
 CREATE TABLE User (
-    user_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id UUID NOT NULL REFERENCES Tenant(tenant_id) ON DELETE CASCADE,
-    username VARCHAR(255) NOT NULL,
-    email VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    Id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    TenantId UUID NOT NULL REFERENCES Tenant(Id) ON DELETE CASCADE,
+    Username VARCHAR(255) NOT NULL,
+    Email VARCHAR(255) NOT NULL,
+    Created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     is_active BOOLEAN DEFAULT TRUE,
 
     -- Permissions

@@ -68,26 +68,35 @@ public:
     IngestionStats ingest_file(const std::string& path);
 
 private:
+    struct Physicality {
+        BLAKE3Pipeline::Hash id;
+        Vec4 centroid;
+        // Trajectory not yet supported in basic ingestion
+        HilbertCurve4D::HilbertIndex hilbert_index;
+    };
+
     struct Atom {
         char32_t codepoint;
-        BLAKE3Pipeline::Hash hash;
-        Vec4 s3_position;
-        HilbertCurve4D::HilbertIndex hilbert_index;
+        BLAKE3Pipeline::Hash id;
+        Physicality physicality;
+    };
+
+    struct SequenceItem {
+        BLAKE3Pipeline::Hash id;
+        uint32_t occurrences;
     };
 
     struct Composition {
         std::string text;
-        BLAKE3Pipeline::Hash hash;
-        std::vector<BLAKE3Pipeline::Hash> atom_hashes;
-        Vec4 centroid;
-        HilbertCurve4D::HilbertIndex hilbert_index;
+        BLAKE3Pipeline::Hash id;
+        Physicality physicality;
+        std::vector<SequenceItem> sequence;
     };
 
     struct Relation {
-        std::vector<BLAKE3Pipeline::Hash> composition_hashes;
-        BLAKE3Pipeline::Hash hash;
-        Vec4 centroid;
-        HilbertCurve4D::HilbertIndex hilbert_index;
+        BLAKE3Pipeline::Hash id;
+        Physicality physicality;
+        std::vector<SequenceItem> sequence;
     };
 
     // Decomposition
@@ -95,20 +104,25 @@ private:
     std::vector<Composition> decompose_compositions(const std::u32string& text);
     std::vector<Relation> decompose_relations(const std::vector<Composition>& compositions);
 
-    // Storage
-    void store_atoms(const std::vector<Atom>& atoms, IngestionStats& stats);
-    void store_compositions(const std::vector<Composition>& compositions, IngestionStats& stats);
-    void store_relations(const std::vector<Relation>& relations, IngestionStats& stats);
+    // Bulk Storage
+    void store_batch(
+        const std::vector<Atom>& atoms,
+        const std::vector<Composition>& compositions,
+        const std::vector<Relation>& relations,
+        IngestionStats& stats
+    );
 
     // Utilities
     std::u32string utf8_to_utf32(const std::string& utf8);
     std::vector<std::u32string> tokenize_words(const std::u32string& text);
     Vec4 compute_centroid(const std::vector<Vec4>& positions);
-    BLAKE3Pipeline::Hash compute_composition_hash(const std::vector<BLAKE3Pipeline::Hash>& atom_hashes);
+    BLAKE3Pipeline::Hash compute_composition_hash(const std::vector<SequenceItem>& sequence);
+    std::string hash_to_uuid(const BLAKE3Pipeline::Hash& hash);
 
     PostgresConnection& db_;
-    std::unordered_set<std::string> seen_atom_hashes_;
-    std::unordered_set<std::string> seen_composition_hashes_;
+    std::unordered_set<std::string> seen_atom_ids_;
+    std::unordered_set<std::string> seen_composition_ids_;
+    std::unordered_set<std::string> seen_physicality_ids_;
 };
 
 } // namespace Hartonomous

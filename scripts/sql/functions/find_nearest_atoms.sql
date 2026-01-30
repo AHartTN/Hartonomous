@@ -7,21 +7,23 @@ CREATE OR REPLACE FUNCTION find_nearest_atoms(
     max_results INTEGER DEFAULT 10
 )
 RETURNS TABLE (
-    hash BYTEA,
-    codepoint INTEGER,
+    id UUID,
+    codepoint UINT32,
     distance DOUBLE PRECISION
 )
 LANGUAGE SQL STABLE
 AS $$
     SELECT
-        a.hash,
-        a.codepoint,
+        a.Id,
+        a.Codepoint,
         geodesic_distance_s3(target_x, target_y, target_z, target_w,
-                             a.s3_x, a.s3_y, a.s3_z, a.s3_w) AS distance
+                             ST_X(p.Centroid), ST_Y(p.Centroid), ST_Z(p.Centroid), ST_M(p.Centroid)) AS distance
     FROM
-        atoms a
+        Atom a
+    JOIN
+        Physicality p ON a.PhysicalityId = p.Id
     ORDER BY
-        distance
+        p.Centroid <-> ST_SetSRID(ST_MakePoint(target_x, target_y, target_z, target_w), 0)
     LIMIT max_results;
 $$;
 

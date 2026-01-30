@@ -1,17 +1,20 @@
 -- ==============================================================================
 -- Hartonomous Core Tables
 -- ==============================================================================
--- This file is IDEMPOTENT - safe to run multiple times
--- Creates atoms, compositions, and relations tables
 
 SET search_path TO hartonomous, public;
 
-\i tables/Atom.sql
-\i tables/Composition.sql
-\i tables/AtomComposition.sql
-\i tables/Relation.sql
-\i tables/RelationChildren.sql
-\i tables/Metadata.sql
+\i tables/01-Tenant.sql
+\i tables/02-User.sql
+\i tables/03-Content.sql
+\i tables/04-Physicality.sql
+\i tables/05-Atom.sql
+\i tables/06-Composition.sql
+\i tables/07-CompositionSequence.sql
+\i tables/08-Relation.sql
+\i tables/09-RelationSequence.sql
+\i tables/10-RelationRating.sql
+\i tables/11-RelationEvidence.sql
 
 -- Record schema version
 INSERT INTO hartonomous_internal.schema_version (version, description)
@@ -22,7 +25,13 @@ ON CONFLICT (version) DO UPDATE SET applied_at = CURRENT_TIMESTAMP;
 DO $$
 BEGIN
     RAISE NOTICE 'Core tables installed successfully';
-    RAISE NOTICE '  - atoms: % rows', (SELECT COUNT(*) FROM atoms);
-    RAISE NOTICE '  - compositions: % rows', (SELECT COUNT(*) FROM compositions);
-    RAISE NOTICE '  - relations: % rows', (SELECT COUNT(*) FROM relations);
+    RAISE NOTICE '  - tenant: % rows', (SELECT COUNT(*) FROM Tenant);
+    RAISE NOTICE '  - user: % rows', (SELECT COUNT(*) FROM User);
+    RAISE NOTICE '  - content: % rows', (SELECT COUNT(*) FROM Content);
+    RAISE NOTICE '  - physicality: % rows', (SELECT COUNT(*) FROM Physicality);
+    RAISE NOTICE '  - atoms: % rows', (SELECT COUNT(*) FROM Atom);
+    RAISE NOTICE '  - compositions: % rows', (SELECT COUNT(*) FROM Composition);
+    RAISE NOTICE '  - relations: % rows', (SELECT COUNT(*) FROM Relation);
+    RAISE NOTICE '  - relation_rating: % rows', (SELECT COUNT(*) FROM RelationRating);
+    RAISE NOTICE '  - relation_evidence: % rows', (SELECT COUNT(*) FROM RelationEvidence);
 END $$;

@@ -148,11 +148,12 @@ fi
 echo ""
 print_info "Checking submodules..."
 SUBMODULES=(
-    "Engine/external/blake3"
-    "Engine/external/eigen"
-    "Engine/external/hnswlib"
-    "Engine/external/spectra"
-    "Engine/external/json"
+    "../../Engine/external/blake3"
+    "../../Engine/external/eigen"
+    "../../Engine/external/hilbert"
+    "../../Engine/external/hnswlib"
+    "../../Engine/external/json"
+    "../../Engine/external/spectra"
 )
 
 MISSING_SUBMODULES=()
@@ -171,25 +172,26 @@ if [ ${#MISSING_SUBMODULES[@]} -gt 0 ]; then
     git submodule update --init --recursive
 fi
 
+BUILD_DIR="../../build/$PRESET"
+
 # Clean if requested
 if [ "$CLEAN" = true ]; then
     echo ""
     print_info "Cleaning build directory..."
-    BUILD_DIR="build/$PRESET"
     if [ -d "$BUILD_DIR" ]; then
         rm -rf "$BUILD_DIR"
         print_success "✓ Cleaned $BUILD_DIR"
     fi
     # Also clean .NET artifacts
     print_info "Cleaning .NET artifacts..."
-    find . -type d -name "bin" -o -name "obj" | xargs rm -rf
+    find ../../. -type d -name "bin" -o -name "obj" | xargs rm -rf
     print_success "✓ Cleaned .NET artifacts"
 fi
 
 # Configure
 echo ""
-print_info "Configuring build (preset: $PRESET)..."
-if cmake --preset "$PRESET"; then
+print_info "Configuring build (preset: $PRESET)...$BUILD_DIR"
+if cmake -S ../../. -B "$BUILD_DIR" --preset "$PRESET"; then
     print_success "✓ Configuration complete"
 else
     print_error "✗ Configuration failed"
@@ -198,7 +200,6 @@ fi
 
 # Build C++
 echo ""
-BUILD_DIR="build/$PRESET"
 
 if [ -n "$TARGET" ]; then
     print_info "Building target: $TARGET..."

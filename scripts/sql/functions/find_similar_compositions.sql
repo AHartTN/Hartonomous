@@ -1,30 +1,32 @@
 -- Function: Find similar compositions by centroid proximity
 CREATE OR REPLACE FUNCTION find_similar_compositions(
-    target_hash BYTEA,
+    target_id UUID,
     max_results INTEGER DEFAULT 10
 )
 RETURNS TABLE (
-    hash BYTEA,
-    text TEXT,
+    id UUID,
     distance DOUBLE PRECISION
 )
 LANGUAGE SQL STABLE
 AS $$
     SELECT
-        c2.hash,
-        c2.text,
+        c2.Id,
         geodesic_distance_s3(
-            c1.centroid_x, c1.centroid_y, c1.centroid_z, c1.centroid_w,
-            c2.centroid_x, c2.centroid_y, c2.centroid_z, c2.centroid_w
+            ST_X(p1.Centroid), ST_Y(p1.Centroid), ST_Z(p1.Centroid), ST_M(p1.Centroid),
+            ST_X(p2.Centroid), ST_Y(p2.Centroid), ST_Z(p2.Centroid), ST_M(p2.Centroid)
         ) AS distance
     FROM
-        compositions c1,
-        compositions c2
+        Composition c1
+    JOIN
+        Physicality p1 ON c1.PhysicalityId = p1.Id
+    JOIN
+        Composition c2 ON c1.Id != c2.Id
+    JOIN
+        Physicality p2 ON c2.PhysicalityId = p2.Id
     WHERE
-        c1.hash = target_hash
-        AND c2.hash != target_hash
+        c1.Id = target_id
     ORDER BY
-        distance
+        p2.Centroid <-> p1.Centroid
     LIMIT max_results;
 $$;
 
