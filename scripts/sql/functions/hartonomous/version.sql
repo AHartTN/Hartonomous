@@ -1,0 +1,7 @@
+CREATE OR REPLACE FUNCTION hartonomous.version()
+RETURNS TEXT
+LANGUAGE sql
+IMMUTABLE
+AS $$
+    SELECT '0.1.0'::TEXT;
+$$;

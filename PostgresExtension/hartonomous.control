@@ -1,6 +1,0 @@
-# hartonomous extension control file
-comment = 'Hartonomous - High-performance semantic knowledge system'
-default_version = '0.1.0'
-module_pathname = '$libdir/hartonomous'
-relocatable = false
-requires = 'postgis'

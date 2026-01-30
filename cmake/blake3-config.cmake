@@ -37,59 +37,33 @@ if(NOT TARGET BLAKE3::BLAKE3)
     # SSE2 (baseline for x64)
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "(x86_64|AMD64|i.86|amd64)")
         target_sources(blake3_impl PRIVATE "${BLAKE3_ROOT}/c/blake3_sse2.c")
+        target_sources(blake3_impl PRIVATE "${BLAKE3_ROOT}/c/blake3_sse41.c")
+        target_sources(blake3_impl PRIVATE "${BLAKE3_ROOT}/c/blake3_avx2.c")
+        target_sources(blake3_impl PRIVATE "${BLAKE3_ROOT}/c/blake3_avx512.c")
+
         if(MSVC)
             # MSVC: SSE2 is implicit on x64
             set_source_files_properties("${BLAKE3_ROOT}/c/blake3_sse2.c"
                 PROPERTIES COMPILE_FLAGS "/O2")
-        else()
-            set_source_files_properties("${BLAKE3_ROOT}/c/blake3_sse2.c"
-                PROPERTIES COMPILE_FLAGS "-O3 -msse2")
-        endif()
-    endif()
-
-    # SSE4.1
-    if(CMAKE_SYSTEM_PROCESSOR MATCHES "(x86_64|AMD64|i.86|amd64)")
-        target_sources(blake3_impl PRIVATE "${BLAKE3_ROOT}/c/blake3_sse41.c")
-        if(MSVC)
             # MSVC doesn't have /arch:SSE4.1 - it's implied by later archs
             set_source_files_properties("${BLAKE3_ROOT}/c/blake3_sse41.c"
                 PROPERTIES COMPILE_FLAGS "/O2")
-        else()
-            set_source_files_properties("${BLAKE3_ROOT}/c/blake3_sse41.c"
-                PROPERTIES COMPILE_FLAGS "-O3 -msse4.1")
-        endif()
-    endif()
-
-    # AVX2
-    if(CMAKE_SYSTEM_PROCESSOR MATCHES "(x86_64|AMD64|i.86|amd64)")
-        target_sources(blake3_impl PRIVATE "${BLAKE3_ROOT}/c/blake3_avx2.c")
-        if(MSVC)
             set_source_files_properties("${BLAKE3_ROOT}/c/blake3_avx2.c"
                 PROPERTIES COMPILE_FLAGS "/O2 /arch:AVX2")
-        else()
-            set_source_files_properties("${BLAKE3_ROOT}/c/blake3_avx2.c"
-                PROPERTIES COMPILE_FLAGS "-O3 -mavx2")
-        endif()
-    endif()
-
-    # AVX512
-    if(CMAKE_SYSTEM_PROCESSOR MATCHES "(x86_64|AMD64|i.86|amd64)")
-        target_sources(blake3_impl PRIVATE "${BLAKE3_ROOT}/c/blake3_avx512.c")
-        if(MSVC)
             set_source_files_properties("${BLAKE3_ROOT}/c/blake3_avx512.c"
                 PROPERTIES COMPILE_FLAGS "/O2 /arch:AVX512")
+            target_compile_options(blake3_impl PRIVATE /O2 /Oi)
         else()
+            set_source_files_properties("${BLAKE3_ROOT}/c/blake3_sse2.c"
+                PROPERTIES COMPILE_FLAGS "-O3 -msse2")
+            set_source_files_properties("${BLAKE3_ROOT}/c/blake3_sse41.c"
+                PROPERTIES COMPILE_FLAGS "-O3 -msse4.1")
+            set_source_files_properties("${BLAKE3_ROOT}/c/blake3_avx2.c"
+                PROPERTIES COMPILE_FLAGS "-O3 -mavx2")
             set_source_files_properties("${BLAKE3_ROOT}/c/blake3_avx512.c"
                 PROPERTIES COMPILE_FLAGS "-O3 -mavx512f -mavx512vl")
+            target_compile_options(blake3_impl PRIVATE -O3)
         endif()
-    endif()
-
-    # Base optimization for non-SIMD files
-    if(MSVC)
-        target_compile_options(blake3_impl PRIVATE /O2 /Oi)
-        # /Oi = enable intrinsic functions
-    else()
-        target_compile_options(blake3_impl PRIVATE -O3)
     endif()
 
     # Alias to the standard namespace
