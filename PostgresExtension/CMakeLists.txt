@@ -3,40 +3,48 @@ cmake_minimum_required(VERSION 3.25)
 project(HartonomousPostgresExt LANGUAGES C CXX)
 
 # ==============================================================================
-#  FIND POSTGRESQL
+#  1. AUTO-DETECT POSTGRESQL (Via pg_config)
 # ==============================================================================
 
-# Help CMake find PostgreSQL on Windows
-if(WIN32)
-    # Find the PostgreSQL installation
-    set(PG_VERSIONS 18 17 16 15 14 13)
-    foreach(PG_VER ${PG_VERSIONS})
-        if(EXISTS "C:/Program Files/PostgreSQL/${PG_VER}/include")
-            set(PostgreSQL_ROOT "C:/Program Files/PostgreSQL/${PG_VER}")
-            break()
-        endif()
-    endforeach()
+# Find pg_config in the system path (e.g. /usr/bin/pg_config)
+find_program(PG_CONFIG NAMES pg_config REQUIRED)
+
+# Query authoritative paths
+execute_process(COMMAND ${PG_CONFIG} --includedir-server OUTPUT_VARIABLE PG_SERVER_INCLUDE_DIR OUTPUT_STRIP_TRAILING_WHITESPACE)
+execute_process(COMMAND ${PG_CONFIG} --pkglibdir         OUTPUT_VARIABLE PG_PKGLIBDIR        OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+message(STATUS "PostgreSQL Found:")
+message(STATUS "  Config:   ${PG_CONFIG}")
+message(STATUS "  Include:  ${PG_SERVER_INCLUDE_DIR}")
+message(STATUS "  Install:  ${PG_PKGLIBDIR}")
+
+# ==============================================================================
+#  2. FIND POSTGIS (Robust Loader)
+# ==============================================================================
+
+# A. Check if target exists (from root build)
+if(TARGET PostGIS::PostGIS)
+    message(STATUS "PostGIS: Target inherited from main build.")
+
+# B. Fallback: Load manually from parent cmake folder
+else()
+    # Resolve the path to <Root>/cmake
+    get_filename_component(HARTONOMOUS_CMAKE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../cmake" ABSOLUTE)
+    set(POSTGIS_CONFIG_FILE "${HARTONOMOUS_CMAKE_DIR}/postgis-config.cmake")
+
+    message(STATUS "PostGIS: Target not found, loading: ${POSTGIS_CONFIG_FILE}")
+
+    if(EXISTS "${POSTGIS_CONFIG_FILE}")
+        include("${POSTGIS_CONFIG_FILE}")
+    else()
+        message(FATAL_ERROR "Critical: Could not find '${POSTGIS_CONFIG_FILE}'")
+    endif()
 endif()
 
-find_package(PostgreSQL REQUIRED)
-
-find_program(PG_CONFIG pg_config)
-
-if(NOT PG_CONFIG)
-    message(FATAL_ERROR "pg_config not found! Please ensure PostgreSQL is installed and in your PATH.")
-endif()
-
-execute_process(
-    COMMAND ${PG_CONFIG} --includedir-server
-    OUTPUT_VARIABLE PG_SERVER_INCLUDE_DIR
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-
-message(STATUS "Found PostgreSQL Server Includes: ${PG_SERVER_INCLUDE_DIR}")
-
 # ==============================================================================
-#  EXTENSION TARGET
+#  3. TARGET DEFINITION
 # ==============================================================================
+
 set(EXTENSION_NAME "hartonomous")
 
 file(GLOB_RECURSE EXT_SOURCES
@@ -47,8 +55,9 @@ file(GLOB_RECURSE EXT_SOURCES
 add_library(${EXTENSION_NAME} MODULE ${EXT_SOURCES})
 
 # ==============================================================================
-#  INCLUDES & LINKING
+#  4. INCLUDES & DEPENDENCIES
 # ==============================================================================
+
 target_include_directories(${EXTENSION_NAME}
     PRIVATE
         ${PG_SERVER_INCLUDE_DIR}
@@ -56,32 +65,32 @@ target_include_directories(${EXTENSION_NAME}
         ${CMAKE_SOURCE_DIR}/Engine/include
 )
 
-# Link only the engine library - it contains all dependencies internally
 target_link_libraries(${EXTENSION_NAME}
     PRIVATE
         Hartonomous::Engine
-        PostgreSQL::PostgreSQL
+        PostGIS::PostGIS
 )
 
-# Windows-specific networking library
-if(WIN32)
-    target_link_libraries(${EXTENSION_NAME} PRIVATE ws2_32)
-endif()
+# ==============================================================================
+#  5. CONFIGURATION
+# ==============================================================================
 
-# ==============================================================================
-#  PROPERTIES
-# ==============================================================================
+# Remove "lib" prefix to match Postgres extension naming conventions
+set_target_properties(${EXTENSION_NAME} PROPERTIES
+    PREFIX ""
+    SUFFIX ".so"
+)
+
 if(MSVC)
-    target_compile_definitions(${EXTENSION_NAME} PRIVATE
-        "DLLEXPORT=__declspec(dllexport)"
-        "WIN32"
-        "_WIN32"
-        "WIN32_LEAN_AND_MEAN"
-    )
-
-    # CRITICAL FIX: Explicitly ignore Static CRT to prevent LNK4098 warning
-    # This ensures no static libraries (LIBCMT) accidentally get linked into our DLL.
+    target_compile_definitions(${EXTENSION_NAME} PRIVATE "DLLEXPORT=__declspec(dllexport)" "WIN32" "_WIN32")
     target_link_options(${EXTENSION_NAME} PRIVATE "/NODEFAULTLIB:LIBCMT")
 endif()
 
-set_target_properties(${EXTENSION_NAME} PROPERTIES PREFIX "")
+# ==============================================================================
+#  6. INSTALLATION
+# ==============================================================================
+
+# Installs to the correct directory detected by pg_config
+install(TARGETS ${EXTENSION_NAME}
+    LIBRARY DESTINATION "${PG_PKGLIBDIR}"
+)
