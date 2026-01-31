@@ -55,7 +55,7 @@ std::vector<SuperFibonacci::Vec4> SuperFibonacci::generate_points(size_t N) {
     return points;
 }
 
-SuperFibonacci::Vec4 SuperFibonacci::hash_to_point(const uint8_t* hash_bytes) {
+SuperFibonacci::Vec4 SuperFibonacci::hash_to_point(const unsigned char* hash_bytes) {
     // 1. Deterministic Seed Extraction
     // Collapse 128-bit hash into a 64-bit integer index.
     // XOR folding preserves entropy without bias.

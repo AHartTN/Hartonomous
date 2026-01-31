@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS Atom (
     Id UUID PRIMARY KEY,
     
     -- Unicode codepoint represented by this Atom stored as a 16-bit bytea array
-    Codepoint UINT32 NOT NULL UNIQUE,
+    Codepoint INT NOT NULL UNIQUE,
 
     -- The physicality record containing the 4d geometric data
     PhysicalityId UUID NOT NULL REFERENCES Physicality(Id) ON DELETE CASCADE,

@@ -8,7 +8,11 @@ SELECT
     c.Id AS composition_id,
     -- Reconstruct text for display
     STRING_AGG(
-        REPEAT(chr(a.Codepoint), cs.Occurrences),
+        REPEAT(
+            -- Convert UINT32 (bytea) to Integer for chr()
+            chr(a.Codepoint), 
+            cs.Occurrences
+        ),
         '' ORDER BY cs.Ordinal
     ) AS text,
     -- Geometry

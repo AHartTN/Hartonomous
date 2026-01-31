@@ -6,7 +6,11 @@ CREATE OR REPLACE VIEW v_composition_text AS
 SELECT
     c.Id AS composition_id,
     STRING_AGG(
-        REPEAT(chr(a.Codepoint), cs.Occurrences),
+        REPEAT(
+            -- Convert UINT32 (bytea) to Integer for chr()
+            chr(('x' || encode(a.Codepoint, 'hex'))::bit(32)::int), 
+            cs.Occurrences
+        ),
         '' ORDER BY cs.Ordinal
     ) AS reconstructed_text
 FROM

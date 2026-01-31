@@ -23,9 +23,8 @@ add_library(Hartonomous::Engine ALIAS engine)
 
 set_target_properties(engine PROPERTIES OUTPUT_NAME "engine")
 
-if(MSVC)
-    target_compile_definitions(engine PRIVATE HARTONOMOUS_EXPORT)
-endif()
+# FORCE EXPORT DEFINITION GLOBALLY (Fixes Linux Visibility/Linker Issues)
+target_compile_definitions(engine PRIVATE HARTONOMOUS_EXPORT)
 
 # ==============================================================================
 #  INCLUDE PATHS (EXPLICIT, ZERO-GUESSING)

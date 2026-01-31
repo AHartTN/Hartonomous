@@ -1,0 +1,3 @@
+sudo cp /home/ahart/Projects/Hartonomous/build/linux-release-max-perf/PostgresExtension/hartonomous.so /usr/lib/postgresql/18/lib/                                                                                            
+sudo cp /home/ahart/Projects/Hartonomous/PostgresExtension/sql/hartonomous--0.1.0.sql /usr/share/postgresql/18/extension/                                                                                                                               
+sudo cp /home/ahart/Projects/Hartonomous/PostgresExtension/control/hartonomous.control /usr/share/postgresql/18/extension/ 
