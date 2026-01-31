@@ -16,6 +16,9 @@ SET search_path TO hartonomous, public;
 \i tables/10-RelationRating.sql
 \i tables/11-RelationEvidence.sql
 
+\i views/v_composition_text.sql
+\i views/v_composition_details.sql
+
 -- Record schema version
 INSERT INTO hartonomous_internal.schema_version (version, description)
 VALUES (2, 'Core tables: atoms, compositions, relations')

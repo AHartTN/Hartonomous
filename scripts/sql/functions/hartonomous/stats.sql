@@ -1,39 +1,30 @@
+-- ==============================================================================
+-- Function: Get Database Stats
+-- ==============================================================================
+
 CREATE OR REPLACE FUNCTION hartonomous.stats()
 RETURNS TABLE (
     table_name TEXT,
     row_count BIGINT,
     total_size TEXT
 )
-LANGUAGE sql
+LANGUAGE plpgsql
 STABLE
 AS $$
-    SELECT
-        'atoms' AS table_name,
-        COUNT(*) AS row_count,
-        pg_size_pretty(pg_total_relation_size('hartonomous.atoms')) AS total_size
-    FROM hartonomous.atoms
+BEGIN
+    RETURN QUERY
+    SELECT 'Atom'::TEXT, COUNT(*), pg_size_pretty(pg_total_relation_size('Atom'))::TEXT
+    FROM Atom
     UNION ALL
-    SELECT
-        'compositions',
-        COUNT(*),
-        pg_size_pretty(pg_total_relation_size('hartonomous.compositions'))
-    FROM hartonomous.compositions
+    SELECT 'Composition'::TEXT, COUNT(*), pg_size_pretty(pg_total_relation_size('Composition'))::TEXT
+    FROM Composition
     UNION ALL
-    SELECT
-        'relations',
-        COUNT(*),
-        pg_size_pretty(pg_total_relation_size('hartonomous.relations'))
-    FROM hartonomous.relations
+    SELECT 'Relation'::TEXT, COUNT(*), pg_size_pretty(pg_total_relation_size('Relation'))::TEXT
+    FROM Relation
     UNION ALL
-    SELECT
-        'composition_atoms',
-        COUNT(*),
-        pg_size_pretty(pg_total_relation_size('hartonomous.composition_atoms'))
-    FROM hartonomous.composition_atoms
-    UNION ALL
-    SELECT
-        'relation_children',
-        COUNT(*),
-        pg_size_pretty(pg_total_relation_size('hartonomous.relation_children'))
-    FROM hartonomous.relation_children;
+    SELECT 'Physicality'::TEXT, COUNT(*), pg_size_pretty(pg_total_relation_size('Physicality'))::TEXT
+    FROM Physicality;
+END;
 $$;
+
+COMMENT ON FUNCTION hartonomous.stats IS 'Get row counts and sizes for core tables';

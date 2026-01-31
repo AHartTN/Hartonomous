@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS RelationEvidence (
     ValidatedAt TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_RelationEvidence_EvidenceValue ON RelationEvidence(EvidenceValue);
+CREATE INDEX IF NOT EXISTS idx_RelationEvidence_SourceRating ON RelationEvidence(SourceRating);
 
 COMMENT ON TABLE RelationEvidence IS 'ELO Evidence of a Relation based on ingestion, user feedback, and system evaluations';
 COMMENT ON COLUMN RelationEvidence.Id IS 'BLAKE3 hash of Evidence metadata (content-addressable key)';

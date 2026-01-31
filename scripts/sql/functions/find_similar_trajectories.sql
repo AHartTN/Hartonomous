@@ -1,34 +1,30 @@
--- Function: Find similar documents by trajectory shape
+-- ==============================================================================
+-- Function: Find Similar Trajectories
+-- ==============================================================================
+
 CREATE OR REPLACE FUNCTION find_similar_trajectories(
-    target_hash BYTEA,
+    target_trajectory GEOMETRY,
     max_results INTEGER DEFAULT 10
 )
 RETURNS TABLE (
-    hash BYTEA,
-    doc_title TEXT,
+    relation_id UUID,
     similarity DOUBLE PRECISION
 )
-LANGUAGE SQL
+LANGUAGE sql
+STABLE
 AS $$
     SELECT
-        r.hash,
-        r.metadata->>'title' AS doc_title,
-        1.0 / (1.0 + ABS(t1.tortuosity - t2.tortuosity) +
-               ABS(COALESCE(t1.fractal_dimension, 0) - COALESCE(t2.fractal_dimension, 0))
-        ) AS similarity
+        r.Id,
+        1.0 / (1.0 + ST_HausdorffDistance(p.Trajectory, target_trajectory)) AS similarity
     FROM
-        relations r
-        JOIN trajectories t2 ON r.hash = t2.relation_hash
-        CROSS JOIN (
-            SELECT tortuosity, fractal_dimension
-            FROM trajectories
-            WHERE relation_hash = target_hash
-        ) t1
+        Relation r
+    JOIN
+        Physicality p ON r.PhysicalityId = p.Id
     WHERE
-        r.hash != target_hash
+        p.Trajectory IS NOT NULL
     ORDER BY
-        similarity DESC
+        p.Trajectory <-> target_trajectory
     LIMIT max_results;
 $$;
 
-COMMENT ON FUNCTION find_similar_trajectories IS 'Find documents with similar trajectory shapes';
+COMMENT ON FUNCTION find_similar_trajectories IS 'Find Relations with similar spatiotemporal trajectories';

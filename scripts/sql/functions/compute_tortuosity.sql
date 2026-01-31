@@ -1,59 +1,68 @@
 -- ==============================================================================
--- FUNCTIONS: Hierarchical operations
+-- Function: Compute Tortuosity (Path efficiency on S³)
 -- ==============================================================================
 
--- Function: Compute trajectory tortuosity
-CREATE OR REPLACE FUNCTION compute_tortuosity(relation_hash_param BYTEA)
+CREATE OR REPLACE FUNCTION compute_tortuosity(
+    relation_id UUID
+)
 RETURNS DOUBLE PRECISION
 LANGUAGE plpgsql
+STABLE
 AS $$
 DECLARE
-    total_dist DOUBLE PRECISION;
-    start_point RECORD;
-    end_point RECORD;
-    straight_dist DOUBLE PRECISION;
+    start_point GEOMETRY;
+    end_point GEOMETRY;
+    total_path_length DOUBLE PRECISION := 0;
+    euclidean_distance DOUBLE PRECISION;
+    prev_point GEOMETRY;
+    curr_point GEOMETRY;
+    rec RECORD;
 BEGIN
-    -- Get total trajectory distance
-    SELECT geometric_length INTO total_dist
-    FROM relations
-    WHERE hash = relation_hash_param;
+    -- 1. Get ordered sequence of centroids for this relation
+    FOR rec IN
+        SELECT p.Centroid
+        FROM RelationSequence rs
+        JOIN Composition c ON rs.CompositionId = c.Id
+        JOIN Physicality p ON c.PhysicalityId = p.Id
+        WHERE rs.RelationId = relation_id
+        ORDER BY rs.Ordinal
+    LOOP
+        curr_point := rec.Centroid;
 
-    -- Get start and end points
-    SELECT centroid_x, centroid_y, centroid_z, centroid_w INTO start_point
-    FROM relations
-    WHERE hash = (
-        SELECT child_hash
-        FROM relation_children
-        WHERE relation_hash = relation_hash_param
-        ORDER BY position
-        LIMIT 1
-    );
+        IF prev_point IS NOT NULL THEN
+            -- Add segment length (Geodesic on S3)
+            -- Use PostGIS 3D distance as approximation or custom S3 distance if defined
+            -- Since we have geodesic_distance_s3 defined for coordinates, we use it by extracting coords.
+            total_path_length := total_path_length + geodesic_distance_s3(
+                ST_X(prev_point), ST_Y(prev_point), ST_Z(prev_point), ST_M(prev_point),
+                ST_X(curr_point), ST_Y(curr_point), ST_Z(curr_point), ST_M(curr_point)
+            );
+        ELSE
+            start_point := curr_point;
+        END IF;
 
-    SELECT centroid_x, centroid_y, centroid_z, centroid_w INTO end_point
-    FROM relations
-    WHERE hash = (
-        SELECT child_hash
-        FROM relation_children
-        WHERE relation_hash = relation_hash_param
-        ORDER BY position DESC
-        LIMIT 1
-    );
+        prev_point := curr_point;
+    END LOOP;
 
-    -- Compute straight-line distance
-    straight_dist := SQRT(
-        POWER(end_point.centroid_x - start_point.centroid_x, 2) +
-        POWER(end_point.centroid_y - start_point.centroid_y, 2) +
-        POWER(end_point.centroid_z - start_point.centroid_z, 2) +
-        POWER(end_point.centroid_w - start_point.centroid_w, 2)
-    );
+    end_point := prev_point;
 
-    -- Avoid division by zero
-    IF straight_dist < 1e-10 THEN
-        RETURN 1.0;
+    IF start_point IS NULL OR end_point IS NULL OR total_path_length = 0 THEN
+        RETURN 0.0;
     END IF;
 
-    RETURN total_dist / straight_dist;
+    -- 2. Calculate straight-line distance (Geodesic)
+    euclidean_distance := geodesic_distance_s3(
+        ST_X(start_point), ST_Y(start_point), ST_Z(start_point), ST_M(start_point),
+        ST_X(end_point), ST_Y(end_point), ST_Z(end_point), ST_M(end_point)
+    );
+
+    IF euclidean_distance = 0 THEN
+        RETURN 0.0;
+    END IF;
+
+    -- 3. Tortuosity = Path Length / Straight Line Distance
+    RETURN total_path_length / euclidean_distance;
 END;
 $$;
 
-COMMENT ON FUNCTION compute_tortuosity IS 'Compute trajectory tortuosity (total_dist / straight_dist)';
+COMMENT ON FUNCTION compute_tortuosity IS 'Calculates tortuosity of a Relation path on S³ (1.0 = straight line)';

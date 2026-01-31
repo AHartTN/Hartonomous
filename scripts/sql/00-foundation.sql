@@ -34,7 +34,6 @@ SET search_path TO hartonomous, public;
 
 \i types/ingestion_stats.sql
 \i types/query_results.sql
-\i types/s3_point.sql
 
 \i tables/hartonomous_internal/schema_version.sql
 

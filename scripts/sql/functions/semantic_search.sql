@@ -1,14 +1,10 @@
-
 -- ==============================================================================
 -- SEMANTIC SEARCH: Find compositions by geometric proximity on S³
 -- ==============================================================================
 
--- Function: Semantic search by 4D coordinate (Centroid)
-CREATE OR REPLACE FUNCTION semantic_search(
-    query_x DOUBLE PRECISION,
-    query_y DOUBLE PRECISION,
-    query_z DOUBLE PRECISION,
-    query_w DOUBLE PRECISION,
+-- Function: Semantic search by 4D coordinate (Centroid Geometry)
+CREATE OR REPLACE FUNCTION semantic_search_geometric(
+    query_point GEOMETRY,
     max_results INTEGER DEFAULT 10
 )
 RETURNS TABLE (
@@ -20,7 +16,7 @@ AS $$
     SELECT
         c.Id AS composition_id,
         geodesic_distance_s3(
-            query_x, query_y, query_z, query_w,
+            ST_X(query_point), ST_Y(query_point), ST_Z(query_point), ST_M(query_point),
             ST_X(p.Centroid), ST_Y(p.Centroid), ST_Z(p.Centroid), ST_M(p.Centroid)
         ) AS distance
     FROM
@@ -29,8 +25,8 @@ AS $$
         Composition c ON c.PhysicalityId = p.Id
     ORDER BY
         -- Use Euclidean distance for fast GIST index sorting (approximates Geodesic order locally)
-        p.Centroid <-> ST_SetSRID(ST_MakePoint(query_x, query_y, query_z, query_w), 0)
+        p.Centroid <-> query_point
     LIMIT max_results;
 $$;
 
-COMMENT ON FUNCTION semantic_search IS 'Search compositions by geometric proximity (4D distance) on S³';
+COMMENT ON FUNCTION semantic_search_geometric IS 'Search compositions by geometric proximity (4D distance) on S³';

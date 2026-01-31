@@ -1,40 +1,47 @@
-CREATE OR REPLACE FUNCTION hartonomous.find_related_compositions(
+-- ==============================================================================
+-- FIND RELATED COMPOSITIONS: Wrapper for Semantic Search (Hash-based)
+-- ==============================================================================
+
+CREATE OR REPLACE FUNCTION find_related_compositions(
     query_text TEXT,
-    limit_count INTEGER DEFAULT 10
+    max_results INTEGER DEFAULT 10
 )
 RETURNS TABLE (
+    composition_id UUID,
     text TEXT,
-    co_occurrence_count BIGINT
+    distance DOUBLE PRECISION
 )
-LANGUAGE sql
+LANGUAGE plpgsql
 STABLE
 AS $$
-    WITH query_composition AS (
-        SELECT hash
-        FROM hartonomous.compositions
-        WHERE LOWER(text) = LOWER(query_text)
-        LIMIT 1
-    ),
-    query_relations AS (
-        SELECT DISTINCT rc.relation_hash
-        FROM hartonomous.relation_children rc
-        CROSS JOIN query_composition qc
-        WHERE rc.child_hash = qc.hash
-          AND rc.child_type = 'composition'
-    ),
-    cooccurring_compositions AS (
-        SELECT
-            c.text,
-            COUNT(DISTINCT qr.relation_hash) AS co_occurrence_count
-        FROM query_relations qr
-        JOIN hartonomous.relation_children rc ON rc.relation_hash = qr.relation_hash
-        JOIN hartonomous.compositions c ON c.hash = rc.child_hash
-        CROSS JOIN query_composition qc
-        WHERE rc.child_type = 'composition'
-          AND c.hash != qc.hash
-        GROUP BY c.text
-        ORDER BY co_occurrence_count DESC
-        LIMIT limit_count
-    )
-    SELECT * FROM cooccurring_compositions;
+DECLARE
+    query_id UUID;
+    query_centroid GEOMETRY;
+BEGIN
+    -- 1. Compute ID from Text (Fast, Deterministic)
+    query_id := uuid_send(blake3_hash(query_text));
+
+    -- 2. Get Centroid (Index Scan on Primary Key)
+    SELECT p.Centroid INTO query_centroid
+    FROM Composition c
+    JOIN Physicality p ON c.PhysicalityId = p.Id
+    WHERE c.Id = query_id;
+
+    IF query_centroid IS NULL THEN
+        RETURN;
+    END IF;
+
+    -- 3. Execute Geometric Search
+    RETURN QUERY
+    SELECT
+        s.composition_id,
+        v.text,
+        s.distance
+    FROM
+        semantic_search_geometric(query_centroid, max_results) s
+    JOIN
+        v_composition_text v ON s.composition_id = v.composition_id;
+END;
 $$;
+
+COMMENT ON FUNCTION find_related_compositions IS 'Finds related compositions using hash-lookup and geometric search';

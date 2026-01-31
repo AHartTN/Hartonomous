@@ -5,28 +5,28 @@
 CREATE TABLE IF NOT EXISTS Physicality (
     Id UUID PRIMARY KEY,
 
-    -- Hilbert curve index
-    Hilbert HILBERT128 NOT NULL,
+    -- Hilbert curve index (128-bit)
+    Hilbert UINT128 NOT NULL,
 
     -- PostGIS 4D geometry (SRID 0 for abstract space)
     Centroid GEOMETRY(POINTZM, 0) NOT NULL,
 
     -- 4D path through space - POINTZM for static objects, LINESTRINGZM for dynamic objects
-    Trajectory GEOMETRY(GEOMETRYZM, 0), -- GeometryZM because this can be a PointZM or a LineStringZM ['A'] vs ['A', 'B', 'C'] since a linestring can't be a single point. it needs a start and end.
+    Trajectory GEOMETRY(GEOMETRYZM, 0),
 
     -- Metadata
     CreatedAt TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
 
-    -- Ensure centroid is on S³
-    CONSTRAINT Physicality_Centroid_Normalized CHECK (ABS(Centroid.X * Centroid.X + Centroid.Y * Centroid.Y + Centroid.Z * Centroid.Z + Centroid.M * Centroid.M - 1.0) < 0.0001)
+    -- Ensure centroid is on S³ (Normalized magnitude = 1.0)
+    CONSTRAINT Physicality_Centroid_Normalized CHECK (ABS(ST_X(Centroid) * ST_X(Centroid) + ST_Y(Centroid) * ST_Y(Centroid) + ST_Z(Centroid) * ST_Z(Centroid) + ST_M(Centroid) * ST_M(Centroid) - 1.0) < 0.0001)
 );
 
 -- Indexes for fast spatial queries
 CREATE INDEX idx_Physicality_hilbert ON Physicality(Hilbert);
 
--- Spatial indicies using GIST
-CREATE INDEX IF NOT EXISTS idx_Physicality_Centroid ON Physicality USING GIST(Centroid);
-CREATE INDEX IF NOT EXISTS idx_Physicality_Trajectory ON Physicality USING GIST(Trajectory);
+-- Spatial indicies using GIST with N-Dimensional support
+CREATE INDEX IF NOT EXISTS idx_Physicality_Centroid ON Physicality USING GIST(Centroid gist_geometry_ops_nd);
+CREATE INDEX IF NOT EXISTS idx_Physicality_Trajectory ON Physicality USING GIST(Trajectory gist_geometry_ops_nd);
 
 -- Comment
 COMMENT ON TABLE Physicality IS 'Shared physicality of objects in 4D space';

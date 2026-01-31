@@ -15,6 +15,7 @@ SET search_path TO hartonomous, public;
 \i functions/hartonomous/vacuum_analyze.sql
 \i functions/hartonomous/version.sql
 
+\i functions/geodesic_distance_s3.sql
 \i functions/add_edge_vote.sql
 \i functions/answer_question.sql
 \i functions/check_rate_limit.sql
@@ -25,7 +26,6 @@ SET search_path TO hartonomous, public;
 \i functions/find_similar_trajectories.sql
 \i functions/flag_content.sql
 \i functions/fuzzy_search.sql
-\i functions/geodesic_distance_s3.sql
 \i functions/multi_hop_reasoning.sql
 \i functions/phoenetic_search.sql
 \i functions/semantic_search.sql

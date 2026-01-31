@@ -29,45 +29,50 @@ LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION blake3_hash_codepoint(integer) IS 'Compute BLAKE3 hash of Unicode codepoint';
 
 -- ============================================================================
--- Codepoint Projection
+-- Codepoint Projection (S3 / Geometry)
 -- ============================================================================
 
-CREATE TYPE s3_point AS (
-    x double precision,
-    y double precision,
-    z double precision,
-    w double precision
-);
-
-CREATE FUNCTION codepoint_to_s3(integer)
-RETURNS s3_point
+-- Internal C function returning WKT
+CREATE FUNCTION codepoint_to_s3_wkt(integer)
+RETURNS text
 AS 'MODULE_PATHNAME', 'codepoint_to_s3'
 LANGUAGE C IMMUTABLE STRICT;
 
-COMMENT ON FUNCTION codepoint_to_s3(integer) IS 'Project Unicode codepoint to 4D unit sphere (S³)';
+-- Public wrapper returning Geometry
+CREATE FUNCTION codepoint_to_s3(integer)
+RETURNS geometry(POINTZM, 0)
+AS $$
+    SELECT ST_GeomFromText(codepoint_to_s3_wkt($1), 0);
+$$ LANGUAGE SQL IMMUTABLE STRICT;
 
-CREATE TYPE hilbert_index_128 AS (
-    hi bigint,
-    lo bigint
-);
+COMMENT ON FUNCTION codepoint_to_s3(integer) IS 'Project Unicode codepoint to 4D unit sphere (S³) as PostGIS Geometry';
 
+-- Hilbert Index
 CREATE FUNCTION codepoint_to_hilbert(integer)
-RETURNS hilbert_index_128
+RETURNS bigint[]
 AS 'MODULE_PATHNAME', 'codepoint_to_hilbert'
 LANGUAGE C IMMUTABLE STRICT;
 
-COMMENT ON FUNCTION codepoint_to_hilbert(integer) IS 'Map Unicode codepoint to Hilbert curve index';
+COMMENT ON FUNCTION codepoint_to_hilbert(integer) IS 'Map Unicode codepoint to Hilbert curve index (returns [hi, lo])';
 
 -- ============================================================================
 -- Centroid Computation
 -- ============================================================================
 
-CREATE FUNCTION compute_centroid(bytea[])
-RETURNS s3_point
+-- Internal C function returning WKT
+CREATE FUNCTION compute_centroid_wkt(float8[])
+RETURNS text
 AS 'MODULE_PATHNAME', 'compute_centroid'
 LANGUAGE C IMMUTABLE STRICT;
 
-COMMENT ON FUNCTION compute_centroid(bytea[]) IS 'Compute centroid of multiple S³ points (average on sphere)';
+-- Public wrapper returning Geometry
+CREATE FUNCTION compute_centroid(float8[])
+RETURNS geometry(POINTZM, 0)
+AS $$
+    SELECT ST_GeomFromText(compute_centroid_wkt($1), 0);
+$$ LANGUAGE SQL IMMUTABLE STRICT;
+
+COMMENT ON FUNCTION compute_centroid(float8[]) IS 'Compute centroid of multiple points (input as flat float8 array)';
 
 -- ============================================================================
 -- Text Ingestion

@@ -1,28 +1,32 @@
-CREATE OR REPLACE FUNCTION hartonomous.upsert_composition(
-    p_hash BYTEA,
-    p_text TEXT,
-    p_centroid_x DOUBLE PRECISION,
-    p_centroid_y DOUBLE PRECISION,
-    p_centroid_z DOUBLE PRECISION,
-    p_centroid_w DOUBLE PRECISION,
-    p_hilbert_index BIGINT
+-- ==============================================================================
+-- UPSERT COMPOSITION: Update Metadata Only (Creation handled by C++ Batch Ingester)
+-- ==============================================================================
+
+CREATE OR REPLACE FUNCTION upsert_composition(
+    p_text TEXT
 )
 RETURNS VOID
-LANGUAGE sql
+LANGUAGE plpgsql
 AS $$
-    INSERT INTO hartonomous.compositions (
-        hash, text,
-        centroid_x, centroid_y, centroid_z, centroid_w,
-        centroid,
-        hilbert_index,
-        length
-    ) VALUES (
-        p_hash, p_text,
-        p_centroid_x, p_centroid_y, p_centroid_z, p_centroid_w,
-        ST_SetSRID(ST_MakePoint(p_centroid_x, p_centroid_y, p_centroid_z, p_centroid_w), 0),
-        p_hilbert_index,
-        length(p_text)
-    )
-    ON CONFLICT (hash) DO UPDATE SET
-        access_count = hartonomous.compositions.access_count + 1;
+DECLARE
+    target_id UUID;
+BEGIN
+    -- 1. Compute ID
+    target_id := uuid_send(blake3_hash(p_text));
+
+    -- 2. Check Existence
+    IF EXISTS (SELECT 1 FROM Composition WHERE Id = target_id) THEN
+        -- Update Metadata (Touched)
+        UPDATE Composition
+        SET ModifiedAt = CURRENT_TIMESTAMP
+        WHERE Id = target_id;
+        
+        -- Ideally update ELO/Observations here if we had Context
+    ELSE
+        -- 3. Reject Creation
+        RAISE EXCEPTION 'Composition not found. Use Batch Ingester to create new geometric atoms.';
+    END IF;
+END;
 $$;
+
+COMMENT ON FUNCTION upsert_composition IS 'Updates metadata for existing compositions. Cannot create new ones (requires C++ geometry Engine).';

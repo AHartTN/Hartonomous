@@ -1,54 +1,75 @@
-
 -- ==============================================================================
--- MULTI-HOP REASONING: Follow semantic edges
+-- MULTI-HOP REASONING: Recursive ELO-weighted Graph Traversal
 -- ==============================================================================
 
--- Function: Multi-hop question answering (follow relationships)
+-- Function: Multi-hop reasoning (follow high-tension strands)
 CREATE OR REPLACE FUNCTION multi_hop_reasoning(
-    query TEXT,
-    max_hops INTEGER DEFAULT 3
+    start_id UUID,
+    max_hops INTEGER DEFAULT 3,
+    min_elo DOUBLE PRECISION DEFAULT 1000.0
 )
 RETURNS TABLE (
-    path TEXT[],
-    final_answer TEXT,
-    path_confidence DOUBLE PRECISION
+    hop_depth INTEGER,
+    path UUID[],
+    final_composition_id UUID,
+    cumulative_elo DOUBLE PRECISION,
+    avg_elo DOUBLE PRECISION
 )
-LANGUAGE plpgsql
+LANGUAGE sql STABLE
 AS $$
-BEGIN
-    -- Use A* pathfinding to traverse semantic graph
-    -- Example: "What ship did the Captain command?"
-    --   1. Find "Captain" → nearby "Ahab"
-    --   2. Find "Ahab" → nearby "Pequod" (via semantic edges)
-    --   3. Find "Pequod" → verify it's a "ship"
-    --   4. Answer: "Pequod"
-
-    -- This requires semantic edges with ELO ratings
-    -- Implementation uses astar_pathfind() from postgis_spatial_functions.sql
-
-    RETURN QUERY
-    WITH reasoning_path AS (
-        SELECT
-            p.path_hash,
-            p.total_cost,
-            p.path_length
-        FROM
-            astar_pathfind(
-                (SELECT hash FROM compositions WHERE text ~ query LIMIT 1),
-                NULL, -- Goal: any high-ELO edge
-                max_hops
-            ) p
-    )
+WITH RECURSIVE search_graph(
+    current_id, 
+    depth, 
+    path, 
+    total_elo,
+    visited_ids
+) AS (
+    -- Base Case: Start Node
     SELECT
-        ARRAY(
-            SELECT text FROM compositions
-            WHERE hash = ANY(reasoning_path.path_hash)
-        ) AS path,
-        (SELECT text FROM compositions WHERE hash = reasoning_path.path_hash[array_length(reasoning_path.path_hash, 1)]) AS final_answer,
-        (1.0 / (1.0 + reasoning_path.total_cost))::DOUBLE PRECISION AS path_confidence
+        start_id,
+        0,
+        ARRAY[start_id],
+        0.0::DOUBLE PRECISION,
+        ARRAY[start_id]
+    
+    UNION ALL
+
+    -- Recursive Step: Traverse Relations
+    SELECT
+        target_seq.CompositionId,
+        sg.depth + 1,
+        sg.path || target_seq.CompositionId,
+        sg.total_elo + rr.RatingValue,
+        sg.visited_ids || target_seq.CompositionId
     FROM
-        reasoning_path;
-END;
+        search_graph sg
+    JOIN
+        -- Find Relations containing the current composition
+        RelationSequence rs_source ON rs_source.CompositionId = sg.current_id
+    JOIN
+        RelationRating rr ON rr.RelationId = rs_source.RelationId
+    JOIN
+        -- Find other compositions in the SAME relation (siblings)
+        RelationSequence target_seq ON target_seq.RelationId = rs_source.RelationId
+    WHERE
+        sg.depth < max_hops
+        AND rr.RatingValue >= min_elo
+        AND target_seq.CompositionId != sg.current_id -- Don't stay on self
+        AND NOT (target_seq.CompositionId = ANY(sg.visited_ids)) -- Cycle detection
+)
+SELECT
+    depth,
+    path,
+    current_id AS final_composition_id,
+    total_elo,
+    CASE WHEN depth > 0 THEN total_elo / depth ELSE 0 END AS avg_elo
+FROM
+    search_graph
+WHERE
+    depth > 0
+ORDER BY
+    avg_elo DESC, depth ASC
+LIMIT 100;
 $$;
 
-COMMENT ON FUNCTION multi_hop_reasoning IS 'Multi-hop reasoning using semantic graph traversal';
+COMMENT ON FUNCTION multi_hop_reasoning IS 'Traverse the semantic graph via High-ELO Relations (Abductive Reasoning)';

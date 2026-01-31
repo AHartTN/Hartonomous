@@ -239,6 +239,35 @@ void PostgresConnection::query(const std::string& sql, const std::vector<std::st
     PQclear(result);
 }
 
+void PostgresConnection::copy_data(const char* buffer, int nbytes) {
+    if (!is_connected()) {
+        throw std::runtime_error("Not connected to database");
+    }
+
+    int result = PQputCopyData(conn_, buffer, nbytes);
+    if (result == -1) {
+        last_error_ = PQerrorMessage(conn_);
+        throw std::runtime_error("COPY data failed: " + last_error_);
+    }
+}
+
+void PostgresConnection::copy_end(const char* error_msg) {
+    if (!is_connected()) {
+        throw std::runtime_error("Not connected to database");
+    }
+
+    int result = PQputCopyEnd(conn_, error_msg);
+    if (result == -1) {
+        last_error_ = PQerrorMessage(conn_);
+        throw std::runtime_error("COPY end failed: " + last_error_);
+    }
+
+    // After sending end, we must get the final result
+    PGresult* res = PQgetResult(conn_);
+    check_result(res);
+    PQclear(res);
+}
+
 void PostgresConnection::begin() {
     execute("BEGIN");
 }

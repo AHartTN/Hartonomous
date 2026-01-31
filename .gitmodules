@@ -16,3 +16,6 @@
 [submodule "Engine/external/hilbert"]
 	path = Engine/external/hilbert
 	url = https://github.com/spectral3d/hilbert_hpp.git
+[submodule "Engine/external/postgis"]
+	path = Engine/external/postgis
+	url = https://github.com/postgis/postgis.git

@@ -1,6 +1,20 @@
 <Project>
-  <Target Name="HartonomousPostBuild" AfterTargets="Build">
-    <!-- Example: copy shared assets or enforce structure -->
-    <Message Text="Hartonomous build complete: $(MSBuildProjectName)" Importance="low" />
+  <Target Name="CopyNativeEngine" AfterTargets="Build">
+    <PropertyGroup>
+      <NativeLibName Condition="'$(OS)' != 'Windows_NT'">libengine.so</NativeLibName>
+      <NativeLibName Condition="'$(OS)' == 'Windows_NT'">engine.dll</NativeLibName>
+      <!-- Adjust path based on your CMake preset output -->
+      <NativeBuildDir>$(MSBuildThisFileDirectory)build/linux-release-max-perf/Engine</NativeBuildDir>
+    </PropertyGroup>
+    
+    <Message Text="Copying native library $(NativeLibName) from $(NativeBuildDir) to $(OutDir)" Importance="high" />
+    
+    <Copy SourceFiles="$(NativeBuildDir)/$(NativeLibName)" 
+          DestinationFolder="$(OutDir)" 
+          SkipUnchangedFiles="true" 
+          Condition="Exists('$(NativeBuildDir)/$(NativeLibName)')" />
+          
+    <Warning Text="Native library $(NativeLibName) not found in $(NativeBuildDir). Ensure C++ engine is built." 
+             Condition="!Exists('$(NativeBuildDir)/$(NativeLibName)')" />
   </Target>
 </Project>

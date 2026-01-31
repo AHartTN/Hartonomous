@@ -1,116 +1,52 @@
-
 -- ==============================================================================
--- QUESTION ANSWERING: Extract answers from document graph
+-- ANSWER QUESTION: System 2 Reasoning via Graph Traversal
 -- ==============================================================================
 
--- Function: Answer a natural language question
 CREATE OR REPLACE FUNCTION answer_question(
-    question TEXT,
-    context_relation_hash BYTEA DEFAULT NULL, -- Optional: limit to specific document
-    max_answer_length INTEGER DEFAULT 3       -- Max number of compositions in answer
+    question_text TEXT,
+    max_hops INTEGER DEFAULT 3
 )
 RETURNS TABLE (
     answer TEXT,
     confidence DOUBLE PRECISION,
-    source_compositions BYTEA[]
+    reasoning_path TEXT[]
 )
-LANGUAGE plpgsql STABLE
+LANGUAGE plpgsql
+STABLE
 AS $$
 DECLARE
-    focus_word TEXT;
-    query_centroid RECORD;
-    candidate RECORD;
-    answer_parts TEXT[];
-    answer_hashes BYTEA[];
-    total_relevance DOUBLE PRECISION := 0;
+    start_node UUID;
 BEGIN
-    -- Step 1: Parse question to find focus (entity/topic)
-    -- Example: "What is the name of the Captain" → focus = "Captain"
+    -- 1. Identify Entry Point (Focus Concept)
+    -- Use fuzzy search to find the most relevant existing concept
+    SELECT composition_id INTO start_node
+    FROM fuzzy_search(question_text, 1);
 
-    focus_word := (
-        SELECT word
-        FROM regexp_split_to_table(question, '\s+') AS word
-        WHERE word ~ '^[A-Z]' OR word IN ('who', 'what', 'where', 'when', 'why', 'how')
-        ORDER BY
-            CASE
-                WHEN word ~ '^[A-Z]' THEN 1  -- Prioritize capitalized (proper nouns)
-                ELSE 2
-            END,
-            LENGTH(word) DESC
-        LIMIT 1
-    );
-
-    -- Get centroid of focus word
-    SELECT centroid_x, centroid_y, centroid_z, centroid_w
-    INTO query_centroid
-    FROM compositions
-    WHERE LOWER(text) = LOWER(focus_word)
-    LIMIT 1;
-
-    IF NOT FOUND THEN
-        RETURN QUERY SELECT 'No answer found'::TEXT, 0.0, ARRAY[]::BYTEA[];
+    IF start_node IS NULL THEN
+        RETURN QUERY SELECT 'I do not understand the concepts in this question.'::TEXT, 0.0::DOUBLE PRECISION, ARRAY[]::TEXT[];
         RETURN;
     END IF;
 
-    -- Step 2: Find nearby compositions (potential answer components)
-    FOR candidate IN
-        SELECT
-            c.hash,
-            c.text,
-            st_distance_s3(
-                query_centroid.centroid_x,
-                query_centroid.centroid_y,
-                query_centroid.centroid_z,
-                query_centroid.centroid_w,
-                c.centroid_x,
-                c.centroid_y,
-                c.centroid_z,
-                c.centroid_w
-            ) AS distance,
-            (1.0 / (1.0 + st_distance_s3(
-                query_centroid.centroid_x,
-                query_centroid.centroid_y,
-                query_centroid.centroid_z,
-                query_centroid.centroid_w,
-                c.centroid_x,
-                c.centroid_y,
-                c.centroid_z,
-                c.centroid_w
-            ))) AS relevance
-        FROM
-            compositions c
-        WHERE
-            c.hash != (SELECT hash FROM compositions WHERE LOWER(text) = LOWER(focus_word) LIMIT 1)
-            AND st_dwithin_s3(
-                query_centroid.centroid_x,
-                query_centroid.centroid_y,
-                query_centroid.centroid_z,
-                query_centroid.centroid_w,
-                c.centroid_x,
-                c.centroid_y,
-                c.centroid_z,
-                c.centroid_w,
-                0.2
-            )
-        ORDER BY
-            relevance DESC
-        LIMIT max_answer_length
-    LOOP
-        answer_parts := array_append(answer_parts, candidate.text);
-        answer_hashes := array_append(answer_hashes, candidate.hash);
-        total_relevance := total_relevance + candidate.relevance;
-    END LOOP;
-
-    -- Step 3: Construct answer
-    IF array_length(answer_parts, 1) IS NULL THEN
-        RETURN QUERY SELECT 'No answer found'::TEXT, 0.0, ARRAY[]::BYTEA[];
-    ELSE
-        RETURN QUERY SELECT
-            array_to_string(answer_parts, ' ')::TEXT,
-            (total_relevance / max_answer_length)::DOUBLE PRECISION,
-            answer_hashes;
-    END IF;
+    -- 2. Execute Multi-Hop Reasoning (High-ELO traversal)
+    RETURN QUERY
+    WITH reasoning_chain AS (
+        SELECT * FROM multi_hop_reasoning(start_node, max_hops)
+        ORDER BY cumulative_elo DESC
+        LIMIT 1
+    )
+    SELECT
+        v.text AS answer,
+        (1.0 - (1.0 / (1.0 + rc.cumulative_elo))) AS confidence, -- Sigmoid-like normalization of ELO
+        (
+            SELECT ARRAY_AGG(vp.text ORDER BY ordinal)
+            FROM UNNEST(rc.path) WITH ORDINALITY AS p(id, ordinal)
+            JOIN v_composition_text vp ON vp.composition_id = p.id
+        ) AS reasoning_path
+    FROM
+        reasoning_chain rc
+    JOIN
+        v_composition_text v ON v.composition_id = rc.final_composition_id;
 END;
 $$;
 
-COMMENT ON FUNCTION answer_question IS 'Answer natural language questions using geometric reasoning';
+COMMENT ON FUNCTION answer_question IS 'Answer questions by traversing the High-ELO Knowledge Graph';

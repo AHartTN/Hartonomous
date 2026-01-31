@@ -177,6 +177,38 @@ void SafetensorLoader::load_safetensor_file(const std::string& path) {
 
     json header = json::parse(header_data.begin(), header_data.end());
 
+    // Helper for FP16 to FP32 conversion (IEEE 754)
+    auto half_to_float = [](uint16_t h) -> float {
+        uint32_t s = (h >> 15) & 0x0001;
+        uint32_t e = (h >> 10) & 0x001F;
+        uint32_t m = h & 0x03FF;
+
+        if (e == 0) {
+            if (m == 0) {
+                // Zero
+                uint32_t val = s << 31;
+                float f;
+                std::memcpy(&f, &val, 4);
+                return f;
+            } else {
+                // Denormalized
+                return (s ? -1.0f : 1.0f) * std::ldexp((float)m, -24);
+            }
+        } else if (e == 31) {
+            // Inf or NaN
+            uint32_t val = (s << 31) | 0x7F800000 | (m << 13);
+            float f;
+            std::memcpy(&f, &val, 4);
+            return f;
+        } else {
+            // Normalized
+            uint32_t val = (s << 31) | ((e + 112) << 23) | (m << 13);
+            float f;
+            std::memcpy(&f, &val, 4);
+            return f;
+        }
+    };
+
     // Parse tensors
     for (auto& [name, tensor_info] : header.items()) {
         if (name == "__metadata__") continue;  // Skip metadata
@@ -213,9 +245,11 @@ void SafetensorLoader::load_safetensor_file(const std::string& path) {
         if (tensor.dtype == "F32") {
             std::memcpy(tensor.data.data(), raw_data.data(), data_size);
         } else if (tensor.dtype == "F16") {
-            // TODO: Proper FP16 conversion
-            // For now, just zero
-            std::fill(tensor.data.begin(), tensor.data.end(), 0.0f);
+            // Convert FP16 to FP32
+            const uint16_t* half_data = (const uint16_t*)raw_data.data();
+            for (size_t i = 0; i < num_elements; ++i) {
+                tensor.data[i] = half_to_float(half_data[i]);
+            }
         } else {
             // Unsupported dtype, fill with zeros
             std::fill(tensor.data.begin(), tensor.data.end(), 0.0f);

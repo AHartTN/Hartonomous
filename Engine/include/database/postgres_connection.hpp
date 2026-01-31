@@ -82,6 +82,21 @@ public:
                std::function<void(const std::vector<std::string>&)> callback);
 
     /**
+     * @brief Send data for COPY command
+     * 
+     * @param buffer Data to send
+     * @param nbytes Length of buffer
+     */
+    void copy_data(const char* buffer, int nbytes);
+
+    /**
+     * @brief End COPY command
+     * 
+     * @param error_msg If not null, aborts the copy with this error
+     */
+    void copy_end(const char* error_msg = nullptr);
+
+    /**
      * @brief Begin transaction
      */
     void begin();

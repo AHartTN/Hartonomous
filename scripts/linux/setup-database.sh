@@ -162,10 +162,17 @@ print_success "✓ PostGIS verified: $POSTGIS_INFO"
 echo ""
 print_info "Applying database schema..."
 
+# Determine directories
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+SQL_DIR="$SCRIPT_DIR/../sql"
+
+# Change to SQL directory so relative imports works
+cd "$SQL_DIR" || exit 1
+
 SCHEMA_FILES=(
-    "../sql/00-foundation.sql"
-    "../sql/01-core-tables.sql"
-    "../sql/02-functions.sql"
+    "00-foundation.sql"
+    "01-core-tables.sql"
+    "02-functions.sql"
 )
 
 for SCHEMA_FILE in "${SCHEMA_FILES[@]}"; do

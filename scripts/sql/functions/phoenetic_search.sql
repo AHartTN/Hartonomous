@@ -1,42 +1,31 @@
-
 -- ==============================================================================
--- SEMANTIC CLUSTERING: Phonetic and structural similarity
+-- PHOENETIC SEARCH: Search by sound-alike (Refactored for Atomized Schema)
 -- ==============================================================================
 
--- Function: Find phonetically similar compositions
-CREATE OR REPLACE FUNCTION phonetic_search(
+CREATE OR REPLACE FUNCTION phoenetic_search(
     query_text TEXT,
     max_results INTEGER DEFAULT 10
 )
 RETURNS TABLE (
-    composition_hash BYTEA,
+    composition_id UUID,
     text TEXT,
-    phonetic_similarity DOUBLE PRECISION
+    similarity DOUBLE PRECISION
 )
-LANGUAGE plpgsql STABLE
+LANGUAGE sql STABLE
 AS $$
-BEGIN
-    -- Use Fréchet distance as proxy for phonetic similarity
-    -- Characters with similar structure cluster together in 4D
-    -- Example: "King" near "Ding" (K and D are both plosives)
-
-    RETURN QUERY
     SELECT
-        c.hash,
-        c.text,
-        1.0 / (1.0 + st_frechet_distance_4d(
-            (SELECT hash FROM compositions WHERE text = query_text LIMIT 1),
-            c.hash
-        )) AS phonetic_similarity
+        v.composition_id,
+        v.text,
+        similarity(v.text, query_text) AS similarity
     FROM
-        compositions c
+        v_composition_text v
     WHERE
-        c.text != query_text
-        AND LENGTH(c.text) BETWEEN LENGTH(query_text) - 2 AND LENGTH(query_text) + 2
+        -- Use Soundex/Metaphone for blocking
+        soundex(v.text) = soundex(query_text)
+        OR metaphone(v.text, 4) = metaphone(query_text, 4)
     ORDER BY
-        phonetic_similarity DESC
+        similarity DESC
     LIMIT max_results;
-END;
 $$;
 
-COMMENT ON FUNCTION phonetic_search IS 'Find phonetically similar words using 4D trajectory similarity';
+COMMENT ON FUNCTION phoenetic_search IS 'Search compositions by phonetic similarity (using reconstructed text)';
