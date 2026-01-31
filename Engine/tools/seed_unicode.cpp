@@ -14,6 +14,7 @@
 #include <atomic>
 #include <iomanip>
 #include <sstream>
+#include <endian.h>
 
 using namespace Hartonomous;
 using namespace hartonomous::unicode;
@@ -27,7 +28,8 @@ constexpr int BATCH_SIZE = 10000;
 std::atomic<uint32_t> g_processed_count{0};
 
 // Helper for UUID formatting
-std::string hash_to_uuid(const std::vector<uint8_t>& hash) {
+template<typename HashType>
+std::string hash_to_uuid(const HashType& hash) {
     static const char hex_chars[] = "0123456789abcdef";
     std::string uuid;
     uuid.reserve(36);
@@ -74,14 +76,19 @@ void worker_thread(uint32_t start_cp, uint32_t end_cp, PostgresConnection* db) {
         }
         first = false;
 
-        // Physicality
-        phys_sql << "('" << phys_uuid << "', '0', "
-                 << "ST_GeomFromText('POINT ZM(" 
-                 << result.s3_position[0] << " " << result.s3_position[1] << " " 
-                 << result.s3_position[2] << " " << result.s3_position[3] << ")', 0))";
+        uint64_t hilbert_hi = htobe64(result.hilbert_index.hi);
+        uint64_t hilbert_lo = htobe64(result.hilbert_index.lo);
+        uint32_t codepoint_be = htobe32(cp);
 
-        // Atom
-        atom_sql << "('" << atom_uuid << "', " << cp << ", '" << phys_uuid << "')";
+        phys_sql << "('" << phys_uuid << "',E'\\\\x";
+        phys_sql << std::hex << std::setfill('0');
+        phys_sql << std::setw(16) << hilbert_hi << std::setw(16) << hilbert_lo;
+        phys_sql << std::dec << "',ST_GeomFromText('POINT ZM("
+                 << result.s3_position[0] << " " << result.s3_position[1] << " "
+                 << result.s3_position[2] << " " << result.s3_position[3] << ")',0))";
+
+        atom_sql << "('" << atom_uuid << "',E'\\\\x" << std::hex << std::setfill('0')
+                 << std::setw(8) << codepoint_be << std::dec << "','" << phys_uuid << "')";
 
         count++;
         g_processed_count++;

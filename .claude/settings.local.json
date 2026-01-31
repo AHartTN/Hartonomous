@@ -20,7 +20,26 @@
       "Bash(./scripts/01-rebuild-database.sh:*)",
       "Bash(psql -d hypercube -c \"CREATE EXTENSION hartonomous; SELECT hartonomous_version\\(\\);\")",
       "Bash(nm -D:*)",
-      "Bash(psql:*)"
+      "Bash(psql:*)",
+      "Bash(nm:*)",
+      "Bash(LD_LIBRARY_PATH=/home/ahart/Projects/Hartonomous/build/linux-release-max-perf/Engine:/home/ahart/Projects/Hartonomous/Engine/external/tree-sitter ldd:*)",
+      "Bash(ls:*)",
+      "Bash(/home/ahart/Projects/Hartonomous/scripts/reset_db.sh:*)",
+      "Bash(LD_LIBRARY_PATH=./Engine:$LD_LIBRARY_PATH timeout 5 ./Engine/tools/seed_unicode:*)",
+      "Bash(pkill:*)",
+      "Bash(PGDATABASE=hartonomous LD_LIBRARY_PATH=./Engine:$LD_LIBRARY_PATH timeout 10 ./Engine/tools/seed_unicode:*)",
+      "Bash(PGDATABASE=hartonomous LD_LIBRARY_PATH=./Engine:$LD_LIBRARY_PATH ./Engine/tools/ingest_text:*)",
+      "Bash(PGDATABASE=hartonomous LD_LIBRARY_PATH=./Engine timeout 5 ./Engine/tools/ingest_text:*)",
+      "Bash(PGDATABASE=hartonomous LD_LIBRARY_PATH=./Engine timeout 10 ./Engine/tools/ingest_text:*)",
+      "Bash(pkg-config:*)",
+      "Bash(ldconfig:*)",
+      "Bash(./build/linux-release-max-perf/Engine/tools/ingest_text:*)",
+      "Bash(gdb:*)",
+      "Bash(./scripts/linux/build.sh:*)",
+      "Bash(/usr/bin/cmake:*)",
+      "Bash(grep:*)",
+      "Bash(./setup-database.sh:*)",
+      "Bash(/home/ahart/Projects/Hartonomous/build/linux-release-max-perf/Engine/tools/ingest_text:*)"
     ]
   }
 }

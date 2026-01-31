@@ -1,0 +1,12 @@
+\i types/00-custom_types.sql
+\i tables/01-Tenant.sql
+\i tables/02-User.sql
+\i tables/03-Content.sql
+\i tables/04-Physicality.sql
+\i tables/05-Atom.sql
+\i tables/06-Composition.sql
+\i tables/07-CompositionSequence.sql
+\i tables/08-Relation.sql
+\i tables/09-RelationSequence.sql
+\i tables/10-RelationRating.sql
+\i tables/11-RelationEvidence.sql

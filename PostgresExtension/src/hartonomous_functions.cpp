@@ -10,6 +10,7 @@
 #include <unicode/codepoint_projection.hpp>
 #include <geometry/super_fibonacci.hpp>
 #include <spatial/hilbert_curve_4d.hpp>
+#include <iomanip>
 
 extern "C" {
 #include <utils/array.h>
@@ -126,15 +127,16 @@ extern "C" Datum compute_centroid(PG_FUNCTION_ARGS) {
         
         ArrayType* input_array = PG_GETARG_ARRAYTYPE_P(0);
         // ... (Deconstruction logic similar to before to get points)
-        // For simplicity in this step, let's keep the input processing generic 
+        // For simplicity in this step, let's keep the input processing generic
         // but ensure the OUTPUT is WKT.
-        
+
         // ... (Re-using the previous deconstruction logic but outputting WKT)
-        
+
         int nelems;
         Datum* elems;
         bool* nulls;
-        get_array_elements(input_array, &nelems, &elems, &nulls);
+        deconstruct_array(input_array, ARR_ELEMTYPE(input_array), -1, false, 'd',
+                         &elems, &nulls, &nelems);
 
         Eigen::Vector4d sum = Eigen::Vector4d::Zero();
         int valid_points = 0;
@@ -145,7 +147,8 @@ extern "C" Datum compute_centroid(PG_FUNCTION_ARGS) {
             int point_dims;
             Datum* point_vals;
             bool* point_nulls;
-            get_array_elements(point_arr, &point_dims, &point_vals, &point_nulls);
+            deconstruct_array(point_arr, ARR_ELEMTYPE(point_arr), -1, false, 'd',
+                            &point_vals, &point_nulls, &point_dims);
 
             if (point_dims >= 4) {
                 sum[0] += DatumGetFloat8(point_vals[0]);

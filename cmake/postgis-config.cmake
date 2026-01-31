@@ -23,15 +23,23 @@ find_library(PostGIS_LIBRARY
     NO_CMAKE_SYSTEM_PATH
 )
 
-# 4. Create Target
+# 4. Find GEOS and proj (required dependencies for liblwgeom)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(GEOS REQUIRED geos)
+pkg_check_modules(PROJ REQUIRED proj)
+
+# 5. Create Target
 if(PostGIS_INCLUDE_DIR AND PostGIS_LIBRARY)
     if(NOT TARGET PostGIS::PostGIS)
         add_library(PostGIS::PostGIS UNKNOWN IMPORTED)
         set_target_properties(PostGIS::PostGIS PROPERTIES
             IMPORTED_LOCATION "${PostGIS_LIBRARY}"
             INTERFACE_INCLUDE_DIRECTORIES "${PostGIS_INCLUDE_DIR}"
+            INTERFACE_LINK_LIBRARIES "${GEOS_LIBRARIES};${PROJ_LIBRARIES}"
         )
         message(STATUS "PostGIS: Found at ${POSTGIS_SUBMODULE_PATH}")
+        message(STATUS "  GEOS: ${GEOS_LIBRARIES}")
+        message(STATUS "  proj: ${PROJ_LIBRARIES}")
     endif()
 else()
     message(FATAL_ERROR "PostGIS not found in submodule: ${POSTGIS_SUBMODULE_PATH}")

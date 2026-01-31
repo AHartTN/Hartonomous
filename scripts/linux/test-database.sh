@@ -28,7 +28,7 @@ print_success "Statistics retrieved"
 # Test 3: Unicode atoms
 print_step "Test 3: Check Unicode atoms..."
 ATOM_COUNT=$(psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -t -c \
-    "SELECT COUNT(*) FROM hartonomous.atoms;")
+    "SELECT COUNT(*) FROM hartonomous.Atom;")
 print_success "Atom count: $ATOM_COUNT"
 
 # Test 4: Sample Unicode data

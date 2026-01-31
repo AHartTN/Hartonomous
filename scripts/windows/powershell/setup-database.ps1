@@ -205,7 +205,7 @@ if ($Seed) {
     $duration = ((Get-Date) - $seedStart).TotalSeconds
     Write-Host "✓ Seeding complete in $([math]::Round($duration, 1))s" -ForegroundColor Green
 
-    $count = psql -t -c "SELECT COUNT(*) FROM hartonomous.atoms;"
+    $count = psql -t -c "SELECT COUNT(*) FROM hartonomous.Atom;"
     Write-Host "  Atoms: $($count.Trim())" -ForegroundColor Cyan
     Write-Host ""
 }

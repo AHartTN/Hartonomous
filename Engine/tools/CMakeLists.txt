@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.25)
+cmake_minimum_required(VERSION 3.22)
 
 # Seed Unicode tool
 add_executable(seed_unicode seed_unicode.cpp)
@@ -23,3 +23,8 @@ target_link_libraries(seed_unicode PRIVATE
 
 # Install to build directory
 install(TARGETS seed_unicode DESTINATION ${CMAKE_BINARY_DIR}/tools)
+
+add_executable(ingest_text ingest_text.cpp)
+target_include_directories(ingest_text PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
+target_link_libraries(ingest_text PRIVATE engine)
+install(TARGETS ingest_text DESTINATION ${CMAKE_BINARY_DIR}/tools)
