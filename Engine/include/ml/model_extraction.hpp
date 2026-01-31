@@ -240,7 +240,7 @@ public:
      */
     static ExtractedGraph extract(
         const std::vector<Eigen::MatrixXd>& feature_maps,  // One per channel
-        const std::vector<Eigen::MatrixXd>& filters,       // One per filter
+        [[maybe_unused]] const std::vector<Eigen::MatrixXd>& filters,  // One per filter (reserved for filter-based edges)
         int kernel_size = 3
     ) {
         ExtractedGraph graph;
@@ -435,7 +435,7 @@ public:
      */
     static ExtractedGraph extract(
         const std::string& model_type,
-        void* model_data  // Type-erased pointer to model-specific data
+        [[maybe_unused]] void* model_data  // Type-erased pointer to model-specific data (reserved for full implementation)
     ) {
         if (model_type == "transformer") {
             // Cast to transformer data and extract

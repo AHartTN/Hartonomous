@@ -4,6 +4,10 @@
 
 set -e  # Exit on error
 
+# Determine repository root
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
+
 # Default values
 PRESET="linux-release-max-perf"
 TARGET=""
@@ -148,12 +152,12 @@ fi
 echo ""
 print_info "Checking submodules..."
 SUBMODULES=(
-    "../../Engine/external/blake3"
-    "../../Engine/external/eigen"
-    "../../Engine/external/hilbert"
-    "../../Engine/external/hnswlib"
-    "../../Engine/external/json"
-    "../../Engine/external/spectra"
+    "$PROJECT_ROOT/Engine/external/blake3"
+    "$PROJECT_ROOT/Engine/external/eigen"
+    "$PROJECT_ROOT/Engine/external/hilbert"
+    "$PROJECT_ROOT/Engine/external/hnswlib"
+    "$PROJECT_ROOT/Engine/external/json"
+    "$PROJECT_ROOT/Engine/external/spectra"
 )
 
 MISSING_SUBMODULES=()
@@ -172,7 +176,7 @@ if [ ${#MISSING_SUBMODULES[@]} -gt 0 ]; then
     git submodule update --init --recursive
 fi
 
-BUILD_DIR="../../build/$PRESET"
+BUILD_DIR="$PROJECT_ROOT/build/$PRESET"
 
 # Clean if requested
 if [ "$CLEAN" = true ]; then
@@ -184,14 +188,14 @@ if [ "$CLEAN" = true ]; then
     fi
     # Also clean .NET artifacts
     print_info "Cleaning .NET artifacts..."
-    find ../../. -type d -name "bin" -o -name "obj" | xargs rm -rf
+    find "$PROJECT_ROOT" -type d -name "bin" -o -name "obj" | xargs rm -rf
     print_success "✓ Cleaned .NET artifacts"
 fi
 
 # Configure
 echo ""
-print_info "Configuring build (preset: $PRESET)...$BUILD_DIR"
-if cmake -S ../../. -B "$BUILD_DIR" --preset "$PRESET"; then
+print_info "Configuring build (preset: $PRESET)..."
+if cmake -S "$PROJECT_ROOT" -B "$BUILD_DIR" --preset "$PRESET"; then
     print_success "✓ Configuration complete"
 else
     print_error "✗ Configuration failed"
@@ -201,12 +205,15 @@ fi
 # Build C++
 echo ""
 
+# Define local library path for runtime linker
+LOCAL_LD_PATH="$BUILD_DIR/Engine"
+
 if [ -n "$TARGET" ]; then
     print_info "Building target: $TARGET..."
-    BUILD_CMD="cmake --build $BUILD_DIR --target $TARGET -j $JOBS"
+    BUILD_CMD="env LD_LIBRARY_PATH=\"$LOCAL_LD_PATH:$LD_LIBRARY_PATH\" cmake --build $BUILD_DIR --target $TARGET -j $JOBS"
 else
     print_info "Building all C++ targets..."
-    BUILD_CMD="cmake --build $BUILD_DIR -j $JOBS"
+    BUILD_CMD="env LD_LIBRARY_PATH=\"$LOCAL_LD_PATH:$LD_LIBRARY_PATH\" cmake --build $BUILD_DIR -j $JOBS"
 fi
 
 if $BUILD_CMD; then
@@ -221,7 +228,7 @@ echo ""
 print_info "Building .NET Solution..."
 if command -v dotnet &> /dev/null; then
     print_info "Restoring dependencies..."
-    if dotnet restore Hartonomous.sln; then
+    if dotnet restore "$PROJECT_ROOT/Hartonomous.sln"; then
         print_success "✓ Restore complete"
     else
         print_error "✗ Restore failed"
@@ -229,7 +236,7 @@ if command -v dotnet &> /dev/null; then
     fi
 
     print_info "Building (Release)..."
-    if dotnet build Hartonomous.sln -c Release --no-restore; then
+    if dotnet build "$PROJECT_ROOT/Hartonomous.sln" -c Release --no-restore; then
         print_success "✓ .NET Build complete"
     else
         print_error "✗ .NET Build failed"
@@ -244,7 +251,7 @@ fi
 if [ "$TEST" = true ]; then
     echo ""
     print_info "Running tests..."
-    if (cd "$BUILD_DIR" && ctest --output-on-failure); then
+    if (cd "$BUILD_DIR" && env LD_LIBRARY_PATH="$LOCAL_LD_PATH:$LD_LIBRARY_PATH" /usr/bin/ctest --output-on-failure); then
         print_success "✓ Tests passed"
     else
         print_error "✗ Tests failed"
@@ -255,8 +262,8 @@ fi
 # Install
 if [ "$INSTALL" = true ]; then
     echo ""
-    print_info "Installing..."
-    if sudo cmake --install "$BUILD_DIR"; then
+    print_info "Installing Hartonomous System..."
+    if "$SCRIPT_DIR/install.sh"; then
         print_success "✓ Installation complete"
     else
         print_error "✗ Installation failed"

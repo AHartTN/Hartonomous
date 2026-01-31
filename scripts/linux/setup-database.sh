@@ -5,7 +5,7 @@
 set -e
 
 # Default values
-DB_NAME="hartonomous"
+DB_NAME="hypercube"
 DB_USER="postgres"
 DB_HOST="localhost"
 DB_PORT="5432"
@@ -142,63 +142,40 @@ else
     exit 1
 fi
 
-# Install PostGIS extension
+# Create schema
 echo ""
-print_info "Installing PostGIS extension..."
-if psql -U "$DB_USER" -h "$DB_HOST" -p "$DB_PORT" -d "$DB_NAME" -c "CREATE EXTENSION IF NOT EXISTS postgis;"; then
-    print_success "✓ PostGIS extension installed"
-else
-    print_error "✗ Could not install PostGIS extension"
-    print_error "  Make sure PostGIS is installed on your system"
-    exit 1
-fi
+print_info "Creating hartonomous schema..."
+psql -U "$DB_USER" -h "$DB_HOST" -p "$DB_PORT" -d "$DB_NAME" -c "CREATE SCHEMA IF NOT EXISTS hartonomous;"
 
-# Verify PostGIS
-print_info "Verifying PostGIS..."
-POSTGIS_INFO=$(psql -U "$DB_USER" -h "$DB_HOST" -p "$DB_PORT" -d "$DB_NAME" -t -c "SELECT PostGIS_Version();" | xargs)
-print_success "✓ PostGIS verified: $POSTGIS_INFO"
-
-# Run schema scripts
+# Install extensions
 echo ""
-print_info "Applying database schema..."
-
-# Determine directories
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-SQL_DIR="$SCRIPT_DIR/../sql"
-
-# Change to SQL directory so relative imports works
-cd "$SQL_DIR" || exit 1
-
-SCHEMA_FILES=(
-    "00-foundation.sql"
-    "01-core-tables.sql"
-    "02-functions.sql"
-)
-
-for SCHEMA_FILE in "${SCHEMA_FILES[@]}"; do
-    if [ -f "$SCHEMA_FILE" ]; then
-        print_info "  Applying $SCHEMA_FILE..."
-        if psql -U "$DB_USER" -h "$DB_HOST" -p "$DB_PORT" -d "$DB_NAME" -f "$SCHEMA_FILE"; then
-            print_success "  ✓ Applied $SCHEMA_FILE"
-        else
-            print_error "  ✗ Failed to apply $SCHEMA_FILE"
-            exit 1
-        fi
+print_info "Installing extensions..."
+for ext in postgis s3 hartonomous; do
+    print_info "  Installing $ext..."
+    if psql -U "$DB_USER" -h "$DB_HOST" -p "$DB_PORT" -d "$DB_NAME" -c "CREATE EXTENSION IF NOT EXISTS $ext CASCADE;"; then
+        print_success "  ✓ $ext extension installed"
     else
-        print_warning "  ⚠ Schema file not found: $SCHEMA_FILE"
+        print_error "  ✗ Could not install $ext extension"
+        exit 1
     fi
 done
 
-# Indexes are already created by schema/01-core-tables.sql
-print_info "Indexes created by schema definitions."
+# Set search_path
+psql -U "$DB_USER" -h "$DB_HOST" -p "$DB_PORT" -d "$DB_NAME" -c "ALTER DATABASE $DB_NAME SET search_path TO public, hartonomous;"
 
 # Verify installation
 echo ""
 print_info "Verifying installation..."
-VERIFY_SQL="SELECT COUNT(*) AS table_count FROM information_schema.tables WHERE table_schema = 'hartonomous' AND table_type = 'BASE TABLE';"
+# Check for a specific table from the hartonomous extension
+VERIFY_SQL="SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'physicality' AND table_schema = 'hartonomous';"
 
-TABLE_COUNT=$(psql -U "$DB_USER" -h "$DB_HOST" -p "$DB_PORT" -d "$DB_NAME" -t -c "$VERIFY_SQL" | xargs)
-print_success "✓ Verification complete: $TABLE_COUNT tables created"
+TABLE_EXISTS=$(psql -U "$DB_USER" -h "$DB_HOST" -p "$DB_PORT" -d "$DB_NAME" -t -c "$VERIFY_SQL" | xargs)
+if [ "$TABLE_EXISTS" -eq "1" ]; then
+    print_success "✓ Verification complete: Hartonomous schema is present"
+else
+    print_error "✗ Verification failed: Physicality table not found"
+    exit 1
+fi
 
 # Summary
 echo ""

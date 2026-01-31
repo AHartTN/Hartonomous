@@ -89,15 +89,17 @@ bool hartonomous_ingest_text(h_ingester_t handle, const char* text, HIngestionSt
         
         out_stats->atoms_total = stats.atoms_total;
         out_stats->atoms_new = stats.atoms_new;
-        out_stats->atoms_existing = stats.atoms_existing;
         out_stats->compositions_total = stats.compositions_total;
         out_stats->compositions_new = stats.compositions_new;
-        out_stats->compositions_existing = stats.compositions_existing;
         out_stats->relations_total = stats.relations_total;
+        out_stats->relations_new = stats.relations_new;
+        out_stats->evidence_count = stats.evidence_count;
         out_stats->original_bytes = stats.original_bytes;
-        out_stats->stored_bytes = stats.stored_bytes;
-        out_stats->compression_ratio = stats.compression_ratio();
-        
+        out_stats->ngrams_extracted = stats.ngrams_extracted;
+        out_stats->ngrams_significant = stats.ngrams_significant;
+        out_stats->cooccurrences_found = stats.cooccurrences_found;
+        out_stats->cooccurrences_significant = stats.cooccurrences_significant;
+
         return true;
     } catch (const std::exception& e) {
         set_error(e);
@@ -110,17 +112,19 @@ bool hartonomous_ingest_file(h_ingester_t handle, const char* file_path, HIngest
         if (!handle || !file_path || !out_stats) return false;
         auto* ingester = static_cast<Hartonomous::TextIngester*>(handle);
         auto stats = ingester->ingest_file(file_path);
-        
+
         out_stats->atoms_total = stats.atoms_total;
         out_stats->atoms_new = stats.atoms_new;
-        out_stats->atoms_existing = stats.atoms_existing;
         out_stats->compositions_total = stats.compositions_total;
         out_stats->compositions_new = stats.compositions_new;
-        out_stats->compositions_existing = stats.compositions_existing;
         out_stats->relations_total = stats.relations_total;
+        out_stats->relations_new = stats.relations_new;
+        out_stats->evidence_count = stats.evidence_count;
         out_stats->original_bytes = stats.original_bytes;
-        out_stats->stored_bytes = stats.stored_bytes;
-        out_stats->compression_ratio = stats.compression_ratio();
+        out_stats->ngrams_extracted = stats.ngrams_extracted;
+        out_stats->ngrams_significant = stats.ngrams_significant;
+        out_stats->cooccurrences_found = stats.cooccurrences_found;
+        out_stats->cooccurrences_significant = stats.cooccurrences_significant;
         
         return true;
     } catch (const std::exception& e) {

@@ -39,7 +39,11 @@
       "Bash(/usr/bin/cmake:*)",
       "Bash(grep:*)",
       "Bash(./setup-database.sh:*)",
-      "Bash(/home/ahart/Projects/Hartonomous/build/linux-release-max-perf/Engine/tools/ingest_text:*)"
+      "Bash(/home/ahart/Projects/Hartonomous/build/linux-release-max-perf/Engine/tools/ingest_text:*)",
+      "Bash(systemctl status:*)",
+      "Bash(lscpu:*)",
+      "Bash(source:*)",
+      "Bash(./scripts/linux/01-seed-unicode.sh:*)"
     ]
   }
 }

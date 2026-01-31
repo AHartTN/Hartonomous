@@ -45,14 +45,16 @@ HARTONOMOUS_API bool hartonomous_db_is_connected(h_db_connection_t handle);
 struct HIngestionStats {
     size_t atoms_total;
     size_t atoms_new;
-    size_t atoms_existing;
     size_t compositions_total;
     size_t compositions_new;
-    size_t compositions_existing;
     size_t relations_total;
+    size_t relations_new;
+    size_t evidence_count;
     size_t original_bytes;
-    size_t stored_bytes;
-    double compression_ratio;
+    size_t ngrams_extracted;
+    size_t ngrams_significant;
+    size_t cooccurrences_found;
+    size_t cooccurrences_significant;
 };
 
 HARTONOMOUS_API h_ingester_t hartonomous_ingester_create(h_db_connection_t db_handle);

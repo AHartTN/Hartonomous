@@ -28,15 +28,21 @@ if(USE_GTEST)
 endif()
 
 # Macro to add a test
-macro(add_hartonomous_test TEST_NAME)
-    add_executable(${TEST_NAME} ${TEST_NAME}.cpp)
+macro(add_hartonomous_test REL_PATH)
+    # Convert path to valid target name (e.g. suite/test -> suite_test)
+    string(REPLACE "/" "_" TEST_NAME ${REL_PATH})
+    
+    add_executable(${TEST_NAME} ${REL_PATH}.cpp)
     target_link_libraries(${TEST_NAME} PRIVATE ${TEST_LINK_LIBS} test_helpers)
 
     if(USE_GTEST)
         # Google Test integration
         gtest_discover_tests(
             ${TEST_NAME}
-            PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+            PROPERTIES 
+                WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+                ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:engine>:$ENV{LD_LIBRARY_PATH}"
+            DISCOVERY_MODE PRE_TEST
         )
     else()
         # Basic CTest integration
@@ -47,13 +53,13 @@ macro(add_hartonomous_test TEST_NAME)
     endif()
 endmacro()
 
-# Geometry tests
-add_hartonomous_test(test_hopf_fibration)
-add_hartonomous_test(test_super_fibonacci)
-add_hartonomous_test(test_hilbert_curve_4d)
-
-# Integration test (full pipeline)
-add_hartonomous_test(test_codepoint_projection)
+# Refactored Test Suite
+add_hartonomous_test(suite/test_hashing)
+add_hartonomous_test(suite/test_geometry_core)
+add_hartonomous_test(suite/test_projections)
+add_hartonomous_test(suite/test_spatial_index)
+add_hartonomous_test(suite/test_database_marshal)
+add_hartonomous_test(suite/test_end_to_end_pipeline)
 
 # Benchmark executables (not part of CTest)
 

@@ -1,0 +1,5 @@
+comment = 's3: 4D S³ geometry engine (SIMD, MKL/Eigen, HNSW, GiST KNN hooks)'
+default_version = '0.1.0'
+relocatable = false
+schema = hartonomous
+requires = 'postgis'

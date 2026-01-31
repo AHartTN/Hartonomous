@@ -1,0 +1,11 @@
+CREATE TABLE IF NOT EXISTS hartonomous.Atom (
+    Id UUID PRIMARY KEY,
+    Codepoint INT NOT NULL UNIQUE,
+    PhysicalityId UUID NOT NULL REFERENCES hartonomous.Physicality(Id) ON DELETE CASCADE,
+    CreatedAt TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    ModifiedAt TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    ValidatedAt TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_Atom_Codepoint ON hartonomous.Atom(Codepoint);
+CREATE INDEX IF NOT EXISTS idx_Atom_Physicality ON hartonomous.Atom(PhysicalityId);

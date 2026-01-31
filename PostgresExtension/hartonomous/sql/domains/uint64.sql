@@ -1,0 +1,2 @@
+CREATE DOMAIN hartonomous.uint64 AS numeric(20,0)
+    CHECK (VALUE >= 0 AND VALUE < 18446744073709551616);

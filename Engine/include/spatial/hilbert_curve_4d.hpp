@@ -48,6 +48,18 @@ public:
             return (static_cast<unsigned __int128>(hi) << 64) | lo;
         }
 
+        std::string to_string() const {
+            unsigned __int128 val = to_uint128();
+            if (val == 0) return "0";
+            std::string s;
+            while (val > 0) {
+                s += (char)('0' + (val % 10));
+                val /= 10;
+            }
+            std::reverse(s.begin(), s.end());
+            return s;
+        }
+
         // Comparison operators
         bool operator==(const HilbertIndex& other) const {
             return hi == other.hi && lo == other.lo;

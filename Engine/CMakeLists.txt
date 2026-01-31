@@ -72,7 +72,20 @@ file(GLOB_RECURSE COGNITIVE_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/cognitive/*.cpp"
 )
 
-target_sources(engine PRIVATE ${COGNITIVE_SOURCES})
+file(GLOB_RECURSE GEOMETRY_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/geometry/*.cpp"
+)
+
+file(GLOB_RECURSE ML_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/ml/*.cpp"
+)
+
+file(GLOB_RECURSE UNICODE_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/unicode/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/unicode/ingestor/*.cpp"
+)
+
+target_sources(engine PRIVATE ${COGNITIVE_SOURCES} ${GEOMETRY_SOURCES} ${ML_SOURCES} ${UNICODE_SOURCES})
 
 # ==============================================================================
 #  TOOLS

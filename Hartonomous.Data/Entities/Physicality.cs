@@ -1,5 +1,6 @@
-using System.ComponentModel.DataAnnotations.Schema;
+using System;
 using Hartonomous.Core.Primitives;
+using NetTopologySuite.Geometries;
 
 namespace Hartonomous.Data.Entities;
 
@@ -7,13 +8,14 @@ public class Physicality
 {
     public HartonomousId Id { get; set; }
     
-    // Storing as string or BigInteger because native UInt128 support in EF Core 
-    // might still map to numeric(38) or uuid dependent on provider.
-    // Given the C++ sent "0" string, we'll use a numeric backing or string for now.
-    // Ideally this maps to a NUMERIC(39,0) column.
-    public UInt128 HilbertIndex { get; set; }
+    // Hilbert index stored as UINT128 (mapped to numeric(39,0))
+    public UInt128 Hilbert { get; set; }
     
-    // WKT representation for now, until NTS is fully integrated.
-    [Column(TypeName = "geometry")]
-    public string Centroid { get; set; } = string.Empty;
+    // 4D Spatial data (POINTZM)
+    public Point Centroid { get; set; } = Point.Empty;
+    
+    // 4D Trajectory data (GEOMETRYZM)
+    public Geometry? Trajectory { get; set; }
+    
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

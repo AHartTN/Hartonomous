@@ -6,7 +6,7 @@
 namespace Hartonomous {
 
 AtomStore::AtomStore(PostgresConnection& db) : copy_(db) {
-    copy_.begin_table("Atom", {"Id", "Codepoint", "PhysicalityId"});
+    copy_.begin_table("hartonomous.atom", {"id", "codepoint", "physicalityid"});
 }
 
 std::string AtomStore::hash_to_uuid(const BLAKE3Pipeline::Hash& hash) {
@@ -23,11 +23,7 @@ void AtomStore::store(const AtomRecord& rec) {
     std::string uuid = hash_to_uuid(rec.id);
     if (seen_.count(uuid)) return;
 
-    uint32_t cp_be = htobe32(rec.codepoint);
-    std::ostringstream cp_hex;
-    cp_hex << "\\\\x" << std::hex << std::setfill('0') << std::setw(8) << cp_be;
-
-    copy_.add_row({uuid, cp_hex.str(), hash_to_uuid(rec.physicality_id)});
+    copy_.add_row({uuid, std::to_string(rec.codepoint), hash_to_uuid(rec.physicality_id)});
     seen_.insert(uuid);
 }
 

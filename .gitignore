@@ -113,4 +113,4 @@ config.status
 # !libs/*.lib
 # !cmake/*.cmake
 
-test-data/
+test-data/UCDIngestor/data/

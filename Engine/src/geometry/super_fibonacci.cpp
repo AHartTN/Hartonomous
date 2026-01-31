@@ -58,11 +58,13 @@ std::vector<SuperFibonacci::Vec4> SuperFibonacci::generate_points(size_t N) {
 SuperFibonacci::Vec4 SuperFibonacci::hash_to_point(const unsigned char* hash_bytes) {
     // 1. Deterministic Seed Extraction
     // Collapse 128-bit hash into a 64-bit integer index.
-    // XOR folding preserves entropy without bias.
+    // We use a mixing step to ensure all-0 and all-1 hashes don't collide.
     uint64_t part1, part2;
     std::memcpy(&part1, hash_bytes, sizeof(uint64_t));
     std::memcpy(&part2, hash_bytes + sizeof(uint64_t), sizeof(uint64_t));
-    uint64_t seed = part1 ^ part2;
+    
+    // FNV-style mixing or just a simple bit rotation
+    uint64_t seed = part1 ^ (part2 + 0x9e3779b9 + (part1 << 6) + (part1 >> 2));
 
     // 2. Normalize to t \in [0, 1)
     constexpr double NORM = 1.0 / static_cast<double>(std::numeric_limits<uint64_t>::max());

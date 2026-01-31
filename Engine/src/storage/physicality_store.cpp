@@ -10,7 +10,7 @@ extern "C" {
 namespace Hartonomous {
 
 PhysicalityStore::PhysicalityStore(PostgresConnection& db) : copy_(db) {
-    copy_.begin_table("Physicality", {"Id", "Hilbert", "Centroid"});
+    copy_.begin_table("hartonomous.physicality", {"id", "hilbert", "centroid"});
 }
 
 std::string PhysicalityStore::hash_to_uuid(const BLAKE3Pipeline::Hash& hash) {
@@ -20,16 +20,6 @@ std::string PhysicalityStore::hash_to_uuid(const BLAKE3Pipeline::Hash& hash) {
         if (i == 4 || i == 6 || i == 8 || i == 10) ss << '-';
         ss << std::setw(2) << static_cast<int>(hash[i]);
     }
-    return ss.str();
-}
-
-std::string PhysicalityStore::hilbert_to_hex(const HilbertIndex& h) {
-    uint64_t hi = htobe64(h.hi);
-    uint64_t lo = htobe64(h.lo);
-
-    std::ostringstream ss;
-    ss << "\\\\x" << std::hex << std::setfill('0')
-       << std::setw(16) << hi << std::setw(16) << lo;
     return ss.str();
 }
 
@@ -69,7 +59,7 @@ void PhysicalityStore::store(const PhysicalityRecord& rec) {
 
     copy_.add_row({
         uuid,
-        hilbert_to_hex(rec.hilbert_index),
+        rec.hilbert_index.to_string(),
         geom_to_hex(rec.centroid)
     });
     seen_.insert(uuid);

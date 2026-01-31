@@ -1,0 +1,6 @@
+Starting Unicode Seeding...
+=== Hartonomous Unicode Seeding Tool ===
+Data Directory: /home/ahart/Projects/Hartonomous/UCDIngestor/data
+
+FATAL ERROR: PostgreSQL connection failed: connection to server at "localhost" (127.0.0.1), port 5432 failed: FATAL:  database "hartonomous" does not exist
+

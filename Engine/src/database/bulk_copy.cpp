@@ -6,11 +6,38 @@ namespace Hartonomous {
 BulkCopy::BulkCopy(PostgresConnection& db) : db_(db) {}
 
 void BulkCopy::begin_table(const std::string& table_name, const std::vector<std::string>& columns) {
-    table_name_ = table_name;
+    // Parse schema-qualified name (schema.table) if present
+    auto dot_pos = table_name.find('.');
+    if (dot_pos != std::string::npos) {
+        schema_ = table_name.substr(0, dot_pos);
+        table_name_ = table_name.substr(dot_pos + 1);
+    } else {
+        schema_.clear();
+        table_name_ = table_name;
+    }
     columns_ = columns;
     row_count_ = 0;
     buffer_.str("");
     in_copy_ = false;
+}
+
+std::string BulkCopy::quote_identifier(const std::string& id) const {
+    // Quote an identifier to preserve case and handle special characters
+    std::string result = "\"";
+    for (char c : id) {
+        if (c == '"') result += "\"\"";  // Escape double quotes
+        else result += c;
+    }
+    result += "\"";
+    return result;
+}
+
+std::string BulkCopy::full_table_name() const {
+    // Return properly quoted schema.table reference
+    if (schema_.empty()) {
+        return quote_identifier(table_name_);
+    }
+    return quote_identifier(schema_) + "." + quote_identifier(table_name_);
 }
 
 void BulkCopy::escape_value(const std::string& value) {
@@ -25,20 +52,21 @@ void BulkCopy::escape_value(const std::string& value) {
 
 void BulkCopy::add_row(const std::vector<std::string>& values) {
     if (!in_copy_) {
+        // Temp table name (no schema needed - temp tables are in pg_temp)
+        std::string temp_table = quote_identifier("tmp_" + table_name_);
+
         std::ostringstream sql;
-        sql << "CREATE TEMP TABLE tmp_" << table_name_
-            << " (LIKE " << table_name_ << " INCLUDING DEFAULTS) ON COMMIT DROP";
-        std::cerr << "DEBUG SQL: " << sql.str() << "\n";
+        sql << "CREATE TEMP TABLE " << temp_table
+            << " (LIKE " << full_table_name() << " INCLUDING DEFAULTS) ON COMMIT DROP";
         db_.execute(sql.str());
 
         sql.str("");
-        sql << "COPY tmp_" << table_name_ << " (";
+        sql << "COPY " << temp_table << " (";
         for (size_t i = 0; i < columns_.size(); ++i) {
             if (i > 0) sql << ", ";
-            sql << columns_[i];
+            sql << quote_identifier(columns_[i]);
         }
         sql << ") FROM STDIN";
-        std::cerr << "DEBUG SQL: " << sql.str() << "\n";
         db_.execute(sql.str());
         in_copy_ = true;
     }
@@ -66,9 +94,11 @@ void BulkCopy::flush() {
     }
     db_.copy_end();
 
+    std::string temp_table = quote_identifier("tmp_" + table_name_);
+
     std::ostringstream sql;
-    sql << "INSERT INTO " << table_name_ << " SELECT * FROM tmp_" << table_name_
-        << " ON CONFLICT (Id) DO NOTHING";
+    sql << "INSERT INTO " << full_table_name() << " SELECT * FROM " << temp_table
+        << " ON CONFLICT (" << quote_identifier("Id") << ") DO NOTHING";
     db_.execute(sql.str());
 
     in_copy_ = false;

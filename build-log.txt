@@ -1,0 +1,275 @@
+[0;36m=== Hartonomous Build Script ===[0m
+
+[0;36mChecking dependencies...[0m
+[0;32m✓ CMake found: 3.22.1[0m
+[0;32m✓ GCC found: 11.4.0[0m
+[0;32m✓ Intel OneAPI already initialized[0m
+
+[0;36mChecking submodules...[0m
+[0;32m✓ /home/ahart/Projects/Hartonomous/Engine/external/blake3[0m
+[0;32m✓ /home/ahart/Projects/Hartonomous/Engine/external/eigen[0m
+[0;32m✓ /home/ahart/Projects/Hartonomous/Engine/external/hilbert[0m
+[0;32m✓ /home/ahart/Projects/Hartonomous/Engine/external/hnswlib[0m
+[0;32m✓ /home/ahart/Projects/Hartonomous/Engine/external/json[0m
+[0;32m✓ /home/ahart/Projects/Hartonomous/Engine/external/spectra[0m
+
+[0;36mCleaning build directory...[0m
+[0;32m✓ Cleaned /home/ahart/Projects/Hartonomous/build/linux-release-max-perf[0m
+[0;36mCleaning .NET artifacts...[0m
+[0;32m✓ Cleaned .NET artifacts[0m
+
+[0;36mConfiguring build (preset: linux-release-max-perf)...[0m
+Preset CMake variables:
+
+  CMAKE_BUILD_TYPE="Release"
+  CMAKE_EXPORT_COMPILE_COMMANDS="ON"
+  HARTONOMOUS_ENABLE_FAST_MATH="ON"
+  HARTONOMOUS_ENABLE_NATIVE_ARCH="ON"
+  HARTONOMOUS_HNSW_SIMD="AUTO"
+  HARTONOMOUS_MKL_INTERFACE="LP64"
+  HARTONOMOUS_MKL_THREADING="SEQUENTIAL"
+
+-- The C compiler identification is GNU 11.4.0
+-- The CXX compiler identification is GNU 11.4.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- 
+-- ========== Hartonomous Build Configuration ==========
+--   C++ Standard:        C++20
+--   Build Type:          Release
+--   Native Arch:         ON
+--   Fast Math:           ON
+--   MKL Threading:       SEQUENTIAL
+--   MKL Interface:       LP64
+--   HNSW SIMD:           AUTO
+--   IPO/LTO:             ON
+-- ======================================================
+-- 
+-- MKL: Using LP64 interface (32-bit integers)
+-- MKL: Using sequential (single-threaded) mode
+-- MKL: Configuration complete (LP64, SEQUENTIAL)
+-- Eigen: MKL-accelerated with BLAS/LAPACK/VML backend + SIMD vectorization
+-- HNSWLib: AUTO SIMD → -march=native
+-- HNSWLib: Header-only ANN library configured
+-- BLAKE3: Runtime SIMD dispatch enabled (SSE2/SSE4.1/AVX2/AVX512)
+-- nlohmann/json: Header-only JSON library configured
+-- Found PkgConfig: /usr/bin/pkg-config (found version "0.29.2") 
+-- Checking for module 'geos'
+--   Found geos, version 3.10.2
+-- Checking for module 'proj'
+--   Found proj, version 8.2.1
+-- PostGIS: Found at /home/ahart/Projects/Hartonomous/Engine/external/postgis
+--   GEOS: geos_c
+--   proj: proj
+-- PostgreSQL Configured: Client & Server targets ready.
+-- Tree-sitter: Found at /home/ahart/Projects/Hartonomous/Engine/external/tree-sitter
+-- Found PostgreSQL: /usr/lib/x86_64-linux-gnu/libpq.so (found version "18.1")  
+-- Found PostgreSQL: /usr/lib/x86_64-linux-gnu/libpq.so
+-- Google Test found, using for unit tests
+-- Engine: IPO/LTO enabled
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/ahart/Projects/Hartonomous/build/linux-release-max-perf
+[0;32m✓ Configuration complete[0m
+
+[0;36mBuilding all C++ targets...[0m
+[1/58] Building C object CMakeFiles/blake3_impl.dir/Engine/external/blake3/c/blake3_portable.c.o
+[2/58] Building C object CMakeFiles/blake3_impl.dir/Engine/external/blake3/c/blake3.c.o
+[3/58] Building C object CMakeFiles/blake3_impl.dir/Engine/external/blake3/c/blake3_dispatch.c.o
+[4/58] Building C object CMakeFiles/blake3_impl.dir/Engine/external/blake3/c/blake3_avx2.c.o
+[5/58] Building C object CMakeFiles/blake3_impl.dir/Engine/external/blake3/c/blake3_sse41.c.o
+[6/58] Building C object CMakeFiles/blake3_impl.dir/Engine/external/blake3/c/blake3_sse2.c.o
+[7/58] Building C object CMakeFiles/blake3_impl.dir/Engine/external/blake3/c/blake3_avx512.c.o
+[8/58] Linking C static library libblake3_impl.a
+[9/58] Building CXX object Engine/CMakeFiles/engine.dir/src/geometry/s3_bbox.cpp.o
+[10/58] Building CXX object Engine/CMakeFiles/engine.dir/src/cognitive/godel_engine.cpp.o
+[11/58] Building CXX object Engine/CMakeFiles/engine.dir/src/geometry/s3_distance.cpp.o
+[12/58] Building CXX object Engine/CMakeFiles/engine.dir/src/database/bulk_copy.cpp.o
+[13/58] Building CXX object Engine/CMakeFiles/engine.dir/src/database/postgres_connection.cpp.o
+[14/58] Building CXX object Engine/CMakeFiles/engine.dir/src/cognitive/ooda_loop.cpp.o
+[15/58] Building CXX object Engine/CMakeFiles/engine.dir/src/hashing/blake3_pipeline.cpp.o
+[16/58] Building CXX object Engine/CMakeFiles/engine.dir/src/ingestion/ngram_extractor.cpp.o
+[17/58] Building CXX object Engine/CMakeFiles/engine.dir/src/ingestion/model_package_loader.cpp.o
+[18/58] Building CXX object Engine/CMakeFiles/engine.dir/src/main.cpp.o
+[19/58] Building CXX object Engine/CMakeFiles/engine.dir/src/ingestion/safetensor_ingester.cpp.o
+[20/58] Building CXX object Engine/CMakeFiles/engine.dir/src/geometry/super_fibonacci.cpp.o
+[21/58] Building CXX object Engine/CMakeFiles/engine.dir/src/ml/s3_hnsw.cpp.o
+[22/58] Building CXX object Engine/CMakeFiles/engine.dir/src/query/ai_ops.cpp.o
+[23/58] Building CXX object Engine/CMakeFiles/engine.dir/src/query/semantic_query.cpp.o
+[24/58] Building CXX object Engine/CMakeFiles/engine.dir/src/storage/atom_store.cpp.o
+[25/58] Building CXX object Engine/CMakeFiles/engine.dir/src/interop_api.cpp.o
+[26/58] Building CXX object Engine/CMakeFiles/engine.dir/src/storage/composition_store.cpp.o
+[27/58] Building CXX object Engine/CMakeFiles/engine.dir/src/ingestion/text_ingester.cpp.o
+[28/58] Building CXX object Engine/CMakeFiles/engine.dir/src/storage/content_store.cpp.o
+[29/58] Building CXX object Engine/CMakeFiles/engine.dir/src/storage/relation_evidence_store.cpp.o
+[30/58] Building CXX object Engine/CMakeFiles/engine.dir/src/ml/model_extraction.cpp.o
+[31/58] Building CXX object Engine/CMakeFiles/engine.dir/src/storage/relation_store.cpp.o
+[32/58] Building CXX object Engine/CMakeFiles/engine.dir/src/storage/physicality_store.cpp.o
+[33/58] Building CXX object Engine/CMakeFiles/engine.dir/src/unicode/ingestor/node_generator.cpp.o
+[34/58] Building CXX object Engine/CMakeFiles/engine.dir/src/unicode/ingestor/semantic_sequencer.cpp.o
+[35/58] Building CXX object Engine/CMakeFiles/engine.dir/src/ingestion/safetensor_loader.cpp.o
+[36/58] Building CXX object Engine/CMakeFiles/engine.dir/src/unicode/ingestor/ucd_parser.cpp.o
+[37/58] Building CXX object Engine/tests/CMakeFiles/suite_test_hashing.dir/suite/test_hashing.cpp.o
+[38/58] Building CXX object Engine/CMakeFiles/engine.dir/src/unicode/ingestor/ucd_processor.cpp.o
+[39/58] Building CXX object Engine/tests/CMakeFiles/suite_test_geometry_core.dir/suite/test_geometry_core.cpp.o
+[40/58] Building CXX object Engine/tools/CMakeFiles/seed_unicode.dir/seed_unicode.cpp.o
+[41/58] Building CXX object Engine/tools/CMakeFiles/ingest_text.dir/ingest_text.cpp.o
+[42/58] Building CXX object Engine/tests/CMakeFiles/suite_test_projections.dir/suite/test_projections.cpp.o
+[43/58] Building CXX object Engine/tests/CMakeFiles/suite_test_spatial_index.dir/suite/test_spatial_index.cpp.o
+[44/58] Building CXX object Engine/tests/CMakeFiles/suite_test_database_marshal.dir/suite/test_database_marshal.cpp.o
+[45/58] Building CXX object Engine/tests/CMakeFiles/suite_test_end_to_end_pipeline.dir/suite/test_end_to_end_pipeline.cpp.o
+[46/58] Building CXX object Engine/tests/CMakeFiles/example_unicode_projection.dir/example_unicode_projection.cpp.o
+[47/58] Linking CXX shared library Engine/libengine.so
+lto-wrapper: warning: using serial compilation of 11 LTRANS jobs
+[48/58] Linking CXX executable Engine/tools/seed_unicode
+[49/58] Linking CXX executable Engine/tools/ingest_text
+[50/58] Linking CXX executable Engine/tests/suite_test_geometry_core
+[51/58] Linking CXX executable Engine/tests/suite_test_projections
+[52/58] Building s3 PostgreSQL extension
+make: 'dist/s3--0.1.0.sql' is up to date.
+[53/58] Linking CXX executable Engine/tests/suite_test_hashing
+[54/58] Building hartonomous PostgreSQL extension
+make: 'dist/hartonomous--0.1.0.sql' is up to date.
+[55/58] Linking CXX executable Engine/tests/suite_test_database_marshal
+[56/58] Linking CXX executable Engine/tests/suite_test_spatial_index
+lto-wrapper: warning: using serial compilation of 2 LTRANS jobs
+[57/58] Linking CXX executable Engine/tests/example_unicode_projection
+[58/58] Linking CXX executable Engine/tests/suite_test_end_to_end_pipeline
+lto-wrapper: warning: using serial compilation of 2 LTRANS jobs
+[0;32m✓ C++ Build complete[0m
+
+[0;36mBuilding .NET Solution...[0m
+[0;36mRestoring dependencies...[0m
+  Determining projects to restore...
+  Restored /home/ahart/Projects/Hartonomous/Hartonomous.Marshal/Hartonomous.Marshal.csproj (in 166 ms).
+  Restored /home/ahart/Projects/Hartonomous/Hartonomous.Shared/Hartonomous.Shared.csproj (in 167 ms).
+  Restored /home/ahart/Projects/Hartonomous/Hartonomous.Common/Hartonomous.Common.csproj (in 167 ms).
+  Restored /home/ahart/Projects/Hartonomous/Hartonomous.Core/Hartonomous.Core.csproj (in 167 ms).
+  Restored /home/ahart/Projects/Hartonomous/Hartonomous.ServiceDefaults/Hartonomous.ServiceDefaults.csproj (in 365 ms).
+  Restored /home/ahart/Projects/Hartonomous/Hartonomous.Data/Hartonomous.Data.csproj (in 365 ms).
+  Restored /home/ahart/Projects/Hartonomous/Hartonomous.AppHost/Hartonomous.AppHost.csproj (in 381 ms).
+  Restored /home/ahart/Projects/Hartonomous/Hartonomous.API/Hartonomous.API.csproj (in 380 ms).
+[0;32m✓ Restore complete[0m
+[0;36mBuilding (Release)...[0m
+  Hartonomous.Shared -> /home/ahart/Projects/Hartonomous/Hartonomous.Shared/bin/Release/net10.0/Hartonomous.Shared.dll
+  Copying native library libengine.so from /home/ahart/Projects/Hartonomous/build/linux-release-max-perf/Engine to bin/Release/net10.0/
+  Hartonomous.Common -> /home/ahart/Projects/Hartonomous/Hartonomous.Common/bin/Release/net10.0/Hartonomous.Common.dll
+  Copying native library libengine.so from /home/ahart/Projects/Hartonomous/build/linux-release-max-perf/Engine to bin/Release/net10.0/
+  Hartonomous.Core -> /home/ahart/Projects/Hartonomous/Hartonomous.Core/bin/Release/net10.0/Hartonomous.Core.dll
+  Copying native library libengine.so from /home/ahart/Projects/Hartonomous/build/linux-release-max-perf/Engine to bin/Release/net10.0/
+  Hartonomous.ServiceDefaults -> /home/ahart/Projects/Hartonomous/Hartonomous.ServiceDefaults/bin/Release/net10.0/Hartonomous.ServiceDefaults.dll
+  Copying native library libengine.so from /home/ahart/Projects/Hartonomous/build/linux-release-max-perf/Engine to bin/Release/net10.0/
+  Hartonomous.Data -> /home/ahart/Projects/Hartonomous/Hartonomous.Data/bin/Release/net10.0/Hartonomous.Data.dll
+  Copying native library libengine.so from /home/ahart/Projects/Hartonomous/build/linux-release-max-perf/Engine to bin/Release/net10.0/
+  Hartonomous.Marshal -> /home/ahart/Projects/Hartonomous/Hartonomous.Marshal/bin/Release/net10.0/Hartonomous.Marshal.dll
+  Copying native library libengine.so from /home/ahart/Projects/Hartonomous/build/linux-release-max-perf/Engine to bin/Release/net10.0/
+  Hartonomous.API -> /home/ahart/Projects/Hartonomous/Hartonomous.API/bin/Release/net10.0/Hartonomous.API.dll
+  Copying native library libengine.so from /home/ahart/Projects/Hartonomous/build/linux-release-max-perf/Engine to bin/Release/net10.0/
+  Hartonomous.AppHost -> /home/ahart/Projects/Hartonomous/Hartonomous.AppHost/bin/Release/net10.0/Hartonomous.AppHost.dll
+  Copying native library libengine.so from /home/ahart/Projects/Hartonomous/build/linux-release-max-perf/Engine to bin/Release/net10.0/
+
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:02.42
+[0;32m✓ .NET Build complete[0m
+
+[0;36mRunning tests...[0m
+Test project /home/ahart/Projects/Hartonomous/build/linux-release-max-perf
+      Start  1: HashingTest.Determinism
+ 1/26 Test  #1: HashingTest.Determinism ........................   Passed    0.01 sec
+      Start  2: HashingTest.CollisionResistance
+ 2/26 Test  #2: HashingTest.CollisionResistance ................   Passed    0.01 sec
+      Start  3: HashingTest.CodepointHashing
+ 3/26 Test  #3: HashingTest.CodepointHashing ...................   Passed    0.01 sec
+      Start  4: HashingTest.HexConversion
+ 4/26 Test  #4: HashingTest.HexConversion ......................   Passed    0.01 sec
+      Start  5: HashingTest.BatchHashing
+ 5/26 Test  #5: HashingTest.BatchHashing .......................   Passed    0.01 sec
+      Start  6: GeometryCoreTest.VectorNormalization
+ 6/26 Test  #6: GeometryCoreTest.VectorNormalization ...........   Passed    0.01 sec
+      Start  7: GeometryCoreTest.GeodesicDistance
+ 7/26 Test  #7: GeometryCoreTest.GeodesicDistance ..............   Passed    0.01 sec
+      Start  8: GeometryCoreTest.FastGeodesicDistance
+ 8/26 Test  #8: GeometryCoreTest.FastGeodesicDistance ..........   Passed    0.01 sec
+      Start  9: GeometryCoreTest.EuclideanDistance4D
+ 9/26 Test  #9: GeometryCoreTest.EuclideanDistance4D ...........   Passed    0.01 sec
+      Start 10: GeometryCoreTest.BBoxOperations
+10/26 Test #10: GeometryCoreTest.BBoxOperations ................   Passed    0.01 sec
+      Start 11: ProjectionTest.SuperFibonacciNormalization
+11/26 Test #11: ProjectionTest.SuperFibonacciNormalization .....   Passed    0.01 sec
+      Start 12: ProjectionTest.HashToPointDeterminism
+12/26 Test #12: ProjectionTest.HashToPointDeterminism ..........   Passed    0.01 sec
+      Start 13: ProjectionTest.HopfRoundTrip
+13/26 Test #13: ProjectionTest.HopfRoundTrip ...................   Passed    0.01 sec
+      Start 14: ProjectionTest.DistributionStability
+14/26 Test #14: ProjectionTest.DistributionStability ...........   Passed    0.01 sec
+      Start 15: SpatialIndexTest.HilbertDeterminism
+15/26 Test #15: SpatialIndexTest.HilbertDeterminism ............   Passed    0.01 sec
+      Start 16: SpatialIndexTest.HilbertBoundary
+16/26 Test #16: SpatialIndexTest.HilbertBoundary ...............   Passed    0.01 sec
+      Start 17: SpatialIndexTest.HilbertLocality
+17/26 Test #17: SpatialIndexTest.HilbertLocality ...............   Passed    0.01 sec
+      Start 18: SpatialIndexTest.HilbertStringConversion
+18/26 Test #18: SpatialIndexTest.HilbertStringConversion .......   Passed    0.01 sec
+      Start 19: SpatialIndexTest.HNSWIndexPlaceholder
+19/26 Test #19: SpatialIndexTest.HNSWIndexPlaceholder ..........   Passed    0.01 sec
+      Start 20: DatabaseMarshalTest.LWGeomSerialization
+20/26 Test #20: DatabaseMarshalTest.LWGeomSerialization ........   Passed    0.01 sec
+      Start 21: DatabaseMarshalTest.UUIDFormatting
+21/26 Test #21: DatabaseMarshalTest.UUIDFormatting .............   Passed    0.01 sec
+      Start 22: DatabaseMarshalTest.HilbertDecimalFormatting
+22/26 Test #22: DatabaseMarshalTest.HilbertDecimalFormatting ...   Passed    0.01 sec
+      Start 23: PipelineTest.UnicodeToSpatialResult
+23/26 Test #23: PipelineTest.UnicodeToSpatialResult ............   Passed    0.01 sec
+      Start 24: PipelineTest.DeterminismAcrossComponents
+24/26 Test #24: PipelineTest.DeterminismAcrossComponents .......   Passed    0.01 sec
+      Start 25: PipelineTest.StringBatchProcessing
+25/26 Test #25: PipelineTest.StringBatchProcessing .............   Passed    0.01 sec
+      Start 26: PipelineTest.DistanceMetricCoherence
+26/26 Test #26: PipelineTest.DistanceMetricCoherence ...........   Passed    0.01 sec
+
+100% tests passed, 0 tests failed out of 26
+
+Total Test time (real) =   0.28 sec
+[0;32m✓ Tests passed[0m
+
+[0;36mInstalling Hartonomous System...[0m
+=== Hartonomous System Installation ===
+Project Root: /home/ahart/Projects/Hartonomous
+Build Dir:    /home/ahart/Projects/Hartonomous/build/linux-release-max-perf
+
+Installing Hartonomous Engine to /usr/local...
+✓ Engine library and headers copied.
+Installing libengine.so to PostgreSQL...
+✓ libengine.so copied to /usr/lib/postgresql/18/lib
+Installing s3 extension...
+✓ s3 extension files copied.
+Installing hartonomous extension...
+✓ hartonomous extension files copied.
+Updating shared library cache...
+/sbin/ldconfig.real: /opt/intel/oneapi/mkl/2025.3/lib/intel64/libmkl_sycl.so is not an ELF file - it has the wrong magic bytes at the start.
+
+
+Installation complete.
+[0;32m✓ Installation complete[0m
+
+[0;32m=== Build Complete ===[0m
+
+[0;36mBuild directory: /home/ahart/Projects/Hartonomous/build/linux-release-max-perf[0m
+[0;36mPreset: linux-release-max-perf[0m
+
+[0;36mNext steps:[0m
+[0;36m  1. Run tests: ./build.sh --test[0m
+[0;36m  2. Install: ./build.sh --install[0m
+[0;36m  3. Setup database: ./scripts/setup-database.sh[0m
+

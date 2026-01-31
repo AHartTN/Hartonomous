@@ -8,7 +8,7 @@ SELECT
     STRING_AGG(
         REPEAT(
             -- Convert UINT32 (bytea) to Integer for chr()
-            chr(('x' || encode(a.Codepoint, 'hex'))::bit(32)::int), 
+            chr(a.Codepoint), 
             cs.Occurrences
         ),
         '' ORDER BY cs.Ordinal
