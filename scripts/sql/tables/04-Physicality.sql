@@ -25,6 +25,8 @@ CREATE TABLE IF NOT EXISTS Physicality (
 CREATE INDEX idx_Physicality_hilbert ON Physicality(Hilbert);
 
 -- Spatial indicies using GIST with N-Dimensional support
+-- TODO: Re-enable after s3 extension GiST fix
+-- CREATE INDEX IF NOT EXISTS idx_Physicality_Centroid ON Physicality USING GIST(Centroid gist_s3_ops);
 CREATE INDEX IF NOT EXISTS idx_Physicality_Centroid ON Physicality USING GIST(Centroid gist_geometry_ops_nd);
 CREATE INDEX IF NOT EXISTS idx_Physicality_Trajectory ON Physicality USING GIST(Trajectory gist_geometry_ops_nd);
 

@@ -5,6 +5,7 @@
 #include <vector>
 #include <map>
 #include <unordered_map>
+#include <functional>
 
 namespace Hartonomous::unicode {
 
@@ -15,23 +16,23 @@ public:
     /**
      * @brief Parse all required UCD files
      *
-     * Parses UnicodeData.txt, Scripts.txt, allkeys.txt, etc.
-     * Only parses ASSIGNED codepoints to keep memory usage reasonable.
+     * Primary: ucd.all.flat.xml (complete UCD data)
+     * Supplementary: allkeys.txt (DUCET), confusables.txt, etc.
      */
     void parse_all();
 
     /**
-     * @brief Get the parsed codepoints (assigned only)
+     * @brief Parse only the main XML file (fastest path for full data)
+     */
+    void parse_xml();
+
+    /**
+     * @brief Get the parsed codepoints
      */
     const std::map<uint32_t, CodepointMetadata>& get_codepoints() const { return codepoints_; }
 
     /**
-     * @brief Mutable access to parsed codepoints.
-     *
-     * This accessor is provided to allow downstream processors to
-     * annotate and mutate metadata (sequence indices, positions, etc.)
-     * without copying the entire map. Callers must ensure they do not
-     * modify the map structure (insert/erase) while iterating concurrently.
+     * @brief Mutable access to parsed codepoints
      */
     std::map<uint32_t, CodepointMetadata>& get_codepoints_mutable() { return codepoints_; }
 
@@ -40,15 +41,26 @@ public:
      */
     bool is_assigned(uint32_t cp) const { return codepoints_.count(cp) > 0; }
 
-private:
-    void parse_unicode_data();
-    void parse_scripts();
-    void parse_blocks();
-    void parse_ages();
-    void parse_unihan_rs();
-    void parse_all_keys(); // DUCET
+    /**
+     * @brief Get count of parsed codepoints
+     */
+    size_t codepoint_count() const { return codepoints_.size(); }
 
+private:
+    // XML parsing (SAX-style for memory efficiency on 228MB file)
+    void parse_ucd_xml(const std::string& path);
+    void parse_char_element(const std::string& line);
+    void set_attribute(CodepointMetadata& meta, const std::string& name, const std::string& value);
+
+    // Supplementary file parsing
+    void parse_all_keys();           // DUCET collation weights
+    void parse_confusables();        // Confusable characters
+    void parse_unihan();             // Han readings/radicals
+    void parse_emoji_sequences();    // Emoji ZWJ sequences
+
+    // Post-processing
     void find_base_characters();
+    void build_semantic_edges();
     uint32_t trace_decomposition(uint32_t cp);
 
     std::string data_dir_;

@@ -88,7 +88,7 @@ CREATE TABLE IF NOT EXISTS hartonomous.Physicality (
 );
 
 CREATE INDEX idx_Physicality_hilbert ON hartonomous.Physicality(Hilbert);
-CREATE INDEX IF NOT EXISTS idx_Physicality_Centroid ON hartonomous.Physicality USING GIST(Centroid hartonomous.gist_s3_ops);
+CREATE INDEX IF NOT EXISTS idx_Physicality_Centroid ON hartonomous.Physicality USING GIST(Centroid gist_geometry_ops_nd);
 CREATE INDEX IF NOT EXISTS idx_Physicality_Trajectory ON hartonomous.Physicality USING GIST(Trajectory public.gist_geometry_ops_nd);
 -- Including tables/atom.sql
 CREATE TABLE IF NOT EXISTS hartonomous.Atom (

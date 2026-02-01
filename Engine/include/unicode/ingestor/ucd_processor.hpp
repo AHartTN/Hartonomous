@@ -31,9 +31,15 @@ public:
      */
     void process_and_ingest();
 
+    /**
+     * @brief Ingest all UCD metadata into AtomMetadata table
+     */
+    void ingest_ucd_metadata();
+
 private:
     void ingest_assigned_codepoints();
     void ingest_unassigned_codepoints();
+    void ingest_metadata_batch(const std::vector<CodepointMetadata*>& batch);
 
     UCDParser parser_;
     SemanticSequencer sequencer_;

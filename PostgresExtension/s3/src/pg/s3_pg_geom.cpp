@@ -38,17 +38,12 @@ namespace s3_pg
     {
         s3::Vec4 v{0.0, 0.0, 0.0, 0.0};
 
-        if (!DatumGetPointer(gsdatum)) return v;
+        void* ptr = DatumGetPointer(gsdatum);
+        if (!ptr) return v;
 
-        // Check if detoasting is needed using PostGIS macro
-        bool need_detoast = PG_GSERIALIZED_DATUM_NEEDS_DETOAST((struct varlena *)gsdatum);
-        GSERIALIZED* g;
-
-        if (need_detoast) {
-            g = (GSERIALIZED*)PG_DETOAST_DATUM(gsdatum);
-        } else {
-            g = (GSERIALIZED*)DatumGetPointer(gsdatum);
-        }
+        // Always detoast to be safe - PostGIS geometries may be TOASTed
+        GSERIALIZED* g = (GSERIALIZED*)PG_DETOAST_DATUM(gsdatum);
+        if (!g) return v;
 
         // Extract point coordinates
         POINT4D p;
@@ -59,8 +54,8 @@ namespace s3_pg
             v[3] = p.m;
         }
 
-        // Free detoasted copy if we made one
-        if (need_detoast) {
+        // Always free the detoasted copy (PG_DETOAST_DATUM may return original if not toasted)
+        if ((void*)g != ptr) {
             pfree(g);
         }
 

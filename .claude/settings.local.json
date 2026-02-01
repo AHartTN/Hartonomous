@@ -48,7 +48,10 @@
       "WebFetch(domain:github.com)",
       "Bash(find:*)",
       "Bash(./scripts/linux/02-build-all.sh:*)",
-      "Bash(./scripts/linux/01-setup-database.sh:*)"
+      "Bash(./scripts/linux/01-setup-database.sh:*)",
+      "Bash(xargs:*)",
+      "Bash(sudo cat:*)",
+      "Bash(sudo ls:*)"
     ]
   }
 }

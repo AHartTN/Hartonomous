@@ -88,8 +88,8 @@ Datum gist_s3_consistent(PG_FUNCTION_ARGS)
     S3GistBBox* box = (S3GistBBox*) DatumGetPointer(entry->key);
     s3::BBox4 bb = bbox_to_vec(box);
 
-    void* gq = DatumGetPointer(query);
-    s3::Vec4 qp = s3_pg::geom_to_vec4(gq);
+    // Use datum_to_vec4 which handles detoasting properly
+    s3::Vec4 qp = s3_pg::datum_to_vec4(query);
 
     // For ORDER BY queries (KNN), always consistent - distance function handles ranking
     // This allows the index to be used for nearest-neighbor searches
