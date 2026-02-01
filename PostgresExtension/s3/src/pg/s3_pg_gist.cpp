@@ -5,6 +5,7 @@ extern "C" {
 #include "access/skey.h"
 #include "catalog/pg_type.h"
 #include "varatt.h"
+#include "lwgeom_pg.h"
 }
 
 #include "s3_pg_gist.hpp"
@@ -48,8 +49,8 @@ Datum gist_s3_compress(PG_FUNCTION_ARGS)
 
     if (entry->leafkey)
     {
-        void* g = DatumGetPointer(entry->key);
-        s3::Vec4 p = s3_pg::geom_to_vec4(g);
+        // Use datum_to_vec4 which properly handles detoasting
+        s3::Vec4 p = s3_pg::datum_to_vec4(entry->key);
         s3::BBox4 bb = s3::bbox_from_point(p);
         S3GistBBox* box = bbox_from_vec(bb);
 
@@ -76,13 +77,29 @@ Datum gist_s3_consistent(PG_FUNCTION_ARGS)
 {
     GISTENTRY* entry = (GISTENTRY*) PG_GETARG_POINTER(0);
     Datum query = PG_GETARG_DATUM(1);
+    StrategyNumber strategy = (StrategyNumber) PG_GETARG_UINT16(2);
     bool* recheck = (bool*) PG_GETARG_POINTER(4);
 
+    // For KNN queries (strategy 1 = ORDER BY <=>), we use distance-based pruning
+    // The distance function handles the actual ordering
+    // We return true for any box that could potentially contain a closer point
     *recheck = true;
 
-    (void) entry;
-    (void) query;
+    S3GistBBox* box = (S3GistBBox*) DatumGetPointer(entry->key);
+    s3::BBox4 bb = bbox_to_vec(box);
 
+    void* gq = DatumGetPointer(query);
+    s3::Vec4 qp = s3_pg::geom_to_vec4(gq);
+
+    // For ORDER BY queries (KNN), always consistent - distance function handles ranking
+    // This allows the index to be used for nearest-neighbor searches
+    if (strategy == 1)
+    {
+        PG_RETURN_BOOL(true);
+    }
+
+    // For other strategies (future: range queries), check bbox intersection
+    // Currently unused, but ready for expansion
     PG_RETURN_BOOL(true);
 }
 
@@ -150,8 +167,106 @@ Datum gist_s3_penalty(PG_FUNCTION_ARGS)
 PG_FUNCTION_INFO_V1(gist_s3_picksplit);
 Datum gist_s3_picksplit(PG_FUNCTION_ARGS)
 {
-    elog(ERROR, "gist_s3_picksplit not implemented");
-    PG_RETURN_VOID();
+    GistEntryVector* entryvec = (GistEntryVector*) PG_GETARG_POINTER(0);
+    GIST_SPLITVEC* v = (GIST_SPLITVEC*) PG_GETARG_POINTER(1);
+
+    int n = entryvec->n;
+
+    // Collect all bounding boxes and find the dimension with maximum spread
+    double min_vals[4] = {1e300, 1e300, 1e300, 1e300};
+    double max_vals[4] = {-1e300, -1e300, -1e300, -1e300};
+
+    for (int i = FirstOffsetNumber; i <= n; ++i)
+    {
+        GISTENTRY* e = &entryvec->vector[i - 1];
+        S3GistBBox* box = (S3GistBBox*) DatumGetPointer(e->key);
+
+        for (int d = 0; d < 4; ++d)
+        {
+            double center = (box->min[d] + box->max[d]) / 2.0;
+            if (center < min_vals[d]) min_vals[d] = center;
+            if (center > max_vals[d]) max_vals[d] = center;
+        }
+    }
+
+    // Find dimension with maximum spread
+    int split_dim = 0;
+    double max_spread = 0.0;
+    for (int d = 0; d < 4; ++d)
+    {
+        double spread = max_vals[d] - min_vals[d];
+        if (spread > max_spread)
+        {
+            max_spread = spread;
+            split_dim = d;
+        }
+    }
+
+    double split_val = (min_vals[split_dim] + max_vals[split_dim]) / 2.0;
+
+    // Allocate split vectors
+    v->spl_left = (OffsetNumber*) palloc(n * sizeof(OffsetNumber));
+    v->spl_right = (OffsetNumber*) palloc(n * sizeof(OffsetNumber));
+    v->spl_nleft = 0;
+    v->spl_nright = 0;
+
+    s3::BBox4 left_union, right_union;
+    bool left_first = true, right_first = true;
+
+    for (int i = FirstOffsetNumber; i <= n; ++i)
+    {
+        GISTENTRY* e = &entryvec->vector[i - 1];
+        S3GistBBox* box = (S3GistBBox*) DatumGetPointer(e->key);
+        s3::BBox4 bb = bbox_to_vec(box);
+
+        double center = (box->min[split_dim] + box->max[split_dim]) / 2.0;
+
+        if (center < split_val)
+        {
+            v->spl_left[v->spl_nleft++] = i;
+            if (left_first)
+            {
+                left_union = bb;
+                left_first = false;
+            }
+            else
+            {
+                left_union = s3::bbox_union(left_union, bb);
+            }
+        }
+        else
+        {
+            v->spl_right[v->spl_nright++] = i;
+            if (right_first)
+            {
+                right_union = bb;
+                right_first = false;
+            }
+            else
+            {
+                right_union = s3::bbox_union(right_union, bb);
+            }
+        }
+    }
+
+    // Handle edge case: all entries on one side
+    if (v->spl_nleft == 0)
+    {
+        v->spl_left[v->spl_nleft++] = v->spl_right[--v->spl_nright];
+        left_union = bbox_to_vec((S3GistBBox*) DatumGetPointer(
+            entryvec->vector[v->spl_left[0] - 1].key));
+    }
+    if (v->spl_nright == 0)
+    {
+        v->spl_right[v->spl_nright++] = v->spl_left[--v->spl_nleft];
+        right_union = bbox_to_vec((S3GistBBox*) DatumGetPointer(
+            entryvec->vector[v->spl_right[0] - 1].key));
+    }
+
+    v->spl_ldatum = PointerGetDatum(bbox_from_vec(left_union));
+    v->spl_rdatum = PointerGetDatum(bbox_from_vec(right_union));
+
+    PG_RETURN_POINTER(v);
 }
 
 PG_FUNCTION_INFO_V1(gist_s3_same);
@@ -186,8 +301,8 @@ Datum gist_s3_distance(PG_FUNCTION_ARGS)
     S3GistBBox* box = (S3GistBBox*) DatumGetPointer(entry->key);
     s3::BBox4 bb = bbox_to_vec(box);
 
-    void* gq = DatumGetPointer(query);
-    s3::Vec4 qp = s3_pg::geom_to_vec4(gq);
+    // Use datum_to_vec4 which properly handles detoasting
+    s3::Vec4 qp = s3_pg::datum_to_vec4(query);
 
     double d = s3::distance_point_bbox(qp, bb);
 

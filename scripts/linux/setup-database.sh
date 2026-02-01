@@ -127,6 +127,14 @@ fi
 if [ "$DROP_EXISTING" = true ]; then
     echo ""
     print_info "Dropping existing database..."
+    # First terminate any active connections
+    psql -U "$DB_USER" -h "$DB_HOST" -p "$DB_PORT" -d postgres -c "
+        SELECT pg_terminate_backend(pid)
+        FROM pg_stat_activity
+        WHERE datname = '$DB_NAME' AND pid <> pg_backend_pid();
+    " 2>/dev/null || true
+    # Small delay to ensure connections are terminated
+    sleep 0.5
     psql -U "$DB_USER" -h "$DB_HOST" -p "$DB_PORT" -d postgres -c "DROP DATABASE IF EXISTS $DB_NAME;" 2>/dev/null || true
     print_success "✓ Dropped existing database"
 fi

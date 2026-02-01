@@ -4,9 +4,9 @@
 
 namespace Hartonomous::unicode {
 
-void SemanticSequencer::build_graph(std::vector<CodepointMetadata>& codepoints) {
+void SemanticSequencer::build_graph(std::map<uint32_t, CodepointMetadata>& codepoints) {
     std::cout << "Building semantic adjacency graph...\n";
-    for (auto& meta : codepoints) {
+    for (auto& [cp, meta] : codepoints) {
         // 1. Decomposition Adjacency
         if (meta.base_codepoint != meta.codepoint) {
             add_edge(meta, meta.base_codepoint, EdgeWeight::CanonicalDecomp, "decomposition");
@@ -29,11 +29,11 @@ uint32_t SemanticSequencer::get_script_id(const std::string& script) {
     return script_map_[script];
 }
 
-std::vector<CodepointMetadata*> SemanticSequencer::linearize(std::vector<CodepointMetadata>& codepoints) {
+std::vector<CodepointMetadata*> SemanticSequencer::linearize(std::map<uint32_t, CodepointMetadata>& codepoints) {
     std::vector<CodepointMetadata*> sorted;
     sorted.reserve(codepoints.size());
 
-    for (auto& meta : codepoints) {
+    for (auto& [cp, meta] : codepoints) {
         // Group assignment
         std::string gc = meta.general_category;
         if (gc.empty()) meta.primary_group = 7;
@@ -47,7 +47,7 @@ std::vector<CodepointMetadata*> SemanticSequencer::linearize(std::vector<Codepoi
             else if (c == 'Z') meta.primary_group = 6;
             else meta.primary_group = 7;
         }
-        
+
         meta.script_group = get_script_id(meta.script);
         sorted.push_back(&meta);
     }
@@ -56,10 +56,10 @@ std::vector<CodepointMetadata*> SemanticSequencer::linearize(std::vector<Codepoi
     std::sort(sorted.begin(), sorted.end(), [](const CodepointMetadata* a, const CodepointMetadata* b) {
         // 1. Primary Group (Letters, Numbers, etc.)
         if (a->primary_group != b->primary_group) return a->primary_group < b->primary_group;
-        
+
         // 2. Script
         if (a->script_group != b->script_group) return a->script_group < b->script_group;
-        
+
         // 3. UCA Weight (if available)
         uint32_t wa = a->uca_elements.empty() ? 0 : a->uca_elements[0].primary;
         uint32_t wb = b->uca_elements.empty() ? 0 : b->uca_elements[0].primary;

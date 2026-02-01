@@ -6,6 +6,10 @@
 [0;32m✓ PostGIS found: 3.6[0m
 
 [0;36mDropping existing database...[0m
+ pg_terminate_backend 
+----------------------
+(0 rows)
+
 DROP DATABASE
 [0;32m✓ Dropped existing database[0m
 

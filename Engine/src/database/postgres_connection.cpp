@@ -80,7 +80,8 @@ bool PostgresConnection::is_connected() const {
 void PostgresConnection::check_result(PGresult* result) {
     ExecStatusType status = PQresultStatus(result);
 
-    if (status != PGRES_COMMAND_OK && status != PGRES_TUPLES_OK) {
+    if (status != PGRES_COMMAND_OK && status != PGRES_TUPLES_OK &&
+        status != PGRES_COPY_IN && status != PGRES_COPY_OUT) {
         last_error_ = PQerrorMessage(conn_);
         PQclear(result);
         throw std::runtime_error("PostgreSQL query failed: " + last_error_);

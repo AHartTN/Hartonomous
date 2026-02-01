@@ -43,7 +43,10 @@
       "Bash(systemctl status:*)",
       "Bash(lscpu:*)",
       "Bash(source:*)",
-      "Bash(./scripts/linux/01-seed-unicode.sh:*)"
+      "Bash(./scripts/linux/01-seed-unicode.sh:*)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "Bash(find:*)"
     ]
   }
 }

@@ -26,7 +26,12 @@ if(NOT LIBPQXX_FOUND)
 endif()
 
 # Include directories
-include_directories(include ${LIBPQXX_INCLUDE_DIRS})
+include_directories(
+    include
+    src
+    ${LIBPQXX_INCLUDE_DIRS}
+    ../Engine/external/json/include
+)
 
 # Source files (Restoring all files)
 set(SOURCE_FILES
@@ -34,13 +39,15 @@ set(SOURCE_FILES
     src/PgConnection.cpp
     src/UcdXmlReader.cpp
     src/UcdIngestor.cpp
+    src/parsers/AllKeysParser.cpp
+    src/parsers/ConfusablesParser.cpp
 )
 
 # Add the executable
 add_executable(ucd_ingestor ${SOURCE_FILES})
 
 # Link libraries
-target_link_libraries(ucd_ingestor ${LIBPQXX_LDFLAGS} ${LIBPQXX_LIBRARIES} pq Hartonomous::Engine)
+target_link_libraries(ucd_ingestor ${LIBPQXX_LDFLAGS} ${LIBPQXX_LIBRARIES} pq)
 
 # Set RPATH
 if(UNIX)

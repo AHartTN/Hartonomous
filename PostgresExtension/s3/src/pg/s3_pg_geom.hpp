@@ -10,4 +10,5 @@ extern "C" {
 namespace s3_pg
 {
     s3::Vec4 geom_to_vec4(const void* gserialized);
+    s3::Vec4 datum_to_vec4(Datum gsdatum);
 }

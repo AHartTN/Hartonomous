@@ -18,24 +18,15 @@ public:
 
 private:
     /**
-     * @brief Categorize codepoints into primary groups
+     * @brief Ingest assigned codepoints (with semantic ordering)
      */
-    uint32_t get_primary_group(const std::string& gc);
+    void ingest_assigned_codepoints();
 
     /**
-     * @brief Assign sequence indices based on semantic sort
+     * @brief Stream unassigned codepoints directly to DB
+     * Completes the full Unicode codespace (1,114,112 codepoints)
      */
-    void assign_sequence();
-
-    /**
-     * @brief Map sequence to S3 and Hilbert
-     */
-    void generate_geometry();
-
-    /**
-     * @brief Bulk insert into DB
-     */
-    void ingest_to_db();
+    void ingest_unassigned_codepoints();
 
     UCDParser parser_;
     SemanticSequencer sequencer_;

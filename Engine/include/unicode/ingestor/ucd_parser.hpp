@@ -14,18 +14,23 @@ public:
 
     /**
      * @brief Parse all required UCD files
-     * 
+     *
      * Parses UnicodeData.txt, Scripts.txt, allkeys.txt, etc.
+     * Only parses ASSIGNED codepoints to keep memory usage reasonable.
      */
     void parse_all();
 
     /**
-     * @brief Get the parsed codepoints
+     * @brief Get the parsed codepoints (assigned only)
      */
-    const std::vector<CodepointMetadata>& get_codepoints() const { return codepoints_; }
+    const std::map<uint32_t, CodepointMetadata>& get_codepoints() const { return codepoints_; }
+
+    /**
+     * @brief Check if a codepoint is assigned (has UCD metadata)
+     */
+    bool is_assigned(uint32_t cp) const { return codepoints_.count(cp) > 0; }
 
 private:
-    void generate_full_codespace();  // All 1,114,112 codepoints
     void parse_unicode_data();
     void parse_scripts();
     void parse_blocks();
@@ -37,7 +42,7 @@ private:
     uint32_t trace_decomposition(uint32_t cp);
 
     std::string data_dir_;
-    std::vector<CodepointMetadata> codepoints_;
+    std::map<uint32_t, CodepointMetadata> codepoints_;
 };
 
 } // namespace Hartonomous::unicode
