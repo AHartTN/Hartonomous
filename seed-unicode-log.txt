@@ -1,6 +1,6 @@
 Starting Unicode Seeding...
 === Hartonomous Unicode Seeding Tool ===
 Data Directory: /home/ahart/Projects/Hartonomous/UCDIngestor/data
-
-FATAL ERROR: PostgreSQL connection failed: connection to server at "localhost" (127.0.0.1), port 5432 failed: FATAL:  database "hartonomous" does not exist
-
+--- Starting Vertically Integrated UCD Ingestion ---
+[1/4] Parsing UCD Universe...
+./scripts/linux/01-seed-unicode.sh: line 26: 26219 Killed                  "$SEED_TOOL" "$UCD_DATA"

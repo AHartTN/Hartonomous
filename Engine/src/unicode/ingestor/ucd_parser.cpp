@@ -23,20 +23,16 @@ void UCDParser::parse_all() {
 }
 
 void UCDParser::generate_full_codespace() {
-    // Unicode codespace: U+0000 to U+10FFFF = 1,114,112 codepoints
-    // This includes:
-    //   - Assigned characters (~150k)
-    //   - Reserved/unassigned
-    //   - Private Use Areas (U+E000-U+F8FF, U+F0000-U+FFFFD, U+100000-U+10FFFD)
-    //   - Surrogates (U+D800-U+DFFF) - technically invalid in UTF-8 but we track them
-    //   - Noncharacters (U+FDD0-U+FDEF, U+FFFE-U+FFFF, etc.)
-
     constexpr uint32_t MAX_CODEPOINT = 0x10FFFF;
 
-    std::cout << "Generating full Unicode codespace (0x0 to 0x10FFFF)...\n";
+    std::cout << "Generating full Unicode codespace (0x0 to 0x10FFFF)...";
+    
+    // Reserve and resize vector once
+    codepoints_.reserve(MAX_CODEPOINT + 1);
+    codepoints_.resize(MAX_CODEPOINT + 1);
 
     for (uint32_t cp = 0; cp <= MAX_CODEPOINT; ++cp) {
-        CodepointMetadata meta;
+        auto& meta = codepoints_[cp];
         meta.codepoint = cp;
 
         // Classify by range
@@ -60,11 +56,9 @@ void UCDParser::generate_full_codespace() {
             meta.general_category = "Cn";  // Unassigned (will be overwritten if in UCD)
             meta.name = "<reserved>";
         }
-
-        codepoints_[cp] = std::move(meta);
     }
 
-    std::cout << "Generated " << codepoints_.size() << " codepoints (full Unicode codespace)\n";
+    std::cout << "Generated " << codepoints_.size() << " codepoints (full Unicode codespace)";
 }
 
 void UCDParser::parse_unicode_data() {
@@ -90,8 +84,8 @@ void UCDParser::parse_unicode_data() {
         if (fields.size() < 15) continue;
 
         uint32_t cp = std::stoul(fields[0], nullptr, 16);
+        if (cp >= codepoints_.size()) continue;
 
-        // Update existing entry (created by generate_full_codespace)
         auto& meta = codepoints_[cp];
         meta.name = fields[1];
         meta.general_category = fields[2];
@@ -128,11 +122,11 @@ void UCDParser::parse_scripts() {
             uint32_t start = std::stoul(range_str.substr(0, dots), nullptr, 16);
             uint32_t end = std::stoul(range_str.substr(dots + 2), nullptr, 16);
             for (uint32_t cp = start; cp <= end; ++cp) {
-                codepoints_[cp].script = script;
+                if (cp < codepoints_.size()) codepoints_[cp].script = script;
             }
         } else {
             uint32_t cp = std::stoul(range_str, nullptr, 16);
-            codepoints_[cp].script = script;
+            if (cp < codepoints_.size()) codepoints_[cp].script = script;
         }
     }
 }
@@ -159,7 +153,7 @@ void UCDParser::parse_blocks() {
             uint32_t start = std::stoul(range_str.substr(0, dots), nullptr, 16);
             uint32_t end = std::stoul(range_str.substr(dots + 2), nullptr, 16);
             for (uint32_t cp = start; cp <= end; ++cp) {
-                if (codepoints_.count(cp)) codepoints_[cp].block = block;
+                if (cp < codepoints_.size()) codepoints_[cp].block = block;
             }
         }
     }
@@ -189,23 +183,23 @@ void UCDParser::parse_ages() {
             uint32_t start = std::stoul(range_str.substr(0, dots), nullptr, 16);
             uint32_t end = std::stoul(range_str.substr(dots + 2), nullptr, 16);
             for (uint32_t cp = start; cp <= end; ++cp) {
-                if (codepoints_.count(cp)) codepoints_[cp].age = age;
+                if (cp < codepoints_.size()) codepoints_[cp].age = age;
             }
         } else {
             uint32_t cp = std::stoul(range_str, nullptr, 16);
-            if (codepoints_.count(cp)) codepoints_[cp].age = age;
+            if (cp < codepoints_.size()) codepoints_[cp].age = age;
         }
     }
 }
 
 void UCDParser::find_base_characters() {
-    for (auto& pair : codepoints_) {
-        pair.second.base_codepoint = trace_decomposition(pair.first);
+    for (auto& meta : codepoints_) {
+        meta.base_codepoint = trace_decomposition(meta.codepoint);
     }
 }
 
 uint32_t UCDParser::trace_decomposition(uint32_t cp) {
-    if (!codepoints_.count(cp)) return cp;
+    if (cp >= codepoints_.size()) return cp;
     const std::string& decomp = codepoints_[cp].decomposition;
     if (decomp.empty()) return cp;
 
@@ -240,13 +234,25 @@ void UCDParser::parse_unihan_rs() {
         if (field == "kRSUnicode") {
             try {
                 uint32_t cp = std::stoul(cp_str.substr(2), nullptr, 16);
-                if (codepoints_.count(cp)) {
+                if (cp < codepoints_.size()) {
                     size_t dot = value.find('.');
                     if (dot != std::string::npos) {
                         std::string rad_str = value.substr(0, dot);
+                        // Trim whitespace from rad_str
+                        rad_str.erase(0, rad_str.find_first_not_of(" \t"));
+                        rad_str.erase(rad_str.find_last_not_of(" \t") + 1);
+
+                        // Remove trailing apostrophe if present (use char literal)
                         if (!rad_str.empty() && rad_str.back() == '\'') rad_str.pop_back();
-                        codepoints_[cp].radical = std::stoul(rad_str);
-                        codepoints_[cp].strokes = std::stoi(value.substr(dot + 1));
+
+                        if (!rad_str.empty()) {
+                            codepoints_[cp].radical = std::stoul(rad_str);
+                            // Trim and parse stroke count safely
+                            std::string strokes_str = value.substr(dot + 1);
+                            strokes_str.erase(0, strokes_str.find_first_not_of(" \t"));
+                            strokes_str.erase(strokes_str.find_last_not_of(" \t") + 1);
+                            codepoints_[cp].strokes = std::stoi(strokes_str);
+                        }
                     }
                 }
             } catch (...) { continue; }
@@ -274,7 +280,7 @@ void UCDParser::parse_all_keys() {
 
         try {
             uint32_t cp = std::stoul(cp_str, nullptr, 16);
-            if (codepoints_.count(cp)) {
+            if (cp < codepoints_.size()) {
                 size_t start = line.find('[', semi);
                 while (start != std::string::npos) {
                     size_t dot1 = line.find('.', start);

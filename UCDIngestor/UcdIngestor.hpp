@@ -85,6 +85,9 @@ public:
         const std::string& derived_age_path,
         const std::string& property_aliases_path
     );
+
+    // New: Seed Atoms and Physicality from UCD data
+    void seed_atoms_from_ucd();
 };
 
 #endif // UCD_INGESTOR_HPP

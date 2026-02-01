@@ -40,7 +40,7 @@ set(SOURCE_FILES
 add_executable(ucd_ingestor ${SOURCE_FILES})
 
 # Link libraries
-target_link_libraries(ucd_ingestor ${LIBPQXX_LDFLAGS} ${LIBPQXX_LIBRARIES} pq)
+target_link_libraries(ucd_ingestor ${LIBPQXX_LDFLAGS} ${LIBPQXX_LIBRARIES} pq Hartonomous::Engine)
 
 # Set RPATH
 if(UNIX)

@@ -62,7 +62,7 @@ void UCDProcessor::process_and_ingest() {
     // 1. Parsing
     std::cout << "[1/4] Parsing UCD Universe..." << std::endl;
     parser_.parse_all();
-    auto& codepoints = const_cast<std::map<uint32_t, CodepointMetadata>&>(parser_.get_codepoints());
+    auto& codepoints = const_cast<std::vector<CodepointMetadata>&>(parser_.get_codepoints());
 
     // 2. Semantic Sequencing
     std::cout << "[2/4] Executing Semantic Sequencing (1D Backbone)..." << std::endl;
@@ -145,31 +145,49 @@ void UCDProcessor::ingest_to_db() {
 
     // Collect all rows first (parallel computation already done via futures)
     std::vector<IngestRow> all_rows;
+    size_t total_rows_processed = 0;
+    size_t total_expected = sorted_codepoints_.size();
+    
+    std::cout << "  Generating rows (parallel)... " << std::flush;
     for (auto& f : futures) {
         auto rows = f.get();
         all_rows.insert(all_rows.end(),
                         std::make_move_iterator(rows.begin()),
                         std::make_move_iterator(rows.end()));
+        total_rows_processed += rows.size();
+        
+        // Simple progress indicator
+        size_t percent = (total_rows_processed * 100) / total_expected;
+        if (percent % 10 == 0) std::cout << percent << "%... " << std::flush;
     }
+    std::cout << "Done. (" << all_rows.size() << " rows)" << std::endl;
 
     // Ingest physicality first (atoms depend on physicality via FK)
     {
+        std::cout << "  Bulk inserting Physicality records... " << std::flush;
         BulkCopy phys_copy(db_);
         phys_copy.begin_table("hartonomous.physicality", {"id", "hilbert", "centroid"});
+        size_t count = 0;
         for (const auto& row : all_rows) {
             phys_copy.add_row(row.phys_cols);
+            if (++count % (all_rows.size() / 10) == 0) std::cout << "." << std::flush;
         }
         phys_copy.flush();
+        std::cout << " Done." << std::endl;
     }
 
     // Then ingest atoms
     {
+        std::cout << "  Bulk inserting Atom records... " << std::flush;
         BulkCopy atom_copy(db_);
         atom_copy.begin_table("hartonomous.atom", {"id", "codepoint", "physicalityid"});
+        size_t count = 0;
         for (const auto& row : all_rows) {
             atom_copy.add_row(row.atom_cols);
+            if (++count % (all_rows.size() / 10) == 0) std::cout << "." << std::flush;
         }
         atom_copy.flush();
+        std::cout << " Done." << std::endl;
     }
 }
 

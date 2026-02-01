@@ -1,9 +1,12 @@
 // UcdIngestor.cpp
 #include "UcdIngestor.hpp"
 #include "PgConnection.hpp" // Concrete DB connection type
+#include <unicode/codepoint_projection.hpp> // Engine Physics
 #include <iostream>
 #include <algorithm> // For std::sort, std::upper_bound
 #include <stdexcept>
+#include <sstream>
+#include <iomanip>
 
 // Helper for sorting ranges for efficient lookup (defined in UcdIngestor.hpp anonymous namespace)
 
@@ -474,6 +477,9 @@ void UcdIngestor::run_ingestion_workflow(
         std::cout << "Ingesting Unicode Data..." << std::endl;
         ingest_unicode_data(unicode_data_path);
 
+        std::cout << "Seeding Atoms from UCD..." << std::endl;
+        seed_atoms_from_ucd();
+
         std::cout << "UCD ingestion completed successfully." << std::endl;
 
     } catch (const std::exception& e) {
@@ -492,4 +498,131 @@ void UcdIngestor::run_ingestion_workflow(
             }
         }
     }
+}
+
+void UcdIngestor::seed_atoms_from_ucd() {
+    using namespace hartonomous::unicode;
+    
+    std::cout << "Starting Atom Seeding (0x000000 to 0x10FFFF)..." << std::endl;
+    
+    // Batch size for bulk inserts
+    const int BATCH_SIZE = 1000;
+    std::vector<uint32_t> batch_codepoints;
+    batch_codepoints.reserve(BATCH_SIZE);
+
+    m_db_connection->begin_transaction();
+
+    // Iterate entire Unicode space
+    for (uint32_t cp = 0; cp <= 0x10FFFF; ++cp) {
+        // Skip surrogates? Typically yes, as they aren't scalar values.
+        // U+D800 to U+DFFF
+        if (cp >= 0xD800 && cp <= 0xDFFF) continue;
+
+        batch_codepoints.push_back(cp);
+
+        if (batch_codepoints.size() >= BATCH_SIZE) {
+            // Process Batch
+            auto projections = CodepointProjection::project_batch(batch_codepoints);
+            
+            std::stringstream sql_phys;
+            std::stringstream sql_atoms;
+            
+            sql_phys << "INSERT INTO \"Physicalities\" (\"Id\", \"HilbertIndex\", \"Centroid\") VALUES ";
+            sql_atoms << "INSERT INTO \"Atoms\" (\"Id\", \"PhysicalityId\", \"Codepoint\") VALUES ";
+
+            bool first = true;
+            for (const auto& proj : projections) {
+                if (!first) {
+                    sql_phys << ",";
+                    sql_atoms << ",";
+                }
+                first = false;
+
+                // --- Hash to Hex Helper ---
+                auto to_uuid = [&](const std::array<uint8_t, 32>& hash) {
+                    std::stringstream ss;
+                    ss << std::hex << std::setfill('0');
+                    for (int i = 0; i < 16; ++i) { // Use first 16 bytes for UUID
+                        if (i == 4 || i == 6 || i == 8 || i == 10) ss << '-';
+                        ss << std::setw(2) << static_cast<int>(hash[i]);
+                    }
+                    return ss.str();
+                };
+
+                // Use Atom Hash as UUID for Atom
+                std::string atom_uuid = to_uuid(proj.hash);
+                // For base Atoms, Physicality ID is the same as Atom ID (1:1 mapping)
+                // This simplifies lookup: given an Atom ID, we know its Physicality ID.
+                std::string phys_uuid = atom_uuid; 
+
+                // --- SQL Generation ---
+                // Physicality
+                // Note: Centroid is Vec4. We store as array literal for now.
+                sql_phys << "('" << phys_uuid << "', " 
+                         << proj.hilbert_index << ", "
+                         << "'{" << proj.s3_position[0] << "," << proj.s3_position[1] << "," 
+                         << proj.s3_position[2] << "," << proj.s3_position[3] << "}')"; // Postgres array syntax {}
+                
+                // Atom
+                sql_atoms << "('" << atom_uuid << "', '" 
+                          << phys_uuid << "', " 
+                          << proj.codepoint << ")";
+            }
+            
+            sql_phys << " ON CONFLICT (\"Id\") DO NOTHING";
+            sql_atoms << " ON CONFLICT (\"Id\") DO NOTHING";
+
+            m_db_connection->execute_query(sql_phys.str());
+            m_db_connection->execute_query(sql_atoms.str());
+
+            batch_codepoints.clear();
+            
+            if (cp % 10000 == 0) {
+                std::cout << "Seeded " << cp << " atoms..." << std::endl;
+            }
+        }
+    }
+    
+    // Process remaining batch
+    if (!batch_codepoints.empty()) {
+        auto projections = CodepointProjection::project_batch(batch_codepoints);
+        std::stringstream sql_phys;
+        std::stringstream sql_atoms;
+        sql_phys << "INSERT INTO \"Physicalities\" (\"Id\", \"HilbertIndex\", \"Centroid\") VALUES ";
+        sql_atoms << "INSERT INTO \"Atoms\" (\"Id\", \"PhysicalityId\", \"Codepoint\") VALUES ";
+
+        bool first = true;
+        for (const auto& proj : projections) {
+            if (!first) { sql_phys << ","; sql_atoms << ","; }
+            first = false;
+            
+            auto to_uuid = [&](const std::array<uint8_t, 32>& hash) {
+                std::stringstream ss;
+                ss << std::hex << std::setfill('0');
+                for (int i = 0; i < 16; ++i) {
+                    if (i == 4 || i == 6 || i == 8 || i == 10) ss << '-';
+                    ss << std::setw(2) << static_cast<int>(hash[i]);
+                }
+                return ss.str();
+            };
+
+            std::string atom_uuid = to_uuid(proj.hash);
+            std::string phys_uuid = atom_uuid; 
+
+            sql_phys << "('" << phys_uuid << "', " << proj.hilbert_index << ", "
+                     << "'{" << proj.s3_position[0] << "," << proj.s3_position[1] << "," 
+                     << proj.s3_position[2] << "," << proj.s3_position[3] << "}')";
+            
+            sql_atoms << "('" << atom_uuid << "', '" << phys_uuid << "', " << proj.codepoint << ")";
+        }
+        
+        sql_phys << " ON CONFLICT (\"Id\") DO NOTHING";
+        sql_atoms << " ON CONFLICT (\"Id\") DO NOTHING";
+
+        m_db_connection->execute_query(sql_phys.str());
+        m_db_connection->execute_query(sql_atoms.str());
+    }
+
+    m_db_connection->commit_transaction();
+    std::cout << "Atom Seeding Complete." << std::endl;
 }

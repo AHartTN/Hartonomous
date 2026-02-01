@@ -93,3 +93,4 @@ message(STATUS "Found PostgreSQL: ${PostgreSQL_LIBRARY}")
 
 add_subdirectory(Engine)
 add_subdirectory(PostgresExtension)
+add_subdirectory(UCDIngestor)

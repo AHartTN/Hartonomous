@@ -22,7 +22,7 @@ public:
     /**
      * @brief Get the parsed codepoints
      */
-    const std::map<uint32_t, CodepointMetadata>& get_codepoints() const { return codepoints_; }
+    const std::vector<CodepointMetadata>& get_codepoints() const { return codepoints_; }
 
 private:
     void generate_full_codespace();  // All 1,114,112 codepoints
@@ -37,7 +37,7 @@ private:
     uint32_t trace_decomposition(uint32_t cp);
 
     std::string data_dir_;
-    std::map<uint32_t, CodepointMetadata> codepoints_;
+    std::vector<CodepointMetadata> codepoints_;
 };
 
 } // namespace Hartonomous::unicode
