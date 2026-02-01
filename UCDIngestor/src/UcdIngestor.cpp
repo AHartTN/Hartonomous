@@ -9,6 +9,8 @@
 #include <stdexcept>
 #include <sstream>
 #include <iomanip>
+#include <regex>
+#include <fstream>
 #include <nlohmann/json.hpp>
 
 using json = nlohmann::json;
@@ -29,22 +31,16 @@ void UcdIngestor::initialize_database() {
     m_db_connection->connect(conn_str);
 }
 
-// --------------------------------------------------------------------------------------
-// Core "Gene Pool" Ingestion Logic
-// --------------------------------------------------------------------------------------
-
 void UcdIngestor::ingest_ucd_xml(const std::string& filepath) {
     std::cout << "Ingesting UCD XML Gene Pool from: " << filepath << std::endl;
     UcdXmlReader reader(filepath);
     reader.open();
 
     m_db_connection->begin_transaction();
-    
-    // Clear existing (optional, but good for idempotency if running full workflow)
     m_db_connection->execute_query("TRUNCATE TABLE ucd.code_points RESTART IDENTITY CASCADE;");
 
     int count = 0;
-    const int BATCH_SIZE = 5000;
+    const int BATCH_SIZE = 50000;
     std::stringstream sql_batch;
     bool first_in_batch = true;
 
@@ -63,19 +59,36 @@ void UcdIngestor::ingest_ucd_xml(const std::string& filepath) {
 
     while (auto atom_opt = reader.next_atom()) {
         const auto& atom = *atom_opt;
-        
         if (!first_in_batch) sql_batch << ",";
         first_in_batch = false;
 
-        // Build Properties JSON
         json props_json;
-        for (const auto& [k, v] : atom.properties) {
+
+        auto expand_hash = [&](std::string& val, const std::string& hex) {
+            if (val == "#") {
+                val = hex;
+            } else {
+                size_t pos = 0;
+                while ((pos = val.find("#", pos)) != std::string::npos) {
+                    val.replace(pos, 1, hex);
+                    pos += hex.length();
+                }
+            }
+        };
+
+        std::string hex_upper = atom.hex;
+        size_t first_nonzero = hex_upper.find_first_not_of('0');
+        std::string hex_short = (first_nonzero == std::string::npos) ? "0" : hex_upper.substr(first_nonzero);
+
+        for (auto& [k, v] : atom.properties) {
+            if (v.find("#") != std::string::npos) {
+                if (k == "na" || k == "na1") expand_hash(v, hex_short);
+                else expand_hash(v, hex_upper);
+            }
             props_json[k] = v;
         }
 
-        // Helper to safe-quote strings for SQL
         auto q = [](const std::string& s) { 
-            // Simple escaping: replace ' with ''
             std::string out = s;
             size_t pos = 0;
             while ((pos = out.find("'", pos)) != std::string::npos) {
@@ -89,9 +102,9 @@ void UcdIngestor::ingest_ucd_xml(const std::string& filepath) {
             return s.empty() ? "NULL" : q(s);
         };
 
-        // Extract Hot Columns from properties map if they exist (UcdXmlReader puts everything in properties except id/hex)
-        // XML attributes: na, gc, ccc, bc, dt, dm, nv, nt, age, blk, sc
         std::string name = atom.name.empty() ? atom.properties.count("na") ? atom.properties.at("na") : "" : atom.name;
+        if (name.find("#") != std::string::npos) expand_hash(name, hex_short);
+
         std::string gc = atom.gc.empty() ? atom.properties.count("gc") ? atom.properties.at("gc") : "" : atom.gc;
         std::string ccc = atom.properties.count("ccc") ? atom.properties.at("ccc") : "0";
         std::string bc = atom.properties.count("bc") ? atom.properties.at("bc") : "";
@@ -102,14 +115,6 @@ void UcdIngestor::ingest_ucd_xml(const std::string& filepath) {
         std::string age = atom.age.empty() ? atom.properties.count("age") ? atom.properties.at("age") : "" : atom.age;
         std::string blk = atom.block.empty() ? atom.properties.count("blk") ? atom.properties.at("blk") : "" : atom.block;
         std::string sc = atom.properties.count("sc") ? atom.properties.at("sc") : "";
-
-        // Normalize '#' in names (CJK)
-        if (name.find("#") != std::string::npos) {
-            // Usually "CJK UNIFIED IDEOGRAPH-#" -> Replace # with Hex
-            // Or handle logic. For Gene Pool, keep raw or replace?
-            // UCD XML convention: # is placeholder for code point.
-            // Let's NOT replace it here, keep it raw as source.
-        }
 
         sql_batch << "(" 
                   << atom.id << ", "
@@ -128,22 +133,19 @@ void UcdIngestor::ingest_ucd_xml(const std::string& filepath) {
                   << q(props_json.dump())
                   << ")";
 
-        count++;
-        if (count % BATCH_SIZE == 0) {
+        if (++count % BATCH_SIZE == 0) {
             flush_batch();
-            std::cout << "Ingested " << count << " items..." << std::endl;
+            std::cout << "Ingested " << count << " items...\r" << std::flush;
         }
     }
-    
     flush_batch();
     m_db_connection->commit_transaction();
-    std::cout << "Finished UCD XML Ingestion. Total: " << count << std::endl;
+    std::cout << "\nFinished UCD XML Ingestion. Total: " << count << std::endl;
 }
 
 void UcdIngestor::ingest_allkeys(const std::string& filepath) {
     std::cout << "Ingesting UCA Collation Weights from: " << filepath << std::endl;
     ucd::AllKeysParser parser(filepath);
-    
     m_db_connection->begin_transaction();
     m_db_connection->execute_query("TRUNCATE TABLE ucd.collation_weights RESTART IDENTITY CASCADE;");
 
@@ -165,43 +167,32 @@ void UcdIngestor::ingest_allkeys(const std::string& filepath) {
 
     while (auto weight_opt = parser.next()) {
         const auto& w = *weight_opt;
-        
         if (!first_in_batch) sql_batch << ",";
         first_in_batch = false;
 
-        // Construct Postgres Array literal: '{1, 2, 3}'
         std::stringstream arr_ss;
-        arr_ss << "'{";
+        arr_ss << "'{лаш";
         for (size_t i = 0; i < w.source_codepoints.size(); ++i) {
             if (i > 0) arr_ss << ",";
             arr_ss << w.source_codepoints[i];
         }
         arr_ss << "}'";
 
-        sql_batch << "(" 
-                  << arr_ss.str() << ", "
-                  << w.primary << ", "
-                  << w.secondary << ", "
-                  << w.tertiary << ", "
-                  << (w.is_variable ? "TRUE" : "FALSE")
-                  << ")";
+        sql_batch << "(" << arr_ss.str() << ", " << w.primary << ", " << w.secondary << ", " << w.tertiary << ", " << (w.is_variable ? "TRUE" : "FALSE") << ")";
 
-        count++;
-        if (count % BATCH_SIZE == 0) {
+        if (++count % BATCH_SIZE == 0) {
             flush_batch();
-            std::cout << "Ingested " << count << " collation weights..." << std::endl;
+            std::cout << "Ingested " << count << " collation weights...\r" << std::flush;
         }
     }
-
     flush_batch();
     m_db_connection->commit_transaction();
-    std::cout << "Finished Collation Weights Ingestion. Total: " << count << std::endl;
+    std::cout << "\nFinished Collation Weights Ingestion. Total: " << count << std::endl;
 }
 
 void UcdIngestor::ingest_confusables(const std::string& filepath) {
     std::cout << "Ingesting Confusables from: " << filepath << std::endl;
     ucd::ConfusablesParser parser(filepath);
-    
     m_db_connection->begin_transaction();
     m_db_connection->execute_query("TRUNCATE TABLE ucd.confusables RESTART IDENTITY CASCADE;");
 
@@ -223,72 +214,140 @@ void UcdIngestor::ingest_confusables(const std::string& filepath) {
 
     while (auto item_opt = parser.next()) {
         const auto& item = *item_opt;
-        
         if (!first_in_batch) sql_batch << ",";
         first_in_batch = false;
 
-        // Target Array
         std::stringstream arr_ss;
-        arr_ss << "'{";
+        arr_ss << "'{лаш";
         for (size_t i = 0; i < item.target_codepoints.size(); ++i) {
             if (i > 0) arr_ss << ",";
             arr_ss << item.target_codepoints[i];
         }
         arr_ss << "}'";
 
-        sql_batch << "(" 
-                  << item.source_codepoint << ", "
-                  << arr_ss.str() << ", "
-                  << "'" << item.type << "'" // Simple string, assumed safe
-                  << ")";
+        sql_batch << "(" << item.source_codepoint << ", " << arr_ss.str() << ", '" << item.type << "')";
 
-        count++;
-        if (count % BATCH_SIZE == 0) {
+        if (++count % BATCH_SIZE == 0) {
             flush_batch();
+            std::cout << "Ingested " << count << " confusables...\r" << std::flush;
         }
     }
-
     flush_batch();
     m_db_connection->commit_transaction();
-    std::cout << "Finished Confusables Ingestion. Total: " << count << std::endl;
+    std::cout << "\nFinished Confusables Ingestion. Total: " << count << std::endl;
 }
 
-void UcdIngestor::run_gene_pool_ingestion(
-    const std::string& xml_path,
-    const std::string& allkeys_path,
-    const std::string& confusables_path
-) {
+void UcdIngestor::ingest_emoji_sequences(const std::string& filepath, const std::string& type_tag) {
+    std::cout << "Ingesting Emoji Sequences (" << type_tag << ") from: " << filepath << std::endl;
+    std::ifstream file(filepath);
+    if (!file.is_open()) throw std::runtime_error("Cannot open emoji file: " + filepath);
+
+    m_db_connection->begin_transaction();
+    if (type_tag == "Standard") 
+        m_db_connection->execute_query("TRUNCATE TABLE ucd.emoji_sequences RESTART IDENTITY CASCADE;");
+
+    std::string line;
+    int count = 0;
+    std::stringstream sql_batch;
+    bool first = true;
+    const int BATCH_SIZE = 1000;
+
+    auto flush = [&]() {
+        if (!first) {
+            std::string sql = "INSERT INTO ucd.emoji_sequences (sequence_codepoints, type_field, description) VALUES " + sql_batch.str() + " ON CONFLICT DO NOTHING;";
+            m_db_connection->execute_query(sql);
+            sql_batch.str("");
+            first = true;
+        }
+    };
+
+    while (std::getline(file, line)) {
+        if (line.empty() || line[0] == '#') continue;
+        size_t semi = line.find(';');
+        if (semi == std::string::npos) continue;
+        
+        std::string hex_seq = line.substr(0, semi);
+        hex_seq.erase(hex_seq.find_last_not_of(" \t") + 1);
+        hex_seq.erase(0, hex_seq.find_first_not_of(" \t"));
+
+        std::string remaining = line.substr(semi + 1);
+        size_t next_semi = remaining.find(';');
+        size_t hash_pos = remaining.find('#');
+        
+        std::string type, desc;
+        if (next_semi != std::string::npos && (hash_pos == std::string::npos || next_semi < hash_pos)) {
+            type = remaining.substr(0, next_semi);
+            size_t desc_start = next_semi + 1;
+            if (hash_pos != std::string::npos) desc = remaining.substr(desc_start, hash_pos - desc_start);
+            else desc = remaining.substr(desc_start);
+        } else {
+            if (hash_pos != std::string::npos) {
+                type = remaining.substr(0, hash_pos);
+                desc = remaining.substr(hash_pos + 1);
+            } else {
+                type = remaining;
+                desc = "";
+            }
+        }
+
+        type.erase(type.find_last_not_of(" \t") + 1);
+        type.erase(0, type.find_first_not_of(" \t"));
+        desc.erase(desc.find_last_not_of(" \t") + 1);
+        desc.erase(0, desc.find_first_not_of(" \t"));
+
+        std::stringstream array_fmt;
+        array_fmt << "'{лаш";
+        std::stringstream ss(hex_seq);
+        std::string segment;
+        bool first_seg = true;
+        
+        if (hex_seq.find(".." ) != std::string::npos) {
+            size_t dots = hex_seq.find(".." );
+            long start = std::stol(hex_seq.substr(0, dots), nullptr, 16);
+            long end = std::stol(hex_seq.substr(dots+2), nullptr, 16);
+            for (long i = start; i <= end; ++i) {
+                if (!first_seg) array_fmt << ",";
+                array_fmt << i;
+                first_seg = false;
+            }
+        } else {
+            while (std::getline(ss, segment, ' ')) {
+                if (segment.empty()) continue;
+                if (!first_seg) array_fmt << ",";
+                array_fmt << std::stol(segment, nullptr, 16);
+                first_seg = false;
+            }
+        }
+        array_fmt << "}'";
+
+        if (!first) sql_batch << ",";
+        first = false;
+
+        std::string safe_desc = desc;
+        size_t p = 0; while ((p = safe_desc.find("'", p)) != std::string::npos) { safe_desc.replace(p, 1, "''"); p += 2; }
+
+        sql_batch << "(" << array_fmt.str() << ", '" << type << "', '" << safe_desc << "')";
+        if (++count % BATCH_SIZE == 0) {
+            flush();
+            std::cout << "Ingested " << count << " emoji entries...\r" << std::flush;
+        }
+    }
+    flush();
+    m_db_connection->commit_transaction();
+    std::cout << "\nFinished Emoji Sequences Ingestion. Total: " << count << std::endl;
+}
+
+void UcdIngestor::run_gene_pool_ingestion(const std::string& xml_path, const std::string& allkeys_path, const std::string& confusables_path, const std::string& emoji_path, const std::string& emoji_zwj_path) {
     try {
         initialize_database();
         ingest_ucd_xml(xml_path);
         ingest_allkeys(allkeys_path);
         ingest_confusables(confusables_path);
+        ingest_emoji_sequences(emoji_path, "Standard");
+        ingest_emoji_sequences(emoji_zwj_path, "ZWJ");
         std::cout << "=== Gene Pool Ingestion Complete ===" << std::endl;
     } catch (const std::exception& e) {
         std::cerr << "Gene Pool Ingestion Failed: " << e.what() << std::endl;
-        // Rollback handled if exception thrown during specific phase, 
-        // but global catch implies we stop.
+        throw;
     }
 }
-
-// --------------------------------------------------------------------------------------
-// Legacy Methods (Retained as Stubs or for Partial Compat if needed)
-// --------------------------------------------------------------------------------------
-void UcdIngestor::ingest_unicode_data(const std::string&) {}
-void UcdIngestor::ingest_blocks_data(const std::string&) {}
-void UcdIngestor::ingest_derived_age_data(const std::string&) {}
-void UcdIngestor::ingest_property_aliases_data(const std::string&) {}
-void UcdIngestor::run_ingestion_workflow(const std::string&, const std::string&, const std::string&, const std::string&) {}
-
-// Helper caches (Unused in new pipeline but kept for class member compat)
-long long UcdIngestor::get_or_insert_general_category(const std::string&, const std::string&) { return 0; }
-long long UcdIngestor::get_or_insert_combining_class(int, const std::string&) { return 0; }
-long long UcdIngestor::get_or_insert_bidi_class(const std::string&, const std::string&) { return 0; }
-long long UcdIngestor::get_or_insert_numeric_type(const std::string&) { return 0; }
-long long UcdIngestor::get_or_insert_property(const std::string&, const std::string&, const std::string&) { return 0; }
-long long UcdIngestor::find_block_id_for_code_point(const std::string&) { return 0; }
-long long UcdIngestor::find_age_id_for_code_point(const std::string&) { return 0; }
-void UcdIngestor::populate_static_lookup_tables() {}
-void UcdIngestor::load_blocks_from_db() {}
-void UcdIngestor::load_ages_from_db() {}
-void UcdIngestor::load_properties_from_db() {}

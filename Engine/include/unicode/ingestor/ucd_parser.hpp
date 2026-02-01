@@ -46,6 +46,12 @@ public:
      */
     size_t codepoint_count() const { return codepoints_.size(); }
 
+    /**
+     * @brief Post-processing logic (can be called after loading from DB)
+     */
+    void find_base_characters();
+    void build_semantic_edges();
+
 private:
     // XML parsing (SAX-style for memory efficiency on 228MB file)
     void parse_ucd_xml(const std::string& path);
@@ -58,9 +64,6 @@ private:
     void parse_unihan();             // Han readings/radicals
     void parse_emoji_sequences();    // Emoji ZWJ sequences
 
-    // Post-processing
-    void find_base_characters();
-    void build_semantic_edges();
     uint32_t trace_decomposition(uint32_t cp);
 
     std::string data_dir_;

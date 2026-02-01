@@ -4,9 +4,9 @@
 -- This table stores ALL Unicode Character Database properties from ucd.all.flat.xml
 -- One row per codepoint (up to 1,114,112 codepoints)
 
-CREATE TABLE IF NOT EXISTS AtomMetadata (
+CREATE TABLE IF NOT EXISTS hartonomous.AtomMetadata (
     -- Primary key references Atom
-    AtomId UUID PRIMARY KEY REFERENCES Atom(Id) ON DELETE CASCADE,
+    AtomId UUID PRIMARY KEY REFERENCES hartonomous.Atom(Id) ON DELETE CASCADE,
     Codepoint INT NOT NULL,  -- Denormalized for fast lookups
 
     -- Core properties (from UCD XML)
@@ -148,18 +148,18 @@ CREATE TABLE IF NOT EXISTS AtomMetadata (
 );
 
 -- Indexes for common queries
-CREATE INDEX IF NOT EXISTS idx_AtomMetadata_Codepoint ON AtomMetadata(Codepoint);
-CREATE INDEX IF NOT EXISTS idx_AtomMetadata_GeneralCategory ON AtomMetadata(GeneralCategory);
-CREATE INDEX IF NOT EXISTS idx_AtomMetadata_Script ON AtomMetadata(Script);
-CREATE INDEX IF NOT EXISTS idx_AtomMetadata_Block ON AtomMetadata(Block);
-CREATE INDEX IF NOT EXISTS idx_AtomMetadata_Age ON AtomMetadata(Age);
-CREATE INDEX IF NOT EXISTS idx_AtomMetadata_NumericType ON AtomMetadata(NumericType) WHERE NumericType != 'None';
-CREATE INDEX IF NOT EXISTS idx_AtomMetadata_Radical ON AtomMetadata(Radical) WHERE Radical IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_AtomMetadata_Emoji ON AtomMetadata(IsEmoji) WHERE IsEmoji = TRUE;
-CREATE INDEX IF NOT EXISTS idx_AtomMetadata_Alphabetic ON AtomMetadata(IsAlphabetic) WHERE IsAlphabetic = TRUE;
+CREATE INDEX IF NOT EXISTS idx_AtomMetadata_Codepoint ON hartonomous.AtomMetadata(Codepoint);
+CREATE INDEX IF NOT EXISTS idx_AtomMetadata_GeneralCategory ON hartonomous.AtomMetadata(GeneralCategory);
+CREATE INDEX IF NOT EXISTS idx_AtomMetadata_Script ON hartonomous.AtomMetadata(Script);
+CREATE INDEX IF NOT EXISTS idx_AtomMetadata_Block ON hartonomous.AtomMetadata(Block);
+CREATE INDEX IF NOT EXISTS idx_AtomMetadata_Age ON hartonomous.AtomMetadata(Age);
+CREATE INDEX IF NOT EXISTS idx_AtomMetadata_NumericType ON hartonomous.AtomMetadata(NumericType) WHERE NumericType != 'None';
+CREATE INDEX IF NOT EXISTS idx_AtomMetadata_Radical ON hartonomous.AtomMetadata(Radical) WHERE Radical IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_AtomMetadata_Emoji ON hartonomous.AtomMetadata(IsEmoji) WHERE IsEmoji = TRUE;
+CREATE INDEX IF NOT EXISTS idx_AtomMetadata_Alphabetic ON hartonomous.AtomMetadata(IsAlphabetic) WHERE IsAlphabetic = TRUE;
 
 -- Comments
-COMMENT ON TABLE AtomMetadata IS 'Full Unicode Character Database (UCD) properties for each atom/codepoint';
-COMMENT ON COLUMN AtomMetadata.UcaWeights IS 'DUCET collation weights as JSON array of {primary, secondary, tertiary, quaternary}';
-COMMENT ON COLUMN AtomMetadata.NameAliases IS 'Name aliases as JSON array of {alias, type}';
-COMMENT ON COLUMN AtomMetadata.ExtraProperties IS 'Additional UCD properties not explicitly modeled (Unihan, etc.)';
+COMMENT ON TABLE hartonomous.AtomMetadata IS 'Full Unicode Character Database (UCD) properties for each atom/codepoint';
+COMMENT ON COLUMN hartonomous.AtomMetadata.UcaWeights IS 'DUCET collation weights as JSON array of {primary, secondary, tertiary, quaternary}';
+COMMENT ON COLUMN hartonomous.AtomMetadata.NameAliases IS 'Name aliases as JSON array of {alias, type}';
+COMMENT ON COLUMN hartonomous.AtomMetadata.ExtraProperties IS 'Additional UCD properties not explicitly modeled (Unihan, etc.)';

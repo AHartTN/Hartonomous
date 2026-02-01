@@ -13,8 +13,8 @@ public:
     // Prepare the source (open file, connect, etc.)
     virtual void open() = 0;
 
-    // Get the next Atom. Returns std::nullopt when exhausted.
-    virtual std::optional<Atom> next_atom() = 0;
+    // Get the next UcdRawCodepoint. Returns std::nullopt when exhausted.
+    virtual std::optional<UcdRawCodepoint> next_atom() = 0;
 
     // Close and cleanup
     virtual void close() = 0;

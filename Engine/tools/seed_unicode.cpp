@@ -36,7 +36,17 @@ int main(int argc, char** argv) {
         UCDProcessor processor(data_dir, db);
 
         // 3. Run Pipeline
-        processor.process_and_ingest();
+        std::cout << "Checking existing atoms...\n";
+        auto count_str = db.query_single("SELECT count(*) FROM hartonomous.atom");
+        size_t atom_count = count_str ? std::stoul(*count_str) : 0;
+
+        if (atom_count >= 1114112) {
+            std::cout << "✓ Atoms already seeded (" << atom_count << "). Loading metadata from Gene Pool...\n";
+            processor.load_from_database();
+            processor.ingest_ucd_metadata();
+        } else {
+            processor.process_and_ingest();
+        }
 
         auto end_time = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::seconds>(end_time - start_time).count();

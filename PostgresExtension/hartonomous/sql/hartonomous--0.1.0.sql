@@ -14,6 +14,7 @@
 \i 'tables/content.sql'
 \i 'tables/physicality.sql'
 \i 'tables/atom.sql'
+\i 'tables/atom_metadata.sql'
 \i 'tables/composition.sql'
 \i 'tables/composition_sequence.sql'
 \i 'tables/relation.sql'

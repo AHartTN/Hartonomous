@@ -186,6 +186,16 @@ void UCDParser::parse_char_element(const std::string& line) {
     meta.is_emoji_component = get_attr("EComp") == "Y";
     meta.is_extended_pictographic = get_attr("ExtPict") == "Y";
 
+    // Han Radical/Stroke
+    std::string rad = get_attr("Radical");
+    if (!rad.empty() && rad != "N" && rad != "Y") {
+        try { meta.radical = std::stoul(rad); } catch (...) {}
+    }
+    std::string strokes = get_attr("Strokes");
+    if (!strokes.empty()) {
+        try { meta.strokes = std::stoi(strokes); } catch (...) {}
+    }
+
     // Normalization
     meta.nfc_quick_check = get_attr("NFC_QC");
     meta.nfd_quick_check = get_attr("NFD_QC");

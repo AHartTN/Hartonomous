@@ -26,10 +26,15 @@ public:
     /**
      * @brief Run the full ingestion pipeline.
      *
-     * Parses UCD data, computes semantic ordering and S³ positions,
-     * and inserts all 1,114,112 Unicode codepoints into the database.
+     * In the split architecture, this reads from the 'ucd' schema (gene pool)
+     * instead of raw files.
      */
     void process_and_ingest();
+
+    /**
+     * @brief Load all UCD metadata from the 'ucd' database schema.
+     */
+    void load_from_database();
 
     /**
      * @brief Ingest all UCD metadata into AtomMetadata table

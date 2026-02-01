@@ -1,0 +1,7 @@
+./scripts/linux/build.sh -c -T -i > build-log.txt 2>&1;
+./scripts/linux/install.sh > install-log.txt 2>&1;
+sudo ldconfig > ldconfig-log.txt 2>&1;
+./scripts/linux/setup-database.sh --drop > setup-database-log.txt 2>&1;
+./UCDIngestor/setup_db.sh > ucd-setup-db-log.txt 2>&1;
+./run_ingestion.sh > run-ingestion-log.txt 2>&1;
+./scripts/linux/01-seed-unicode.sh > seed-unicode-log.txt 2>&1

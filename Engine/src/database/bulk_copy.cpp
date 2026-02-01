@@ -120,14 +120,15 @@ void BulkCopy::add_row(const std::vector<std::string>& values) {
     // Ensure COPY is started exactly once per session
     start_copy_if_needed();
 
-    // Emit exactly columns_.size() fields; missing values become empty fields
+    // Emit exactly columns_.size() fields; empty strings or "\N" become NULL (\N)
     const size_t ncols = columns_.size();
     for (size_t i = 0; i < ncols; ++i) {
         if (i) buffer_ << '\t';
-        if (i < values.size()) {
+        if (i < values.size() && !values[i].empty() && values[i] != "\\N") {
             escape_value_into_buffer(values[i]);
         } else {
-            // empty field -> nothing written
+            // Write PostgreSQL NULL sentinel
+            buffer_ << "\\N";
         }
     }
     buffer_ << '\n';

@@ -53,7 +53,7 @@ std::string UcdXmlReader::get_attribute(const std::string& content, const std::s
     return content.substr(start, end - start);
 }
 
-void UcdXmlReader::parse_attributes(const std::string& line, Atom& atom) {
+void UcdXmlReader::parse_attributes(const std::string& line, UcdRawCodepoint& atom) {
     // We iterate the string looking for `key="value"` patterns.
     size_t pos = 0;
     while (true) {
@@ -108,11 +108,11 @@ void UcdXmlReader::parse_attributes(const std::string& line, Atom& atom) {
     }
 }
 
-std::optional<Atom> UcdXmlReader::next_atom() {
+std::optional<UcdRawCodepoint> UcdXmlReader::next_atom() {
     // 1. If we are in the middle of expanding a range, yield the next item.
     if (m_expanding_range) {
         if (m_current_range_cursor <= m_current_range_end) {
-            Atom atom = m_pending_range_template; // Copy template
+            UcdRawCodepoint atom = m_pending_range_template; // Copy template
             atom.id = m_current_range_cursor;
             atom.hex = int_to_hex_string(atom.id);
             // Name often needs to be unique or derived.
@@ -154,8 +154,8 @@ std::optional<Atom> UcdXmlReader::next_atom() {
     return std::nullopt;
 }
 
-std::optional<Atom> UcdXmlReader::process_line(const std::string& line) {
-    Atom atom;
+std::optional<UcdRawCodepoint> UcdXmlReader::process_line(const std::string& line) {
+    UcdRawCodepoint atom;
     
     // Check for Range attributes first
     std::string first_cp = get_attribute(line, "first-cp");
