@@ -39,7 +39,12 @@ void UCDParser::parse_unicode_data() {
             fields.push_back(field);
         }
 
-        if (fields.size() < 15) continue;
+        // UnicodeData.txt has 15 fields, but std::getline doesn't capture
+        // trailing empty fields after the last ';'. Accept 14+ fields.
+        if (fields.size() < 14) {
+            std::cerr << "Field size mismatch in " << fields.size() << " fields: " << line << "\n";
+            continue;
+        } 
 
         uint32_t cp = std::stoul(fields[0], nullptr, 16);
         CodepointMetadata meta;

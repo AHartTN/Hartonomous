@@ -26,6 +26,16 @@ public:
     const std::map<uint32_t, CodepointMetadata>& get_codepoints() const { return codepoints_; }
 
     /**
+     * @brief Mutable access to parsed codepoints.
+     *
+     * This accessor is provided to allow downstream processors to
+     * annotate and mutate metadata (sequence indices, positions, etc.)
+     * without copying the entire map. Callers must ensure they do not
+     * modify the map structure (insert/erase) while iterating concurrently.
+     */
+    std::map<uint32_t, CodepointMetadata>& get_codepoints_mutable() { return codepoints_; }
+
+    /**
      * @brief Check if a codepoint is assigned (has UCD metadata)
      */
     bool is_assigned(uint32_t cp) const { return codepoints_.count(cp) > 0; }

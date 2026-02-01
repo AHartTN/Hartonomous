@@ -1,31 +1,38 @@
 #pragma once
 
-#include "ucd_parser.hpp"
-#include "semantic_sequencer.hpp"
-#include <database/postgres_connection.hpp>
+#include "unicode/ingestor/ucd_parser.hpp"
+#include "unicode/ingestor/ucd_models.hpp"
+#include "unicode/ingestor/semantic_sequencer.hpp"
+#include "database/postgres_connection.hpp"
+#include <string>
 #include <vector>
 
 namespace Hartonomous::unicode {
 
+/**
+ * @brief Processes and ingests Unicode codepoints into the Hartonomous database.
+ *
+ * This class orchestrates the full Unicode ingestion pipeline:
+ * 1. Parse UCD files (assigned codepoints only)
+ * 2. Build semantic graph and linearize
+ * 3. Compute S³ positions
+ * 4. Bulk insert assigned codepoints
+ * 5. Stream unassigned codepoints
+ */
 class UCDProcessor {
 public:
     UCDProcessor(const std::string& data_dir, PostgresConnection& db);
 
     /**
-     * @brief Run the full ingestion pipeline
+     * @brief Run the full ingestion pipeline.
+     *
+     * Parses UCD data, computes semantic ordering and S³ positions,
+     * and inserts all 1,114,112 Unicode codepoints into the database.
      */
     void process_and_ingest();
 
 private:
-    /**
-     * @brief Ingest assigned codepoints (with semantic ordering)
-     */
     void ingest_assigned_codepoints();
-
-    /**
-     * @brief Stream unassigned codepoints directly to DB
-     * Completes the full Unicode codespace (1,114,112 codepoints)
-     */
     void ingest_unassigned_codepoints();
 
     UCDParser parser_;
