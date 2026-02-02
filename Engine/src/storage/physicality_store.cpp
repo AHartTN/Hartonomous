@@ -2,10 +2,8 @@
 #include <iomanip>
 #include <sstream>
 #include <endian.h>
-
-extern "C" {
-#include <liblwgeom.h>
-}
+#include <cstring>
+#include <iostream>
 
 namespace Hartonomous {
 
@@ -18,39 +16,45 @@ std::string PhysicalityStore::hash_to_uuid(const BLAKE3Pipeline::Hash& hash) {
     ss << std::hex << std::setfill('0');
     for (int i = 0; i < 16; ++i) {
         if (i == 4 || i == 6 || i == 8 || i == 10) ss << '-';
-        ss << std::setw(2) << static_cast<int>(hash[i]);
+        ss << std::setw(2) << (static_cast<unsigned>(hash[i]) & 0xFF);
     }
     return ss.str();
 }
 
 std::string PhysicalityStore::geom_to_hex(const Eigen::Vector4d& pt) {
-    POINT4D p4d;
-    p4d.x = pt[0];
-    p4d.y = pt[1];
-    p4d.z = pt[2];
-    p4d.m = pt[3];
+    // Manual EWKB construction for POINT ZM with SRID=0
+    // Layout: 1 byte endian + 4 bytes type + 4 bytes srid + 4*8 bytes coords = 41 bytes
+    uint8_t buf[41];
+    buf[0] = 0x01; // little-endian marker
 
-    LWPOINT* lwpt = lwpoint_make4d(0, p4d.x, p4d.y, p4d.z, p4d.m);
-    FLAGS_SET_Z(lwpt->flags, 1);
-    FLAGS_SET_M(lwpt->flags, 1);
+    // Type with Z, M, SRID bits set
+    // POINT (1) | HasZ (0x80000000) | HasM (0x40000000) | HasSRID (0x20000000) = 0xE0000001
+    uint32_t type_le = htole32(0xE0000001u);
+    std::memcpy(buf + 1, &type_le, sizeof(type_le));
 
-    LWGEOM* geom = lwpoint_as_lwgeom(lwpt);
-    lwgeom_set_srid(geom, 0);
+    uint32_t srid_le = htole32(0u);
+    std::memcpy(buf + 5, &srid_le, sizeof(srid_le));
 
-    size_t size;
-    GSERIALIZED* gser = gserialized_from_lwgeom(geom, &size);
-    uint8_t* wkb = (uint8_t*)gser;
-
-    std::ostringstream ss;
-    ss << "\\\\x" << std::hex << std::setfill('0');
-    for (size_t i = 0; i < size; ++i) {
-        ss << std::setw(2) << static_cast<int>(wkb[i]);
+    // Write doubles as little-endian uint64_t
+    double coords[4] = { pt[0], pt[1], pt[2], pt[3] };
+    for (int i = 0; i < 4; ++i) {
+        uint64_t u;
+        static_assert(sizeof(double) == sizeof(uint64_t));
+        std::memcpy(&u, &coords[i], sizeof(u));
+        u = htole64(u);
+        std::memcpy(buf + 9 + i * 8, &u, sizeof(u));
     }
 
-    lwgeom_free(geom);
-    lwfree(gser);
+    std::ostringstream ss;
+    ss << std::hex << std::setfill('0');
+    for (int i = 0; i < 41; ++i) {
+        ss << std::setw(2) << (static_cast<unsigned>(buf[i]) & 0xFF);
+    }
+    
+    // DEBUG
+    // std::cout << "EWKB Hex: " << ss.str() << std::endl;
 
-    return ss.str();
+    return ss.str(); 
 }
 
 void PhysicalityStore::store(const PhysicalityRecord& rec) {

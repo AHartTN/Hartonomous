@@ -3,21 +3,21 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.14.36908.2
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hartonomous.Marshal", "Hartonomous.Marshal\Hartonomous.Marshal.csproj", "{FB6FEA6F-939A-4BCA-9BC5-4A4159278094}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hartonomous.Marshal", "app-layer\Hartonomous.Marshal\Hartonomous.Marshal.csproj", "{FB6FEA6F-939A-4BCA-9BC5-4A4159278094}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hartonomous.Core", "Hartonomous.Core\Hartonomous.Core.csproj", "{F72DBC77-C871-4E3B-AC40-75411DCD1E2D}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hartonomous.Core", "app-layer\Hartonomous.Core\Hartonomous.Core.csproj", "{F72DBC77-C871-4E3B-AC40-75411DCD1E2D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hartonomous.Data", "Hartonomous.Data\Hartonomous.Data.csproj", "{5A0CB6AB-A3AF-4F38-A58A-AB1E383190D1}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hartonomous.Data", "app-layer\Hartonomous.Data\Hartonomous.Data.csproj", "{5A0CB6AB-A3AF-4F38-A58A-AB1E383190D1}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hartonomous.Common", "Hartonomous.Common\Hartonomous.Common.csproj", "{E5E7150C-3A21-4445-ACC4-F5A428E949CE}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hartonomous.Common", "app-layer\Hartonomous.Common\Hartonomous.Common.csproj", "{E5E7150C-3A21-4445-ACC4-F5A428E949CE}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hartonomous.Shared", "Hartonomous.Shared\Hartonomous.Shared.csproj", "{BD6A671B-7263-476D-85D3-8A93EF68538A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hartonomous.Shared", "app-layer\Hartonomous.Shared\Hartonomous.Shared.csproj", "{BD6A671B-7263-476D-85D3-8A93EF68538A}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hartonomous.API", "Hartonomous.API\Hartonomous.API.csproj", "{BBA74804-ACFD-6B06-0E8A-F39FCE9892D0}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hartonomous.API", "app-layer\Hartonomous.API\Hartonomous.API.csproj", "{BBA74804-ACFD-6B06-0E8A-F39FCE9892D0}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hartonomous.AppHost", "Hartonomous.AppHost\Hartonomous.AppHost.csproj", "{E2F5DBD0-0C39-499D-8229-0199E41D574D}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hartonomous.AppHost", "app-layer\Hartonomous.AppHost\Hartonomous.AppHost.csproj", "{E2F5DBD0-0C39-499D-8229-0199E41D574D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hartonomous.ServiceDefaults", "Hartonomous.ServiceDefaults\Hartonomous.ServiceDefaults.csproj", "{01708628-1D3E-B92C-A92A-E9F06991E703}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hartonomous.ServiceDefaults", "app-layer\Hartonomous.ServiceDefaults\Hartonomous.ServiceDefaults.csproj", "{01708628-1D3E-B92C-A92A-E9F06991E703}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

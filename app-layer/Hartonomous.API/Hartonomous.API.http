@@ -1,0 +1,6 @@
+@Hartonomous.API_HostAddress = http://localhost:5090
+
+GET {{Hartonomous.API_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

@@ -25,13 +25,14 @@ namespace Hartonomous {
  */
 class BLAKE3Pipeline {
 public:
-    using Hash = std::array<uint8_t, BLAKE3_OUT_LEN>;  // 32 bytes
+    static constexpr size_t HASH_SIZE = 16; // 128 bits
+    using Hash = std::array<uint8_t, HASH_SIZE>;
 
     /**
      * @brief Hash single buffer
      * @param data Input data
      * @param len Length in bytes
-     * @return 32-byte BLAKE3 hash
+     * @return 16-byte BLAKE3 hash
      */
     static Hash hash(const void* data, size_t len);
 

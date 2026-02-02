@@ -28,3 +28,8 @@ add_executable(ingest_text ingest_text.cpp)
 target_include_directories(ingest_text PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
 target_link_libraries(ingest_text PRIVATE engine)
 install(TARGETS ingest_text DESTINATION ${CMAKE_BINARY_DIR}/tools)
+
+add_executable(ingest_model ingest_model.cpp)
+target_include_directories(ingest_model PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
+target_link_libraries(ingest_model PRIVATE engine)
+install(TARGETS ingest_model DESTINATION ${CMAKE_BINARY_DIR}/tools)

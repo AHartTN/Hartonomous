@@ -1,191 +1,188 @@
 /**
  * @file ngram_extractor.cpp
- * @brief N-gram extraction implementation
+ * @brief N-gram extraction implementation with statistical grounding
  */
 
 #include <ingestion/ngram_extractor.hpp>
 #include <algorithm>
 #include <cmath>
-#include <iomanip>
-#include <sstream>
+#include <deque>
 
 namespace Hartonomous {
 
 NGramExtractor::NGramExtractor(const NGramConfig& config) : config_(config) {}
 
-std::string NGramExtractor::hash_to_hex(const BLAKE3Pipeline::Hash& hash) {
-    std::ostringstream ss;
-    ss << std::hex << std::setfill('0');
-    for (size_t i = 0; i < hash.size(); ++i) {
-        ss << std::setw(2) << static_cast<int>(hash[i]);
-    }
-    return ss.str();
-}
-
-BLAKE3Pipeline::Hash NGramExtractor::compute_hash(const std::u32string& text) {
-    // Convert UTF-32 to bytes for hashing
-    std::vector<uint8_t> data;
-    data.reserve(text.size() * 4);
-    for (char32_t cp : text) {
-        // Little-endian encoding of codepoint
-        data.push_back(static_cast<uint8_t>(cp & 0xFF));
-        data.push_back(static_cast<uint8_t>((cp >> 8) & 0xFF));
-        data.push_back(static_cast<uint8_t>((cp >> 16) & 0xFF));
-        data.push_back(static_cast<uint8_t>((cp >> 24) & 0xFF));
-    }
-    return BLAKE3Pipeline::hash(data);
-}
-
 void NGramExtractor::extract(const std::u32string& text) {
     if (text.empty()) return;
 
-    // Phase 1: Extract all n-grams and count frequencies
-    // Store positions for co-occurrence computation
-    struct NGramPosition {
-        std::string hash_hex;
-        BLAKE3Pipeline::Hash full_hash;
+    struct ActiveNGram {
+        BLAKE3Pipeline::Hash hash;
         uint32_t position;
-        uint32_t n;
     };
-    std::vector<NGramPosition> all_positions;
+    std::deque<ActiveNGram> window;
 
-    for (uint32_t n = config_.min_n; n <= config_.max_n && n <= text.size(); ++n) {
-        for (uint32_t pos = 0; pos + n <= text.size(); ++pos) {
-            std::u32string ngram_text = text.substr(pos, n);
-            auto hash = compute_hash(ngram_text);
-            std::string hash_hex = hash_to_hex(hash);
+    for (uint32_t pos = 0; pos < text.size(); ++pos) {
+        std::vector<BLAKE3Pipeline::Hash> current_pos_hashes;
+        
+        // Rolling BLAKE3 feed for this starting position
+        blake3_hasher hasher;
+        blake3_hasher_init(&hasher);
 
-            // Update or create n-gram entry
-            auto& ngram = ngrams_[hash_hex];
+        for (uint32_t n = 1; n <= config_.max_n && pos + n <= text.size(); ++n) {
+            char32_t cp = text[pos + n - 1];
+            uint8_t bytes[4] = {
+                static_cast<uint8_t>(cp & 0xFF),
+                static_cast<uint8_t>((cp >> 8) & 0xFF),
+                static_cast<uint8_t>((cp >> 16) & 0xFF),
+                static_cast<uint8_t>((cp >> 24) & 0xFF)
+            };
+            blake3_hasher_update(&hasher, bytes, 4);
+
+            if (n < config_.min_n) continue;
+
+            // Clone hasher to finalize this specific n-gram length without disturbing the rolling state
+            blake3_hasher hasher_clone;
+            std::memcpy(&hasher_clone, &hasher, sizeof(blake3_hasher));
+            
+            BLAKE3Pipeline::Hash hash;
+            blake3_hasher_finalize(&hasher_clone, hash.data(), BLAKE3Pipeline::HASH_SIZE);
+            current_pos_hashes.push_back(hash);
+
+            auto& ngram = ngrams_[hash];
             if (ngram.frequency == 0) {
-                // New n-gram
-                ngram.text = ngram_text;
+                ngram.text = text.substr(pos, n);
                 ngram.hash = hash;
                 ngram.n = n;
+                if (n > 1) {
+                    bool all_same = true;
+                    for (size_t i = 1; i < ngram.text.size(); ++i) {
+                        if (ngram.text[i] != ngram.text[0]) { all_same = false; break; }
+                    }
+                    ngram.is_rle = all_same;
+                }
             }
             ngram.frequency++;
+            if (config_.track_positions) ngram.positions.push_back(pos);
+            if (n == 1) total_unigrams_++;
 
-            if (config_.track_positions) {
-                ngram.positions.push_back(pos);
+            if (pos > 0) left_context_[hash][text[pos-1]]++;
+            if (pos + n < text.size()) right_context_[hash][text[pos+n]]++;
+
+            for (const auto& active : window) {
+                if (active.hash != hash) record_cooccurrence(active.hash, hash, active.position, pos);
             }
+        }
 
-            // Record position for co-occurrence computation
-            all_positions.push_back({hash_hex, hash, pos, n});
+        for (const auto& h : current_pos_hashes) window.push_back({h, pos});
+        while (!window.empty() && window.front().position + config_.cooccurrence_window < pos) {
+            window.pop_front();
         }
     }
+    finalize_metrics();
+}
 
-    // Phase 2: Compute co-occurrences within window
-    // For efficiency, we process positions in order
-    for (size_t i = 0; i < all_positions.size(); ++i) {
-        const auto& pos_a = all_positions[i];
+void NGramExtractor::record_cooccurrence(const BLAKE3Pipeline::Hash& h1, const BLAKE3Pipeline::Hash& h2, uint32_t p1, uint32_t p2) {
+    bool a_first = h1 < h2;
+    auto key = a_first ? std::make_pair(h1, h2) : std::make_pair(h2, h1);
+    auto& cooc = cooccurrences_[key];
 
-        // Look ahead within window
-        for (size_t j = i + 1; j < all_positions.size(); ++j) {
-            const auto& pos_b = all_positions[j];
+    if (cooc.count == 0) {
+        cooc.ngram_a = key.first;
+        cooc.ngram_b = key.second;
+    }
 
-            // Check if still within window (based on starting position)
-            uint32_t distance = (pos_b.position > pos_a.position)
-                ? (pos_b.position - pos_a.position)
-                : (pos_a.position - pos_b.position);
+    uint32_t dist = (p2 > p1) ? (p2 - p1) : (p1 - p2);
+    double old_avg = cooc.avg_distance;
+    cooc.count++;
+    cooc.avg_distance = old_avg + (static_cast<double>(dist) - old_avg) / cooc.count;
 
-            if (distance > config_.cooccurrence_window) {
-                // If positions are sorted, we can break early for this starting position
-                // But n-grams of different sizes at same position might still be in window
-                if (pos_b.position > pos_a.position + config_.cooccurrence_window) {
-                    break;
-                }
-                continue;
-            }
-
-            // Skip self-comparisons (same hash)
-            if (pos_a.hash_hex == pos_b.hash_hex) continue;
-
-            // Record co-occurrence
-            record_cooccurrence(
-                pos_a.hash_hex, pos_a.full_hash,
-                pos_b.hash_hex, pos_b.full_hash,
-                pos_a.position, pos_b.position
-            );
-        }
+    if (config_.track_direction) {
+        cooc.direction_sum += (a_first == (p1 < p2)) ? 1 : -1;
     }
 }
 
-void NGramExtractor::record_cooccurrence(
-    const std::string& hash_a, const BLAKE3Pipeline::Hash& full_hash_a,
-    const std::string& hash_b, const BLAKE3Pipeline::Hash& full_hash_b,
-    uint32_t pos_a, uint32_t pos_b) {
-
-    // Normalize order: always store (smaller, larger) for consistency
-    bool a_first = hash_a < hash_b;
-    const std::string& first = a_first ? hash_a : hash_b;
-    const std::string& second = a_first ? hash_b : hash_a;
-
-    auto key = std::make_pair(first, second);
-    auto& cooc = cooccurrences_[key];
-
-    // Initialize hashes if new
-    if (cooc.count == 0) {
-        cooc.ngram_a = a_first ? full_hash_a : full_hash_b;
-        cooc.ngram_b = a_first ? full_hash_b : full_hash_a;
+double NGramExtractor::calculate_entropy(const std::unordered_map<char32_t, uint32_t>& counts, uint32_t total) {
+    if (total == 0) return 0.0;
+    double entropy = 0.0;
+    for (const auto& [cp, count] : counts) {
+        double p = static_cast<double>(count) / total;
+        entropy -= p * std::log2(p);
     }
+    return entropy;
+}
 
-    // Update statistics
-    uint32_t distance = (pos_b > pos_a) ? (pos_b - pos_a) : (pos_a - pos_b);
-    double old_avg = cooc.avg_distance;
-    cooc.count++;
-    // Incremental average update
-    cooc.avg_distance = old_avg + (static_cast<double>(distance) - old_avg) / cooc.count;
+void NGramExtractor::finalize_metrics() {
+    if (total_unigrams_ == 0) return;
 
-    // Track direction relative to normalized order
-    if (config_.track_direction) {
-        // If A (first in normalized pair) appears before B in text, +1
-        // If A appears after B in text, -1
-        if (a_first) {
-            cooc.direction_sum += (pos_a < pos_b) ? 1 : -1;
-        } else {
-            // hash_a is actually second in our storage
-            cooc.direction_sum += (pos_b < pos_a) ? 1 : -1;
+    for (auto& [hash, ngram] : ngrams_) {
+        ngram.left_entropy = calculate_entropy(left_context_[hash], ngram.frequency);
+        ngram.right_entropy = calculate_entropy(right_context_[hash], ngram.frequency);
+        ngram.branching_factor = static_cast<uint32_t>(right_context_[hash].size());
+
+        if (ngram.n >= 2) {
+            // Re-hash components incrementally for PMI
+            blake3_hasher h_f; blake3_hasher_init(&h_f);
+            char32_t cp_f = ngram.text[0];
+            uint8_t b_f[4] = { uint8_t(cp_f), uint8_t(cp_f >> 8), uint8_t(cp_f >> 16), uint8_t(cp_f >> 24) };
+            blake3_hasher_update(&h_f, b_f, 4);
+            BLAKE3Pipeline::Hash hash_f; blake3_hasher_finalize(&h_f, hash_f.data(), BLAKE3Pipeline::HASH_SIZE);
+
+            blake3_hasher h_r; blake3_hasher_init(&h_r);
+            for (size_t i = 1; i < ngram.text.size(); ++i) {
+                char32_t cp = ngram.text[i];
+                uint8_t bytes[4] = { uint8_t(cp), uint8_t(cp >> 8), uint8_t(cp >> 16), uint8_t(cp >> 24) };
+                blake3_hasher_update(&h_r, bytes, 4);
+            }
+            BLAKE3Pipeline::Hash hash_r; blake3_hasher_finalize(&h_r, hash_r.data(), BLAKE3Pipeline::HASH_SIZE);
+            
+            auto it_f = ngrams_.find(hash_f);
+            auto it_r = ngrams_.find(hash_r);
+            
+            if (it_f != ngrams_.end() && it_r != ngrams_.end()) {
+                double p_xy = static_cast<double>(ngram.frequency) / total_unigrams_;
+                double p_x = static_cast<double>(it_f->second.frequency) / total_unigrams_;
+                double p_y = static_cast<double>(it_r->second.frequency) / total_unigrams_;
+                ngram.pmi = std::log2(p_xy / (p_x * p_y));
+                ngram.npmi = ngram.pmi / (-std::log2(p_xy));
+            }
         }
     }
+    left_context_.clear();
+    right_context_.clear();
 }
 
 std::vector<const NGram*> NGramExtractor::significant_ngrams() const {
     std::vector<const NGram*> result;
     for (const auto& [hash, ngram] : ngrams_) {
-        if (ngram.frequency >= config_.min_frequency) {
-            result.push_back(&ngram);
-        }
+        if (ngram.n == 1) { result.push_back(&ngram); continue; }
+        
+        bool sig = ngram.frequency >= config_.min_frequency &&
+                   ngram.npmi >= config_.min_npmi &&
+                   (ngram.left_entropy >= config_.min_entropy || ngram.right_entropy >= config_.min_entropy) &&
+                   ngram.branching_factor <= config_.max_branching_factor;
+        
+        if (sig || ngram.is_rle) result.push_back(&ngram);
     }
-
-    // Sort by frequency (descending)
-    std::sort(result.begin(), result.end(),
-        [](const NGram* a, const NGram* b) {
-            return a->frequency > b->frequency;
-        });
-
+    std::sort(result.begin(), result.end(), [](const NGram* a, const NGram* b) {
+        if (a->frequency != b->frequency) return a->frequency > b->frequency;
+        return a->npmi > b->npmi;
+    });
     return result;
 }
 
 std::vector<const CoOccurrence*> NGramExtractor::significant_cooccurrences(uint32_t min_count) const {
     std::vector<const CoOccurrence*> result;
-    for (const auto& [key, cooc] : cooccurrences_) {
-        if (cooc.count >= min_count) {
-            result.push_back(&cooc);
-        }
-    }
-
-    // Sort by count (descending)
-    std::sort(result.begin(), result.end(),
-        [](const CoOccurrence* a, const CoOccurrence* b) {
-            return a->count > b->count;
-        });
-
+    for (const auto& [key, cooc] : cooccurrences_) if (cooc.count >= min_count) result.push_back(&cooc);
+    std::sort(result.begin(), result.end(), [](const CoOccurrence* a, const CoOccurrence* b) {
+        return a->count > b->count;
+    });
     return result;
 }
 
 void NGramExtractor::clear() {
     ngrams_.clear();
     cooccurrences_.clear();
+    total_unigrams_ = 0;
 }
 
 }

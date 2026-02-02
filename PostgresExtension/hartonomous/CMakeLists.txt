@@ -87,10 +87,37 @@ if(MSVC)
 endif()
 
 # ==============================================================================
+
 #  6. INSTALLATION
+
 # ==============================================================================
 
-# Installs to the correct directory detected by pg_config
+
+
+# Query shared directory for .control and .sql files
+
+execute_process(COMMAND ${PG_CONFIG} --sharedir OUTPUT_VARIABLE PG_SHAREDIR OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+
+
+# Installs the binary to the correct directory detected by pg_config
+
 install(TARGETS ${EXTENSION_NAME}
+
     LIBRARY DESTINATION "${PG_PKGLIBDIR}"
+
+)
+
+
+
+# Installs the extension metadata and SQL script
+
+install(FILES
+
+    "hartonomous.control"
+
+    "dist/hartonomous--0.1.0.sql"
+
+    DESTINATION "${PG_SHAREDIR}/extension"
+
 )

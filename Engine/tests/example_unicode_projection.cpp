@@ -24,7 +24,7 @@ void print_separator() {
     std::cout << std::string(80, '=') << "\n";
 }
 
-void print_hash(const std::array<uint8_t, 32>& hash) {
+void print_hash(const std::array<uint8_t, 16>& hash) {
     std::cout << "0x";
     for (size_t i = 0; i < std::min(size_t(8), hash.size()); ++i) {
         std::cout << std::hex << std::setw(2) << std::setfill('0')
@@ -206,7 +206,7 @@ int main() {
     std::cout << "\n";
     std::cout << "1. Unicode Codepoint\n";
     std::cout << "   ↓\n";
-    std::cout << "2. BLAKE3 Hash (32 bytes, content-addressable)\n";
+    std::cout << "2. BLAKE3 Hash (16 bytes, content-addressable)\n";
     std::cout << "   ↓\n";
     std::cout << "3. Super Fibonacci → 4D Position on S³\n";
     std::cout << "   ↓\n";

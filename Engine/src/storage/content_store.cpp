@@ -24,9 +24,9 @@ std::string ContentStore::hash_to_uuid(const BLAKE3Pipeline::Hash& hash) {
 
 std::string ContentStore::hash_to_bytea(const BLAKE3Pipeline::Hash& hash) {
     std::ostringstream ss;
-    ss << "\\\\x" << std::hex << std::setfill('0');
+    ss << std::hex << std::setfill('0');
     for (size_t i = 0; i < hash.size(); ++i) {
-        ss << std::setw(2) << static_cast<int>(hash[i]);
+        ss << std::setw(2) << (static_cast<unsigned>(hash[i]) & 0xFF);
     }
     return ss.str();
 }

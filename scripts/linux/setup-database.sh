@@ -10,6 +10,7 @@ DB_USER="postgres"
 DB_HOST="localhost"
 DB_PORT="5432"
 DROP_EXISTING=false
+RESTORE_LATEST=false
 
 # Colors
 RED='\033[0;31m'
@@ -46,11 +47,13 @@ Options:
   -h, --host <host>     Database host (default: localhost)
   -p, --port <port>     Database port (default: 5432)
   -d, --drop            Drop existing database if it exists
+  -r, --restore         Restore from latest backup (if exists)
   --help                Show this help message
 
 Examples:
   ./setup-database.sh                 # Create hartonomous database
   ./setup-database.sh --drop          # Drop and recreate
+  ./setup-database.sh --restore       # Restore from latest backup
   ./setup-database.sh --name test_db  # Use custom database name
 
 EOF
@@ -80,6 +83,10 @@ while [[ $# -gt 0 ]]; do
             DROP_EXISTING=true
             shift
             ;;
+        -r|--restore)
+            RESTORE_LATEST=true
+            shift
+            ;;
         --help)
             show_help
             ;;
@@ -92,6 +99,24 @@ done
 
 print_info "=== Hartonomous Database Setup ==="
 echo ""
+
+# Handle Restore if requested
+if [ "$RESTORE_LATEST" = true ]; then
+    BACKUP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../" && pwd)/backups"
+    LATEST_BACKUP="$BACKUP_DIR/${DB_NAME}_latest.sql.gz"
+    
+    if [ -f "$LATEST_BACKUP" ]; then
+        print_info "Restoring from latest backup: $LATEST_BACKUP"
+        RESTORE_OPTS="-n $DB_NAME -u $DB_USER -h $DB_HOST -p $DB_PORT"
+        if [ "$DROP_EXISTING" = true ]; then RESTORE_OPTS="$RESTORE_OPTS --drop"; fi
+        
+        "$(dirname "${BASH_SOURCE[0]}")/restore-database.sh" $RESTORE_OPTS "$LATEST_BACKUP"
+        exit 0
+    else
+        print_warning "⚠ Restore requested but no backup found at $LATEST_BACKUP"
+        print_info "Proceeding with standard setup..."
+    fi
+fi
 
 # Check PostgreSQL
 print_info "Checking PostgreSQL..."

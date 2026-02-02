@@ -42,6 +42,9 @@ public:
     // Flush remaining rows, finish COPY, and insert into the target table.
     void flush();
 
+    // Set custom ON CONFLICT clause for temp table mode
+    void set_conflict_clause(const std::string& clause);
+
     // Number of rows added since begin_table (resets after flush)
     size_t count() const noexcept { return row_count_; }
 
@@ -61,6 +64,7 @@ private:
     size_t row_count_ = 0;
     bool in_copy_ = false;
     bool use_temp_table_ = true;
+    std::string conflict_clause_;
 
     static std::atomic<uint64_t> s_counter_;
     static constexpr size_t DEFAULT_FLUSH_ROWS = 10000;

@@ -247,6 +247,7 @@ void UCDProcessor::process_and_ingest() {
 }
 
 void UCDProcessor::ingest_assigned_codepoints() {
+    PostgresConnection::Transaction txn(db_);
     const size_t n = sorted_codepoints_.size();
     std::vector<ComputedRow> rows(n);
     size_t num_threads = std::thread::hardware_concurrency();
@@ -260,16 +261,18 @@ void UCDProcessor::ingest_assigned_codepoints() {
             for (size_t i = start; i < end; ++i) {
                 auto* meta = sorted_codepoints_[i];
                 ComputedRow& row = rows[i];
-                std::vector<uint8_t> phys_data(32);
-                std::memcpy(phys_data.data(), meta->position.data(), 32);
+                auto atom_hash = BLAKE3Pipeline::hash_codepoint(meta->codepoint);
+                format_uuid_to_string(atom_hash.data(), row.atom_uuid);
+
+                std::vector<uint8_t> phys_data(16);
+                std::memcpy(phys_data.data(), meta->position.data(), 16);
                 auto phys_hash = BLAKE3Pipeline::hash(phys_data);
                 format_uuid_to_string(phys_hash.data(), row.phys_uuid);
+
                 Eigen::Vector4d hypercube_coords;
                 for (int k = 0; k < 4; ++k) hypercube_coords[k] = (meta->position[k] + 1.0) / 2.0;
                 row.hilbert = hartonomous::spatial::HilbertCurve4D::encode(hypercube_coords).to_string();
                 geom_to_hex_fast(meta->position, row.centroid_hex);
-                auto atom_hash = BLAKE3Pipeline::hash_codepoint(meta->codepoint);
-                format_uuid_to_string(atom_hash.data(), row.atom_uuid);
                 row.codepoint_str = std::to_string(meta->codepoint);
             }
         });
@@ -285,6 +288,7 @@ void UCDProcessor::ingest_assigned_codepoints() {
     atom_copy.begin_table("hartonomous.atom", {"id", "codepoint", "physicalityid"});
     for (const auto& row : rows) atom_copy.add_row({row.atom_uuid, row.codepoint_str, row.phys_uuid});
     atom_copy.flush();
+    txn.commit();
 }
 
 void UCDProcessor::ingest_unassigned_codepoints() {
@@ -303,6 +307,7 @@ void UCDProcessor::ingest_unassigned_codepoints() {
     size_t num_threads = std::thread::hardware_concurrency();
 
     for (size_t batch_start = 0; batch_start < total; batch_start += BATCH_SIZE) {
+        PostgresConnection::Transaction txn(db_);
         size_t batch_end = std::min(batch_start + BATCH_SIZE, total);
         size_t current_batch_size = batch_end - batch_start;
         if (rows_buffer.size() != current_batch_size) rows_buffer.resize(current_batch_size);
@@ -319,8 +324,8 @@ void UCDProcessor::ingest_unassigned_codepoints() {
                     uint32_t seq = base_sequence + static_cast<uint32_t>(batch_start + i);
                     ComputedRow& row = rows_buffer[i];
                     Eigen::Vector4d position = NodeGenerator::generate_node(seq);
-                    std::vector<uint8_t> phys_data(32);
-                    std::memcpy(phys_data.data(), position.data(), 32);
+                    std::vector<uint8_t> phys_data(16);
+                    std::memcpy(phys_data.data(), position.data(), 16);
                     auto phys_hash = BLAKE3Pipeline::hash(phys_data);
                     format_uuid_to_string(phys_hash.data(), row.phys_uuid);
                     Eigen::Vector4d hypercube_coords;
@@ -344,6 +349,8 @@ void UCDProcessor::ingest_unassigned_codepoints() {
         atom_copy.begin_table("hartonomous.atom", {"id", "codepoint", "physicalityid"});
         for (const auto& row : rows_buffer) atom_copy.add_row({row.atom_uuid, row.codepoint_str, row.phys_uuid});
         atom_copy.flush();
+        txn.commit();
+
         std::cout << "\r  Progress: " << ((batch_end * 100) / total) << "%" << std::flush;
     }
     std::cout << std::endl;
@@ -351,6 +358,7 @@ void UCDProcessor::ingest_unassigned_codepoints() {
 
 void UCDProcessor::ingest_ucd_metadata() {
     std::cout << "[6/6] Ingesting full UCD metadata from Gene Pool..." << std::endl;
+    PostgresConnection::Transaction txn(db_);
     parser_.find_base_characters();
     parser_.build_semantic_edges();
     const auto& codepoints = parser_.get_codepoints();
@@ -405,12 +413,13 @@ void UCDProcessor::ingest_ucd_metadata() {
             bool_str(m->composition_exclusion), bool_str(m->full_composition_exclusion), bool_str(m->is_emoji),
             bool_str(m->is_emoji_presentation), bool_str(m->is_emoji_modifier), bool_str(m->is_emoji_modifier_base),
             bool_str(m->is_emoji_component), bool_str(m->is_extended_pictographic),
-            (m->radical > 0 ? std::to_string(m->radical) : ""), (m->strokes != 0 ? std::to_string(m->strokes) : ""),
+            (m->radical > 0 ? std::to_string(m->radical) : "\\N"), (m->strokes != 0 ? std::to_string(m->strokes) : "\\N"),
             m->nfc_quick_check, m->nfd_quick_check, m->nfkc_quick_check, m->nfkd_quick_check
         });
         if (++count % 50000 == 0) std::cout << "\r  Ingested " << count << " / " << all_metadata.size() << " records..." << std::flush;
     }
     copy.flush();
+    txn.commit();
     std::cout << "\r  Inserted " << all_metadata.size() << " UCD metadata records." << std::endl;
 }
 

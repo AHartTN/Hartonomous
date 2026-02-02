@@ -58,6 +58,7 @@ std::string BulkCopy::full_table_name() const {
 
 void BulkCopy::escape_value_into_buffer(const std::string& value) {
     for (char c : value) {
+        if (c == '\0') continue; // Postgres TEXT/VARCHAR cannot contain null bytes
         switch (c) {
             case '\\': buffer_ << "\\\\"; break;
             case '\t': buffer_ << "\\t";  break;
@@ -160,9 +161,22 @@ void BulkCopy::flush() {
     if (use_temp_table_) {
         // Move data from temp table into the real table
         std::ostringstream sql;
-        sql << "INSERT INTO " << full_table_name()
-            << " SELECT * FROM " << quote_identifier(temp_table_name_)
-            << " ON CONFLICT (" << quote_identifier("id") << ") DO NOTHING";
+        sql << "INSERT INTO " << full_table_name();
+        
+        std::string cols_str;
+        for (size_t i = 0; i < columns_.size(); ++i) {
+            if (i) cols_str += ", ";
+            cols_str += quote_identifier(columns_[i]);
+        }
+        
+        sql << " (" << cols_str << ") SELECT " << cols_str << " FROM " << quote_identifier(temp_table_name_);
+        
+        if (!conflict_clause_.empty()) {
+            sql << " " << conflict_clause_;
+        } else {
+            sql << " ON CONFLICT (" << quote_identifier("id") << ") DO NOTHING";
+        }
+        
         db_.execute(sql.str());
     }
     // In direct mode, data is already in the target table
@@ -173,6 +187,10 @@ void BulkCopy::flush() {
     buffer_.str("");
     buffer_.clear();
     row_count_ = 0;
+}
+
+void BulkCopy::set_conflict_clause(const std::string& clause) {
+    conflict_clause_ = clause;
 }
 
 } // namespace Hartonomous

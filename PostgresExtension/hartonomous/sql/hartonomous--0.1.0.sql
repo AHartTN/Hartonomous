@@ -22,3 +22,8 @@
 \i 'tables/relation_rating.sql'
 \i 'tables/relation_evidence.sql'
 \i 'tables/audit_log.sql'
+
+-- Diagnostic Views
+\i 'views/v_promoted_units.sql'
+\i 'views/v_semantic_neighbors.sql'
+\i 'views/v_orphan_atoms.sql'

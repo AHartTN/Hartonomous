@@ -16,7 +16,7 @@ TEST(CodepointProjectionTest, SingleCodepointProjection) {
     auto result = CodepointProjection::project(cp);
 
     EXPECT_EQ(result.codepoint, cp);
-    EXPECT_EQ(result.hash.size(), 32);
+    EXPECT_EQ(result.hash.size(), 16);
     EXPECT_NEAR(result.s3_position.norm(), 1.0, 1e-9);
     EXPECT_NEAR(result.s2_projection.norm(), 1.0, 1e-9);
     

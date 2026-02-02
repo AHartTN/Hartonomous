@@ -42,7 +42,7 @@ TEST(HashingTest, HexConversion) {
     auto hash_rt = BLAKE3Pipeline::from_hex(hex);
     
     EXPECT_EQ(hash, hash_rt);
-    EXPECT_EQ(hex.length(), 64); // 32 bytes * 2
+    EXPECT_EQ(hex.length(), 32); // 16 bytes * 2
 }
 
 TEST(HashingTest, BatchHashing) {

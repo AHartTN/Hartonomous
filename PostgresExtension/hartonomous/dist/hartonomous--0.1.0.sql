@@ -367,3 +367,49 @@ CREATE TABLE IF NOT EXISTS hartonomous.AuditLog (
 
 CREATE INDEX idx_AuditLog_Tenant ON hartonomous.AuditLog (TenantId, CreatedAt DESC);
 CREATE INDEX idx_AuditLog_User ON hartonomous.AuditLog (UserId, CreatedAt DESC);
+
+-- Diagnostic Views
+-- Including views/v_promoted_units.sql
+CREATE OR REPLACE VIEW hartonomous.v_promoted_units AS
+SELECT 
+    c.Id,
+    p.Hilbert,
+    am.GeneralCategory,
+    am.Block,
+    am.Script
+FROM hartonomous.Composition c
+JOIN hartonomous.Physicality p ON c.PhysicalityId = p.Id
+LEFT JOIN hartonomous.CompositionSequence cs ON c.Id = cs.CompositionId AND cs.Ordinal = 0
+LEFT JOIN hartonomous.Atom a ON cs.AtomId = a.Id
+LEFT JOIN hartonomous.AtomMetadata am ON a.Id = am.AtomId
+ORDER BY c.CreatedAt DESC;
+-- Including views/v_semantic_neighbors.sql
+CREATE OR REPLACE VIEW hartonomous.v_semantic_neighbors AS
+SELECT 
+    r.Id as Relation_Id,
+    rr.RatingValue as ELO,
+    rr.Observations,
+    p1.Hilbert as Source_Hilbert,
+    p2.Hilbert as Neighbor_Hilbert
+FROM hartonomous.Relation r
+JOIN hartonomous.RelationSequence rs1 ON r.Id = rs1.RelationId AND rs1.Ordinal = 0
+JOIN hartonomous.RelationSequence rs2 ON r.Id = rs2.RelationId AND rs2.Ordinal = 1
+JOIN hartonomous.Composition c1 ON rs1.CompositionId = c1.Id
+JOIN hartonomous.Physicality p1 ON c1.PhysicalityId = p1.Id
+JOIN hartonomous.Composition c2 ON rs2.CompositionId = c2.Id
+JOIN hartonomous.Physicality p2 ON c2.PhysicalityId = p2.Id
+JOIN hartonomous.RelationRating rr ON r.Id = rr.RelationId
+ORDER BY rr.RatingValue DESC;
+
+-- Including views/v_orphan_atoms.sql
+CREATE OR REPLACE VIEW hartonomous.v_orphan_atoms AS
+SELECT 
+    a.Codepoint,
+    am.Name,
+    am.Block,
+    am.Script
+FROM hartonomous.Atom a
+JOIN hartonomous.AtomMetadata am ON a.Id = am.AtomId
+LEFT JOIN hartonomous.CompositionSequence cs ON a.Id = cs.AtomId
+WHERE cs.Id IS NULL;
+

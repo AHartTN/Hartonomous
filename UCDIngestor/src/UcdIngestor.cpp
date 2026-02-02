@@ -65,9 +65,8 @@ void UcdIngestor::ingest_ucd_xml(const std::string& filepath) {
         json props_json;
 
         auto expand_hash = [&](std::string& val, const std::string& hex) {
-            if (val == "#") {
-                val = hex;
-            } else {
+            if (val == "#") { val = hex; } 
+            else {
                 size_t pos = 0;
                 while ((pos = val.find("#", pos)) != std::string::npos) {
                     val.replace(pos, 1, hex);
@@ -80,12 +79,13 @@ void UcdIngestor::ingest_ucd_xml(const std::string& filepath) {
         size_t first_nonzero = hex_upper.find_first_not_of('0');
         std::string hex_short = (first_nonzero == std::string::npos) ? "0" : hex_upper.substr(first_nonzero);
 
-        for (auto& [k, v] : atom.properties) {
-            if (v.find("#") != std::string::npos) {
-                if (k == "na" || k == "na1") expand_hash(v, hex_short);
-                else expand_hash(v, hex_upper);
+        for (auto const& [k, v] : atom.properties) {
+            std::string val_copy = v;
+            if (val_copy.find("#") != std::string::npos) {
+                if (k == "na" || k == "na1") expand_hash(val_copy, hex_short);
+                else expand_hash(val_copy, hex_upper);
             }
-            props_json[k] = v;
+            props_json[k] = val_copy;
         }
 
         auto q = [](const std::string& s) { 
@@ -98,22 +98,20 @@ void UcdIngestor::ingest_ucd_xml(const std::string& filepath) {
             return "'" + out + "'";
         };
         
-        auto q_nullable = [&](const std::string& s) {
-            return s.empty() ? "NULL" : q(s);
-        };
+        auto q_nullable = [&](const std::string& s) { return s.empty() ? "NULL" : q(s); };
 
-        std::string name = atom.name.empty() ? atom.properties.count("na") ? atom.properties.at("na") : "" : atom.name;
+        std::string name = atom.name.empty() ? (atom.properties.count("na") ? atom.properties.at("na") : "") : atom.name;
         if (name.find("#") != std::string::npos) expand_hash(name, hex_short);
 
-        std::string gc = atom.gc.empty() ? atom.properties.count("gc") ? atom.properties.at("gc") : "" : atom.gc;
+        std::string gc = atom.gc.empty() ? (atom.properties.count("gc") ? atom.properties.at("gc") : "") : atom.gc;
         std::string ccc = atom.properties.count("ccc") ? atom.properties.at("ccc") : "0";
         std::string bc = atom.properties.count("bc") ? atom.properties.at("bc") : "";
         std::string dt = atom.properties.count("dt") ? atom.properties.at("dt") : "";
         std::string dm = atom.properties.count("dm") ? atom.properties.at("dm") : "";
         std::string nv = atom.properties.count("nv") ? atom.properties.at("nv") : "";
         std::string nt = atom.properties.count("nt") ? atom.properties.at("nt") : "";
-        std::string age = atom.age.empty() ? atom.properties.count("age") ? atom.properties.at("age") : "" : atom.age;
-        std::string blk = atom.block.empty() ? atom.properties.count("blk") ? atom.properties.at("blk") : "" : atom.block;
+        std::string age = atom.age.empty() ? (atom.properties.count("age") ? atom.properties.at("age") : "") : atom.age;
+        std::string blk = atom.block.empty() ? (atom.properties.count("blk") ? atom.properties.at("blk") : "") : atom.block;
         std::string sc = atom.properties.count("sc") ? atom.properties.at("sc") : "";
 
         sql_batch << "(" 
@@ -171,7 +169,7 @@ void UcdIngestor::ingest_allkeys(const std::string& filepath) {
         first_in_batch = false;
 
         std::stringstream arr_ss;
-        arr_ss << "'{лаш";
+        arr_ss << "'{";
         for (size_t i = 0; i < w.source_codepoints.size(); ++i) {
             if (i > 0) arr_ss << ",";
             arr_ss << w.source_codepoints[i];
@@ -218,7 +216,7 @@ void UcdIngestor::ingest_confusables(const std::string& filepath) {
         first_in_batch = false;
 
         std::stringstream arr_ss;
-        arr_ss << "'{лаш";
+        arr_ss << "'{";
         for (size_t i = 0; i < item.target_codepoints.size(); ++i) {
             if (i > 0) arr_ss << ",";
             arr_ss << item.target_codepoints[i];
@@ -296,13 +294,13 @@ void UcdIngestor::ingest_emoji_sequences(const std::string& filepath, const std:
         desc.erase(0, desc.find_first_not_of(" \t"));
 
         std::stringstream array_fmt;
-        array_fmt << "'{лаш";
+        array_fmt << "'{";
         std::stringstream ss(hex_seq);
         std::string segment;
         bool first_seg = true;
         
         if (hex_seq.find(".." ) != std::string::npos) {
-            size_t dots = hex_seq.find(".." );
+            size_t dots = hex_seq.find("..");
             long start = std::stol(hex_seq.substr(0, dots), nullptr, 16);
             long end = std::stol(hex_seq.substr(dots+2), nullptr, 16);
             for (long i = start; i <= end; ++i) {

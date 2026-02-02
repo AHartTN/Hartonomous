@@ -25,7 +25,7 @@ TEST(ProjectionTest, HashToPointDeterminism) {
     std::string data = "deterministic_test";
     auto hash = BLAKE3Pipeline::hash(data);
     
-    // Convert 32-byte hash to 16-byte pointer for the function
+    // Hash is 16 bytes (128-bit)
     auto p1 = SuperFibonacci::hash_to_point(hash.data());
     auto p2 = SuperFibonacci::hash_to_point(hash.data());
     

@@ -57,21 +57,21 @@ public:
      */
     struct ProjectionResult {
         uint32_t codepoint;              ///< Original Unicode codepoint
-        std::array<uint8_t, 32> hash;    ///< BLAKE3 hash (256 bits)
+        std::array<uint8_t, 16> hash;    ///< BLAKE3 hash (128 bits)
         Vec4 s3_position;                ///< Position on 3-sphere (S³)
         Vec3 s2_projection;              ///< Hopf projection to 2-sphere (S²)
         Vec4 hypercube_coords;           ///< Coordinates in 4D hypercube [0,1]⁴
         HilbertCurve::HilbertIndex hilbert_index;          ///< Hilbert curve index (spatial key)
 
         /**
-         * @brief Get a short identifier string (first 8 bytes of hash, hex)
+         * @brief Get a short identifier string (full 16 bytes of hash, hex)
          */
         std::string short_id() const {
-            char buffer[17];
-            for (int i = 0; i < 8; ++i) {
+            char buffer[33];
+            for (int i = 0; i < 16; ++i) {
                 snprintf(buffer + i * 2, 3, "%02x", hash[i]);
             }
-            return std::string(buffer, 16);
+            return std::string(buffer, 32);
         }
     };
 
@@ -223,9 +223,9 @@ private:
      *
      * @param codepoint Unicode codepoint
      * @param context Optional context string
-     * @return std::array<uint8_t, 32> BLAKE3 hash (256 bits)
+     * @return std::array<uint8_t, 16> BLAKE3 hash (128 bits)
      */
-    static std::array<uint8_t, 32> hash_codepoint(uint32_t codepoint, const std::string& context) {
+    static std::array<uint8_t, 16> hash_codepoint(uint32_t codepoint, const std::string& context) {
         blake3_hasher hasher;
         blake3_hasher_init(&hasher);
 
@@ -243,9 +243,9 @@ private:
             blake3_hasher_update(&hasher, context.data(), context.size());
         }
 
-        // Finalize and extract 256-bit hash
-        std::array<uint8_t, 32> hash;
-        blake3_hasher_finalize(&hasher, hash.data(), 32);
+        // Finalize and extract 128-bit hash
+        std::array<uint8_t, 16> hash;
+        blake3_hasher_finalize(&hasher, hash.data(), 16);
 
         return hash;
     }

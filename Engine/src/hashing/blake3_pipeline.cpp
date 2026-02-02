@@ -15,11 +15,10 @@ namespace Hartonomous {
 BLAKE3Pipeline::Hash BLAKE3Pipeline::hash(const void* data, size_t len) {
     Hash result;
 
-    // BLAKE3 one-shot hashing (automatically uses best SIMD)
     blake3_hasher hasher;
     blake3_hasher_init(&hasher);
     blake3_hasher_update(&hasher, data, len);
-    blake3_hasher_finalize(&hasher, result.data(), BLAKE3_OUT_LEN);
+    blake3_hasher_finalize(&hasher, result.data(), HASH_SIZE);
 
     return result;
 }
@@ -87,14 +86,17 @@ std::string BLAKE3Pipeline::to_hex(const Hash& hash) {
 }
 
 BLAKE3Pipeline::Hash BLAKE3Pipeline::from_hex(const std::string& hex) {
-    Hash result;
+    Hash result = {0};
+    std::string clean = hex;
+    // Remove hyphens if present (UUID format)
+    clean.erase(std::remove(clean.begin(), clean.end(), '-'), clean.end());
 
-    if (hex.size() != BLAKE3_OUT_LEN * 2) {
-        throw std::invalid_argument("Invalid hex string length for BLAKE3 hash");
+    if (clean.size() != HASH_SIZE * 2) {
+        throw std::invalid_argument("Invalid hex string length: " + std::to_string(clean.size()) + ". Expected 32 (128-bit).");
     }
 
-    for (size_t i = 0; i < BLAKE3_OUT_LEN; ++i) {
-        std::string byte_str = hex.substr(i * 2, 2);
+    for (size_t i = 0; i < HASH_SIZE; ++i) {
+        std::string byte_str = clean.substr(i * 2, 2);
         result[i] = (uint8_t)std::stoul(byte_str, nullptr, 16);
     }
 
