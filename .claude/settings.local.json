@@ -51,7 +51,8 @@
       "Bash(./scripts/linux/01-setup-database.sh:*)",
       "Bash(xargs:*)",
       "Bash(sudo cat:*)",
-      "Bash(sudo ls:*)"
+      "Bash(sudo ls:*)",
+      "Bash(./scripts/linux/01-ingest-text.sh:*)"
     ]
   }
 }

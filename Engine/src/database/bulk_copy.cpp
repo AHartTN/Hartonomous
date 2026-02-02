@@ -83,11 +83,15 @@ void BulkCopy::start_copy_if_needed() {
 
         std::string quoted_temp = quote_identifier(temp_table_name_);
 
-        // Create temp table like the target table
+        // Drop any stale temp table, then create fresh
         {
+            std::ostringstream drop_sql;
+            drop_sql << "DROP TABLE IF EXISTS " << quoted_temp;
+            db_.execute(drop_sql.str());
+
             std::ostringstream sql;
             sql << "CREATE TEMP TABLE " << quoted_temp
-                << " (LIKE " << full_table_name() << " INCLUDING DEFAULTS) ON COMMIT DROP";
+                << " (LIKE " << full_table_name() << " INCLUDING DEFAULTS)";
             db_.execute(sql.str());
         }
 

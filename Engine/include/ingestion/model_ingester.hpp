@@ -1,6 +1,16 @@
 /**
  * @file model_ingester.hpp
- * @brief AI model package ingestion into substrate
+ * @brief AI model ingestion: Extract semantic edges from models
+ *
+ * Key insight:
+ * - "King" in substrate = composition of atoms [K,i,n,g] = just the word
+ * - "King" in AI model = entire CONCEPT with all learned relationships
+ *
+ * Model ingestion extracts the concept by mining semantic edges:
+ * - Vocab tokens → Compositions (same pipeline as text)
+ * - Embedding KNN → Relations (semantic neighbors)
+ * - Attention weights → Relations (A attends to B with weight W)
+ * - All edges become Relations with Evidence from the model
  */
 
 #pragma once
@@ -60,16 +70,30 @@ private:
     ModelIngestionConfig config_;
     BLAKE3Pipeline::Hash model_id_;
 
-    void create_vocab_compositions(const std::vector<std::string>& vocab, ModelIngestionStats& stats);
-    void extract_embedding_relations(const std::vector<std::string>& vocab,
-                                     const Eigen::MatrixXf& embeddings,
-                                     ModelIngestionStats& stats);
+    // Ingest vocab tokens using text ingestion pipeline (same composition IDs)
+    std::unordered_map<std::string, BLAKE3Pipeline::Hash>
+    ingest_vocab_as_text(const std::vector<std::string>& vocab, ModelIngestionStats& stats);
+
+    // Extract semantic edges from embedding KNN
+    void extract_embedding_edges(const std::vector<std::string>& vocab,
+                                 const Eigen::MatrixXf& embeddings,
+                                 const std::unordered_map<std::string, BLAKE3Pipeline::Hash>& token_to_comp,
+                                 ModelIngestionStats& stats);
+
+    // Extract semantic edges from attention weights
+    // Attention: token A → token B with weight W becomes Relation(A→B) with ELO from W
+    void extract_attention_edges(const std::vector<Eigen::MatrixXd>& attention_weights,
+                                 const std::vector<std::string>& tokens,
+                                 const std::unordered_map<std::string, BLAKE3Pipeline::Hash>& token_to_comp,
+                                 ModelIngestionStats& stats);
+
     void ingest_tensor(const std::string& name, const TensorData& tensor, ModelIngestionStats& stats);
 
+    // Deprecated - physicality comes from content, not embeddings
     BLAKE3Pipeline::Hash create_physicality_from_unicode(const std::string& text);
-    
+
     std::string hash_to_uuid(const BLAKE3Pipeline::Hash& hash);
-    
+
     std::unordered_set<BLAKE3Pipeline::Hash, HashHasher> seen_physicality_ids_;
     std::unordered_set<BLAKE3Pipeline::Hash, HashHasher> seen_atom_ids_;
     std::unordered_set<BLAKE3Pipeline::Hash, HashHasher> seen_composition_ids_;

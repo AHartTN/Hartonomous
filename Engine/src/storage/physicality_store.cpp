@@ -22,37 +22,29 @@ std::string PhysicalityStore::hash_to_uuid(const BLAKE3Pipeline::Hash& hash) {
 }
 
 std::string PhysicalityStore::geom_to_hex(const Eigen::Vector4d& pt) {
-    // Manual EWKB construction for POINT ZM with SRID=0
-    // Layout: 1 byte endian + 4 bytes type + 4 bytes srid + 4*8 bytes coords = 41 bytes
-    uint8_t buf[41];
-    buf[0] = 0x01; // little-endian marker
+    // Standard WKB for POINT ZM (37 bytes)
+    // Endian(1) + Type(4) + X(8) + Y(8) + Z(8) + M(8)
+    // Type = POINT(1) | HasZ(0x80000000) | HasM(0x40000000) = 0xC0000001
+    
+    uint8_t buf[37];
+    buf[0] = 0x01; // Little Endian
 
-    // Type with Z, M, SRID bits set
-    // POINT (1) | HasZ (0x80000000) | HasM (0x40000000) | HasSRID (0x20000000) = 0xE0000001
-    uint32_t type_le = htole32(0xE0000001u);
-    std::memcpy(buf + 1, &type_le, sizeof(type_le));
+    uint32_t type_le = htole32(0xC0000001u);
+    std::memcpy(buf + 1, &type_le, 4);
 
-    uint32_t srid_le = htole32(0u);
-    std::memcpy(buf + 5, &srid_le, sizeof(srid_le));
-
-    // Write doubles as little-endian uint64_t
     double coords[4] = { pt[0], pt[1], pt[2], pt[3] };
     for (int i = 0; i < 4; ++i) {
         uint64_t u;
-        static_assert(sizeof(double) == sizeof(uint64_t));
-        std::memcpy(&u, &coords[i], sizeof(u));
-        u = htole64(u);
-        std::memcpy(buf + 9 + i * 8, &u, sizeof(u));
+        std::memcpy(&u, &coords[i], 8);
+        uint64_t u_le = htole64(u);
+        std::memcpy(buf + 5 + i * 8, &u_le, 8);
     }
 
     std::ostringstream ss;
     ss << std::hex << std::setfill('0');
-    for (int i = 0; i < 41; ++i) {
+    for (int i = 0; i < 37; ++i) {
         ss << std::setw(2) << (static_cast<unsigned>(buf[i]) & 0xFF);
     }
-    
-    // DEBUG
-    // std::cout << "EWKB Hex: " << ss.str() << std::endl;
 
     return ss.str(); 
 }

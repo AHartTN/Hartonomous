@@ -13,4 +13,7 @@ fi
 
 echo "Ingesting text from: $TEXT_FILE"
 
-./build/linux-release-max-perf/Engine/tools/ingest_text "$TEXT_FILE"
+# Ensure we use the locally built library
+export LD_LIBRARY_PATH="$(dirname "$0")/../../build/linux-release-max-perf/Engine:$LD_LIBRARY_PATH"
+
+./build/linux-release-max-perf/Engine/tools/ingest_text file "$TEXT_FILE"

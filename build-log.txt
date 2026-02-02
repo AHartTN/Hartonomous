@@ -91,16 +91,16 @@ Preset CMake variables:
 [8/69] Linking C static library libblake3_impl.a
 [9/69] Building CXX object Engine/CMakeFiles/engine.dir/src/geometry/s3_bbox.cpp.o
 [10/69] Building CXX object Engine/CMakeFiles/engine.dir/src/cognitive/godel_engine.cpp.o
-[11/69] Building CXX object Engine/CMakeFiles/engine.dir/src/geometry/s3_distance.cpp.o
+[11/69] Building CXX object Engine/CMakeFiles/engine.dir/src/database/bulk_copy.cpp.o
 [12/69] Building CXX object Engine/CMakeFiles/engine.dir/src/database/postgres_connection.cpp.o
-[13/69] Building CXX object Engine/CMakeFiles/engine.dir/src/database/bulk_copy.cpp.o
+[13/69] Building CXX object Engine/CMakeFiles/engine.dir/src/geometry/s3_distance.cpp.o
 [14/69] Building CXX object Engine/CMakeFiles/engine.dir/src/cognitive/ooda_loop.cpp.o
 [15/69] Building CXX object Engine/CMakeFiles/engine.dir/src/hashing/blake3_pipeline.cpp.o
 [16/69] Building CXX object Engine/CMakeFiles/engine.dir/src/ingestion/ngram_extractor.cpp.o
 [17/69] Building CXX object Engine/CMakeFiles/engine.dir/src/ingestion/model_package_loader.cpp.o
-[18/69] Building CXX object Engine/CMakeFiles/engine.dir/src/ingestion/safetensor_ingester.cpp.o
-[19/69] Building CXX object Engine/CMakeFiles/engine.dir/src/main.cpp.o
-[20/69] Building CXX object Engine/CMakeFiles/engine.dir/src/geometry/super_fibonacci.cpp.o
+[18/69] Building CXX object Engine/CMakeFiles/engine.dir/src/geometry/super_fibonacci.cpp.o
+[19/69] Building CXX object Engine/CMakeFiles/engine.dir/src/ingestion/safetensor_ingester.cpp.o
+[20/69] Building CXX object Engine/CMakeFiles/engine.dir/src/main.cpp.o
 [21/69] Building CXX object Engine/CMakeFiles/engine.dir/src/ml/s3_hnsw.cpp.o
 [22/69] Building CXX object Engine/CMakeFiles/engine.dir/src/query/ai_ops.cpp.o
 [23/69] Building CXX object Engine/CMakeFiles/engine.dir/src/query/semantic_query.cpp.o
@@ -112,12 +112,8 @@ Preset CMake variables:
 [29/69] Building CXX object Engine/CMakeFiles/engine.dir/src/storage/content_store.cpp.o
 [30/69] Building CXX object Engine/CMakeFiles/engine.dir/src/storage/relation_evidence_store.cpp.o
 [31/69] Building CXX object Engine/CMakeFiles/engine.dir/src/storage/relation_store.cpp.o
-[32/69] Building CXX object Engine/CMakeFiles/engine.dir/src/ingestion/model_ingester.cpp.o
-/home/ahart/Projects/Hartonomous/Engine/src/ingestion/model_ingester.cpp: In member function ‘void Hartonomous::ModelIngester::ingest_tensor(const string&, const Hartonomous::TensorData&, Hartonomous::ModelIngestionStats&)’:
-/home/ahart/Projects/Hartonomous/Engine/src/ingestion/model_ingester.cpp:233:74: warning: narrowing conversion of ‘cp’ from ‘int32_t’ {aka ‘int’} to ‘uint32_t’ {aka ‘unsigned int’} [-Wnarrowing]
-  233 |                 atom_store.store({atom_id, phys_id, static_cast<int32_t>(cp)});
-      |                                                                          ^~
-[33/69] Building CXX object Engine/CMakeFiles/engine.dir/src/storage/atom_lookup.cpp.o
+[32/69] Building CXX object Engine/CMakeFiles/engine.dir/src/storage/atom_lookup.cpp.o
+[33/69] Building CXX object Engine/CMakeFiles/engine.dir/src/ingestion/model_ingester.cpp.o
 [34/69] Building CXX object Engine/CMakeFiles/engine.dir/src/ingestion/safetensor_loader.cpp.o
 [35/69] Building CXX object Engine/CMakeFiles/engine.dir/src/storage/physicality_store.cpp.o
 [36/69] Building CXX object Engine/CMakeFiles/engine.dir/src/unicode/ingestor/node_generator.cpp.o
@@ -128,30 +124,30 @@ Preset CMake variables:
 [41/69] Building CXX object Engine/tests/CMakeFiles/suite_test_geometry_core.dir/suite/test_geometry_core.cpp.o
 [42/69] Building CXX object Engine/tools/CMakeFiles/ingest_text.dir/ingest_text.cpp.o
 [43/69] Building CXX object Engine/CMakeFiles/engine.dir/src/unicode/ingestor/ucd_processor.cpp.o
-[44/69] Building CXX object Engine/tests/CMakeFiles/suite_test_projections.dir/suite/test_projections.cpp.o
-[45/69] Building CXX object Engine/tests/CMakeFiles/suite_test_spatial_index.dir/suite/test_spatial_index.cpp.o
-[46/69] Building CXX object Engine/tests/CMakeFiles/suite_test_database_marshal.dir/suite/test_database_marshal.cpp.o
-[47/69] Building CXX object UCDIngestor/CMakeFiles/ucd_ingestor.dir/src/main.cpp.o
-[48/69] Building CXX object Engine/tools/CMakeFiles/ingest_model.dir/ingest_model.cpp.o
-[49/69] Building CXX object UCDIngestor/CMakeFiles/ucd_ingestor.dir/src/UcdXmlReader.cpp.o
-[50/69] Building CXX object UCDIngestor/CMakeFiles/ucd_ingestor.dir/src/PgConnection.cpp.o
-[51/69] Building CXX object Engine/tests/CMakeFiles/suite_test_end_to_end_pipeline.dir/suite/test_end_to_end_pipeline.cpp.o
-[52/69] Building CXX object UCDIngestor/CMakeFiles/ucd_ingestor.dir/src/parsers/AllKeysParser.cpp.o
+[44/69] Building CXX object Engine/tests/CMakeFiles/suite_test_spatial_index.dir/suite/test_spatial_index.cpp.o
+[45/69] Building CXX object Engine/tests/CMakeFiles/suite_test_projections.dir/suite/test_projections.cpp.o
+[46/69] Building CXX object UCDIngestor/CMakeFiles/ucd_ingestor.dir/src/main.cpp.o
+[47/69] Building CXX object Engine/tests/CMakeFiles/suite_test_database_marshal.dir/suite/test_database_marshal.cpp.o
+[48/69] Building CXX object UCDIngestor/CMakeFiles/ucd_ingestor.dir/src/PgConnection.cpp.o
+[49/69] Building CXX object Engine/tools/CMakeFiles/ingest_model.dir/ingest_model.cpp.o
+[50/69] Building CXX object UCDIngestor/CMakeFiles/ucd_ingestor.dir/src/UcdXmlReader.cpp.o
+[51/69] Building CXX object UCDIngestor/CMakeFiles/ucd_ingestor.dir/src/parsers/AllKeysParser.cpp.o
+[52/69] Building CXX object Engine/tests/CMakeFiles/suite_test_end_to_end_pipeline.dir/suite/test_end_to_end_pipeline.cpp.o
 [53/69] Building CXX object UCDIngestor/CMakeFiles/ucd_ingestor.dir/src/parsers/ConfusablesParser.cpp.o
 [54/69] Building CXX object UCDIngestor/CMakeFiles/ucd_ingestor.dir/src/UcdIngestor.cpp.o
 [55/69] Building CXX object Engine/tests/CMakeFiles/example_unicode_projection.dir/example_unicode_projection.cpp.o
 [56/69] Linking CXX executable UCDIngestor/ucd_ingestor
 lto-wrapper: warning: using serial compilation of 2 LTRANS jobs
 [57/69] Linking CXX shared library Engine/libengine.so
-lto-wrapper: warning: using serial compilation of 14 LTRANS jobs
-[58/69] Linking CXX executable Engine/tools/ingest_model
-[59/69] Linking CXX executable Engine/tools/ingest_text
-[60/69] Linking CXX executable Engine/tools/seed_unicode
+lto-wrapper: warning: using serial compilation of 15 LTRANS jobs
+[58/69] Linking CXX executable Engine/tools/seed_unicode
+[59/69] Linking CXX executable Engine/tools/ingest_model
+[60/69] Linking CXX executable Engine/tools/ingest_text
 [61/69] Linking CXX executable Engine/tests/suite_test_geometry_core
-[62/69] Linking CXX executable Engine/tests/suite_test_hashing
-[63/69] Linking CXX executable Engine/tests/suite_test_projections
-[64/69] Building s3 PostgreSQL extension
+[62/69] Linking CXX executable Engine/tests/suite_test_projections
+[63/69] Building s3 PostgreSQL extension
 make: 'dist/s3--0.1.0.sql' is up to date.
+[64/69] Linking CXX executable Engine/tests/suite_test_hashing
 [65/69] Building hartonomous PostgreSQL extension
 make: 'dist/hartonomous--0.1.0.sql' is up to date.
 [66/69] Linking CXX executable Engine/tests/suite_test_database_marshal
@@ -165,21 +161,21 @@ lto-wrapper: warning: using serial compilation of 2 LTRANS jobs
 [0;36mBuilding .NET Solution...[0m
 [0;36mRestoring dependencies...[0m
   Determining projects to restore...
-  Restored /home/ahart/Projects/Hartonomous/app-layer/Hartonomous.Common/Hartonomous.Common.csproj (in 131 ms).
-  Restored /home/ahart/Projects/Hartonomous/app-layer/Hartonomous.Core/Hartonomous.Core.csproj (in 131 ms).
-  Restored /home/ahart/Projects/Hartonomous/app-layer/Hartonomous.Shared/Hartonomous.Shared.csproj (in 131 ms).
-  Restored /home/ahart/Projects/Hartonomous/app-layer/Hartonomous.Marshal/Hartonomous.Marshal.csproj (in 131 ms).
-  Restored /home/ahart/Projects/Hartonomous/app-layer/Hartonomous.Data/Hartonomous.Data.csproj (in 916 ms).
-  Restored /home/ahart/Projects/Hartonomous/app-layer/Hartonomous.ServiceDefaults/Hartonomous.ServiceDefaults.csproj (in 916 ms).
-  Restored /home/ahart/Projects/Hartonomous/app-layer/Hartonomous.API/Hartonomous.API.csproj (in 939 ms).
-  Restored /home/ahart/Projects/Hartonomous/app-layer/Hartonomous.AppHost/Hartonomous.AppHost.csproj (in 958 ms).
+  Restored /home/ahart/Projects/Hartonomous/app-layer/Hartonomous.Common/Hartonomous.Common.csproj (in 128 ms).
+  Restored /home/ahart/Projects/Hartonomous/app-layer/Hartonomous.Core/Hartonomous.Core.csproj (in 128 ms).
+  Restored /home/ahart/Projects/Hartonomous/app-layer/Hartonomous.Marshal/Hartonomous.Marshal.csproj (in 128 ms).
+  Restored /home/ahart/Projects/Hartonomous/app-layer/Hartonomous.Shared/Hartonomous.Shared.csproj (in 128 ms).
+  Restored /home/ahart/Projects/Hartonomous/app-layer/Hartonomous.ServiceDefaults/Hartonomous.ServiceDefaults.csproj (in 268 ms).
+  Restored /home/ahart/Projects/Hartonomous/app-layer/Hartonomous.Data/Hartonomous.Data.csproj (in 268 ms).
+  Restored /home/ahart/Projects/Hartonomous/app-layer/Hartonomous.API/Hartonomous.API.csproj (in 285 ms).
+  Restored /home/ahart/Projects/Hartonomous/app-layer/Hartonomous.AppHost/Hartonomous.AppHost.csproj (in 289 ms).
 [0;32m✓ Restore complete[0m
 [0;36mBuilding (Release)...[0m
+  Hartonomous.Shared -> /home/ahart/Projects/Hartonomous/app-layer/Hartonomous.Shared/bin/Release/net10.0/Hartonomous.Shared.dll
   Hartonomous.Common -> /home/ahart/Projects/Hartonomous/app-layer/Hartonomous.Common/bin/Release/net10.0/Hartonomous.Common.dll
   Copying native library libengine.so from /home/ahart/Projects/Hartonomous/build/linux-release-max-perf/Engine to bin/Release/net10.0/
-  Hartonomous.Core -> /home/ahart/Projects/Hartonomous/app-layer/Hartonomous.Core/bin/Release/net10.0/Hartonomous.Core.dll
-  Hartonomous.Shared -> /home/ahart/Projects/Hartonomous/app-layer/Hartonomous.Shared/bin/Release/net10.0/Hartonomous.Shared.dll
   Copying native library libengine.so from /home/ahart/Projects/Hartonomous/build/linux-release-max-perf/Engine to bin/Release/net10.0/
+  Hartonomous.Core -> /home/ahart/Projects/Hartonomous/app-layer/Hartonomous.Core/bin/Release/net10.0/Hartonomous.Core.dll
   Copying native library libengine.so from /home/ahart/Projects/Hartonomous/build/linux-release-max-perf/Engine to bin/Release/net10.0/
   Hartonomous.ServiceDefaults -> /home/ahart/Projects/Hartonomous/app-layer/Hartonomous.ServiceDefaults/bin/Release/net10.0/Hartonomous.ServiceDefaults.dll
   Copying native library libengine.so from /home/ahart/Projects/Hartonomous/build/linux-release-max-perf/Engine to bin/Release/net10.0/
@@ -196,7 +192,7 @@ Build succeeded.
     0 Warning(s)
     0 Error(s)
 
-Time Elapsed 00:00:01.94
+Time Elapsed 00:00:02.49
 [0;32m✓ .NET Build complete[0m
 
 [0;36mRunning tests...[0m

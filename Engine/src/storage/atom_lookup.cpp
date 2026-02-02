@@ -2,6 +2,7 @@
 #include <sstream>
 #include <iomanip>
 #include <stdexcept>
+#include <iostream>
 
 namespace Hartonomous {
 
@@ -139,6 +140,8 @@ std::unordered_map<uint32_t, AtomLookup::AtomInfo> AtomLookup::lookup_batch(
         FROM hartonomous.atom a
         JOIN hartonomous.physicality p ON a.physicalityid = p.id
         WHERE a.codepoint IN )" + in_clause.str();
+
+    std::cout << "DEBUG: AtomLookup SQL: " << sql.substr(0, 200) << "..." << std::endl;
 
     db_.query(sql, [&](const std::vector<std::string>& row) {
         if (row.size() >= 8) {
