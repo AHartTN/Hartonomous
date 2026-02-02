@@ -223,6 +223,16 @@ IngestionStats TextIngester::ingest(const std::string& text) {
     }
     std::cout << "  Unique tokens (compositions): " << token_map.size() << std::endl;
 
+    // Calculate N-gram statistics
+    std::unordered_map<BLAKE3Pipeline::Hash, size_t, HashHasher> comp_counts;
+    for (const auto& id : token_sequence) {
+        comp_counts[id]++;
+    }
+    stats.ngrams_extracted = token_sequence.size();
+    for (const auto& [id, count] : comp_counts) {
+        if (count >= 2) stats.ngrams_significant++;
+    }
+
     // Phase 4: Collect all records
     std::vector<PhysicalityRecord> phys_records;
     std::vector<CompositionRecord> comp_records;
@@ -247,8 +257,7 @@ IngestionStats TextIngester::ingest(const std::string& text) {
             comp_records.push_back({comp_id, tok.phys_id});
             stats.compositions_new++;
 
-            // Store composition sequence (composition → atoms) with RLE
-            // "Mississippi" → M@0, i@1, s@2(occ=2), i@4, s@5(occ=2), i@7, p@8(occ=2), i@10
+            // Store composition sequence (composition -> atoms) with RLE
             for (size_t i = 0; i < tok.atom_ids.size(); ) {
                 uint32_t ordinal = static_cast<uint32_t>(i);
                 uint32_t occurrences = 1;
@@ -279,6 +288,7 @@ IngestionStats TextIngester::ingest(const std::string& text) {
 
     // Phase 5: Relations (bigrams of compositions)
     auto content_id = create_content_record(text);
+    std::unordered_map<BLAKE3Pipeline::Hash, size_t, HashHasher> rel_counts;
 
     for (size_t i = 0; i + 1 < token_sequence.size(); ++i) {
         auto& comp1_id = token_sequence[i];
@@ -289,6 +299,8 @@ IngestionStats TextIngester::ingest(const std::string& text) {
         rel_data.insert(rel_data.end(), comp1_id.begin(), comp1_id.end());
         rel_data.insert(rel_data.end(), comp2_id.begin(), comp2_id.end());
         auto rel_id = BLAKE3Pipeline::hash(rel_data);
+
+        rel_counts[rel_id]++;
 
         if (seen_relation_ids_.insert(rel_id).second) {
             // Compute relation centroid from composition centroids
@@ -350,6 +362,11 @@ IngestionStats TextIngester::ingest(const std::string& text) {
             1.0   // weight
         });
         stats.evidence_count++;
+    }
+
+    stats.cooccurrences_found = token_sequence.size() > 1 ? token_sequence.size() - 1 : 0;
+    for (const auto& [id, count] : rel_counts) {
+        if (count >= 2) stats.cooccurrences_significant++;
     }
 
     std::cout << "  Collected: " << phys_records.size() << " phys, "

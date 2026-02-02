@@ -23,6 +23,7 @@
 #include <storage/composition_store.hpp>
 #include <storage/relation_store.hpp>
 #include <storage/relation_evidence_store.hpp>
+#include <storage/content_store.hpp>
 #include <ml/model_extraction.hpp>
 #include <spatial/hilbert_curve_4d.hpp>
 #include <iostream>
@@ -75,6 +76,29 @@ ModelIngestionStats ModelIngester::ingest_package(const std::filesystem::path& p
         std::cout << "Ingesting model with " << stats.vocab_tokens << " vocab tokens..." << std::endl;
 
         PostgresConnection::Transaction txn(db_);
+
+        // 0. Store Content record for the model (needed for evidence FK)
+        std::cout << "  Creating content record for model: " << hash_to_uuid(model_id_) << std::endl;
+        try {
+            ContentStore content_store(db_);
+            content_store.store({
+                model_id_,
+                config_.tenant_id,
+                config_.user_id,
+                2, // Content Type: Model
+                model_id_,
+                0, // Size unknown/irrelevant
+                "application/octet-stream", // Mime
+                "en", // Language
+                package_dir.string(), // Source
+                "binary" // Encoding
+            });
+            content_store.flush();
+            std::cout << "  Content record stored." << std::endl;
+        } catch (const std::exception& e) {
+            std::cerr << "  Error creating content record: " << e.what() << std::endl;
+            throw;
+        }
 
         // 1. Ingest vocab tokens as compositions (SAME PIPELINE AS TEXT)
         auto token_to_comp = ingest_vocab_as_text(metadata.vocab, stats);

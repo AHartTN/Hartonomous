@@ -2,7 +2,7 @@ Ingesting text from: test-data/moby_dick.txt
 Ingesting file: test-data/moby_dick.txt
 Ingesting 1256545 bytes...
 Loading global caches...
-  Loaded: 0 compositions, 0 relations.
+  Loaded: 30522 compositions, 633574 relations.
 DEBUG: AtomLookup SQL: 
         SELECT a.id, a.codepoint, p.id as phys_id,
                ST_X(p.centroid) as x, ST_Y(p.centroid) as y,
@@ -11,21 +11,21 @@ DEBUG: AtomLookup SQL:
   Found 101 atoms for 101 unique codepoints.
   Tokenized into 254897 tokens.
   Unique tokens (compositions): 21345
-  Collected: 133973 phys, 21345 comp, 152244 comp_seq, 119156 rel, 238312 rel_seq, 254896 evidence
+  Collected: 125579 phys, 12774 comp, 96580 comp_seq, 119156 rel, 238312 rel_seq, 254896 evidence
 NOTICE:  table "tmp_content_1" does not exist, skipping
   Storing physicalities...NOTICE:  table "tmp_physicality_2" does not exist, skipping
- done (133973).
+ done (125579).
   Storing compositions...NOTICE:  table "tmp_composition_3" does not exist, skipping
- done (21345).
+ done (12774).
   Storing composition sequences...NOTICE:  table "tmp_compositionsequence_4" does not exist, skipping
- done (152244).
+ done (96580).
   Storing relations...NOTICE:  table "tmp_relation_5" does not exist, skipping
  done (119156).
   Storing relation sequences...NOTICE:  table "tmp_relationsequence_6" does not exist, skipping
  done (238312).
   Storing evidence...NOTICE:  table "tmp_relationevidence_7" does not exist, skipping
  done (254896).
-  Complete: 21345 new compositions, 119156 new relations, 254896 evidence records.
+  Complete: 12774 new compositions, 119156 new relations, 254896 evidence records.
 
 === Ingestion Complete ===
 Input: 1256545 bytes
@@ -34,16 +34,16 @@ Atoms (codepoints):
   New: 0 / Total unique: 101
 
 N-gram Analysis:
-  Extracted: 0
-  Significant (freq >= 2): 0
+  Extracted: 254897
+  Significant (freq >= 2): 10721
 
 Compositions:
-  New: 21345 / Total: 21345
+  New: 12774 / Total: 43296
 
 Co-occurrence Analysis:
-  Found: 0
-  Significant (count >= 2): 0
+  Found: 254896
+  Significant (count >= 2): 26122
 
 Relations:
-  New: 119156 / Total: 119156
+  New: 119156 / Total: 752730
   Evidence records: 254896
