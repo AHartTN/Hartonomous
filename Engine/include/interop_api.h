@@ -29,6 +29,7 @@ HARTONOMOUS_API const char* hartonomous_get_last_error();
 typedef void* h_db_connection_t;
 typedef void* h_ingester_t;
 typedef void* h_godel_t;
+typedef void* h_walk_engine_t;
 
 // =============================================================================
 //  Database Connection
@@ -61,6 +62,46 @@ HARTONOMOUS_API h_ingester_t hartonomous_ingester_create(h_db_connection_t db_ha
 HARTONOMOUS_API void hartonomous_ingester_destroy(h_ingester_t handle);
 HARTONOMOUS_API bool hartonomous_ingest_text(h_ingester_t handle, const char* text, HIngestionStats* out_stats);
 HARTONOMOUS_API bool hartonomous_ingest_file(h_ingester_t handle, const char* file_path, HIngestionStats* out_stats);
+
+// =============================================================================
+//  Walk Engine
+// =============================================================================
+
+struct HWalkParameters {
+    double w_model;
+    double w_text;
+    double w_rel;
+    double w_geo;
+    double w_hilbert;
+    double w_repeat;
+    double w_novelty;
+    double goal_attraction;
+    double w_energy;
+    double base_temp;
+    double energy_alpha;
+    double energy_decay;
+    size_t context_window;
+};
+
+struct HWalkState {
+    uint8_t current_composition[16];
+    double current_position[4];
+    double current_energy;
+};
+
+struct HWalkStepResult {
+    uint8_t next_composition[16];
+    double probability;
+    double energy_remaining;
+    bool terminated;
+    char reason[256];
+};
+
+HARTONOMOUS_API h_walk_engine_t hartonomous_walk_create(h_db_connection_t db_handle);
+HARTONOMOUS_API void hartonomous_walk_destroy(h_walk_engine_t handle);
+HARTONOMOUS_API bool hartonomous_walk_init(h_walk_engine_t handle, const uint8_t* start_id, double initial_energy, HWalkState* out_state);
+HARTONOMOUS_API bool hartonomous_walk_step(h_walk_engine_t handle, HWalkState* in_out_state, const HWalkParameters* params, HWalkStepResult* out_result);
+HARTONOMOUS_API bool hartonomous_walk_set_goal(h_walk_engine_t handle, HWalkState* in_out_state, const uint8_t* goal_id);
 
 // =============================================================================
 //  Godel Engine

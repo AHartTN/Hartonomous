@@ -8,6 +8,9 @@
 #include <fstream>
 #include <sstream>
 #include <cstring>
+#include <set>
+#include <regex>
+#include <algorithm>
 #include <nlohmann/json.hpp>
 
 using json = nlohmann::json;
@@ -154,7 +157,45 @@ void SafetensorLoader::load_safetensors() {
         return;
     }
 
-    // TODO: Handle sharded models (model.safetensors.index.json)
+    // Handle sharded models (model.safetensors.index.json)
+    std::string index_path = model_dir_ + "/model.safetensors.index.json";
+    if (std::ifstream(index_path).good()) {
+        load_sharded_model(index_path);
+        return;
+    }
+
+    // Try alternate sharded index name
+    index_path = model_dir_ + "/pytorch_model.safetensors.index.json";
+    if (std::ifstream(index_path).good()) {
+        load_sharded_model(index_path);
+        return;
+    }
+}
+
+void SafetensorLoader::load_sharded_model(const std::string& index_path) {
+    std::ifstream file(index_path);
+    if (!file) {
+        throw std::runtime_error("Failed to open index file: " + index_path);
+    }
+
+    json index;
+    file >> index;
+
+    // Get unique shard files
+    std::set<std::string> shard_files;
+    if (index.contains("weight_map")) {
+        for (auto& [tensor_name, shard_file] : index["weight_map"].items()) {
+            shard_files.insert(shard_file);
+        }
+    }
+
+    // Load each shard
+    for (const auto& shard : shard_files) {
+        std::string shard_path = model_dir_ + "/" + shard;
+        if (std::ifstream(shard_path).good()) {
+            load_safetensor_file(shard_path);
+        }
+    }
 }
 
 void SafetensorLoader::load_safetensor_file(const std::string& path) {
@@ -238,17 +279,40 @@ void SafetensorLoader::load_safetensor_file(const std::string& path) {
         file.seekg(8 + header_size + data_begin);
         file.read((char*)raw_data.data(), data_size);
 
-        // Convert to float32 (simplified - assumes F32 or F16)
+        // Convert to float32
         size_t num_elements = tensor.total_elements();
         tensor.data.resize(num_elements);
 
         if (tensor.dtype == "F32") {
             std::memcpy(tensor.data.data(), raw_data.data(), data_size);
         } else if (tensor.dtype == "F16") {
-            // Convert FP16 to FP32
             const uint16_t* half_data = (const uint16_t*)raw_data.data();
             for (size_t i = 0; i < num_elements; ++i) {
                 tensor.data[i] = half_to_float(half_data[i]);
+            }
+        } else if (tensor.dtype == "BF16") {
+            // BF16: same exponent range as F32, just truncated mantissa
+            const uint16_t* bf16_data = (const uint16_t*)raw_data.data();
+            for (size_t i = 0; i < num_elements; ++i) {
+                uint32_t val = static_cast<uint32_t>(bf16_data[i]) << 16;
+                float f;
+                std::memcpy(&f, &val, 4);
+                tensor.data[i] = f;
+            }
+        } else if (tensor.dtype == "F64") {
+            const double* f64_data = (const double*)raw_data.data();
+            for (size_t i = 0; i < num_elements; ++i) {
+                tensor.data[i] = static_cast<float>(f64_data[i]);
+            }
+        } else if (tensor.dtype == "I32") {
+            const int32_t* i32_data = (const int32_t*)raw_data.data();
+            for (size_t i = 0; i < num_elements; ++i) {
+                tensor.data[i] = static_cast<float>(i32_data[i]);
+            }
+        } else if (tensor.dtype == "I64") {
+            const int64_t* i64_data = (const int64_t*)raw_data.data();
+            for (size_t i = 0; i < num_elements; ++i) {
+                tensor.data[i] = static_cast<float>(i64_data[i]);
             }
         } else {
             // Unsupported dtype, fill with zeros
@@ -273,13 +337,36 @@ std::vector<std::string> SafetensorLoader::tensor_names() const {
 }
 
 Eigen::MatrixXf SafetensorLoader::get_embeddings() const {
-    // Try common embedding tensor names
+    // Common embedding tensor names across architectures
     const char* embedding_names[] = {
+        // BERT/RoBERTa/DistilBERT
         "embeddings.word_embeddings.weight",
         "bert.embeddings.word_embeddings.weight",
+        "roberta.embeddings.word_embeddings.weight",
+        "distilbert.embeddings.word_embeddings.weight",
+        // LLaMA/Mistral/Qwen
         "model.embed_tokens.weight",
+        "model.embeddings.weight",
+        // GPT-2/GPT-Neo/GPT-J
         "transformer.wte.weight",
-        "word_embeddings.weight"
+        "wte.weight",
+        // T5/FLAN
+        "encoder.embed_tokens.weight",
+        "shared.weight",
+        // Falcon
+        "transformer.word_embeddings.weight",
+        // MPT
+        "transformer.wpe.weight",
+        // BLOOM
+        "word_embeddings.weight",
+        "word_embeddings_layernorm.weight",
+        // Sentence Transformers / MiniLM
+        "embeddings.word_embeddings.weight",
+        "0.auto_model.embeddings.word_embeddings.weight",
+        // Generic fallbacks
+        "embed_tokens.weight",
+        "token_embedding.weight",
+        "embedding.weight"
     };
 
     for (const char* name : embedding_names) {
@@ -300,65 +387,139 @@ Eigen::MatrixXf SafetensorLoader::get_embeddings() const {
         }
     }
 
-    // Not found
-    return Eigen::MatrixXf(0, 0);
-}
+    // Fallback: search for any 2D tensor with "embed" in name
+    for (const auto& [name, tensor] : tensors_) {
+        if (tensor.shape.size() == 2 &&
+            (name.find("embed") != std::string::npos || name.find("Embed") != std::string::npos)) {
+            size_t vocab_size = tensor.shape[0];
+            size_t embed_dim = tensor.shape[1];
 
-void SafetensorLoader::ingest(PostgresConnection& db, bool store_all_tensors) {
-    // Ingest metadata as text (config, model info)
-    TextIngester text_ingester(db);
-
-    // Ingest config as text
-    for (auto& [key, value] : metadata_.config) {
-        std::string config_text = key + ": " + value;
-        text_ingester.ingest(config_text);
-    }
-
-    // Ingest vocab as compositions
-    for (const auto& token : metadata_.vocab) {
-        text_ingester.ingest(token);
-    }
-
-    // Get embeddings and store
-    auto embeddings = get_embeddings();
-
-    if (embeddings.rows() > 0) {
-        // For each token, store its embedding as a composition
-        // The embedding vector becomes metadata
-
-        for (int i = 0; i < embeddings.rows() && i < (int)metadata_.vocab.size(); ++i) {
-            const std::string& token = metadata_.vocab[i];
-
-            // Hash the token text
-            auto token_hash = BLAKE3Pipeline::hash(token);
-            std::string hash_hex = BLAKE3Pipeline::to_hex(token_hash);
-
-            // Store embedding metadata
-            std::ostringstream embedding_json;
-            embedding_json << "{\"embedding\": [";
-            for (int j = 0; j < embeddings.cols(); ++j) {
-                if (j > 0) embedding_json << ",";
-                embedding_json << embeddings(i, j);
-                if (j >= 10) {  // Limit for DB storage
-                    embedding_json << "...";
-                    break;
+            if (vocab_size > 1000 && embed_dim >= 64) {  // Sanity check
+                Eigen::MatrixXf embeddings(vocab_size, embed_dim);
+                for (size_t i = 0; i < vocab_size; ++i) {
+                    for (size_t j = 0; j < embed_dim; ++j) {
+                        embeddings(i, j) = tensor.data[i * embed_dim + j];
+                    }
                 }
+                return embeddings;
             }
-            embedding_json << "]}";
-
-            // Update composition with embedding metadata
-            db.execute(
-                "UPDATE compositions SET metadata = $1 WHERE hash = $2",
-                {embedding_json.str(), hash_hex}
-            );
         }
     }
 
-    // TODO: Store tensors as semantic edges (attention weights, etc.)
-    if (store_all_tensors) {
-        // Extract attention weights and store as semantic_edges
-        // This is where we'd extract model relationships
+    return Eigen::MatrixXf(0, 0);
+}
+
+std::vector<AttentionLayer> SafetensorLoader::get_attention_layers() const {
+    std::vector<AttentionLayer> layers;
+
+    // Pattern match for attention weight tensors across architectures
+    std::regex layer_pattern(R"(.*\.(\d+)\..*(q_proj|k_proj|v_proj|o_proj|query|key|value|dense|attention\.self|attn\.(c_attn|c_proj)|self_attn).*\.weight)");
+
+    std::map<int, AttentionLayer> layer_map;
+
+    for (const auto& [name, tensor] : tensors_) {
+        std::smatch match;
+        if (std::regex_match(name, match, layer_pattern)) {
+            int layer_idx = std::stoi(match[1].str());
+
+            if (layer_map.find(layer_idx) == layer_map.end()) {
+                layer_map[layer_idx].layer_index = layer_idx;
+            }
+
+            auto& layer = layer_map[layer_idx];
+
+            // Identify which weight this is based on full tensor name
+            std::string lower_name = name;
+            std::transform(lower_name.begin(), lower_name.end(), lower_name.begin(), ::tolower);
+
+            if (lower_name.find("q_proj") != std::string::npos ||
+                lower_name.find("query") != std::string::npos ||
+                lower_name.find(".q.") != std::string::npos ||
+                lower_name.find("wq") != std::string::npos) {
+                layer.q_weight = &tensor;
+            } else if (lower_name.find("k_proj") != std::string::npos ||
+                       lower_name.find("key") != std::string::npos ||
+                       lower_name.find(".k.") != std::string::npos ||
+                       lower_name.find("wk") != std::string::npos) {
+                layer.k_weight = &tensor;
+            } else if (lower_name.find("v_proj") != std::string::npos ||
+                       lower_name.find("value") != std::string::npos ||
+                       lower_name.find(".v.") != std::string::npos ||
+                       lower_name.find("wv") != std::string::npos) {
+                layer.v_weight = &tensor;
+            } else if (lower_name.find("o_proj") != std::string::npos ||
+                       lower_name.find("out_proj") != std::string::npos ||
+                       lower_name.find("dense.weight") != std::string::npos ||
+                       lower_name.find("wo") != std::string::npos ||
+                       (lower_name.find("c_proj") != std::string::npos && lower_name.find("attn") != std::string::npos)) {
+                layer.o_weight = &tensor;
+            }
+        }
     }
+
+    for (auto& [idx, layer] : layer_map) {
+        layers.push_back(std::move(layer));
+    }
+
+    std::sort(layers.begin(), layers.end(), [](const AttentionLayer& a, const AttentionLayer& b) {
+        return a.layer_index < b.layer_index;
+    });
+
+    return layers;
+}
+
+std::vector<FFNLayer> SafetensorLoader::get_ffn_layers() const {
+    std::vector<FFNLayer> layers;
+
+    // Pattern match for FFN weight tensors
+    std::regex layer_pattern(R"(.*\.(\d+)\..*(mlp|feed_forward|ffn|fc1|fc2|gate_proj|up_proj|down_proj|intermediate|output).*\.weight)");
+
+    std::map<int, FFNLayer> layer_map;
+
+    for (const auto& [name, tensor] : tensors_) {
+        std::smatch match;
+        if (std::regex_match(name, match, layer_pattern)) {
+            int layer_idx = std::stoi(match[1].str());
+
+            if (layer_map.find(layer_idx) == layer_map.end()) {
+                layer_map[layer_idx].layer_index = layer_idx;
+            }
+
+            auto& layer = layer_map[layer_idx];
+
+            std::string weight_type = match[2].str();
+            if (weight_type.find("gate") != std::string::npos || weight_type == "fc1" || weight_type.find("intermediate") != std::string::npos) {
+                layer.gate_weight = &tensor;
+            } else if (weight_type.find("up") != std::string::npos) {
+                layer.up_weight = &tensor;
+            } else if (weight_type.find("down") != std::string::npos || weight_type == "fc2" || weight_type.find("output") != std::string::npos) {
+                layer.down_weight = &tensor;
+            }
+        }
+    }
+
+    for (auto& [idx, layer] : layer_map) {
+        layers.push_back(std::move(layer));
+    }
+
+    std::sort(layers.begin(), layers.end(), [](const FFNLayer& a, const FFNLayer& b) {
+        return a.layer_index < b.layer_index;
+    });
+
+    return layers;
+}
+
+std::vector<std::string> SafetensorLoader::get_layer_names_matching(const std::string& pattern) const {
+    std::vector<std::string> matches;
+    std::regex re(pattern);
+
+    for (const auto& [name, _] : tensors_) {
+        if (std::regex_search(name, re)) {
+            matches.push_back(name);
+        }
+    }
+
+    return matches;
 }
 
 } // namespace Hartonomous

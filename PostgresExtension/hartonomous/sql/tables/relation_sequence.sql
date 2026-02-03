@@ -11,3 +11,6 @@ CREATE TABLE IF NOT EXISTS hartonomous.RelationSequence (
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_RelationSequence_RelationId_Ordinal ON hartonomous.RelationSequence(RelationId, Ordinal);
 CREATE INDEX IF NOT EXISTS idx_RelationSequence_RelationId ON hartonomous.RelationSequence(RelationId, Ordinal ASC, Occurrences);
+
+-- CRITICAL: Index for finding all relations a composition participates in (microsecond walks)
+CREATE INDEX IF NOT EXISTS idx_RelationSequence_CompositionId ON hartonomous.RelationSequence(CompositionId);

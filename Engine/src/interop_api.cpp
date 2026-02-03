@@ -1,5 +1,6 @@
 #include <interop_api.h>
 #include <cognitive/godel_engine.hpp>
+#include <cognitive/walk_engine.hpp>
 #include <ingestion/text_ingester.hpp>
 #include <database/postgres_connection.hpp>
 #include <stdexcept>
@@ -125,6 +126,129 @@ bool hartonomous_ingest_file(h_ingester_t handle, const char* file_path, HIngest
         out_stats->ngrams_significant = stats.ngrams_significant;
         out_stats->cooccurrences_found = stats.cooccurrences_found;
         out_stats->cooccurrences_significant = stats.cooccurrences_significant;
+        
+        return true;
+    } catch (const std::exception& e) {
+        set_error(e);
+        return false;
+    }
+}
+
+// =============================================================================
+//  Walk Engine
+// =============================================================================
+
+h_walk_engine_t hartonomous_walk_create(h_db_connection_t db_handle) {
+    try {
+        if (!db_handle) throw std::runtime_error("Invalid database handle");
+        auto* db = static_cast<Hartonomous::PostgresConnection*>(db_handle);
+        auto* engine = new Hartonomous::WalkEngine(*db);
+        return static_cast<h_walk_engine_t>(engine);
+    } catch (const std::exception& e) {
+        set_error(e);
+        return nullptr;
+    }
+}
+
+void hartonomous_walk_destroy(h_walk_engine_t handle) {
+    if (handle) {
+        delete static_cast<Hartonomous::WalkEngine*>(handle);
+    }
+}
+
+bool hartonomous_walk_init(h_walk_engine_t handle, const uint8_t* start_id, double initial_energy, HWalkState* out_state) {
+    try {
+        if (!handle || !start_id || !out_state) return false;
+        auto* engine = static_cast<Hartonomous::WalkEngine*>(handle);
+        
+        Hartonomous::BLAKE3Pipeline::Hash id;
+        std::memcpy(id.data(), start_id, 16);
+        
+        auto state = engine->init_walk(id, initial_energy);
+        
+        std::memcpy(out_state->current_composition, state.current_composition.data(), 16);
+        out_state->current_position[0] = state.current_position[0];
+        out_state->current_position[1] = state.current_position[1];
+        out_state->current_position[2] = state.current_position[2];
+        out_state->current_position[3] = state.current_position[3];
+        out_state->current_energy = state.current_energy;
+        
+        return true;
+    } catch (const std::exception& e) {
+        set_error(e);
+        return false;
+    }
+}
+
+bool hartonomous_walk_step(h_walk_engine_t handle, HWalkState* in_out_state, const HWalkParameters* params, HWalkStepResult* out_result) {
+    try {
+        if (!handle || !in_out_state || !params || !out_result) return false;
+        auto* engine = static_cast<Hartonomous::WalkEngine*>(handle);
+        
+        // Reconstruct C++ state from C struct
+        Hartonomous::WalkState state;
+        std::memcpy(state.current_composition.data(), in_out_state->current_composition, 16);
+        state.current_position = Eigen::Vector4d(
+            in_out_state->current_position[0],
+            in_out_state->current_position[1],
+            in_out_state->current_position[2],
+            in_out_state->current_position[3]
+        );
+        state.current_energy = in_out_state->current_energy;
+        
+        Hartonomous::WalkParameters p;
+        p.w_model = params->w_model;
+        p.w_text = params->w_text;
+        p.w_rel = params->w_rel;
+        p.w_geo = params->w_geo;
+        p.w_hilbert = params->w_hilbert;
+        p.w_repeat = params->w_repeat;
+        p.w_novelty = params->w_novelty;
+        p.goal_attraction = params->goal_attraction;
+        p.w_energy = params->w_energy;
+        p.base_temp = params->base_temp;
+        p.energy_alpha = params->energy_alpha;
+        p.energy_decay = params->energy_decay;
+        p.recent_window = params->context_window;
+
+        auto result = engine->step(state, p);
+        
+        // Output result
+        std::memcpy(out_result->next_composition, result.next_composition.data(), 16);
+        out_result->probability = result.probability;
+        out_result->energy_remaining = result.energy_remaining;
+        out_result->terminated = result.terminated;
+        std::strncpy(out_result->reason, result.reason.c_str(), 255);
+        out_result->reason[255] = '\0';
+        
+        // Update input state for next iteration
+        std::memcpy(in_out_state->current_composition, state.current_composition.data(), 16);
+        in_out_state->current_position[0] = state.current_position[0];
+        in_out_state->current_position[1] = state.current_position[1];
+        in_out_state->current_position[2] = state.current_position[2];
+        in_out_state->current_position[3] = state.current_position[3];
+        in_out_state->current_energy = state.current_energy;
+
+        return true;
+    } catch (const std::exception& e) {
+        set_error(e);
+        return false;
+    }
+}
+
+bool hartonomous_walk_set_goal(h_walk_engine_t handle, HWalkState* in_out_state, const uint8_t* goal_id) {
+    try {
+        if (!handle || !in_out_state || !goal_id) return false;
+        auto* engine = static_cast<Hartonomous::WalkEngine*>(handle);
+        
+        // Reconstruct state
+        Hartonomous::WalkState state;
+        std::memcpy(state.current_composition.data(), in_out_state->current_composition, 16);
+        
+        Hartonomous::BLAKE3Pipeline::Hash gid;
+        std::memcpy(gid.data(), goal_id, 16);
+        
+        engine->set_goal(state, gid);
         
         return true;
     } catch (const std::exception& e) {

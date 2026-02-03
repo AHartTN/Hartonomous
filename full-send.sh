@@ -4,4 +4,7 @@ sudo ldconfig > ldconfig-log.txt 2>&1;
 ./scripts/linux/setup-database.sh --drop > setup-database-log.txt 2>&1;
 ./UCDIngestor/setup_db.sh > ucd-setup-db-log.txt 2>&1;
 ./run_ingestion.sh > run-ingestion-log.txt 2>&1;
-./scripts/linux/01-seed-unicode.sh > seed-unicode-log.txt 2>&1
+./scripts/linux/01-seed-unicode.sh > seed-unicode-log.txt 2>&1;
+./scripts/linux/01-ingest-mini-lm.sh > ingest-minilm-log.txt 2>&1;
+./scripts/linux/01-ingest-text.sh > ingest-text-log.txt 2>&1;
+./build/linux-release-max-perf/Engine/tools/walk_test > walk-test-log.txt 2>&1;

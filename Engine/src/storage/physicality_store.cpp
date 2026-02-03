@@ -4,61 +4,79 @@
 #include <endian.h>
 #include <cstring>
 #include <iostream>
+#include <cstdio>
 
 namespace Hartonomous {
 
-PhysicalityStore::PhysicalityStore(PostgresConnection& db) : copy_(db) {
-    copy_.begin_table("hartonomous.physicality", {"id", "hilbert", "centroid"});
+// Fast hex lookup table
+static const char* hex_lut = "0123456789abcdef";
+
+PhysicalityStore::PhysicalityStore(PostgresConnection& db, bool use_temp_table)
+    : copy_(db, use_temp_table), use_dedup_(use_temp_table) {
+    copy_.begin_table("hartonomous.physicality", {"id", "hilbert", "centroid", "trajectory"});
 }
 
 std::string PhysicalityStore::hash_to_uuid(const BLAKE3Pipeline::Hash& hash) {
-    std::ostringstream ss;
-    ss << std::hex << std::setfill('0');
+    // Fast UUID conversion without ostringstream
+    char buf[37];
+    char* p = buf;
     for (int i = 0; i < 16; ++i) {
-        if (i == 4 || i == 6 || i == 8 || i == 10) ss << '-';
-        ss << std::setw(2) << (static_cast<unsigned>(hash[i]) & 0xFF);
+        if (i == 4 || i == 6 || i == 8 || i == 10) *p++ = '-';
+        *p++ = hex_lut[(hash[i] >> 4) & 0xF];
+        *p++ = hex_lut[hash[i] & 0xF];
     }
-    return ss.str();
+    *p = '\0';
+    return std::string(buf, 36);
 }
 
 std::string PhysicalityStore::geom_to_hex(const Eigen::Vector4d& pt) {
     // Standard WKB for POINT ZM (37 bytes)
-    // Endian(1) + Type(4) + X(8) + Y(8) + Z(8) + M(8)
-    // Type = POINT(1) | HasZ(0x80000000) | HasM(0x40000000) = 0xC0000001
-    
-    uint8_t buf[37];
-    buf[0] = 0x01; // Little Endian
+    // Fast hex encoding without ostringstream
+    uint8_t wkb[37];
+    wkb[0] = 0x01; // Little Endian
 
     uint32_t type_le = htole32(0xC0000001u);
-    std::memcpy(buf + 1, &type_le, 4);
+    std::memcpy(wkb + 1, &type_le, 4);
 
-    double coords[4] = { pt[0], pt[1], pt[2], pt[3] };
     for (int i = 0; i < 4; ++i) {
+        double coord = pt[i];
         uint64_t u;
-        std::memcpy(&u, &coords[i], 8);
+        std::memcpy(&u, &coord, 8);
         uint64_t u_le = htole64(u);
-        std::memcpy(buf + 5 + i * 8, &u_le, 8);
+        std::memcpy(wkb + 5 + i * 8, &u_le, 8);
     }
 
-    std::ostringstream ss;
-    ss << std::hex << std::setfill('0');
+    // Fast hex encoding
+    char hex[75]; // 37 * 2 + 1
     for (int i = 0; i < 37; ++i) {
-        ss << std::setw(2) << (static_cast<unsigned>(buf[i]) & 0xFF);
+        hex[i * 2] = hex_lut[(wkb[i] >> 4) & 0xF];
+        hex[i * 2 + 1] = hex_lut[wkb[i] & 0xF];
     }
-
-    return ss.str(); 
+    hex[74] = '\0';
+    return std::string(hex, 74);
 }
 
 void PhysicalityStore::store(const PhysicalityRecord& rec) {
     std::string uuid = hash_to_uuid(rec.id);
-    if (seen_.count(uuid)) return;
+
+    // Skip dedup in direct mode (caller guarantees uniqueness)
+    if (use_dedup_) {
+        if (seen_.count(uuid)) return;
+        seen_.insert(uuid);
+    }
+
+    // Fast WKT without ostringstream
+    char wkt[128];
+    int len = snprintf(wkt, sizeof(wkt), "POINTZM(%.10f %.10f %.10f %.10f)",
+                       rec.centroid[0], rec.centroid[1], rec.centroid[2], rec.centroid[3]);
+    std::string trajectory = rec.trajectory_wkt.empty() ? std::string(wkt, len) : rec.trajectory_wkt;
 
     copy_.add_row({
         uuid,
         rec.hilbert_index.to_string(),
-        geom_to_hex(rec.centroid)
+        geom_to_hex(rec.centroid),
+        trajectory
     });
-    seen_.insert(uuid);
 }
 
 void PhysicalityStore::flush() {

@@ -33,3 +33,8 @@ add_executable(ingest_model ingest_model.cpp)
 target_include_directories(ingest_model PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
 target_link_libraries(ingest_model PRIVATE engine)
 install(TARGETS ingest_model DESTINATION ${CMAKE_BINARY_DIR}/tools)
+
+add_executable(walk_test walk_test.cpp)
+target_include_directories(walk_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
+target_link_libraries(walk_test PRIVATE engine)
+install(TARGETS walk_test DESTINATION ${CMAKE_BINARY_DIR}/tools)

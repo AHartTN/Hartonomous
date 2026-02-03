@@ -3,15 +3,7 @@ Project Root: /home/ahart/Projects/Hartonomous
 Build Dir:    /home/ahart/Projects/Hartonomous/build/linux-release-max-perf
 
 Installing Hartonomous Engine to /usr/local...
-✓ Engine library and headers copied.
+⚠ libengine.so not found. Skipping engine install.
 Installing libengine.so to PostgreSQL...
-✓ libengine.so copied to /usr/lib/postgresql/18/lib
 Installing s3 extension...
-✓ s3 extension files copied.
-Installing hartonomous extension...
-✓ hartonomous extension files copied.
-Updating shared library cache...
-/sbin/ldconfig.real: /opt/intel/oneapi/mkl/2025.3/lib/intel64/libmkl_sycl.so is not an ELF file - it has the wrong magic bytes at the start.
-
-
-Installation complete.
+sudo: a password is required

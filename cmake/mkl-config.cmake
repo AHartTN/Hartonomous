@@ -18,7 +18,9 @@
 
 # User-configurable options (can be set before including this file)
 if(NOT DEFINED HARTONOMOUS_MKL_THREADING)
-    set(HARTONOMOUS_MKL_THREADING "SEQUENTIAL" CACHE STRING "MKL threading layer: SEQUENTIAL, INTEL, TBB, GNU")
+    # Default to GNU OpenMP threading for parallel MKL operations
+    # SEQUENTIAL is single-threaded and destroys performance!
+    set(HARTONOMOUS_MKL_THREADING "GNU" CACHE STRING "MKL threading layer: SEQUENTIAL, INTEL, TBB, GNU")
 endif()
 
 if(NOT DEFINED HARTONOMOUS_MKL_INTERFACE)

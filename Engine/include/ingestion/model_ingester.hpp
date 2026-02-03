@@ -55,8 +55,10 @@ struct ModelIngestionStats {
 struct ModelIngestionConfig {
     BLAKE3Pipeline::Hash tenant_id;
     BLAKE3Pipeline::Hash user_id;
-    double embedding_similarity_threshold = 0.3;
-    size_t max_neighbors_per_token = 100;
+    double embedding_similarity_threshold = 0.40;  // Similarity threshold for edge inclusion
+    size_t max_neighbors_per_token = 500;          // Max KNN neighbors to query
+    size_t hnsw_ef_search = 50;                    // HNSW ef parameter for search (lower = faster, less accurate)
+    size_t db_batch_size = 100000;                 // Records per DB batch
 };
 
 class ModelIngester {
@@ -70,22 +72,43 @@ private:
     ModelIngestionConfig config_;
     BLAKE3Pipeline::Hash model_id_;
 
-    // Ingest vocab tokens using text ingestion pipeline (same composition IDs)
-    std::unordered_map<std::string, BLAKE3Pipeline::Hash>
-    ingest_vocab_as_text(const std::vector<std::string>& vocab, ModelIngestionStats& stats);
+    std::unordered_map<std::string, BLAKE3Pipeline::Hash> ingest_vocab_as_text(
+        const std::vector<std::string>& vocab,
+        ModelIngestionStats& stats
+    );
 
-    // Extract semantic edges from embedding KNN
-    void extract_embedding_edges(const std::vector<std::string>& vocab,
-                                 const Eigen::MatrixXf& embeddings,
-                                 const std::unordered_map<std::string, BLAKE3Pipeline::Hash>& token_to_comp,
-                                 ModelIngestionStats& stats);
+    void extract_embedding_edges(
+        const std::vector<std::string>& vocab,
+        const Eigen::MatrixXf& embeddings,
+        const std::unordered_map<std::string, BLAKE3Pipeline::Hash>& token_to_comp,
+        std::unordered_set<BLAKE3Pipeline::Hash, HashHasher>& session_rel_seen,
+        ModelIngestionStats& stats
+    );
 
-    // Extract semantic edges from attention weights
-    // Attention: token A → token B with weight W becomes Relation(A→B) with ELO from W
-    void extract_attention_edges(const std::vector<Eigen::MatrixXd>& attention_weights,
-                                 const std::vector<std::string>& tokens,
-                                 const std::unordered_map<std::string, BLAKE3Pipeline::Hash>& token_to_comp,
-                                 ModelIngestionStats& stats);
+    void extract_attention_edges(
+        const std::vector<Eigen::MatrixXd>& attention_weights,
+        const std::vector<std::string>& tokens,
+        const std::unordered_map<std::string, BLAKE3Pipeline::Hash>& token_to_comp,
+        ModelIngestionStats& stats
+    );
+
+    void extract_attention_layer_edges(
+        const std::vector<AttentionLayer>& layers,
+        const std::vector<std::string>& vocab,
+        const Eigen::MatrixXf& embeddings,
+        const std::unordered_map<std::string, BLAKE3Pipeline::Hash>& token_to_comp,
+        std::unordered_set<BLAKE3Pipeline::Hash, HashHasher>& session_rel_seen,
+        ModelIngestionStats& stats
+    );
+
+    void extract_ffn_layer_edges(
+        const std::vector<FFNLayer>& layers,
+        const std::vector<std::string>& vocab,
+        const Eigen::MatrixXf& embeddings,
+        const std::unordered_map<std::string, BLAKE3Pipeline::Hash>& token_to_comp,
+        std::unordered_set<BLAKE3Pipeline::Hash, HashHasher>& session_rel_seen,
+        ModelIngestionStats& stats
+    );
 
     void ingest_tensor(const std::string& name, const TensorData& tensor, ModelIngestionStats& stats);
 

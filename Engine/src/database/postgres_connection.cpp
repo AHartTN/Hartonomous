@@ -64,6 +64,9 @@ void PostgresConnection::connect(const std::string& conninfo) {
         conn_ = nullptr;
         throw std::runtime_error("PostgreSQL connection failed: " + last_error_);
     }
+
+    // Optimize for bulk loading - trade durability for speed
+    PQexec(conn_, "SET synchronous_commit = off");
 }
 
 void PostgresConnection::disconnect() {

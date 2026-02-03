@@ -48,6 +48,27 @@ struct TensorData {
 };
 
 /**
+ * @brief Attention layer weights
+ */
+struct AttentionLayer {
+    int layer_index = -1;
+    const TensorData* q_weight = nullptr;
+    const TensorData* k_weight = nullptr;
+    const TensorData* v_weight = nullptr;
+    const TensorData* o_weight = nullptr;
+};
+
+/**
+ * @brief FFN layer weights
+ */
+struct FFNLayer {
+    int layer_index = -1;
+    const TensorData* gate_weight = nullptr;
+    const TensorData* up_weight = nullptr;
+    const TensorData* down_weight = nullptr;
+};
+
+/**
  * @brief Safetensor loader
  *
  * Loads HuggingFace models from directory containing:
@@ -86,11 +107,21 @@ public:
     Eigen::MatrixXf get_embeddings() const;
 
     /**
-     * @brief Ingest into database
-     * @param db Database connection
-     * @param store_all_tensors If true, store all tensors; if false, only embeddings
+     * @brief Get attention layer weights
+     * @return Vector of attention layers with Q/K/V/O weights
      */
-    void ingest(PostgresConnection& db, bool store_all_tensors = false);
+    std::vector<AttentionLayer> get_attention_layers() const;
+
+    /**
+     * @brief Get FFN layer weights
+     * @return Vector of FFN layers with gate/up/down weights
+     */
+    std::vector<FFNLayer> get_ffn_layers() const;
+
+    /**
+     * @brief Get tensor names matching a regex pattern
+     */
+    std::vector<std::string> get_layer_names_matching(const std::string& pattern) const;
 
 private:
     void load_metadata();
@@ -99,6 +130,7 @@ private:
     void load_vocab(const std::string& path);
     void load_safetensors();
     void load_safetensor_file(const std::string& path);
+    void load_sharded_model(const std::string& index_path);
 
     std::string model_dir_;
     SafetensorMetadata metadata_;

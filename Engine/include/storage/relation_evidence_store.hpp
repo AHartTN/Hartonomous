@@ -16,7 +16,7 @@ struct RelationEvidenceRecord {
 
 class RelationEvidenceStore {
 public:
-    explicit RelationEvidenceStore(PostgresConnection& db);
+    explicit RelationEvidenceStore(PostgresConnection& db, bool use_temp_table = true);
     void store(const RelationEvidenceRecord& rec);
     void flush();
     size_t count() const { return copy_.count(); }

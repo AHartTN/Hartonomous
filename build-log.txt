@@ -73,6 +73,9 @@ Preset CMake variables:
 -- Tree-sitter: Found at /home/ahart/Projects/Hartonomous/Engine/external/tree-sitter
 -- Found PostgreSQL: /usr/lib/x86_64-linux-gnu/libpq.so (found version "18.1")  
 -- Found PostgreSQL: /usr/lib/x86_64-linux-gnu/libpq.so
+-- Found OpenMP_C: -fopenmp (found version "4.5") 
+-- Found OpenMP_CXX: -fopenmp (found version "4.5") 
+-- Found OpenMP: TRUE (found version "4.5")  
 -- Google Test found, using for unit tests
 -- Engine: IPO/LTO enabled
 -- Configuring done
@@ -81,207 +84,54 @@ Preset CMake variables:
 [0;32m✓ Configuration complete[0m
 
 [0;36mBuilding all C++ targets...[0m
-[1/69] Building C object CMakeFiles/blake3_impl.dir/Engine/external/blake3/c/blake3_portable.c.o
-[2/69] Building C object CMakeFiles/blake3_impl.dir/Engine/external/blake3/c/blake3.c.o
-[3/69] Building C object CMakeFiles/blake3_impl.dir/Engine/external/blake3/c/blake3_dispatch.c.o
-[4/69] Building C object CMakeFiles/blake3_impl.dir/Engine/external/blake3/c/blake3_avx2.c.o
-[5/69] Building C object CMakeFiles/blake3_impl.dir/Engine/external/blake3/c/blake3_sse2.c.o
-[6/69] Building C object CMakeFiles/blake3_impl.dir/Engine/external/blake3/c/blake3_sse41.c.o
-[7/69] Building C object CMakeFiles/blake3_impl.dir/Engine/external/blake3/c/blake3_avx512.c.o
-[8/69] Linking C static library libblake3_impl.a
-[9/69] Building CXX object Engine/CMakeFiles/engine.dir/src/cognitive/godel_engine.cpp.o
-[10/69] Building CXX object Engine/CMakeFiles/engine.dir/src/database/bulk_copy.cpp.o
-[11/69] Building CXX object Engine/CMakeFiles/engine.dir/src/database/postgres_connection.cpp.o
-[12/69] Building CXX object Engine/CMakeFiles/engine.dir/src/cognitive/ooda_loop.cpp.o
-[13/69] Building CXX object Engine/CMakeFiles/engine.dir/src/geometry/s3_distance.cpp.o
-[14/69] Building CXX object Engine/CMakeFiles/engine.dir/src/geometry/s3_bbox.cpp.o
-[15/69] Building CXX object Engine/CMakeFiles/engine.dir/src/hashing/blake3_pipeline.cpp.o
-[16/69] Building CXX object Engine/CMakeFiles/engine.dir/src/ingestion/ngram_extractor.cpp.o
-[17/69] Building CXX object Engine/CMakeFiles/engine.dir/src/ingestion/model_package_loader.cpp.o
-[18/69] Building CXX object Engine/CMakeFiles/engine.dir/src/ingestion/safetensor_ingester.cpp.o
-[19/69] Building CXX object Engine/CMakeFiles/engine.dir/src/main.cpp.o
-[20/69] Building CXX object Engine/CMakeFiles/engine.dir/src/geometry/super_fibonacci.cpp.o
-[21/69] Building CXX object Engine/CMakeFiles/engine.dir/src/ml/s3_hnsw.cpp.o
-[22/69] Building CXX object Engine/CMakeFiles/engine.dir/src/query/ai_ops.cpp.o
-[23/69] Building CXX object Engine/CMakeFiles/engine.dir/src/query/semantic_query.cpp.o
-[24/69] Building CXX object Engine/CMakeFiles/engine.dir/src/ml/model_extraction.cpp.o
-[25/69] Building CXX object Engine/CMakeFiles/engine.dir/src/ingestion/text_ingester.cpp.o
-[26/69] Building CXX object Engine/CMakeFiles/engine.dir/src/storage/atom_store.cpp.o
-[27/69] Building CXX object Engine/CMakeFiles/engine.dir/src/storage/composition_store.cpp.o
-[28/69] Building CXX object Engine/CMakeFiles/engine.dir/src/interop_api.cpp.o
-[29/69] Building CXX object Engine/CMakeFiles/engine.dir/src/storage/content_store.cpp.o
-[30/69] Building CXX object Engine/CMakeFiles/engine.dir/src/storage/relation_evidence_store.cpp.o
-[31/69] Building CXX object Engine/CMakeFiles/engine.dir/src/storage/relation_store.cpp.o
-[32/69] Building CXX object Engine/CMakeFiles/engine.dir/src/storage/physicality_store.cpp.o
-[33/69] Building CXX object Engine/CMakeFiles/engine.dir/src/ingestion/model_ingester.cpp.o
-[34/69] Building CXX object Engine/CMakeFiles/engine.dir/src/storage/atom_lookup.cpp.o
-[35/69] Building CXX object Engine/CMakeFiles/engine.dir/src/ingestion/safetensor_loader.cpp.o
-[36/69] Building CXX object Engine/CMakeFiles/engine.dir/src/unicode/ingestor/node_generator.cpp.o
-[37/69] Building CXX object Engine/CMakeFiles/engine.dir/src/unicode/ingestor/semantic_sequencer.cpp.o
-[38/69] Building CXX object Engine/tools/CMakeFiles/seed_unicode.dir/seed_unicode.cpp.o
-[39/69] Building CXX object Engine/tests/CMakeFiles/suite_test_hashing.dir/suite/test_hashing.cpp.o
-[40/69] Building CXX object Engine/tools/CMakeFiles/ingest_text.dir/ingest_text.cpp.o
-[41/69] Building CXX object Engine/CMakeFiles/engine.dir/src/unicode/ingestor/ucd_parser.cpp.o
-[42/69] Building CXX object Engine/tests/CMakeFiles/suite_test_geometry_core.dir/suite/test_geometry_core.cpp.o
-[43/69] Building CXX object Engine/CMakeFiles/engine.dir/src/unicode/ingestor/ucd_processor.cpp.o
-[44/69] Building CXX object Engine/tests/CMakeFiles/suite_test_projections.dir/suite/test_projections.cpp.o
-[45/69] Building CXX object Engine/tests/CMakeFiles/suite_test_database_marshal.dir/suite/test_database_marshal.cpp.o
-[46/69] Building CXX object Engine/tools/CMakeFiles/ingest_model.dir/ingest_model.cpp.o
-[47/69] Building CXX object Engine/tests/CMakeFiles/suite_test_spatial_index.dir/suite/test_spatial_index.cpp.o
-[48/69] Building CXX object UCDIngestor/CMakeFiles/ucd_ingestor.dir/src/main.cpp.o
-[49/69] Building CXX object UCDIngestor/CMakeFiles/ucd_ingestor.dir/src/PgConnection.cpp.o
-[50/69] Building CXX object UCDIngestor/CMakeFiles/ucd_ingestor.dir/src/UcdXmlReader.cpp.o
-[51/69] Building CXX object UCDIngestor/CMakeFiles/ucd_ingestor.dir/src/parsers/AllKeysParser.cpp.o
-[52/69] Building CXX object UCDIngestor/CMakeFiles/ucd_ingestor.dir/src/parsers/ConfusablesParser.cpp.o
-[53/69] Building CXX object Engine/tests/CMakeFiles/suite_test_end_to_end_pipeline.dir/suite/test_end_to_end_pipeline.cpp.o
-[54/69] Building CXX object UCDIngestor/CMakeFiles/ucd_ingestor.dir/src/UcdIngestor.cpp.o
-[55/69] Building CXX object Engine/tests/CMakeFiles/example_unicode_projection.dir/example_unicode_projection.cpp.o
-[56/69] Linking CXX executable UCDIngestor/ucd_ingestor
-lto-wrapper: warning: using serial compilation of 2 LTRANS jobs
-[57/69] Linking CXX shared library Engine/libengine.so
-lto-wrapper: warning: using serial compilation of 15 LTRANS jobs
-[58/69] Linking CXX executable Engine/tools/ingest_model
-[59/69] Linking CXX executable Engine/tools/ingest_text
-[60/69] Linking CXX executable Engine/tools/seed_unicode
-[61/69] Linking CXX executable Engine/tests/suite_test_geometry_core
-[62/69] Linking CXX executable Engine/tests/suite_test_projections
-[63/69] Building s3 PostgreSQL extension
-make: 'dist/s3--0.1.0.sql' is up to date.
-[64/69] Building hartonomous PostgreSQL extension
-make: 'dist/hartonomous--0.1.0.sql' is up to date.
-[65/69] Linking CXX executable Engine/tests/suite_test_hashing
-[66/69] Linking CXX executable Engine/tests/suite_test_database_marshal
-[67/69] Linking CXX executable Engine/tests/example_unicode_projection
-[68/69] Linking CXX executable Engine/tests/suite_test_spatial_index
-lto-wrapper: warning: using serial compilation of 2 LTRANS jobs
-[69/69] Linking CXX executable Engine/tests/suite_test_end_to_end_pipeline
-lto-wrapper: warning: using serial compilation of 2 LTRANS jobs
-[0;32m✓ C++ Build complete[0m
-
-[0;36mBuilding .NET Solution...[0m
-[0;36mRestoring dependencies...[0m
-  Determining projects to restore...
-  Restored /home/ahart/Projects/Hartonomous/app-layer/Hartonomous.Marshal/Hartonomous.Marshal.csproj (in 147 ms).
-  Restored /home/ahart/Projects/Hartonomous/app-layer/Hartonomous.Core/Hartonomous.Core.csproj (in 147 ms).
-  Restored /home/ahart/Projects/Hartonomous/app-layer/Hartonomous.Shared/Hartonomous.Shared.csproj (in 147 ms).
-  Restored /home/ahart/Projects/Hartonomous/app-layer/Hartonomous.Common/Hartonomous.Common.csproj (in 147 ms).
-  Restored /home/ahart/Projects/Hartonomous/app-layer/Hartonomous.ServiceDefaults/Hartonomous.ServiceDefaults.csproj (in 942 ms).
-  Restored /home/ahart/Projects/Hartonomous/app-layer/Hartonomous.Data/Hartonomous.Data.csproj (in 930 ms).
-  Restored /home/ahart/Projects/Hartonomous/app-layer/Hartonomous.API/Hartonomous.API.csproj (in 961 ms).
-  Restored /home/ahart/Projects/Hartonomous/app-layer/Hartonomous.AppHost/Hartonomous.AppHost.csproj (in 970 ms).
-[0;32m✓ Restore complete[0m
-[0;36mBuilding (Release)...[0m
-  Hartonomous.Shared -> /home/ahart/Projects/Hartonomous/app-layer/Hartonomous.Shared/bin/Release/net10.0/Hartonomous.Shared.dll
-  Hartonomous.Core -> /home/ahart/Projects/Hartonomous/app-layer/Hartonomous.Core/bin/Release/net10.0/Hartonomous.Core.dll
-  Copying native library libengine.so from /home/ahart/Projects/Hartonomous/build/linux-release-max-perf/Engine to bin/Release/net10.0/
-  Hartonomous.Marshal -> /home/ahart/Projects/Hartonomous/app-layer/Hartonomous.Marshal/bin/Release/net10.0/Hartonomous.Marshal.dll
-  Copying native library libengine.so from /home/ahart/Projects/Hartonomous/build/linux-release-max-perf/Engine to bin/Release/net10.0/
-  Hartonomous.Common -> /home/ahart/Projects/Hartonomous/app-layer/Hartonomous.Common/bin/Release/net10.0/Hartonomous.Common.dll
-  Copying native library libengine.so from /home/ahart/Projects/Hartonomous/build/linux-release-max-perf/Engine to bin/Release/net10.0/
-  Copying native library libengine.so from /home/ahart/Projects/Hartonomous/build/linux-release-max-perf/Engine to bin/Release/net10.0/
-  Hartonomous.ServiceDefaults -> /home/ahart/Projects/Hartonomous/app-layer/Hartonomous.ServiceDefaults/bin/Release/net10.0/Hartonomous.ServiceDefaults.dll
-  Copying native library libengine.so from /home/ahart/Projects/Hartonomous/build/linux-release-max-perf/Engine to bin/Release/net10.0/
-  Hartonomous.Data -> /home/ahart/Projects/Hartonomous/app-layer/Hartonomous.Data/bin/Release/net10.0/Hartonomous.Data.dll
-  Copying native library libengine.so from /home/ahart/Projects/Hartonomous/build/linux-release-max-perf/Engine to bin/Release/net10.0/
-  Hartonomous.API -> /home/ahart/Projects/Hartonomous/app-layer/Hartonomous.API/bin/Release/net10.0/Hartonomous.API.dll
-  Copying native library libengine.so from /home/ahart/Projects/Hartonomous/build/linux-release-max-perf/Engine to bin/Release/net10.0/
-  Hartonomous.AppHost -> /home/ahart/Projects/Hartonomous/app-layer/Hartonomous.AppHost/bin/Release/net10.0/Hartonomous.AppHost.dll
-  Copying native library libengine.so from /home/ahart/Projects/Hartonomous/build/linux-release-max-perf/Engine to bin/Release/net10.0/
-
-Build succeeded.
-    0 Warning(s)
-    0 Error(s)
-
-Time Elapsed 00:00:06.71
-[0;32m✓ .NET Build complete[0m
-
-[0;36mRunning tests...[0m
-Test project /home/ahart/Projects/Hartonomous/build/linux-release-max-perf
-      Start  1: HashingTest.Determinism
- 1/26 Test  #1: HashingTest.Determinism ........................   Passed    0.01 sec
-      Start  2: HashingTest.CollisionResistance
- 2/26 Test  #2: HashingTest.CollisionResistance ................   Passed    0.01 sec
-      Start  3: HashingTest.CodepointHashing
- 3/26 Test  #3: HashingTest.CodepointHashing ...................   Passed    0.01 sec
-      Start  4: HashingTest.HexConversion
- 4/26 Test  #4: HashingTest.HexConversion ......................   Passed    0.01 sec
-      Start  5: HashingTest.BatchHashing
- 5/26 Test  #5: HashingTest.BatchHashing .......................   Passed    0.01 sec
-      Start  6: GeometryCoreTest.VectorNormalization
- 6/26 Test  #6: GeometryCoreTest.VectorNormalization ...........   Passed    0.01 sec
-      Start  7: GeometryCoreTest.GeodesicDistance
- 7/26 Test  #7: GeometryCoreTest.GeodesicDistance ..............   Passed    0.01 sec
-      Start  8: GeometryCoreTest.FastGeodesicDistance
- 8/26 Test  #8: GeometryCoreTest.FastGeodesicDistance ..........   Passed    0.01 sec
-      Start  9: GeometryCoreTest.EuclideanDistance4D
- 9/26 Test  #9: GeometryCoreTest.EuclideanDistance4D ...........   Passed    0.01 sec
-      Start 10: GeometryCoreTest.BBoxOperations
-10/26 Test #10: GeometryCoreTest.BBoxOperations ................   Passed    0.01 sec
-      Start 11: ProjectionTest.SuperFibonacciNormalization
-11/26 Test #11: ProjectionTest.SuperFibonacciNormalization .....   Passed    0.01 sec
-      Start 12: ProjectionTest.HashToPointDeterminism
-12/26 Test #12: ProjectionTest.HashToPointDeterminism ..........   Passed    0.01 sec
-      Start 13: ProjectionTest.HopfRoundTrip
-13/26 Test #13: ProjectionTest.HopfRoundTrip ...................   Passed    0.01 sec
-      Start 14: ProjectionTest.DistributionStability
-14/26 Test #14: ProjectionTest.DistributionStability ...........   Passed    0.01 sec
-      Start 15: SpatialIndexTest.HilbertDeterminism
-15/26 Test #15: SpatialIndexTest.HilbertDeterminism ............   Passed    0.01 sec
-      Start 16: SpatialIndexTest.HilbertBoundary
-16/26 Test #16: SpatialIndexTest.HilbertBoundary ...............   Passed    0.01 sec
-      Start 17: SpatialIndexTest.HilbertLocality
-17/26 Test #17: SpatialIndexTest.HilbertLocality ...............   Passed    0.01 sec
-      Start 18: SpatialIndexTest.HilbertStringConversion
-18/26 Test #18: SpatialIndexTest.HilbertStringConversion .......   Passed    0.01 sec
-      Start 19: SpatialIndexTest.HNSWIndexPlaceholder
-19/26 Test #19: SpatialIndexTest.HNSWIndexPlaceholder ..........   Passed    0.01 sec
-      Start 20: DatabaseMarshalTest.LWGeomSerialization
-20/26 Test #20: DatabaseMarshalTest.LWGeomSerialization ........   Passed    0.01 sec
-      Start 21: DatabaseMarshalTest.UUIDFormatting
-21/26 Test #21: DatabaseMarshalTest.UUIDFormatting .............   Passed    0.01 sec
-      Start 22: DatabaseMarshalTest.HilbertDecimalFormatting
-22/26 Test #22: DatabaseMarshalTest.HilbertDecimalFormatting ...   Passed    0.01 sec
-      Start 23: PipelineTest.UnicodeToSpatialResult
-23/26 Test #23: PipelineTest.UnicodeToSpatialResult ............   Passed    0.01 sec
-      Start 24: PipelineTest.DeterminismAcrossComponents
-24/26 Test #24: PipelineTest.DeterminismAcrossComponents .......   Passed    0.01 sec
-      Start 25: PipelineTest.StringBatchProcessing
-25/26 Test #25: PipelineTest.StringBatchProcessing .............   Passed    0.01 sec
-      Start 26: PipelineTest.DistanceMetricCoherence
-26/26 Test #26: PipelineTest.DistanceMetricCoherence ...........   Passed    0.01 sec
-
-100% tests passed, 0 tests failed out of 26
-
-Total Test time (real) =   0.21 sec
-[0;32m✓ Tests passed[0m
-
-[0;36mInstalling Hartonomous System...[0m
-=== Hartonomous System Installation ===
-Project Root: /home/ahart/Projects/Hartonomous
-Build Dir:    /home/ahart/Projects/Hartonomous/build/linux-release-max-perf
-
-Installing Hartonomous Engine to /usr/local...
-✓ Engine library and headers copied.
-Installing libengine.so to PostgreSQL...
-✓ libengine.so copied to /usr/lib/postgresql/18/lib
-Installing s3 extension...
-✓ s3 extension files copied.
-Installing hartonomous extension...
-✓ hartonomous extension files copied.
-Updating shared library cache...
-/sbin/ldconfig.real: /opt/intel/oneapi/mkl/2025.3/lib/intel64/libmkl_sycl.so is not an ELF file - it has the wrong magic bytes at the start.
-
-
-Installation complete.
-[0;32m✓ Installation complete[0m
-
-[0;32m=== Build Complete ===[0m
-
-[0;36mBuild directory: /home/ahart/Projects/Hartonomous/build/linux-release-max-perf[0m
-[0;36mPreset: linux-release-max-perf[0m
-
-[0;36mNext steps:[0m
-[0;36m  1. Run tests: ./build.sh --test[0m
-[0;36m  2. Install: ./build.sh --install[0m
-[0;36m  3. Setup database: ./scripts/setup-database.sh[0m
-
+[1/72] Building C object CMakeFiles/blake3_impl.dir/Engine/external/blake3/c/blake3_portable.c.o
+[2/72] Building C object CMakeFiles/blake3_impl.dir/Engine/external/blake3/c/blake3.c.o
+[3/72] Building C object CMakeFiles/blake3_impl.dir/Engine/external/blake3/c/blake3_dispatch.c.o
+[4/72] Building C object CMakeFiles/blake3_impl.dir/Engine/external/blake3/c/blake3_avx2.c.o
+[5/72] Building C object CMakeFiles/blake3_impl.dir/Engine/external/blake3/c/blake3_sse41.c.o
+[6/72] Building C object CMakeFiles/blake3_impl.dir/Engine/external/blake3/c/blake3_sse2.c.o
+[7/72] Building C object CMakeFiles/blake3_impl.dir/Engine/external/blake3/c/blake3_avx512.c.o
+[8/72] Linking C static library libblake3_impl.a
+[9/72] Building CXX object Engine/CMakeFiles/engine.dir/src/cognitive/godel_engine.cpp.o
+[10/72] Building CXX object Engine/CMakeFiles/engine.dir/src/geometry/s3_bbox.cpp.o
+[11/72] Building CXX object Engine/CMakeFiles/engine.dir/src/cognitive/ooda_loop.cpp.o
+[12/72] Building CXX object Engine/CMakeFiles/engine.dir/src/database/postgres_connection.cpp.o
+[13/72] Building CXX object Engine/CMakeFiles/engine.dir/src/database/bulk_copy.cpp.o
+[14/72] Building CXX object Engine/CMakeFiles/engine.dir/src/geometry/s3_distance.cpp.o
+[15/72] Building CXX object Engine/CMakeFiles/engine.dir/src/hashing/blake3_pipeline.cpp.o
+[16/72] Building CXX object Engine/CMakeFiles/engine.dir/src/ingestion/ngram_extractor.cpp.o
+[17/72] Building CXX object Engine/CMakeFiles/engine.dir/src/ingestion/model_package_loader.cpp.o
+[18/72] Building CXX object Engine/CMakeFiles/engine.dir/src/geometry/super_fibonacci.cpp.o
+[19/72] Building CXX object Engine/CMakeFiles/engine.dir/src/ingestion/safetensor_ingester.cpp.o
+[20/72] Building CXX object Engine/CMakeFiles/engine.dir/src/main.cpp.o
+[21/72] Building CXX object Engine/CMakeFiles/engine.dir/src/cognitive/walk_engine.cpp.o
+[22/72] Building CXX object Engine/CMakeFiles/engine.dir/src/ml/s3_hnsw.cpp.o
+[23/72] Building CXX object Engine/CMakeFiles/engine.dir/src/ml/model_extraction.cpp.o
+[24/72] Building CXX object Engine/CMakeFiles/engine.dir/src/query/ai_ops.cpp.o
+[25/72] Building CXX object Engine/CMakeFiles/engine.dir/src/ingestion/text_ingester.cpp.o
+[26/72] Building CXX object Engine/CMakeFiles/engine.dir/src/query/semantic_query.cpp.o
+[27/72] Building CXX object Engine/CMakeFiles/engine.dir/src/storage/atom_store.cpp.o
+[28/72] Building CXX object Engine/CMakeFiles/engine.dir/src/storage/composition_store.cpp.o
+[29/72] Building CXX object Engine/CMakeFiles/engine.dir/src/storage/content_store.cpp.o
+[30/72] Building CXX object Engine/CMakeFiles/engine.dir/src/interop_api.cpp.o
+[31/72] Building CXX object Engine/CMakeFiles/engine.dir/src/storage/relation_evidence_store.cpp.o
+[32/72] Building CXX object Engine/CMakeFiles/engine.dir/src/ingestion/model_ingester.cpp.o
+FAILED: Engine/CMakeFiles/engine.dir/src/ingestion/model_ingester.cpp.o 
+/usr/bin/c++ -DEIGEN_NO_DEBUG -DEIGEN_NO_STATIC_ASSERT -DEIGEN_USE_BLAS -DEIGEN_USE_LAPACKE -DEIGEN_USE_MKL_ALL -DEIGEN_USE_THREADS -DEIGEN_VECTORIZE -DEIGEN_VECTORIZE_AVX2 -DEIGEN_VECTORIZE_FMA -DHARTONOMOUS_EXPORT -DHAVE_CBLAS=1 -DHAVE_LAPACK=1 -DMKL_LP64 -Dengine_EXPORTS -I/home/ahart/Projects/Hartonomous/Engine/include -I/home/ahart/Projects/Hartonomous/Engine/external/hilbert -I/home/ahart/Projects/Hartonomous/Engine/src -I/home/ahart/Projects/Hartonomous/Engine/external/blake3/c -isystem /home/ahart/Projects/Hartonomous/Engine/external/eigen -isystem /opt/intel/oneapi/mkl/2025.3/include -isystem /home/ahart/Projects/Hartonomous/Engine/external/hnswlib -isystem /home/ahart/Projects/Hartonomous/Engine/external/tree-sitter/lib/include -isystem /home/ahart/Projects/Hartonomous/Engine/external/postgis/liblwgeom -isystem /usr/include/postgresql -isystem /home/ahart/Projects/Hartonomous/Engine/external/spectra/include -isystem /home/ahart/Projects/Hartonomous/Engine/external/json/include -O3 -DNDEBUG -flto -fno-fat-lto-objects -fPIC -Wall -Wextra -Wpedantic -O3 -march=native -mtune=native -ffast-math -funroll-loops -fomit-frame-pointer -fopenmp -std=c++20 -MD -MT Engine/CMakeFiles/engine.dir/src/ingestion/model_ingester.cpp.o -MF Engine/CMakeFiles/engine.dir/src/ingestion/model_ingester.cpp.o.d -o Engine/CMakeFiles/engine.dir/src/ingestion/model_ingester.cpp.o -c /home/ahart/Projects/Hartonomous/Engine/src/ingestion/model_ingester.cpp
+/home/ahart/Projects/Hartonomous/Engine/src/ingestion/model_ingester.cpp: In member function ‘void Hartonomous::ModelIngester::extract_attention_layer_edges(const std::vector<Hartonomous::AttentionLayer>&, const std::vector<std::__cxx11::basic_string<char> >&, const MatrixXf&, const std::unordered_map<std::__cxx11::basic_string<char>, std::array<unsigned char, 16> >&, std::unordered_set<std::array<unsigned char, 16>, Hartonomous::HashHasher>&, Hartonomous::ModelIngestionStats&)’:
+/home/ahart/Projects/Hartonomous/Engine/src/ingestion/model_ingester.cpp:806:9: error: ‘layer_count’ was not declared in this scope
+  806 |         layer_count++;
+      |         ^~~~~~~~~~~
+/home/ahart/Projects/Hartonomous/Engine/src/ingestion/model_ingester.cpp:810:63: error: ‘start_relations’ was not declared in this scope
+  810 |     std::cout << "    Created " << (stats.relations_created - start_relations) << " attention layer relations from "
+      |                                                               ^~~~~~~~~~~~~~~
+/home/ahart/Projects/Hartonomous/Engine/src/ingestion/model_ingester.cpp:811:18: error: ‘layer_count’ was not declared in this scope
+  811 |               << layer_count << " layers." << std::endl;
+      |                  ^~~~~~~~~~~
+[33/72] Building CXX object Engine/CMakeFiles/engine.dir/src/storage/relation_store.cpp.o
+[34/72] Building CXX object Engine/CMakeFiles/engine.dir/src/storage/atom_lookup.cpp.o
+[35/72] Building CXX object Engine/CMakeFiles/engine.dir/src/storage/physicality_store.cpp.o
+[36/72] Building CXX object Engine/CMakeFiles/engine.dir/src/ingestion/safetensor_loader.cpp.o
+[37/72] Building CXX object Engine/CMakeFiles/engine.dir/src/unicode/ingestor/node_generator.cpp.o
+ninja: build stopped: subcommand failed.
+[0;31m✗ C++ Build failed[0m

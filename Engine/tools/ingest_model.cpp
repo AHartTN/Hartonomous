@@ -9,10 +9,13 @@
 #include <database/postgres_connection.hpp>
 #include <hashing/blake3_pipeline.hpp>
 #include <iostream>
+#include <iomanip>
 #include <filesystem>
+#include <chrono>
 
 using namespace Hartonomous;
 namespace fs = std::filesystem;
+using Clock = std::chrono::steady_clock;
 
 int main(int argc, char** argv) {
     if (argc < 2) {
@@ -36,17 +39,27 @@ int main(int argc, char** argv) {
         ModelIngestionConfig config;
         config.tenant_id = BLAKE3Pipeline::hash("default-tenant");
         config.user_id = BLAKE3Pipeline::hash("default-user");
-        config.embedding_similarity_threshold = 0.3;
-        config.max_neighbors_per_token = 20;
+        // Use defaults from config struct
 
         ModelIngester ingester(db, config);
+
+        auto start_time = Clock::now();
         auto stats = ingester.ingest_package(model_dir);
+        auto end_time = Clock::now();
+
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        double seconds = duration.count() / 1000.0;
 
         std::cout << "\n✓ Model ingestion complete!\n";
+        std::cout << "  Duration:          " << std::fixed << std::setprecision(2) << seconds << "s\n";
         std::cout << "  Tensors processed: " << stats.tensors_processed << "\n";
         std::cout << "  Atoms created:     " << stats.atoms_created << "\n";
         std::cout << "  Compositions:      " << stats.compositions_created << "\n";
         std::cout << "  Relations:         " << stats.relations_created << "\n";
+        if (seconds > 0) {
+            std::cout << "  Throughput:        " << std::fixed << std::setprecision(0)
+                      << (stats.relations_created / seconds) << " relations/sec\n";
+        }
         
         return 0;
 

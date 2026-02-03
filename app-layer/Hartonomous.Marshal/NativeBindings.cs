@@ -62,6 +62,28 @@ public static unsafe class NativeMethods
 
     [DllImport(LibName, EntryPoint = "hartonomous_godel_free_plan", CallingConvention = CallingConvention.Cdecl)]
     public static extern void GodelFreePlan(ref ResearchPlan plan);
+
+    // =========================================================================
+    //  Walk Engine
+    // =========================================================================
+
+    [DllImport(LibName, EntryPoint = "hartonomous_walk_create", CallingConvention = CallingConvention.Cdecl)]
+    public static extern IntPtr WalkCreate(IntPtr dbHandle);
+
+    [DllImport(LibName, EntryPoint = "hartonomous_walk_destroy", CallingConvention = CallingConvention.Cdecl)]
+    public static extern void WalkDestroy(IntPtr handle);
+
+    [DllImport(LibName, EntryPoint = "hartonomous_walk_init", CallingConvention = CallingConvention.Cdecl)]
+    [return: MarshalAs(UnmanagedType.I1)]
+    public static extern bool WalkInit(IntPtr handle, byte* startId, double initialEnergy, out WalkState state);
+
+    [DllImport(LibName, EntryPoint = "hartonomous_walk_step", CallingConvention = CallingConvention.Cdecl)]
+    [return: MarshalAs(UnmanagedType.I1)]
+    public static extern bool WalkStep(IntPtr handle, ref WalkState state, ref WalkParameters params_, out WalkStepResult result);
+
+    [DllImport(LibName, EntryPoint = "hartonomous_walk_set_goal", CallingConvention = CallingConvention.Cdecl)]
+    [return: MarshalAs(UnmanagedType.I1)]
+    public static extern bool WalkSetGoal(IntPtr handle, ref WalkState state, byte* goalId);
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -69,14 +91,53 @@ public struct IngestionStats
 {
     public nuint AtomsTotal;
     public nuint AtomsNew;
-    public nuint AtomsExisting;
     public nuint CompositionsTotal;
     public nuint CompositionsNew;
-    public nuint CompositionsExisting;
     public nuint RelationsTotal;
+    public nuint RelationsNew;
+    public nuint EvidenceCount;
     public nuint OriginalBytes;
-    public nuint StoredBytes;
-    public double CompressionRatio;
+    public nuint NgramsExtracted;
+    public nuint NgramsSignificant;
+    public nuint CooccurrencesFound;
+    public nuint CooccurrencesSignificant;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+public struct WalkParameters
+{
+    public double WModel;
+    public double WText;
+    public double WRel;
+    public double WGeo;
+    public double WHilbert;
+    public double WRepeat;
+    public double WNovelty;
+    public double GoalAttraction;
+    public double WEnergy;
+    public double BaseTemp;
+    public double EnergyAlpha;
+    public double EnergyDecay;
+    public nuint ContextWindow;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+public unsafe struct WalkState
+{
+    public fixed byte CurrentComposition[16];
+    public fixed double CurrentPosition[4];
+    public double CurrentEnergy;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+public unsafe struct WalkStepResult
+{
+    public fixed byte NextComposition[16];
+    public double Probability;
+    public double EnergyRemaining;
+    [MarshalAs(UnmanagedType.I1)]
+    public bool Terminated;
+    public fixed byte Reason[256];
 }
 
 [StructLayout(LayoutKind.Sequential)]

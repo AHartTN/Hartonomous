@@ -2,8 +2,11 @@
 
 #include <Eigen/Core>
 #include <Eigen/Sparse>
+#include <Eigen/QR>
 #include <Spectra/SymEigsSolver.h>
 #include <Spectra/MatOp/SparseSymMatProd.h>
+#include <hnswlib/hnswlib.h>
+#include <omp.h>
 #include <vector>
 #include <cstdint>
 
@@ -122,53 +125,63 @@ private:
     Config config_;
 
     /**
-     * @brief Build k-NN graph from embeddings
+     * @brief Build k-NN graph from embeddings using HNSW
      *
-     * Constructs a sparse adjacency matrix where each node is connected
-     * to its k nearest neighbors with Gaussian kernel weights.
+     * Uses HNSWLib for O(n log n) approximate nearest neighbor search
+     * instead of naive O(n²) brute force.
      *
      * @param embeddings N×M matrix
      * @return SparseMatrix N×N adjacency matrix (symmetric)
      */
     SparseMatrix build_knn_graph(const MatrixXd& embeddings) {
         const int n = embeddings.rows();
+        const int dim = embeddings.cols();
+
+        // Build HNSW index - O(n log n) construction
+        hnswlib::L2Space space(dim);
+        hnswlib::HierarchicalNSW<float> index(&space, n, 16, 200);
+
+        // Convert to float and add to index
+        Eigen::MatrixXf embeddings_f = embeddings.cast<float>();
+        for (int i = 0; i < n; ++i) {
+            index.addPoint(embeddings_f.row(i).data(), i);
+        }
+
+        // Set ef for search quality
+        index.setEf(std::max(config_.k_neighbors * 2, 50));
 
         // Use Eigen's efficient sparse matrix builder
         std::vector<Eigen::Triplet<double>> triplets;
         triplets.reserve(n * config_.k_neighbors * 2); // *2 for symmetry
 
-        #pragma omp parallel for
-        for (int i = 0; i < n; ++i) {
-            // Compute distances to all other points
-            std::vector<std::pair<double, int>> distances;
-            distances.reserve(n);
+        #pragma omp parallel
+        {
+            std::vector<Eigen::Triplet<double>> local_triplets;
+            local_triplets.reserve((n / omp_get_num_threads() + 1) * config_.k_neighbors * 2);
 
-            for (int j = 0; j < n; ++j) {
-                if (i == j) continue;
+            #pragma omp for nowait
+            for (int i = 0; i < n; ++i) {
+                // HNSW search - O(log n) per query
+                auto neighbors = index.searchKnn(embeddings_f.row(i).data(), config_.k_neighbors + 1);
 
-                double dist = (embeddings.row(i) - embeddings.row(j)).squaredNorm();
-                distances.push_back({dist, j});
-            }
+                while (!neighbors.empty()) {
+                    auto [dist_sq, j] = neighbors.top();
+                    neighbors.pop();
 
-            // Sort and take k nearest neighbors
-            std::partial_sort(distances.begin(),
-                            distances.begin() + config_.k_neighbors,
-                            distances.end());
-
-            // Add edges with Gaussian kernel weights
-            #pragma omp critical
-            {
-                for (int k = 0; k < config_.k_neighbors; ++k) {
-                    double dist_sq = distances[k].first;
-                    int j = distances[k].second;
+                    if (i == j) continue;
 
                     // Gaussian kernel: w = exp(-dist² / (2σ²))
                     double weight = std::exp(-dist_sq / (2.0 * config_.sigma * config_.sigma));
 
                     // Add symmetric edges
-                    triplets.push_back({i, j, weight});
-                    triplets.push_back({j, i, weight});
+                    local_triplets.push_back({i, static_cast<int>(j), weight});
+                    local_triplets.push_back({static_cast<int>(j), i, weight});
                 }
+            }
+
+            #pragma omp critical
+            {
+                triplets.insert(triplets.end(), local_triplets.begin(), local_triplets.end());
             }
         }
 
@@ -294,36 +307,24 @@ private:
     }
 
     /**
-     * @brief Gram-Schmidt orthonormalization
+     * @brief Gram-Schmidt orthonormalization via Householder QR
      *
-     * Ensures the basis vectors are orthogonal and normalized.
+     * Uses Eigen's HouseholderQR which leverages MKL LAPACK for
+     * optimized orthonormalization with SIMD/AVX.
      *
      * @param vectors N×4 matrix
      * @return MatrixXd N×4 orthonormal matrix
      */
     MatrixXd gram_schmidt(const MatrixXd& vectors) {
-        MatrixXd result = vectors;
-        const int n_cols = result.cols();
+        // Use Householder QR decomposition - MKL accelerated
+        // Q matrix from QR gives orthonormal columns
+        Eigen::HouseholderQR<MatrixXd> qr(vectors);
 
-        for (int i = 0; i < n_cols; ++i) {
-            // Orthogonalize against previous vectors
-            for (int j = 0; j < i; ++j) {
-                double proj = result.col(i).dot(result.col(j));
-                result.col(i) -= proj * result.col(j);
-            }
+        // Extract Q matrix (orthonormal basis)
+        // thinQ gives us only the first 'cols' columns we need
+        MatrixXd Q = qr.householderQ() * MatrixXd::Identity(vectors.rows(), vectors.cols());
 
-            // Normalize
-            double norm = result.col(i).norm();
-            if (norm > 1e-10) {
-                result.col(i) /= norm;
-            } else {
-                // Degenerate case: replace with random orthogonal vector
-                result.col(i).setRandom();
-                result.col(i).normalize();
-            }
-        }
-
-        return result;
+        return Q;
     }
 
     /**

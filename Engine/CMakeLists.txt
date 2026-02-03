@@ -3,6 +3,11 @@ cmake_minimum_required(VERSION 3.22)
 project(HartonomousEngine LANGUAGES C CXX)
 
 # ==============================================================================
+#  DEPENDENCIES
+# ==============================================================================
+find_package(OpenMP REQUIRED)
+
+# ==============================================================================
 #  SOURCES
 # ==============================================================================
 file(GLOB_RECURSE ENGINE_SOURCES
@@ -58,6 +63,7 @@ target_link_libraries(engine
         tree-sitter::tree-sitter
         PostGIS::PostGIS
         PostgreSQL::LibPQ
+        OpenMP::OpenMP_CXX
     PRIVATE
         Spectra::Spectra
         MKL::MKL

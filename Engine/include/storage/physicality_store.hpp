@@ -14,16 +14,19 @@ struct PhysicalityRecord {
     BLAKE3Pipeline::Hash id;
     HilbertIndex hilbert_index;
     Eigen::Vector4d centroid;
+    std::string trajectory_wkt; // New: LINESTRINGZM(...) or POINTZM(...)
 };
 
 class PhysicalityStore {
 public:
-    explicit PhysicalityStore(PostgresConnection& db);
+    // use_temp_table=false for direct COPY (fast, requires pre-deduplication)
+    explicit PhysicalityStore(PostgresConnection& db, bool use_temp_table = true);
     void store(const PhysicalityRecord& rec);
     void flush();
 
 private:
     BulkCopy copy_;
+    bool use_dedup_;
     std::unordered_set<std::string> seen_;
     std::string hash_to_uuid(const BLAKE3Pipeline::Hash& hash);
     std::string hilbert_to_hex(const HilbertIndex& h);
