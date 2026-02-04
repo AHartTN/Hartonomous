@@ -1,2 +1,4 @@
-CREATE DOMAIN hartonomous.uint32 AS integer
-    CHECK (VALUE >= 0 AND VALUE <= 4294967295);
+-- uint32.sql
+CREATE DOMAIN hartonomous.UINT32 AS BYTEA
+    CHECK (octet_length(VALUE) = 4);
+COMMENT ON DOMAIN hartonomous.UINT32 IS 'Fixed 4-byte unsigned integer (big-endian) - used for codepoints, ordinals';

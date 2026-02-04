@@ -1,2 +1,4 @@
-CREATE DOMAIN hartonomous.uint64 AS numeric(20,0)
-    CHECK (VALUE >= 0 AND VALUE < 18446744073709551616);
+-- uint64.sql
+CREATE DOMAIN hartonomous.UINT64 AS BYTEA
+    CHECK (octet_length(VALUE) = 8);
+COMMENT ON DOMAIN hartonomous.UINT64 IS 'Fixed 8-byte unsigned integer (big-endian) - used for large counts';

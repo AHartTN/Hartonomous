@@ -1,0 +1,8 @@
+-- Hashing
+CREATE OR REPLACE FUNCTION blake3_hash(text)
+RETURNS bytea AS 'MODULE_PATHNAME', 'blake3_hash'
+LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION blake3_hash_codepoint(int)
+RETURNS bytea AS 'MODULE_PATHNAME', 'blake3_hash_codepoint'
+LANGUAGE C IMMUTABLE STRICT;

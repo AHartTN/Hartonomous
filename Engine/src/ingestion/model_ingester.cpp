@@ -209,7 +209,7 @@ ModelIngester::ingest_vocab_as_text(const std::vector<std::string>& vocab, Model
 
         if (tl.phys_seen.insert(pid).second) {
             Eigen::Vector4d hc; for (int k=0; k<4; ++k) { hc[k] = (centroid[k]+1.0)/2.0; }
-            tl.phys.push_back({pid, HilbertCurve4D::encode(hc), centroid, ""});
+            tl.phys.push_back({pid, HilbertCurve4D::encode(hc), centroid, positions});
         }
         tl.comp.push_back({cid, pid}); tl.created++;
 
@@ -311,7 +311,7 @@ void ModelIngester::extract_embedding_edges(
                 if (tl.phys_seen.insert(prid).second) {
                     Eigen::Vector4d pos(0.5,0.5,0.5,0.5); pos.normalize();
                     Eigen::Vector4d hc; for (int k=0; k<4; ++k) { hc[k] = (pos[k]+1.0)/2.0; }
-                    tl.phys.push_back({prid, HilbertCurve4D::encode(hc), pos, ""});
+                    tl.phys.push_back({prid, HilbertCurve4D::encode(hc), pos, {}});
                 }
                 tl.rel.push_back({rid, prid});
                 for (size_t ord=0; ord<2; ++ord) {
@@ -335,7 +335,7 @@ void ModelIngester::extract_embedding_edges(
     RelationStore rel_store(db_, true, true);
     RelationSequenceStore rel_seq_store(db_, true, true);
     RelationRatingStore rating_store(db_, true);
-    RelationEvidenceStore ev_store(db_);
+    RelationEvidenceStore ev_store(db_, false, true);
 
     for (auto& tl : locals) {
         session_rel_seen.insert(tl.rel_seen.begin(), tl.rel_seen.end());
@@ -421,7 +421,7 @@ void ModelIngester::extract_attention_layer_edges(
                     if (tl.phys_seen.insert(prid).second) {
                         Eigen::Vector4d pos(0.5,0.5,0.5,0.5); pos.normalize();
                         Eigen::Vector4d hc; for (int k=0; k<4; ++k) { hc[k] = (pos[k]+1.0)/2.0; }
-                        tl.phys.push_back({prid, HilbertCurve4D::encode(hc), pos, ""});
+                        tl.phys.push_back({prid, HilbertCurve4D::encode(hc), pos, {}});
                     }
                     tl.rel.push_back({rid, prid});
                     for (size_t ord=0; ord<2; ++ord) {
@@ -441,7 +441,7 @@ void ModelIngester::extract_attention_layer_edges(
             }
         }
         PhysicalityStore phys_store(db_, true, true); RelationStore rel_store(db_, true, true); RelationSequenceStore rel_seq_store(db_, true, true);
-        RelationRatingStore rating_store(db_, true); RelationEvidenceStore ev_store(db_, false);
+        RelationRatingStore rating_store(db_, true); RelationEvidenceStore ev_store(db_, false, true);
         for (auto& tl : locals) {
             session_rel_seen.insert(tl.rel_seen.begin(), tl.rel_seen.end());
             PostgresConnection::Transaction txn(db_);
@@ -528,7 +528,7 @@ void ModelIngester::extract_ffn_layer_edges(
                     if (tl.phys_seen.insert(prid).second) {
                         Eigen::Vector4d pos(0.5,0.5,0.5,0.5); pos.normalize();
                         Eigen::Vector4d hc; for (int k=0; k<4; ++k) { hc[k] = (pos[k]+1.0)/2.0; }
-                        tl.phys.push_back({prid, HilbertCurve4D::encode(hc), pos, ""});
+                        tl.phys.push_back({prid, HilbertCurve4D::encode(hc), pos, {}});
                     }
                     tl.rel.push_back({rid, prid});
                     for (size_t ord=0; ord<2; ++ord) {
@@ -548,7 +548,7 @@ void ModelIngester::extract_ffn_layer_edges(
             }
         }
         PhysicalityStore phys_store(db_, true, true); RelationStore rel_store(db_, true, true); RelationSequenceStore rel_seq_store(db_, true, true);
-        RelationRatingStore rating_store(db_, true); RelationEvidenceStore ev_store(db_, false);
+        RelationRatingStore rating_store(db_, true); RelationEvidenceStore ev_store(db_, false, true);
         for (auto& tl : locals) {
             session_rel_seen.insert(tl.rel_seen.begin(), tl.rel_seen.end());
             PostgresConnection::Transaction txn(db_);

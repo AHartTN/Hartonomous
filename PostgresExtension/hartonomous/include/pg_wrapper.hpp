@@ -1,11 +1,10 @@
 /**
  * @file pg_wrapper.hpp
- * @brief PostgreSQL C API wrapper - Thin bridge between PostgreSQL and C++ Engine
+ * @brief PostgreSQL C API wrapper - Lean bridge between PostgreSQL and C++ Engine
  */
 
 #pragma once
 
-// Windows compatibility: Include winsock2.h BEFORE postgres.h
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <winsock2.h>
@@ -19,11 +18,11 @@ extern "C" {
 #include <funcapi.h>
 #include <access/htup_details.h>
 #include <catalog/pg_type.h>
+#include <varatt.h>
 }
 
 #include <string>
 #include <vector>
-#include <memory>
 #include <stdexcept>
 
 namespace Hartonomous::PG {
@@ -39,11 +38,11 @@ public:
     std::string to_string() const;
     text* to_pg_text() const;
 
-    ~TextWrapper() = default;
+    ~TextWrapper();
 
 private:
     text* pg_text_;
-    bool owned_;
+    text* original_;
 };
 
 /**
@@ -57,21 +56,22 @@ public:
     std::vector<uint8_t> to_vector() const;
     bytea* to_pg_bytea() const;
 
-    ~ByteaWrapper() = default;
+    ~ByteaWrapper();
 
 private:
     bytea* pg_bytea_;
-    bool owned_;
+    bytea* original_;
 };
 
 /**
- * @brief Exception wrapper for PostgreSQL errors
+ * @brief Exception for PostgreSQL integration
  */
 class PostgresException : public std::runtime_error {
 public:
-    explicit PostgresException(const std::string& msg);
-
-    void report_to_postgres(int elevel = ERROR) const;
+    explicit PostgresException(const std::string& msg) : std::runtime_error(msg) {}
+    void report(int elevel = ERROR) const {
+        ereport(elevel, (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), errmsg("%s", what())));
+    }
 };
 
 /**
@@ -121,16 +121,11 @@ template<typename Func>
 Datum safe_call(FunctionCallInfo fcinfo, Func&& func) {
     try {
         return func(fcinfo);
-    } catch (const PostgresException& e) {
-        e.report_to_postgres();
-        PG_RETURN_NULL();
     } catch (const std::exception& e) {
-        PostgresException pg_ex(e.what());
-        pg_ex.report_to_postgres();
+        ereport(ERROR, (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), errmsg("%s", e.what())));
         PG_RETURN_NULL();
     } catch (...) {
-        PostgresException pg_ex("Unknown C++ exception");
-        pg_ex.report_to_postgres();
+        ereport(ERROR, (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), errmsg("Unknown C++ exception")));
         PG_RETURN_NULL();
     }
 }

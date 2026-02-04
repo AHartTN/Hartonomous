@@ -13,10 +13,14 @@ namespace Hartonomous::PG {
 // ==============================================================================
 
 TextWrapper::TextWrapper(text* pg_text)
-    : pg_text_(pg_text), owned_(false) {}
+    : pg_text_(nullptr), original_(pg_text) {
+    if (pg_text) {
+        pg_text_ = (text*)PG_DETOAST_DATUM_PACKED(PointerGetDatum(pg_text));
+    }
+}
 
 TextWrapper::TextWrapper(const std::string& str)
-    : owned_(true) {
+    : pg_text_(nullptr), original_(nullptr) {
     size_t len = str.length();
     pg_text_ = (text*)palloc(VARHDRSZ + len);
     SET_VARSIZE(pg_text_, VARHDRSZ + len);
@@ -25,12 +29,17 @@ TextWrapper::TextWrapper(const std::string& str)
 
 std::string TextWrapper::to_string() const {
     if (!pg_text_) return "";
-    size_t len = VARSIZE(pg_text_) - VARHDRSZ;
-    return std::string(VARDATA(pg_text_), len);
+    return std::string(VARDATA_ANY(pg_text_), VARSIZE_ANY_EXHDR(pg_text_));
 }
 
 text* TextWrapper::to_pg_text() const {
     return pg_text_;
+}
+
+TextWrapper::~TextWrapper() {
+    if (pg_text_ && (void*)pg_text_ != (void*)original_) {
+        pfree(pg_text_);
+    }
 }
 
 // ==============================================================================
@@ -38,10 +47,14 @@ text* TextWrapper::to_pg_text() const {
 // ==============================================================================
 
 ByteaWrapper::ByteaWrapper(bytea* pg_bytea)
-    : pg_bytea_(pg_bytea), owned_(false) {}
+    : pg_bytea_(nullptr), original_(pg_bytea) {
+    if (pg_bytea) {
+        pg_bytea_ = (bytea*)PG_DETOAST_DATUM_PACKED(PointerGetDatum(pg_bytea));
+    }
+}
 
 ByteaWrapper::ByteaWrapper(const std::vector<uint8_t>& data)
-    : owned_(true) {
+    : pg_bytea_(nullptr), original_(nullptr) {
     size_t len = data.size();
     pg_bytea_ = (bytea*)palloc(VARHDRSZ + len);
     SET_VARSIZE(pg_bytea_, VARHDRSZ + len);
@@ -50,26 +63,19 @@ ByteaWrapper::ByteaWrapper(const std::vector<uint8_t>& data)
 
 std::vector<uint8_t> ByteaWrapper::to_vector() const {
     if (!pg_bytea_) return {};
-    size_t len = VARSIZE(pg_bytea_) - VARHDRSZ;
-    uint8_t* data = (uint8_t*)VARDATA(pg_bytea_);
-    return std::vector<uint8_t>(data, data + len);
+    const char* d = VARDATA_ANY(pg_bytea_);
+    size_t len = VARSIZE_ANY_EXHDR(pg_bytea_);
+    return std::vector<uint8_t>(d, d + len);
 }
 
 bytea* ByteaWrapper::to_pg_bytea() const {
     return pg_bytea_;
 }
 
-// ==============================================================================
-//  PostgresException
-// ==============================================================================
-
-PostgresException::PostgresException(const std::string& msg)
-    : std::runtime_error(msg) {}
-
-void PostgresException::report_to_postgres(int elevel) const {
-    ereport(elevel,
-        (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-         errmsg("%s", what())));
+ByteaWrapper::~ByteaWrapper() {
+    if (pg_bytea_ && (void*)pg_bytea_ != (void*)original_) {
+        pfree(pg_bytea_);
+    }
 }
 
 // ==============================================================================
@@ -77,10 +83,9 @@ void PostgresException::report_to_postgres(int elevel) const {
 // ==============================================================================
 
 TupleBuilder::TupleBuilder(FunctionCallInfo fcinfo)
-    : fcinfo_(fcinfo) {
-    // Get tuple descriptor from function context
+    : fcinfo_(fcinfo), tupdesc_(nullptr) {
     if (get_call_result_type(fcinfo, nullptr, &tupdesc_) != TYPEFUNC_COMPOSITE) {
-        throw PostgresException("Function must return a composite type");
+        throw std::runtime_error("Function must return a composite type");
     }
 }
 
@@ -117,7 +122,6 @@ void TupleBuilder::add_null() {
 }
 
 HeapTuple TupleBuilder::build() {
-    // vector<bool> doesn't have contiguous storage, so we need to convert
     size_t n = nulls_.size();
     bool* nulls_array = (bool*)palloc(n * sizeof(bool));
     for (size_t i = 0; i < n; i++) {
@@ -133,10 +137,9 @@ HeapTuple TupleBuilder::build() {
 // ==============================================================================
 
 MemoryContext::MemoryContext(const char* name)
-    : old_context_(nullptr) {
-    // PostgreSQL 18 requires compile-time constant strings for context names
-    // Use a generic name since we can't use runtime strings
-    (void)name;  // Suppress unused parameter warning
+    : context_(nullptr), old_context_(nullptr) {
+    /* Suppression of unused parameter 'name' as PostgreSQL 18 requires literal names */
+    (void)name;
     context_ = AllocSetContextCreate(CurrentMemoryContext,
                                       "HartonomousContext",
                                       ALLOCSET_DEFAULT_SIZES);

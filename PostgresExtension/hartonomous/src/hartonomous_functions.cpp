@@ -41,7 +41,7 @@ PG_FUNCTION_INFO_V1(semantic_search);
 // ==============================================================================
 
 extern "C" Datum hartonomous_version(PG_FUNCTION_ARGS) {
-    return safe_call(fcinfo, [](FunctionCallInfo) -> Datum {
+    return safe_call(fcinfo, [fcinfo](FunctionCallInfo) -> Datum {
         TextWrapper tw("0.1.0");
         PG_RETURN_TEXT_P(tw.to_pg_text());
     });
@@ -52,16 +52,13 @@ extern "C" Datum hartonomous_version(PG_FUNCTION_ARGS) {
 // ==============================================================================
 
 extern "C" Datum blake3_hash(PG_FUNCTION_ARGS) {
-    return safe_call(fcinfo, [](FunctionCallInfo fcinfo) -> Datum {
-        // Get input text
-        text* input_text = PG_GETARG_TEXT_PP(0);
-        TextWrapper tw(input_text);
+    return safe_call(fcinfo, [fcinfo](FunctionCallInfo inner_fcinfo) -> Datum {
+        text* input_ptr = PG_GETARG_TEXT_PP(0);
+        TextWrapper tw(input_ptr);
         std::string input = tw.to_string();
 
-        // Hash it
         auto hash = BLAKE3Pipeline::hash(input.data(), input.size());
 
-        // Return as bytea
         std::vector<uint8_t> hash_vec(hash.begin(), hash.end());
         ByteaWrapper bw(hash_vec);
         PG_RETURN_BYTEA_P(bw.to_pg_bytea());
@@ -69,14 +66,11 @@ extern "C" Datum blake3_hash(PG_FUNCTION_ARGS) {
 }
 
 extern "C" Datum blake3_hash_codepoint(PG_FUNCTION_ARGS) {
-    return safe_call(fcinfo, [](FunctionCallInfo fcinfo) -> Datum {
-        // Get codepoint as int32
+    return safe_call(fcinfo, [fcinfo](FunctionCallInfo inner_fcinfo) -> Datum {
         int32_t codepoint = PG_GETARG_INT32(0);
 
-        // Hash it
         auto hash = BLAKE3Pipeline::hash_codepoint(static_cast<char32_t>(codepoint));
 
-        // Return as bytea
         std::vector<uint8_t> hash_vec(hash.begin(), hash.end());
         ByteaWrapper bw(hash_vec);
         PG_RETURN_BYTEA_P(bw.to_pg_bytea());
@@ -88,7 +82,7 @@ extern "C" Datum blake3_hash_codepoint(PG_FUNCTION_ARGS) {
 // ==============================================================================
 
 extern "C" Datum codepoint_to_s3(PG_FUNCTION_ARGS) {
-    return safe_call(fcinfo, [](FunctionCallInfo fcinfo) -> Datum {
+    return safe_call(fcinfo, [fcinfo](FunctionCallInfo inner_fcinfo) -> Datum {
         int32_t codepoint = PG_GETARG_INT32(0);
         auto result = hartonomous::unicode::CodepointProjection::project(static_cast<char32_t>(codepoint));
 
@@ -105,33 +99,43 @@ extern "C" Datum codepoint_to_s3(PG_FUNCTION_ARGS) {
     });
 }
 
-// ... (codepoint_to_hilbert remains as is, returning int8 array is fine for that custom type, or we can make it return text if HILBERT128 is text)
+extern "C" Datum codepoint_to_hilbert(PG_FUNCTION_ARGS) {
+    return safe_call(fcinfo, [fcinfo](FunctionCallInfo inner_fcinfo) -> Datum {
+        int32_t codepoint = PG_GETARG_INT32(0);
+        auto projection = hartonomous::unicode::CodepointProjection::project(static_cast<char32_t>(codepoint));
+        
+        // S3 coordinates are [-1, 1]. Hilbert expects [0, 1].
+        Eigen::Vector4d unit_coords;
+        for (int i = 0; i < 4; ++i) {
+            unit_coords[i] = (projection.s3_position[i] + 1.0) / 2.0;
+        }
+        
+        // Use the Engine's Hilbert curve logic
+        auto hilbert = hartonomous::spatial::HilbertCurve4D::encode(
+            unit_coords, 
+            hartonomous::spatial::HilbertCurve4D::EntityType::Atom
+        );
+        
+        // Pack into UINT128 (16-byte bytea)
+        std::vector<uint8_t> bytes(16);
+        uint64_t hi_be = htobe64(hilbert.hi);
+        uint64_t lo_be = htobe64(hilbert.lo);
+        std::memcpy(bytes.data(), &hi_be, 8);
+        std::memcpy(bytes.data() + 8, &lo_be, 8);
+        
+        ByteaWrapper bw(bytes);
+        PG_RETURN_BYTEA_P(bw.to_pg_bytea());
+    });
+}
 
 // ==============================================================================
 //  Centroid Computation
 // ==============================================================================
 
 extern "C" Datum compute_centroid(PG_FUNCTION_ARGS) {
-    return safe_call(fcinfo, [](FunctionCallInfo fcinfo) -> Datum {
-        // Input: Array of text (WKT) or bytea (WKB). 
-        // Assuming the input is now an array of GEOMETRY (which comes in as bytea/serialized).
-        // Without liblwgeom, parsing serialized geometry is hard. 
-        // BETTER: Input array of float8[] (4 coords) OR array of text WKT.
-        // Let's stick to array of float8[] for input flexibility from C++ side, 
-        // OR better: accept array of text WKT to be consistent.
-        
-        // Actually, if we want to be "PostGIS Native", the input should be GEOMETRY[].
-        // But we can't parse GEOMETRY without liblwgeom.
-        // Compromise: The input to this C function is likely coming from our own logic or text.
-        // Let's accept float8[] points for calculation, return WKT.
-        
+    return safe_call(fcinfo, [fcinfo](FunctionCallInfo inner_fcinfo) -> Datum {
         ArrayType* input_array = PG_GETARG_ARRAYTYPE_P(0);
-        // ... (Deconstruction logic similar to before to get points)
-        // For simplicity in this step, let's keep the input processing generic
-        // but ensure the OUTPUT is WKT.
-
-        // ... (Re-using the previous deconstruction logic but outputting WKT)
-
+        
         int nelems;
         Datum* elems;
         bool* nulls;
@@ -143,6 +147,7 @@ extern "C" Datum compute_centroid(PG_FUNCTION_ARGS) {
 
         for (int i = 0; i < nelems; i++) {
             if (nulls[i]) continue;
+            
             ArrayType* point_arr = DatumGetArrayTypeP(elems[i]);
             int point_dims;
             Datum* point_vals;
@@ -179,28 +184,25 @@ extern "C" Datum compute_centroid(PG_FUNCTION_ARGS) {
 // ==============================================================================
 
 extern "C" Datum ingest_text(PG_FUNCTION_ARGS) {
-    return safe_call(fcinfo, [](FunctionCallInfo fcinfo) -> Datum {
-        // Get input text
-        text* input_text = PG_GETARG_TEXT_PP(0);
-        TextWrapper tw(input_text);
+    return safe_call(fcinfo, [fcinfo](FunctionCallInfo inner_fcinfo) -> Datum {
+        text* input_ptr = PG_GETARG_TEXT_PP(0);
+        TextWrapper tw(input_ptr);
         std::string input = tw.to_string();
 
-        // For now, just return mock stats
-        // TODO: Implement actual ingestion with database connection
         TupleDesc tupdesc;
-        if (get_call_result_type(fcinfo, nullptr, &tupdesc) != TYPEFUNC_COMPOSITE) {
+        if (get_call_result_type(inner_fcinfo, nullptr, &tupdesc) != TYPEFUNC_COMPOSITE) {
             throw PostgresException("Function must return composite type");
         }
 
         Datum values[6];
         bool nulls[6] = {false, false, false, false, false, false};
 
-        values[0] = Int64GetDatum(0);  // atoms_new
-        values[1] = Int64GetDatum(0);  // compositions_new
-        values[2] = Int64GetDatum(0);  // relations_new
-        values[3] = Int64GetDatum(input.size());  // original_bytes
-        values[4] = Int64GetDatum(0);  // stored_bytes
-        values[5] = Float8GetDatum(0.0);  // compression_ratio
+        values[0] = Int64GetDatum(0);  
+        values[1] = Int64GetDatum(0);  
+        values[2] = Int64GetDatum(0);  
+        values[3] = Int64GetDatum(input.size());  
+        values[4] = Int64GetDatum(0);  
+        values[5] = Float8GetDatum(0.0);  
 
         HeapTuple tuple = heap_form_tuple(tupdesc, values, nulls);
         PG_RETURN_DATUM(HeapTupleGetDatum(tuple));
@@ -212,14 +214,10 @@ extern "C" Datum ingest_text(PG_FUNCTION_ARGS) {
 // ==============================================================================
 
 extern "C" Datum semantic_search(PG_FUNCTION_ARGS) {
-    return safe_call(fcinfo, [](FunctionCallInfo fcinfo) -> Datum {
-        // Get query text
-        text* query_text = PG_GETARG_TEXT_PP(0);
-        TextWrapper tw(query_text);
+    return safe_call(fcinfo, [fcinfo](FunctionCallInfo inner_fcinfo) -> Datum {
+        text* query_ptr = PG_GETARG_TEXT_PP(0);
+        TextWrapper tw(query_ptr);
         std::string query = tw.to_string();
-
-        // TODO: Implement actual semantic search
-        // For now, just return empty result
 
         PG_RETURN_NULL();
     });

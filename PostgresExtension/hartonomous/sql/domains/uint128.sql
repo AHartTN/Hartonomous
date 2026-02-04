@@ -1,2 +1,4 @@
-CREATE DOMAIN hartonomous.uint128 AS numeric(39,0)
-    CHECK (VALUE >= 0 AND VALUE < 340282366920938463463374607431768211456);
+-- uint128.sql
+CREATE DOMAIN hartonomous.UINT128 AS BYTEA
+    CHECK (octet_length(VALUE) = 16);
+COMMENT ON DOMAIN hartonomous.UINT128 IS 'Fixed 16-byte unsigned integer (big-endian) - Hilbert curve spatial index';

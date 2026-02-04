@@ -60,7 +60,7 @@ public readonly struct HartonomousId : IEquatable<HartonomousId>, IComparable<Ha
         low &= 0xFFFFFFFFFFFFFF00;
         
         // Set Level (Bits 1-7)
-        low |= (ulong)(level << 1);
+        low |= ((ulong)level << 1);
         
         // Set Parity (Bit 0: 1 if Level 0, else 0)
         if (level == 0) low |= 1;

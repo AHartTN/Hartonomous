@@ -1,3 +1,4 @@
+./scripts/linux/20-ingest-mini-lm.sh: line 5: ./scripts/linux/00_env.sh: No such file or directory
 Ingesting model from: test-data/embedding_models/models--sentence-transformers--all-MiniLM-L6-v2/snapshots/c9745ed1d9f207416be6d2e6f8de32d1f16199bf
 Ingesting model with 61044 vocab tokens...
   Creating content record for model: 28bd4534-c6c2-6dd4-9f31-cb76c9ef812c

@@ -28,10 +28,10 @@ CREATE EXTENSION
 CREATE EXTENSION
 [0;32m  ✓ s3 extension installed[0m
 [0;36m  Installing hartonomous...[0m
-ERROR:  could not access file "MODULE_PATHNAME": No such file or directory
+ERROR:  could not load library "/usr/lib/postgresql/18/lib/hartonomous.so": /usr/lib/postgresql/18/lib/hartonomous.so: undefined symbol: VARDATA
 CONTEXT:  SQL statement "CREATE OR REPLACE FUNCTION uint64_add(hartonomous.uint64, hartonomous.uint64)
 RETURNS hartonomous.uint64
-AS 'MODULE_PATHNAME', 'uint64_add'
+AS '$libdir/hartonomous', 'uint64_add'
 LANGUAGE C IMMUTABLE STRICT"
-extension script file "hartonomous--0.1.0.sql", near line 30
+extension script file "hartonomous--0.1.0.sql", near line 37
 [0;31m  ✗ Could not install hartonomous extension[0m

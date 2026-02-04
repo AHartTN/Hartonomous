@@ -27,6 +27,7 @@ cmake_install.cmake
 install_manifest.txt
 CTestTestfile.cmake
 Makefile
+!PostgresExtension/*/Makefile
 
 # C/C++ compilation objects
 *.obj

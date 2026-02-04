@@ -16,13 +16,14 @@ struct RelationEvidenceRecord {
 
 class RelationEvidenceStore {
 public:
-    explicit RelationEvidenceStore(PostgresConnection& db, bool use_temp_table = true);
+    explicit RelationEvidenceStore(PostgresConnection& db, bool use_temp_table = true, bool use_binary = false);
     void store(const RelationEvidenceRecord& rec);
     void flush();
     size_t count() const { return copy_.count(); }
 
 private:
     BulkCopy copy_;
+    bool use_binary_;
     std::string hash_to_uuid(const BLAKE3Pipeline::Hash& hash);
 };
 

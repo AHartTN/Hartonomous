@@ -14,7 +14,7 @@ struct PhysicalityRecord {
     BLAKE3Pipeline::Hash id;
     HilbertIndex hilbert_index;
     Eigen::Vector4d centroid;
-    std::string trajectory_wkt; // New: LINESTRINGZM(...) or POINTZM(...)
+    std::vector<Eigen::Vector4d> trajectory; // Raw points for WKB generation
 };
 
 class PhysicalityStore {
@@ -28,7 +28,7 @@ private:
     BulkCopy copy_;
     bool use_dedup_;
     bool use_binary_;
-    std::unordered_set<std::string> seen_;
+    std::unordered_set<BLAKE3Pipeline::Hash, HashHasher> seen_;
     std::string hash_to_uuid(const BLAKE3Pipeline::Hash& hash);
     std::string hilbert_to_hex(const HilbertIndex& h);
     std::string geom_to_hex(const Eigen::Vector4d& pt);

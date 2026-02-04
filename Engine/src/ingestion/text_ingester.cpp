@@ -106,7 +106,7 @@ struct Token {
     BLAKE3Pipeline::Hash comp_id;        // Composition hash
     BLAKE3Pipeline::Hash phys_id;        // Physicality hash
     Eigen::Vector4d centroid;            // S³ centroid position
-    std::string trajectory_wkt;          // 4D Trajectory
+    std::vector<Eigen::Vector4d> trajectory; // 4D Trajectory
     std::vector<BLAKE3Pipeline::Hash> atom_ids;  // Atom IDs in order
 };
 
@@ -193,27 +193,11 @@ IngestionStats TextIngester::ingest(const std::string& text) {
             tok.comp_id = comp_id;
             tok.atom_ids = atom_ids;
 
-            // Compute centroid and build trajectory WKT
+            // Compute centroid and build trajectory
             Eigen::Vector4d centroid = Eigen::Vector4d::Zero();
-            std::ostringstream wkt;
-            wkt << "LINESTRINGZM(";
+            for (const auto& p : positions) centroid += p;
             
-            for (size_t i = 0; i < positions.size(); ++i) {
-                const auto& p = positions[i];
-                centroid += p;
-                if (i > 0) wkt << ", ";
-                wkt << std::fixed << std::setprecision(10) << p[0] << " " << p[1] << " " << p[2] << " " << p[3];
-            }
-            
-            if (positions.size() == 1) {
-                wkt.str("");
-                wkt << "POINTZM(" << std::fixed << std::setprecision(10) 
-                    << positions[0][0] << " " << positions[0][1] << " " 
-                    << positions[0][2] << " " << positions[0][3] << ")";
-            } else {
-                wkt << ")";
-            }
-            tok.trajectory_wkt = wkt.str();
+            tok.trajectory = positions;
 
             centroid /= static_cast<double>(positions.size());
             double norm = centroid.norm();
@@ -254,7 +238,7 @@ IngestionStats TextIngester::ingest(const std::string& text) {
             if (phys_seen.insert(tok.phys_id).second) {
                 Eigen::Vector4d hc;
                 for (int k = 0; k < 4; ++k) hc[k] = (tok.centroid[k] + 1.0) / 2.0;
-                phys_records.push_back({tok.phys_id, HilbertCurve4D::encode(hc), tok.centroid, tok.trajectory_wkt});
+                phys_records.push_back({tok.phys_id, HilbertCurve4D::encode(hc), tok.centroid, tok.trajectory});
             }
             comp_records.push_back({comp_id, tok.phys_id});
             stats.compositions_new++;
@@ -297,11 +281,9 @@ IngestionStats TextIngester::ingest(const std::string& text) {
                 auto& tok1 = token_map[comp1_id];
                 auto& tok2 = token_map[comp2_id];
                 
-                std::ostringstream rwkt;
-                rwkt << "LINESTRINGZM(" 
-                     << std::fixed << std::setprecision(10) 
-                     << tok1.centroid[0] << " " << tok1.centroid[1] << " " << tok1.centroid[2] << " " << tok1.centroid[3] << ", "
-                     << tok2.centroid[0] << " " << tok2.centroid[1] << " " << tok2.centroid[2] << " " << tok2.centroid[3] << ")";
+                std::vector<Eigen::Vector4d> rel_trajectory;
+                rel_trajectory.push_back(tok1.centroid);
+                rel_trajectory.push_back(tok2.centroid);
 
                 Eigen::Vector4d rel_centroid = (tok1.centroid + tok2.centroid) * 0.5;
                 double norm = rel_centroid.norm();
@@ -317,10 +299,11 @@ IngestionStats TextIngester::ingest(const std::string& text) {
                 if (phys_seen.insert(rel_phys_id).second) {
                     Eigen::Vector4d hc;
                     for (int k = 0; k < 4; ++k) hc[k] = (rel_centroid[k] + 1.0) / 2.0;
-                    phys_records.push_back({rel_phys_id, HilbertCurve4D::encode(hc), rel_centroid, rwkt.str()});
+                    phys_records.push_back({rel_phys_id, HilbertCurve4D::encode(hc), rel_centroid, rel_trajectory});
                 }
                 rel_records.push_back({rel_id, rel_phys_id});
                 stats.relations_new++;
+
 
                 // Store relation sequence (composition indices within the relation)
                 for (size_t k = 0; k < 2; ++k) {

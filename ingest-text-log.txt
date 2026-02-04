@@ -1,3 +1,4 @@
+./scripts/linux/30-ingest-text.sh: line 5: ./scripts/linux/00_env.sh: No such file or directory
 Ingesting text from: test-data/moby_dick.txt
 Ingesting file: test-data/moby_dick.txt
 Ingesting 1256545 bytes...

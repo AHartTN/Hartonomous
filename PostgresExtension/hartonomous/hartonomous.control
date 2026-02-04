@@ -1,5 +1,5 @@
-comment = 'Hartonomous semantic substrate (schema and SQL API). Depends on s3 for geometry functions.'
+# hartonomous extension
+comment = 'Hartonomous: Universal Substrate for Intelligence'
 default_version = '0.1.0'
-relocatable = false
-schema = hartonomous
-requires = 'postgis, s3'
+module_pathname = '$libdir/hartonomous'
+relocatable = true

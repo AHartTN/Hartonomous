@@ -60,6 +60,7 @@ add_hartonomous_test(suite/test_projections)
 add_hartonomous_test(suite/test_spatial_index)
 add_hartonomous_test(suite/test_database_marshal)
 add_hartonomous_test(suite/test_end_to_end_pipeline)
+add_hartonomous_test(suite/test_interop_functionality)
 
 # Benchmark executables (not part of CTest)
 
