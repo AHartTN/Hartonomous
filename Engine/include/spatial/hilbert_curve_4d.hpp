@@ -82,12 +82,21 @@ public:
     };
 
     /**
+     * @brief Entity type for parity-based ID partitioning.
+     */
+    enum class EntityType {
+        Composition = 0, // Even IDs
+        Atom = 1         // Odd IDs
+    };
+
+    /**
      * @brief Encodes a 4D point into a 128-bit Hilbert index.
      *
      * @param coords A 4D vector with each component normalized to the range [0.0, 1.0].
-     * @return HilbertIndex The resulting 128-bit Hilbert index.
+     * @param type The type of entity being encoded (Atom or Composition).
+     * @return HilbertIndex The resulting 128-bit Hilbert index with enforced parity.
      */
-    static HilbertIndex encode(const Vec4& coords) {
+    static HilbertIndex encode(const Vec4& coords, EntityType type = EntityType::Composition) {
         // 1. Discretize the floating-point coordinates into a 4-element array of 32-bit integers.
         constexpr uint64_t max_val = (1ULL << BITS_PER_DIMENSION) - 1;
         std::array<uint32_t, 4> discrete_coords;
@@ -97,20 +106,24 @@ public:
         }
 
         // 2. Call the PositionToIndex function from the hilbert.hpp library.
-        //    We use the v2 (template metaprogramming) version for performance.
-        //    It returns the Hilbert index in a "transposed" format, as an array of four 32-bit integers.
-        std::array<uint32_t, 4> transposed_index = hilbert::v2::PositionToIndex<uint32_t, 4>(discrete_coords);
+        //    The library returns the untransposed index bits in an array of four uint32.
+        std::array<uint32_t, 4> index_segments = hilbert::v2::PositionToIndex<uint32_t, 4>(discrete_coords);
 
-        // 3. Pack the transposed array into a single 128-bit integer.
-        //    The library documentation states the index is lexographically sorted
-        //    with the most significant objects first.
+        // 3. Pack the segments into a single 128-bit integer.
         unsigned __int128 index_val = 0;
-        index_val |= static_cast<unsigned __int128>(transposed_index[0]) << 96;
-        index_val |= static_cast<unsigned __int128>(transposed_index[1]) << 64;
-        index_val |= static_cast<unsigned __int128>(transposed_index[2]) << 32;
-        index_val |= static_cast<unsigned __int128>(transposed_index[3]);
+        index_val |= static_cast<unsigned __int128>(index_segments[0]) << 96;
+        index_val |= static_cast<unsigned __int128>(index_segments[1]) << 64;
+        index_val |= static_cast<unsigned __int128>(index_segments[2]) << 32;
+        index_val |= static_cast<unsigned __int128>(index_segments[3]);
 
-        // 4. Split the 128-bit index into two 64-bit parts for storage.
+        // 4. Enforce Parity Rule: Even = Composition, Odd = Atom.
+        if (type == EntityType::Atom) {
+            index_val |= 1; // Force Odd
+        } else {
+            index_val &= ~static_cast<unsigned __int128>(1); // Force Even
+        }
+
+        // 5. Split the 128-bit index into two 64-bit parts for storage.
         return {
             static_cast<uint64_t>(index_val >> 64),
             static_cast<uint64_t>(index_val)

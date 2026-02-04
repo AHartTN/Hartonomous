@@ -12,6 +12,7 @@
 #pragma once
 
 #include <database/postgres_connection.hpp>
+#include <hashing/blake3_pipeline.hpp>
 #include <vector>
 #include <string>
 #include <optional>
@@ -26,7 +27,7 @@ struct KnowledgeGap {
 };
 
 struct SubProblem {
-    uint64_t node_id;
+    BLAKE3Pipeline::Hash node_id;
     std::string description;
     int difficulty;  // 1-10
     bool is_solvable;
@@ -93,6 +94,8 @@ private:
     PostgresConnection& db_;
 
     std::string hash_text(const std::string& text);
+
+    std::vector<SubProblem> decompose_problem_recursive(const std::string& current_id, int depth, int max_depth);
 };
 
 } // namespace Hartonomous

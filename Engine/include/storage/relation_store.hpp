@@ -23,8 +23,9 @@ struct RelationSequenceRecord {
 struct RelationRatingRecord {
     BLAKE3Pipeline::Hash relation_id;
     uint64_t observations = 1;
-    double rating_value = 1000.0;
-    double k_factor = 1.0;
+    double consensus_elo = 0.0;
+    double base_elo = 1500.0;
+    double k_factor = 32.0;
 };
 
 class RelationStore {
@@ -40,7 +41,7 @@ private:
     BulkCopy copy_;
     bool use_dedup_;
     bool use_binary_;
-    std::unordered_set<std::string> seen_;
+    std::unordered_set<BLAKE3Pipeline::Hash, HashHasher> seen_;
     std::string hash_to_uuid(const BLAKE3Pipeline::Hash& hash);
 };
 
@@ -67,7 +68,7 @@ public:
 private:
     BulkCopy copy_;
     bool use_binary_;
-    std::unordered_set<std::string> seen_;
+    std::unordered_set<BLAKE3Pipeline::Hash, HashHasher> seen_;
     std::string hash_to_uuid(const BLAKE3Pipeline::Hash& hash);
 };
 

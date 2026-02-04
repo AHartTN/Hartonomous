@@ -107,6 +107,15 @@ HARTONOMOUS_API bool hartonomous_walk_set_goal(h_walk_engine_t handle, HWalkStat
 //  Godel Engine
 // =============================================================================
 
+// =============================================================================
+//  Common Types
+// =============================================================================
+
+typedef enum {
+    H_ENTITY_COMPOSITION = 0,
+    H_ENTITY_ATOM = 1
+} H_ENTITY_TYPE;
+
 struct HKnowledgeGap {
     char* concept_name;
     int references_count;
@@ -114,7 +123,7 @@ struct HKnowledgeGap {
 };
 
 struct HSubProblem {
-    uint64_t node_id;
+    uint8_t node_id[16];
     char* description;
     int difficulty;
     bool is_solvable;

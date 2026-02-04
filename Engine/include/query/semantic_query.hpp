@@ -41,15 +41,16 @@ public:
 
     /**
      * @brief Find compositions that co-occur with query text
-     *
-     * Example: "Captain" → finds "Ahab", "ship", "Pequod"
-     *
-     * Algorithm:
-     * 1. Find all relations containing "Captain"
-     * 2. Find all other compositions in those relations
-     * 3. Rank by co-occurrence count
      */
     std::vector<QueryResult> find_related(const std::string& query_text, size_t limit = 10);
+
+    /**
+     * @brief Find "Truth" via Gravitational Clustering
+     *
+     * Finds topological consensus centers on S3 where high ELO and multiple provenance intersect.
+     * Axiom: Truths Cluster, Lies Scatter.
+     */
+    std::vector<QueryResult> find_gravitational_truth(const std::string& query_text, double min_elo = 1500.0, size_t limit = 10);
 
     /**
      * @brief Answer question via relationship traversal

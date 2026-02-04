@@ -1,0 +1,14 @@
+Ingesting model from: test-data/embedding_models/models--sentence-transformers--all-MiniLM-L6-v2/snapshots/c9745ed1d9f207416be6d2e6f8de32d1f16199bf
+Ingesting model with 61044 vocab tokens...
+  Creating content record for model: 28bd4534-c6c2-6dd4-9f31-cb76c9ef812c
+  Optimizing database for bulk ingestion...
+Model ingestion failed: PostgreSQL query failed: ERROR:  relation "hartonomous.relationevidence" does not exist
+
+
+✓ Model ingestion complete!
+  Duration:          0.11s
+  Tensors processed: 0
+  Atoms created:     0
+  Compositions:      0
+  Relations:         0
+  Throughput:        0 relations/sec

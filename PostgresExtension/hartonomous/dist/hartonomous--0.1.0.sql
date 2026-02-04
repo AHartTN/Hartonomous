@@ -22,6 +22,40 @@ CREATE DOMAIN hartonomous.uint128 AS numeric(39,0)
 -- Including domains/hilbert128.sql
 CREATE DOMAIN hartonomous.hilbert128 AS numeric(39,0);
 
+-- Including uint64_ops.sql
+-- ==============================================================================
+-- UINT64 Native Operators
+-- ==============================================================================
+
+CREATE OR REPLACE FUNCTION uint64_add(hartonomous.uint64, hartonomous.uint64)
+RETURNS hartonomous.uint64
+AS 'MODULE_PATHNAME', 'uint64_add'
+LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION uint64_to_double(hartonomous.uint64)
+RETURNS DOUBLE PRECISION
+AS 'MODULE_PATHNAME', 'uint64_to_double'
+LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OPERATOR + (
+    LEFTARG = hartonomous.uint64,
+    RIGHTARG = hartonomous.uint64,
+    PROCEDURE = uint64_add
+);
+
+-- Weighted average using native types
+CREATE OR REPLACE FUNCTION hartonomous.weighted_elo_update(
+    old_elo DOUBLE PRECISION, 
+    old_obs hartonomous.uint64, 
+    new_elo DOUBLE PRECISION, 
+    new_obs hartonomous.uint64
+)
+RETURNS DOUBLE PRECISION
+LANGUAGE SQL IMMUTABLE AS $$
+    SELECT (old_elo * uint64_to_double(old_obs) + new_elo * uint64_to_double(new_obs)) / 
+           (uint64_to_double(old_obs) + uint64_to_double(new_obs));
+$$;
+
 
 -- Core Schema
 -- Including tables/tenant.sql
@@ -321,19 +355,38 @@ CREATE TABLE IF NOT EXISTS hartonomous.RelationSequence (
 CREATE UNIQUE INDEX IF NOT EXISTS uq_RelationSequence_RelationId_Ordinal ON hartonomous.RelationSequence(RelationId, Ordinal);
 CREATE INDEX IF NOT EXISTS idx_RelationSequence_RelationId ON hartonomous.RelationSequence(RelationId, Ordinal ASC, Occurrences);
 
+-- CRITICAL: Index for finding all relations a composition participates in (microsecond walks)
+CREATE INDEX IF NOT EXISTS idx_RelationSequence_CompositionId ON hartonomous.RelationSequence(CompositionId);
+
 -- Including tables/relation_rating.sql
+-- ==============================================================================
+-- RelationRating: Dual-ELO System for Gravitational Truth
+-- ==============================================================================
+
 CREATE TABLE IF NOT EXISTS hartonomous.RelationRating (
     RelationId UUID PRIMARY KEY REFERENCES hartonomous.Relation(Id) ON DELETE CASCADE,
-    Observations UINT64 DEFAULT 1 NOT NULL,
-    RatingValue DOUBLE PRECISION NOT NULL DEFAULT 1000,
-    KFactor DOUBLE PRECISION DEFAULT 1.0 NOT NULL,
+
+    -- Consensus ELO (Quantity/Frequency): Increments logarithmically with every duplicate insertion.
+    ConsensusElo DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+    
+    -- Base ELO (Quality): Assigned at ingestion based on source authority/reputation.
+    BaseElo DOUBLE PRECISION NOT NULL DEFAULT 1500.0,
+
+    -- Total observations count
+    Observations UINT64 DEFAULT '\x0000000000000001'::bytea NOT NULL,
+    
+    -- Sensitivity factor for updates
+    KFactor DOUBLE PRECISION DEFAULT 32.0 NOT NULL,
+
     CreatedAt TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     ModifiedAt TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     ValidatedAt TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_RelationRating_RatingValue ON hartonomous.RelationRating(RatingValue);
+CREATE INDEX IF NOT EXISTS idx_RelationRating_Consensus ON hartonomous.RelationRating(ConsensusElo);
+CREATE INDEX IF NOT EXISTS idx_RelationRating_Base ON hartonomous.RelationRating(BaseElo);
 
+COMMENT ON TABLE hartonomous.RelationRating IS 'Stores the Dual-ELO rating representing the quality (Base) and consensus (Consensus) of a Relation.';
 -- Including tables/relation_evidence.sql
 CREATE TABLE IF NOT EXISTS hartonomous.RelationEvidence (
     Id UUID PRIMARY KEY,

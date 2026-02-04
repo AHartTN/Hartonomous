@@ -30,17 +30,6 @@
 
 namespace Hartonomous {
 
-/**
- * @brief Standard hasher for BLAKE3 128-bit hashes
- */
-struct HashHasher {
-    size_t operator()(const BLAKE3Pipeline::Hash& hash) const {
-        size_t h;
-        std::memcpy(&h, hash.data(), sizeof(size_t));
-        return h;
-    }
-};
-
 struct ModelIngestionStats {
     size_t total_files = 0;
     size_t vocab_tokens = 0;

@@ -17,17 +17,6 @@
 namespace Hartonomous {
 
 /**
- * @brief Hash function for BLAKE3Pipeline::Hash to use in unordered_map
- */
-struct HashHasher {
-    size_t operator()(const BLAKE3Pipeline::Hash& h) const {
-        uint64_t val;
-        std::memcpy(&val, h.data(), sizeof(uint64_t));
-        return static_cast<size_t>(val);
-    }
-};
-
-/**
  * @brief N-gram with frequency, position, and statistical metrics
  */
 struct NGram {

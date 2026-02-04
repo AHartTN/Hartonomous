@@ -4,7 +4,7 @@ The following deep-dive specifications have been generated to document the core 
 
 1. [**TECHNICAL\_SPEC\_PHYSICS\_OF\_MEANING.md**](https://www.google.com/search?q=TECHNICAL_SPEC_PHYSICS_OF_MEANING.md)  
    * **Core Concept:** Meaning is **Tension**, not Position.  
-   * **Key Math:** Borsuk-Ulam Theorem (Antonyms are antipodal).  
+   * **Key Math:** Laplacian Eigenmaps (Non-linear projection), Geodesic Gradients (Scalar properties).  
    * **Topology:** Spider Colony / Radar Chart signatures replace Voronoi cells.  
    * **Inference:** Vibration propagation down high-tension strands.  
 2. [**TECHNICAL\_SPEC\_INGESTION\_PIPELINE.md**](https://www.google.com/search?q=TECHNICAL_SPEC_INGESTION_PIPELINE.md)  

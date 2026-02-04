@@ -25,26 +25,45 @@ public readonly struct HartonomousId : IEquatable<HartonomousId>, IComparable<Ha
     }
 
     /// <summary>
-    /// Gets the high 64 bits of the 128-bit identifier.
+    /// Gets the upper 64 bits of the 128-bit ID.
     /// </summary>
     public ulong High => (ulong)(_value >> 64);
 
     /// <summary>
-    /// Gets the low 64 bits of the 128-bit identifier.
+    /// Gets the lower 64 bits of the 128-bit ID.
     /// </summary>
     public ulong Low => (ulong)_value;
 
     /// <summary>
-    /// Creates a HartonomousId from a 16-byte generic big-endian hash (e.g., standard BLAKE3 output order).
+    /// Gets the Tier level of this ID (Bits 1-7).
     /// </summary>
-    public static HartonomousId FromBigEndianBytes(ReadOnlySpan<byte> bytes)
-    {
-        if (bytes.Length < 16)
-            throw new ArgumentException("Bytes must be at least 16 bytes long.", nameof(bytes));
+    public byte Tier => (byte)((Low >> 1) & 0x7F);
 
-        // Read as BigEndian to preserve the "visual" order of the hash in memory
-        ulong high = BinaryPrimitives.ReadUInt64BigEndian(bytes[..8]);
-        ulong low = BinaryPrimitives.ReadUInt64BigEndian(bytes[8..16]);
+    /// <summary>
+    /// Gets whether this ID represents an Atom (Bit 0 == 1).
+    /// </summary>
+    public bool IsAtom => (Low & 1) == 1;
+
+    /// <summary>
+    /// Creates a tiered HartonomousId from a raw BLAKE3 hash.
+    /// Enforces: Bit 0 = Parity (1 for Atom, 0 for Trajectory), Bits 1-7 = Tier Level.
+    /// </summary>
+    public static HartonomousId Create(ReadOnlySpan<byte> hash, byte level)
+    {
+        if (hash.Length < 16)
+            throw new ArgumentException("Hash must be at least 16 bytes.");
+
+        ulong high = BinaryPrimitives.ReadUInt64BigEndian(hash[..8]);
+        ulong low = BinaryPrimitives.ReadUInt64BigEndian(hash[8..16]);
+
+        // Clear the first 8 bits (Level + Parity)
+        low &= 0xFFFFFFFFFFFFFF00;
+        
+        // Set Level (Bits 1-7)
+        low |= (ulong)(level << 1);
+        
+        // Set Parity (Bit 0: 1 if Level 0, else 0)
+        if (level == 0) low |= 1;
 
         return new HartonomousId(high, low);
     }
@@ -54,6 +73,16 @@ public readonly struct HartonomousId : IEquatable<HartonomousId>, IComparable<Ha
     /// but for IDs we typically enforce a convention. We default to BigEndian for consistency with Network byte order and standard Hash display).
     /// </summary>
     public static HartonomousId FromBytes(ReadOnlySpan<byte> bytes) => FromBigEndianBytes(bytes);
+
+    private static HartonomousId FromBigEndianBytes(ReadOnlySpan<byte> bytes)
+    {
+        if (bytes.Length < 16)
+            throw new ArgumentException("Bytes must be at least 16 bytes long.", nameof(bytes));
+
+        ulong high = BinaryPrimitives.ReadUInt64BigEndian(bytes[..8]);
+        ulong low = BinaryPrimitives.ReadUInt64BigEndian(bytes[8..16]);
+        return new HartonomousId(high, low);
+    }
 
     /// <summary>
     /// Writes the 128-bit ID to a span as big-endian bytes (standard network/hash order).

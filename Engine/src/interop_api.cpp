@@ -60,15 +60,14 @@ bool hartonomous_db_is_connected(h_db_connection_t handle) {
     return true; 
 }
 
-// =============================================================================
-//  Ingestion Service
-// =============================================================================
+#include <ingestion/universal_ingester.hpp>
 
+// ... in hartonomous_ingester_create ...
 h_ingester_t hartonomous_ingester_create(h_db_connection_t db_handle) {
     try {
         if (!db_handle) throw std::runtime_error("Invalid database handle");
         auto* db = static_cast<Hartonomous::PostgresConnection*>(db_handle);
-        auto* ingester = new Hartonomous::TextIngester(*db);
+        auto* ingester = new Hartonomous::UniversalIngester(*db);
         return static_cast<h_ingester_t>(ingester);
     } catch (const std::exception& e) {
         set_error(e);
@@ -78,16 +77,17 @@ h_ingester_t hartonomous_ingester_create(h_db_connection_t db_handle) {
 
 void hartonomous_ingester_destroy(h_ingester_t handle) {
     if (handle) {
-        delete static_cast<Hartonomous::TextIngester*>(handle);
+        delete static_cast<Hartonomous::UniversalIngester*>(handle);
     }
 }
 
 bool hartonomous_ingest_text(h_ingester_t handle, const char* text, HIngestionStats* out_stats) {
     try {
         if (!handle || !text || !out_stats) return false;
-        auto* ingester = static_cast<Hartonomous::TextIngester*>(handle);
-        auto stats = ingester->ingest(text);
+        auto* ingester = static_cast<Hartonomous::UniversalIngester*>(handle);
+        auto stats = ingester->ingest_text(text);
         
+        // ... mapping stats ...
         out_stats->atoms_total = stats.atoms_total;
         out_stats->atoms_new = stats.atoms_new;
         out_stats->compositions_total = stats.compositions_total;
@@ -111,8 +111,8 @@ bool hartonomous_ingest_text(h_ingester_t handle, const char* text, HIngestionSt
 bool hartonomous_ingest_file(h_ingester_t handle, const char* file_path, HIngestionStats* out_stats) {
     try {
         if (!handle || !file_path || !out_stats) return false;
-        auto* ingester = static_cast<Hartonomous::TextIngester*>(handle);
-        auto stats = ingester->ingest_file(file_path);
+        auto* ingester = static_cast<Hartonomous::UniversalIngester*>(handle);
+        auto stats = ingester->ingest_path(file_path);
 
         out_stats->atoms_total = stats.atoms_total;
         out_stats->atoms_new = stats.atoms_new;
@@ -294,7 +294,7 @@ bool hartonomous_godel_analyze(h_godel_t handle, const char* problem, HResearchP
         if (out_plan->sub_problems_count > 0) {
             out_plan->sub_problems = new HSubProblem[out_plan->sub_problems_count];
             for (size_t i = 0; i < out_plan->sub_problems_count; ++i) {
-                out_plan->sub_problems[i].node_id = plan.decomposition[i].node_id;
+                std::memcpy(out_plan->sub_problems[i].node_id, plan.decomposition[i].node_id.data(), 16);
                 out_plan->sub_problems[i].description = strdup_safe(plan.decomposition[i].description);
                 out_plan->sub_problems[i].difficulty = plan.decomposition[i].difficulty;
                 out_plan->sub_problems[i].is_solvable = plan.decomposition[i].is_solvable;

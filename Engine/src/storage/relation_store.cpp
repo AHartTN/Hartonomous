@@ -1,24 +1,14 @@
 #include <storage/relation_store.hpp>
 #include <iomanip>
 #include <sstream>
+#include <cstring>
 
 namespace Hartonomous {
 
-// ============================================================================
-// RelationStore
-// ============================================================================
-
-// Fast hex lookup table for UUID conversion
+// Centralized, high-performance hex conversion for UUIDs
 static const char* hex_chars = "0123456789abcdef";
 
-RelationStore::RelationStore(PostgresConnection& db, bool use_temp_table, bool use_binary)
-    : copy_(db, use_temp_table), use_dedup_(use_temp_table), use_binary_(use_binary) {
-    copy_.set_binary(use_binary);
-    copy_.begin_table("hartonomous.relation", {"id", "physicalityid"});
-}
-
-std::string RelationStore::hash_to_uuid(const BLAKE3Pipeline::Hash& hash) {
-    // Fast UUID conversion without ostringstream
+static std::string internal_hash_to_uuid(const BLAKE3Pipeline::Hash& hash) {
     char buf[37];
     char* p = buf;
     for (int i = 0; i < 16; ++i) {
@@ -30,24 +20,36 @@ std::string RelationStore::hash_to_uuid(const BLAKE3Pipeline::Hash& hash) {
     return std::string(buf, 36);
 }
 
+// ============================================================================
+// RelationStore
+// ============================================================================
+
+RelationStore::RelationStore(PostgresConnection& db, bool use_temp_table, bool use_binary)
+    : copy_(db, use_temp_table), use_dedup_(use_temp_table), use_binary_(use_binary) {
+    copy_.set_binary(use_binary);
+    copy_.begin_table("hartonomous.relation", {"id", "physicalityid"});
+}
+
+std::string RelationStore::hash_to_uuid(const BLAKE3Pipeline::Hash& hash) {
+    return internal_hash_to_uuid(hash);
+}
+
 void RelationStore::store(const RelationRecord& rec) {
     if (use_binary_) {
-        // No dedup check in binary mode for now (assumed handled by caller or DB)
-        // because we don't want to pay the cost of converting to string for the set
-        // unless we used a 128-bit hash map.
+        if (use_dedup_) {
+            if (seen_.count(rec.id)) return;
+            seen_.insert(rec.id);
+        }
         BulkCopy::BinaryRow row;
         row.add_uuid(rec.id);
         row.add_uuid(rec.physicality_id);
         copy_.add_row(row);
     } else {
         std::string uuid = hash_to_uuid(rec.id);
-
-        // Skip dedup check in direct mode (caller guarantees uniqueness)
         if (use_dedup_) {
-            if (seen_.count(uuid)) return;
-            seen_.insert(uuid);
+            if (seen_.count(rec.id)) return;
+            seen_.insert(rec.id);
         }
-
         copy_.add_row({uuid, hash_to_uuid(rec.physicality_id)});
     }
 }
@@ -68,15 +70,7 @@ RelationSequenceStore::RelationSequenceStore(PostgresConnection& db, bool use_te
 }
 
 std::string RelationSequenceStore::hash_to_uuid(const BLAKE3Pipeline::Hash& hash) {
-    char buf[37];
-    char* p = buf;
-    for (int i = 0; i < 16; ++i) {
-        if (i == 4 || i == 6 || i == 8 || i == 10) *p++ = '-';
-        *p++ = hex_chars[(hash[i] >> 4) & 0xF];
-        *p++ = hex_chars[hash[i] & 0xF];
-    }
-    *p = '\0';
-    return std::string(buf, 36);
+    return internal_hash_to_uuid(hash);
 }
 
 void RelationSequenceStore::store(const RelationSequenceRecord& rec) {
@@ -111,29 +105,21 @@ RelationRatingStore::RelationRatingStore(PostgresConnection& db, bool use_binary
     : copy_(db, true), use_binary_(use_binary) {
     copy_.set_binary(use_binary);
     copy_.begin_table("hartonomous.relationrating",
-                      {"relationid", "observations", "ratingvalue", "kfactor"});
+                      {"relationid", "observations", "consensuselo", "baseelo", "kfactor"});
 
-    // ELO Evolution Logic - need ON CONFLICT for rating updates
-    // Weighted average: new_rating = (old_rating * old_obs + new_rating * new_obs) / (old_obs + new_obs)
+    // Dual-ELO Evolution Logic using native weighted_elo_update
     copy_.set_conflict_clause(
         "ON CONFLICT (relationid) DO UPDATE SET "
-        "observations = hartonomous.relationrating.observations + EXCLUDED.observations, "
-        "ratingvalue = (hartonomous.relationrating.ratingvalue * hartonomous.relationrating.observations + "
-                       "EXCLUDED.ratingvalue * EXCLUDED.observations) / "
-                       "(hartonomous.relationrating.observations + EXCLUDED.observations)"
+        "baseelo = hartonomous.weighted_elo_update("
+                   "hartonomous.relationrating.baseelo, hartonomous.relationrating.observations, "
+                   "EXCLUDED.baseelo, EXCLUDED.observations), "
+        "consensuselo = hartonomous.relationrating.consensuselo + EXCLUDED.consensuselo, "
+        "observations = hartonomous.relationrating.observations + EXCLUDED.observations"
     );
 }
 
 std::string RelationRatingStore::hash_to_uuid(const BLAKE3Pipeline::Hash& hash) {
-    char buf[37];
-    char* p = buf;
-    for (int i = 0; i < 16; ++i) {
-        if (i == 4 || i == 6 || i == 8 || i == 10) *p++ = '-';
-        *p++ = hex_chars[(hash[i] >> 4) & 0xF];
-        *p++ = hex_chars[hash[i] & 0xF];
-    }
-    *p = '\0';
-    return std::string(buf, 36);
+    return internal_hash_to_uuid(hash);
 }
 
 void RelationRatingStore::store(const RelationRatingRecord& rec) {
@@ -141,14 +127,16 @@ void RelationRatingStore::store(const RelationRatingRecord& rec) {
         BulkCopy::BinaryRow row;
         row.add_uuid(rec.relation_id);
         row.add_int64(static_cast<int64_t>(rec.observations));
-        row.add_double(rec.rating_value);
+        row.add_double(rec.consensus_elo);
+        row.add_double(rec.base_elo);
         row.add_double(rec.k_factor);
         copy_.add_row(row);
     } else {
         copy_.add_row({
             hash_to_uuid(rec.relation_id),
             std::to_string(rec.observations),
-            std::to_string(rec.rating_value),
+            std::to_string(rec.consensus_elo),
+            std::to_string(rec.base_elo),
             std::to_string(rec.k_factor)
         });
     }

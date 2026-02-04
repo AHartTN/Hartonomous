@@ -5,6 +5,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <array>
 
 namespace Hartonomous {
 
@@ -56,11 +57,14 @@ public:
         std::vector<uint8_t> buffer;
         int16_t num_fields = 0;
 
+        explicit BinaryRow(size_t reserve_bytes = 128) { buffer.reserve(reserve_bytes); }
+
         void add_uuid(const std::array<uint8_t, 16>& uuid); // 16 bytes raw
         void add_int32(int32_t val);
         void add_int64(int64_t val);
         void add_double(double val);
         void add_text(const std::string& text);
+        void add_bytes(const void* data, size_t len);
         void add_null();
         
         void clear() { buffer.clear(); num_fields = 0; }
@@ -77,7 +81,6 @@ private:
     
     // Binary COPY helpers
     void write_binary_header();
-    void write_binary_trailer();
 
     void escape_value_into_buffer(const std::string& value);
     std::string quote_identifier(const std::string& id) const;

@@ -1,0 +1,37 @@
+[0;36m=== Hartonomous Database Setup ===[0m
+
+[0;36mChecking PostgreSQL...[0m
+[0;32m✓ PostgreSQL found: 18.1[0m
+[0;36mChecking PostGIS...[0m
+[0;32m✓ PostGIS found: 3.6[0m
+
+[0;36mDropping existing database...[0m
+ pg_terminate_backend 
+----------------------
+(0 rows)
+
+DROP DATABASE
+[0;32m✓ Dropped existing database[0m
+
+[0;36mCreating database: hypercube...[0m
+CREATE DATABASE
+[0;32m✓ Database created[0m
+
+[0;36mCreating hartonomous schema...[0m
+CREATE SCHEMA
+
+[0;36mInstalling extensions...[0m
+[0;36m  Installing postgis...[0m
+CREATE EXTENSION
+[0;32m  ✓ postgis extension installed[0m
+[0;36m  Installing s3...[0m
+CREATE EXTENSION
+[0;32m  ✓ s3 extension installed[0m
+[0;36m  Installing hartonomous...[0m
+ERROR:  could not access file "MODULE_PATHNAME": No such file or directory
+CONTEXT:  SQL statement "CREATE OR REPLACE FUNCTION uint64_add(hartonomous.uint64, hartonomous.uint64)
+RETURNS hartonomous.uint64
+AS 'MODULE_PATHNAME', 'uint64_add'
+LANGUAGE C IMMUTABLE STRICT"
+extension script file "hartonomous--0.1.0.sql", near line 30
+[0;31m  ✗ Could not install hartonomous extension[0m

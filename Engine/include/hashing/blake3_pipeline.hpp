@@ -10,12 +10,24 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <cstring>
 
 extern "C" {
 #include <blake3.h>
 }
 
 namespace Hartonomous {
+
+/**
+ * @brief Standard hasher for BLAKE3 128-bit hashes to enable use in unordered_set/map
+ */
+struct HashHasher {
+    size_t operator()(const std::array<uint8_t, 16>& hash) const {
+        size_t h;
+        std::memcpy(&h, hash.data(), sizeof(size_t));
+        return h;
+    }
+};
 
 /**
  * @brief BLAKE3 hashing with SIMD optimization

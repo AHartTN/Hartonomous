@@ -36,24 +36,22 @@ Inference is modeled as **Vibration Propagation**:
 3. **Damping:** Low ELO strands (noise/lies) dampen the vibration instantly.  
 4. **Resonance:** Concepts that share multiple high-tension connections "resonate" (activate) together.
 
-### **3\. The Borsuk-Ulam Theorem & Antipodal Semantics**
+### **3\. Scalar Gradients and Manifold Degrees**
 
-One of the critical failures of vector-based AI is the inability to distinguish between synonyms and antonyms, as they often share identical linguistic contexts (e.g., "The water is very \[hot/cold\]").  
-Hartonomous leverages the **Borsuk-Ulam Theorem** to solve this topologically.  
-**Theorem Application:**  
-For any continuous function $f$ mapping the $n$-sphere ($S^n$) to Euclidean space ($R^n$), there exists a pair of antipodal points $x$ and $-x$ such that $f(x) \= f(-x)$.  
-**In Hartonomous:**
+One of the critical failures of vector-based AI is the inability to distinguish between degrees of a property and binary opposites. Traditional LLMs often cluster "Hot" and "Cold" because they share context, but Hartonomous represents them as **Points on a Linear Manifold**.
 
-* Let $f(x)$ be the **Context Function** (the surrounding linguistic or structural patterns).  
-* "Hot" and "Cold" share the same context ($f(\\text{hot}) \\approx f(\\text{cold})$).  
-* Therefore, on the $S^3$ hypersphere, "Hot" and "Cold" must be **Antipodal Points**.
+**The Gradient Model:**
+Property-spaces like Temperature, Velocity, or Morality are not binary flips; they are **Trajectories** (Level 2+ manifolds) along the $S^3$ surface.
+
+* **Linear Manifolds:** "Hot" and "Cold" are not antipodal ($180^\circ$ apart). They are distant nodes on a single continuous path.
+* **Intermediate States:** "Warm," "Cool," and "Lukewarm" are coordinates positioned along the geodesic between the anchors.
+* **Contextual Resonance:** "Hot" and "Cold" share a similar "Radar Signature" (they both connect to "Temperature," "Water," "Sensory"), but their 4D coordinates reflect their relative magnitude on the scale.
 
 **The Geometric Consequence:**
+* **Synonyms:** Cluster nearby (High spatial proximity, high overlap).
+* **Antonyms/Opposites:** Are simply points with low proximity on a shared linear manifold. They are "far" in one dimension (the property dimension) but "near" in others (the context dimensions).
 
-* **Synonyms:** Cluster nearby (High spatial proximity, similar tension).  
-* **Antonyms:** Maximally distant (Antipodal), yet connected by similar tension shapes (shared context).
-
-This ensures that while "Hot" and "Cold" have similar "Radar Signatures" (they both pull on "temperature," "water," "weather"), they are physically located at opposite ends of the 4D substrate, preventing semantic collision.
+This ensures that the **Walk Engine** can traverse the gradient (e.g., cooling down a concept by stepping from "Boiling" toward "Frozen") rather than being forced into a binary jump.
 
 ### **4\. Mathematical Representations**
 

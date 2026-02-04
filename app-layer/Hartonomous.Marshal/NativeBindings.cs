@@ -148,10 +148,16 @@ public unsafe struct KnowledgeGap
     public double Confidence;
 }
 
+public enum EntityType : int
+{
+    Composition = 0,
+    Atom = 1
+}
+
 [StructLayout(LayoutKind.Sequential)]
 public unsafe struct SubProblem
 {
-    public ulong NodeId;
+    public fixed byte NodeId[16];
     public byte* Description;
     public int Difficulty;
     [MarshalAs(UnmanagedType.I1)]

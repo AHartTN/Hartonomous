@@ -1,0 +1,8 @@
+Ingesting text from: test-data/moby_dick.txt
+Ingesting file: test-data/moby_dick.txt
+Ingesting 1256545 bytes...
+Loading global caches...
+Error: PostgreSQL query failed: ERROR:  relation "hartonomous.composition" does not exist
+LINE 1: SELECT id FROM hartonomous.composition
+                       ^
+

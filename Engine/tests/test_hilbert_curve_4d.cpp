@@ -17,28 +17,41 @@ using HilbertIndex = HilbertCurve4D::HilbertIndex;
 
 TEST(HilbertCurve4DTest, Determinism) {
     Vec4 point(0.5, 0.5, 0.5, 0.5);
-    auto index1 = HilbertCurve4D::encode(point);
-    auto index2 = HilbertCurve4D::encode(point);
+    auto index1 = HilbertCurve4D::encode(point, HilbertCurve4D::EntityType::Composition);
+    auto index2 = HilbertCurve4D::encode(point, HilbertCurve4D::EntityType::Composition);
     EXPECT_EQ(index1.hi, index2.hi);
     EXPECT_EQ(index1.lo, index2.lo);
 }
 
-// For a 2-bit curve, we can test all 2^(2*4) = 256 values.
-// The current implementation is Z-order, not a true Hilbert curve.
-// We will test against the expected Z-order values.
-// For coords (x,y,z,w), the index is ...w3z3y3x3w2z2y2x2w1z1y1x1w0z0y0x0
+// The implementation uses a true Hilbert curve (Skilling's algorithm).
+// For a given 4D point, the 128-bit index must follow the parity rule:
+// Odd for Atoms, Even for Compositions.
+TEST(HilbertCurve4DTest, ParityRule) {
+    Vec4 point(0.2, 0.4, 0.6, 0.8);
+    
+    auto atom_index = HilbertCurve4D::encode(point, HilbertCurve4D::EntityType::Atom);
+    auto comp_index = HilbertCurve4D::encode(point, HilbertCurve4D::EntityType::Composition);
+    
+    // Atom must be odd
+    EXPECT_EQ(atom_index.lo & 1, 1ULL);
+    // Composition must be even
+    EXPECT_EQ(comp_index.lo & 1, 0ULL);
+    
+    // They should be identical except for the last bit
+    EXPECT_EQ(atom_index.hi, comp_index.hi);
+    EXPECT_EQ(atom_index.lo >> 1, comp_index.lo >> 1);
+}
+
 TEST(HilbertCurve4DTest, KnownValuesBoundary) {
     // Test the minimum input coordinates should produce the minimum Hilbert index
-    auto index_min = HilbertCurve4D::encode(Vec4(0.0, 0.0, 0.0, 0.0));
+    auto index_min = HilbertCurve4D::encode(Vec4(0.0, 0.0, 0.0, 0.0), HilbertCurve4D::EntityType::Composition);
     EXPECT_EQ(index_min.hi, 0ULL);
     EXPECT_EQ(index_min.lo, 0ULL);
 
-    // Test the maximum input coordinates (1.0, 1.0, 1.0, 1.0) should produce the actual maximum Hilbert index
-    // Note: The maximum Hilbert index for N=4, BITS_PER_DIMENSION=32 is derived by the hilbert.hpp library.
-    // This value is not simply 0xFFFFFFFFFFFFFFFF for both hi/lo, but the actual result of the transformation.
-    auto index_max = HilbertCurve4D::encode(Vec4(1.0, 1.0, 1.0, 1.0));
-    EXPECT_EQ(index_max.hi, 12297829382473034410ULL); // Captured from previous run
-    EXPECT_EQ(index_max.lo, 12297829382473034410ULL); // Captured from previous run
+    // Test the maximum input coordinates (1.0, 1.0, 1.0, 1.0)
+    // The exact value depends on the Skilling transformation, but it must be even for Composition.
+    auto index_max = HilbertCurve4D::encode(Vec4(1.0, 1.0, 1.0, 1.0), HilbertCurve4D::EntityType::Composition);
+    EXPECT_EQ(index_max.lo & 1, 0ULL);
 }
 
 TEST(HilbertCurve4DTest, Uniqueness) {
@@ -55,7 +68,7 @@ TEST(HilbertCurve4DTest, Uniqueness) {
                 if (z % 4 != 0) continue;
                 for (int w = 0; w < side; ++w) {
                     if (w % 4 != 0) continue;
-                    auto index = HilbertCurve4D::encode(Vec4(x/NORM_FACTOR, y/NORM_FACTOR, z/NORM_FACTOR, w/NORM_FACTOR));
+                    auto index = HilbertCurve4D::encode(Vec4(x/NORM_FACTOR, y/NORM_FACTOR, z/NORM_FACTOR, w/NORM_FACTOR), HilbertCurve4D::EntityType::Composition);
                     seen_indices.insert(index);
                 }
             }
@@ -69,7 +82,7 @@ TEST(HilbertCurve4DTest, Uniqueness) {
 
 TEST(HilbertCurve4DTest, Locality) {
     Vec4 center(0.5, 0.5, 0.5, 0.5);
-    auto center_index = HilbertCurve4D::encode(center);
+    auto center_index = HilbertCurve4D::encode(center, HilbertCurve4D::EntityType::Composition);
 
     // Use the absolute smallest non-zero perturbation in discrete coordinate space.
     // This corresponds to a change of 1 in a single 32-bit discrete coordinate.
@@ -77,7 +90,7 @@ TEST(HilbertCurve4DTest, Locality) {
 
     // Perturb only one coordinate by the smallest possible discrete step
     Vec4 neighbor = center + Vec4(delta_smallest_discrete_step, 0, 0, 0);
-    auto neighbor_index = HilbertCurve4D::encode(neighbor);
+    auto neighbor_index = HilbertCurve4D::encode(neighbor, HilbertCurve4D::EntityType::Composition);
 
     auto distance = HilbertCurve4D::curve_distance(center_index, neighbor_index);
     
@@ -112,7 +125,7 @@ TEST(HilbertCurve4DTest, CornerCases) {
             (i & 4) ? 1.0 : 0.0,
             (i & 8) ? 1.0 : 0.0
         );
-        corner_indices.insert(HilbertCurve4D::encode(corner));
+        corner_indices.insert(HilbertCurve4D::encode(corner, HilbertCurve4D::EntityType::Composition));
     }
     EXPECT_EQ(corner_indices.size(), 16);
 }

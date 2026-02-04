@@ -1,6 +1,6 @@
 /**
  * @file semantic_query.cpp
- * @brief Semantic query implementation
+ * @brief Semantic query implementation - Gravitational Truth and Relationship Traversal
  */
 
 #include <query/semantic_query.hpp>
@@ -8,6 +8,7 @@
 #include <cctype>
 #include <sstream>
 #include <map>
+#include <cmath>
 
 namespace Hartonomous {
 
@@ -15,7 +16,7 @@ SemanticQuery::SemanticQuery(PostgresConnection& db) : db_(db) {}
 
 std::optional<std::string> SemanticQuery::find_composition(const std::string& text) {
     auto result = db_.query_single(
-        "SELECT text FROM hartonomous.compositions WHERE LOWER(text) = LOWER($1) LIMIT 1",
+        "SELECT text FROM hartonomous.composition WHERE LOWER(text) = LOWER($1) LIMIT 1",
         {text}
     );
 
@@ -26,7 +27,7 @@ std::optional<SemanticQuery::CompositionInfo> SemanticQuery::get_composition_inf
     std::optional<CompositionInfo> info;
 
     db_.query(
-        "SELECT hash, text FROM hartonomous.compositions WHERE LOWER(text) = LOWER($1) LIMIT 1",
+        "SELECT id, text FROM hartonomous.composition WHERE LOWER(text) = LOWER($1) LIMIT 1",
         {text},
         [&](const std::vector<std::string>& row) {
             CompositionInfo comp;
@@ -42,35 +43,31 @@ std::optional<SemanticQuery::CompositionInfo> SemanticQuery::get_composition_inf
 std::vector<QueryResult> SemanticQuery::find_related(const std::string& query_text, size_t limit) {
     std::vector<QueryResult> results;
 
-    // Get composition info for query
     auto query_comp = get_composition_info(query_text);
     if (!query_comp) {
-        return results;  // Not found
+        return results;
     }
 
-    // Find all relations containing this composition
     std::string sql = R"(
         WITH query_relations AS (
-            -- Find all relations containing the query composition
-            SELECT DISTINCT rc.relation_hash
-            FROM hartonomous.relation_children rc
-            WHERE rc.child_hash = $1
+            SELECT DISTINCT rs.relationid
+            FROM hartonomous.relationsequence rs
+            WHERE rs.compositionid = $1
         ),
-        cooccurring_compositions AS (
-            -- Find all compositions in those relations
+        cooccurring AS (
             SELECT
-                c.hash,
+                c.id,
                 c.text,
-                COUNT(DISTINCT qr.relation_hash) AS co_occurrence_count
+                COUNT(DISTINCT qr.relationid) AS co_occurrence_count
             FROM query_relations qr
-            JOIN hartonomous.relation_children rc ON rc.relation_hash = qr.relation_hash
-            JOIN hartonomous.compositions c ON c.hash = rc.child_hash
-            WHERE c.hash != $1  -- Exclude query itself
-            GROUP BY c.hash, c.text
+            JOIN hartonomous.relationsequence rs ON rs.relationid = qr.relationid
+            JOIN hartonomous.composition c ON c.id = rs.compositionid
+            WHERE c.id != $1
+            GROUP BY c.id, c.text
             ORDER BY co_occurrence_count DESC
             LIMIT $2
         )
-        SELECT text, co_occurrence_count FROM cooccurring_compositions
+        SELECT text, co_occurrence_count FROM cooccurring
     )";
 
     db_.query(
@@ -79,7 +76,69 @@ std::vector<QueryResult> SemanticQuery::find_related(const std::string& query_te
         [&](const std::vector<std::string>& row) {
             QueryResult result;
             result.text = row[0];
-            result.confidence = std::stod(row[1]);  // Co-occurrence count
+            result.confidence = std::stod(row[1]);
+            results.push_back(result);
+        }
+    );
+
+    return results;
+}
+
+std::vector<QueryResult> SemanticQuery::find_gravitational_truth(const std::string& query_text, double min_elo, size_t limit) {
+    std::vector<QueryResult> results;
+
+    auto query_comp = get_composition_info(query_text);
+    if (!query_comp) return results;
+
+    // Truths Cluster, Lies Scatter.
+    // 4D Gravitational Consensus:
+    // - High ELO (Individual Quality)
+    // - High Observations (Social Consensus)
+    // - Geometric Proximity (Topological Consensus)
+    std::string sql = R"(
+        WITH candidates AS (
+            SELECT 
+                rs2.compositionid as target_id,
+                c.text,
+                rr.ratingvalue as elo,
+                rr.observations,
+                p.centroid
+            FROM hartonomous.relationsequence rs1
+            JOIN hartonomous.relationsequence rs2 ON rs2.relationid = rs1.relationid
+            JOIN hartonomous.relationrating rr ON rr.relationid = rs1.relationid
+            JOIN hartonomous.composition c ON c.id = rs2.compositionid
+            JOIN hartonomous.physicality p ON p.id = c.physicalityid
+            WHERE rs1.compositionid = $1 AND rs2.compositionid != $1
+              AND rr.ratingvalue >= $2
+        ),
+        clusters AS (
+            SELECT 
+                c1.target_id,
+                c1.text,
+                c1.elo,
+                c1.observations,
+                (
+                    SELECT COUNT(*) 
+                    FROM candidates c2 
+                    WHERE ST_3DDistance(c1.centroid, c2.centroid) < 0.05
+                ) as cluster_density
+            FROM candidates c1
+        )
+        SELECT 
+            text, 
+            (elo * LOG(observations + 1) * cluster_density) as gravitational_mass
+        FROM clusters
+        ORDER BY gravitational_mass DESC
+        LIMIT $3
+    )";
+
+    db_.query(
+        sql,
+        {query_comp->hash, std::to_string(min_elo), std::to_string(limit)},
+        [&](const std::vector<std::string>& row) {
+            QueryResult result;
+            result.text = row[0];
+            result.confidence = std::stod(row[1]) / 10000.0; 
             results.push_back(result);
         }
     );
@@ -94,7 +153,7 @@ std::vector<std::string> SemanticQuery::find_relations_containing(const std::str
     if (!comp) return relation_hashes;
 
     db_.query(
-        "SELECT relation_hash FROM hartonomous.relation_children WHERE child_hash = $1",
+        "SELECT relationid FROM hartonomous.relationsequence WHERE compositionid = $1",
         {comp->hash},
         [&](const std::vector<std::string>& row) {
             relation_hashes.push_back(row[0]);
@@ -106,32 +165,19 @@ std::vector<std::string> SemanticQuery::find_relations_containing(const std::str
 
 std::vector<std::string> SemanticQuery::extract_keywords(const std::string& text) {
     std::vector<std::string> keywords;
-
-    // Simple keyword extraction: remove common words, split on whitespace
     std::istringstream iss(text);
     std::string word;
 
-    // Common stop words to skip
     std::vector<std::string> stop_words = {
         "what", "is", "the", "a", "an", "of", "in", "to", "for", "on", "with", "at",
         "by", "from", "as", "and", "or", "but", "not", "this", "that", "these", "those"
     };
 
     while (iss >> word) {
-        // Convert to lowercase
         std::transform(word.begin(), word.end(), word.begin(), ::tolower);
-
-        // Remove punctuation
         word.erase(std::remove_if(word.begin(), word.end(), ::ispunct), word.end());
-
-        // Skip stop words
-        if (std::find(stop_words.begin(), stop_words.end(), word) != stop_words.end()) {
-            continue;
-        }
-
-        // Skip empty
+        if (std::find(stop_words.begin(), stop_words.end(), word) != stop_words.end()) continue;
         if (word.empty()) continue;
-
         keywords.push_back(word);
     }
 
@@ -140,41 +186,25 @@ std::vector<std::string> SemanticQuery::extract_keywords(const std::string& text
 
 bool SemanticQuery::is_proper_noun(const std::string& text) {
     if (text.empty()) return false;
-
-    // Simple heuristic: starts with capital letter
     return std::isupper(text[0]);
 }
 
 std::optional<QueryResult> SemanticQuery::answer_question(const std::string& question) {
-    // Extract keywords from question
     auto keywords = extract_keywords(question);
+    if (keywords.empty()) return std::nullopt;
 
-    if (keywords.empty()) {
-        return std::nullopt;
-    }
-
-    // Find compositions for each keyword
-    std::map<std::string, int> composition_scores;
+    std::map<std::string, double> composition_scores;
 
     for (const auto& keyword : keywords) {
-        // Find compositions related to this keyword
         auto related = find_related(keyword, 20);
-
         for (const auto& result : related) {
-            // Give higher weight to proper nouns (likely answers)
-            int score = (int)result.confidence;
-            if (is_proper_noun(result.text)) {
-                score *= 2;
-            }
-
+            double score = result.confidence;
+            if (is_proper_noun(result.text)) score *= 2.0;
             composition_scores[result.text] += score;
         }
     }
 
-    // Find highest scoring composition
-    if (composition_scores.empty()) {
-        return std::nullopt;
-    }
+    if (composition_scores.empty()) return std::nullopt;
 
     auto best = std::max_element(
         composition_scores.begin(),

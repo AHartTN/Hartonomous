@@ -1,0 +1,22 @@
+Setting up database: hypercube
+Database 'hypercube' already exists.
+CREATE SCHEMA
+psql:/home/ahart/Projects/Hartonomous/UCDIngestor/ucd_gene_pool.sql:14: NOTICE:  table "code_points" does not exist, skipping
+DROP TABLE
+CREATE TABLE
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+psql:/home/ahart/Projects/Hartonomous/UCDIngestor/ucd_gene_pool.sql:49: NOTICE:  table "collation_weights" does not exist, skipping
+DROP TABLE
+CREATE TABLE
+CREATE INDEX
+CREATE INDEX
+psql:/home/ahart/Projects/Hartonomous/UCDIngestor/ucd_gene_pool.sql:70: NOTICE:  table "confusables" does not exist, skipping
+DROP TABLE
+CREATE TABLE
+CREATE INDEX
+psql:/home/ahart/Projects/Hartonomous/UCDIngestor/ucd_gene_pool.sql:83: NOTICE:  table "emoji_sequences" does not exist, skipping
+DROP TABLE
+CREATE TABLE
+Setup complete. You can now run the ingestor.

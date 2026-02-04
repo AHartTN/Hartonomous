@@ -7,6 +7,7 @@
 \i 'domains/uint64.sql'
 \i 'domains/uint128.sql'
 \i 'domains/hilbert128.sql'
+\i 'uint64_ops.sql'
 
 -- Core Schema
 \i 'tables/tenant.sql'

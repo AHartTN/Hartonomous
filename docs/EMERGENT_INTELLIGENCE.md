@@ -216,21 +216,18 @@ LIMIT 50;
 -- Defined by relationships, not by embedding
 ```
 
-**Borsuk-Ulam Theorem:**
+**Manifold Projections (Hopf Fibration):**
 
 ```
-Borsuk-Ulam: For any continuous function f: S^n → R^n,
-there exists a pair of antipodal points x and -x such that f(x) = f(-x)
-
 Applied to Hartonomous:
   - S³ = 4D hypersphere where compositions live
   - Hopf fibration = continuous map S³ → S² (4D → 3D projection)
-  - By Borsuk-Ulam: There exist antipodal pairs in S³ that map to the same point in S²
+  - Manifold Degrees: Concepts are trajectories, not just points.
 
 Implication:
-  - Different concepts in 4D can project to same 3D position
-  - Synonyms, analogies, metaphors emerge naturally!
-  - "king" and "monarch" might be near-antipodal, both mapping to "royalty" in projection
+  - Different coordinates in 4D can project to the same 3D fiber.
+  - Synonyms, analogies, and metaphors emerge from these fibers.
+  - "king" and "monarch" occupy similar regions in 4D, mapping to the same "fiber" of royalty.
 
 Visualization:
          S³ (4D space)                    S² (3D projection via Hopf)
@@ -243,9 +240,9 @@ Visualization:
               /                               \
              /                                 \
     "monarch" ●                                 ● "royalty"
-    (antipodal)                             (SAME POINT!)
+    (same fiber)                             (SAME POINT!)
 
-The 4D geometry naturally creates semantic equivalences!
+The 4D geometry naturally creates semantic equivalences via the Hopf Fibration!
 ```
 
 ---

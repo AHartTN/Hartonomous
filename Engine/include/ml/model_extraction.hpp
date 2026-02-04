@@ -426,33 +426,42 @@ public:
  */
 class ModelExtractor {
 public:
-    /**
-     * @brief Extract semantic graph from any model
-     *
-     * @param model_type Architecture type ("transformer", "cnn", "rnn", "gnn")
-     * @param model_data Model-specific data (attention weights, filters, etc.)
-     * @return ExtractedGraph
-     */
+    struct TransformerData {
+        std::vector<Eigen::MatrixXd> attention;
+        std::vector<uint64_t> tokens;
+    };
+
+    struct CNNData {
+        std::vector<Eigen::MatrixXd> features;
+        std::vector<Eigen::MatrixXd> filters;
+    };
+
+    struct RNNData {
+        Eigen::MatrixXd hidden_states;
+        Eigen::MatrixXd weights;
+    };
+
+    struct GNNData {
+        Eigen::SparseMatrix<double> adjacency;
+        std::vector<uint64_t> node_ids;
+    };
+
     static ExtractedGraph extract(
         const std::string& model_type,
-        [[maybe_unused]] void* model_data  // Type-erased pointer to model-specific data (reserved for full implementation)
+        void* model_data
     ) {
         if (model_type == "transformer") {
-            // Cast to transformer data and extract
-            // auto* data = static_cast<TransformerData*>(model_data);
-            // return TransformerExtractor::extract(data->attention, data->tokens);
+            auto* data = static_cast<TransformerData*>(model_data);
+            return TransformerExtractor::extract(data->attention, data->tokens);
         } else if (model_type == "cnn") {
-            // Cast to CNN data and extract
-            // auto* data = static_cast<CNNData*>(model_data);
-            // return CNNExtractor::extract(data->features, data->filters);
+            auto* data = static_cast<CNNData*>(model_data);
+            return CNNExtractor::extract(data->features, data->filters);
         } else if (model_type == "rnn") {
-            // Cast to RNN data and extract
-            // auto* data = static_cast<RNNData*>(model_data);
-            // return RNNExtractor::extract(data->hidden_states, data->weights);
+            auto* data = static_cast<RNNData*>(model_data);
+            return RNNExtractor::extract(data->hidden_states, data->weights);
         } else if (model_type == "gnn") {
-            // Cast to GNN data and extract
-            // auto* data = static_cast<GNNData*>(model_data);
-            // return GNNExtractor::extract(data->adjacency, data->node_ids);
+            auto* data = static_cast<GNNData*>(model_data);
+            return GNNExtractor::extract(data->adjacency, data->node_ids);
         }
 
         throw std::runtime_error("Unsupported model type: " + model_type);

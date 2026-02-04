@@ -2,6 +2,7 @@
 #include <stdexcept>
 #include <utility>
 #include <cstring>
+#include <algorithm>
 #include <arpa/inet.h> // For network byte order (htobe32, htobe64)
 
 namespace Hartonomous {
@@ -54,7 +55,7 @@ void BulkCopy::BinaryRow::add_int64(int64_t val) {
 
     // split 64-bit for endianness if htobe64 not available, but assuming Linux/GCC here
     // Postgres expects big-endian 64-bit
-    uint64_t net_val = __builtin_bswap64(val); 
+    uint64_t net_val = __builtin_bswap64(static_cast<uint64_t>(val)); 
     uint8_t* v = reinterpret_cast<uint8_t*>(&net_val);
     buffer.insert(buffer.end(), v, v + 8);
     num_fields++;
@@ -80,6 +81,16 @@ void BulkCopy::BinaryRow::add_text(const std::string& text) {
     buffer.insert(buffer.end(), p, p + 4);
     
     buffer.insert(buffer.end(), text.begin(), text.end());
+    num_fields++;
+}
+
+void BulkCopy::BinaryRow::add_bytes(const void* data, size_t len) {
+    int32_t net_len = htonl(static_cast<int32_t>(len));
+    uint8_t* p = reinterpret_cast<uint8_t*>(&net_len);
+    buffer.insert(buffer.end(), p, p + 4);
+    
+    const uint8_t* d = reinterpret_cast<const uint8_t*>(data);
+    buffer.insert(buffer.end(), d, d + len);
     num_fields++;
 }
 
@@ -133,7 +144,7 @@ std::string BulkCopy::quote_identifier(const std::string& id) const {
     out.reserve(id.size() + 2);
     out.push_back('"');
     for (char c : id) {
-        if (c == '"') out.append("\"\"");
+        if (c == '"') out.append("\"");
         else out.push_back(c);
     }
     out.push_back('"');
@@ -165,20 +176,15 @@ void BulkCopy::write_binary_header() {
     static const uint8_t header[] = {'P','G','C','O','P','Y','\n',0xFF,'\r','\n','\0'};
     bin_buffer_.insert(bin_buffer_.end(), std::begin(header), std::end(header));
     
-    // Flags (0)
+    // Flags (0) - network byte order
     int32_t flags = 0;
-    uint8_t* p = reinterpret_cast<uint8_t*>(&flags);
-    bin_buffer_.insert(bin_buffer_.end(), p, p + 4);
+    uint8_t f[4];
+    int32_t net_flags = htonl(flags);
+    std::memcpy(f, &net_flags, 4);
+    bin_buffer_.insert(bin_buffer_.end(), f, f + 4);
     
     // Header Ext Length (0)
-    bin_buffer_.insert(bin_buffer_.end(), p, p + 4);
-}
-
-void BulkCopy::write_binary_trailer() {
-    // -1 indicates end of file
-    int16_t trailer = htons(-1);
-    uint8_t* p = reinterpret_cast<uint8_t*>(&trailer);
-    bin_buffer_.insert(bin_buffer_.end(), p, p + 2);
+    bin_buffer_.insert(bin_buffer_.end(), f, f + 4);
 }
 
 void BulkCopy::start_copy_if_needed() {
