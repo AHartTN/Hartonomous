@@ -14,13 +14,17 @@ PG_MODULE_MAGIC;
 PG_FUNCTION_INFO_V1(geodesic_distance_s3_c);
 Datum geodesic_distance_s3_c(PG_FUNCTION_ARGS)
 {
-    void* ga = PG_GETARG_POINTER(0);
-    void* gb = PG_GETARG_POINTER(1);
+    // Extract PostGIS geometry safely
+    Datum da = PG_GETARG_DATUM(0);
+    Datum db = PG_GETARG_DATUM(1);
 
-    s3::Vec4 a = s3_pg::geom_to_vec4(ga);
-    s3::Vec4 b = s3_pg::geom_to_vec4(gb);
+    // Convert to Vec4 using the safe detoasting helper
+    s3::Vec4 a = s3_pg::datum_to_vec4(da);
+    s3::Vec4 b = s3_pg::datum_to_vec4(db);
 
+    // Call your engine’s canonical S³ geodesic distance
     double d = s3::geodesic_distance(a, b);
+
     PG_RETURN_FLOAT8(d);
 }
 

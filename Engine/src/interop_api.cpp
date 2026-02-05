@@ -1,17 +1,26 @@
 #include <interop_api.h>
 #include <cognitive/godel_engine.hpp>
 #include <cognitive/walk_engine.hpp>
-#include <ingestion/text_ingester.hpp>
+#include <ingestion/universal_ingester.hpp>
 #include <database/postgres_connection.hpp>
+#include <hashing/blake3_pipeline.hpp>
+#include <unicode/codepoint_projection.hpp>
+#include <spatial/hilbert_curve_4d.hpp>
+#include <geometry/s3_centroid.hpp>
 #include <stdexcept>
 #include <cstring>
 #include <memory>
+#include <endian.h>
 
 // Thread-local error storage
 thread_local std::string g_last_error;
 
 const char* hartonomous_get_last_error() {
     return g_last_error.c_str();
+}
+
+const char* hartonomous_get_version() {
+    return "0.1.0";
 }
 
 void set_error(const std::exception& e) {
@@ -53,16 +62,57 @@ void hartonomous_db_destroy(h_db_connection_t handle) {
 
 bool hartonomous_db_is_connected(h_db_connection_t handle) {
     if (!handle) return false;
-    // Assuming PostgresConnection has an is_connected() or similar check, 
-    // or just valid instance implies connection attempted.
-    // For now we assume if the object exists, it's "valid" enough.
-    // Ideally PostgresConnection should expose connection state.
-    return true; 
+    auto* db = static_cast<Hartonomous::PostgresConnection*>(handle);
+    return db->is_connected(); 
 }
 
-#include <ingestion/universal_ingester.hpp>
+// =============================================================================
+//  Core Primitives (Hashing & Projection)
+// =============================================================================
 
-// ... in hartonomous_ingester_create ...
+void hartonomous_blake3_hash(const char* data, size_t len, uint8_t* out_16b) {
+    auto hash = Hartonomous::BLAKE3Pipeline::hash(data, len);
+    std::memcpy(out_16b, hash.data(), 16);
+}
+
+void hartonomous_blake3_hash_codepoint(uint32_t codepoint, uint8_t* out_16b) {
+    auto hash = Hartonomous::BLAKE3Pipeline::hash_codepoint(static_cast<char32_t>(codepoint));
+    std::memcpy(out_16b, hash.data(), 16);
+}
+
+bool hartonomous_codepoint_to_s3(uint32_t codepoint, double* out_4d) {
+    try {
+        auto proj = hartonomous::unicode::CodepointProjection::project(static_cast<char32_t>(codepoint));
+        std::memcpy(out_4d, proj.s3_position.data(), 4 * sizeof(double));
+        return true;
+    } catch (const std::exception& e) {
+        set_error(e);
+        return false;
+    }
+}
+
+void hartonomous_s3_to_hilbert(const double* in_4d, uint32_t entity_type, uint64_t* out_hi, uint64_t* out_lo) {
+    Eigen::Vector4d unit_coords;
+    for (int i = 0; i < 4; ++i) {
+        unit_coords[i] = (in_4d[i] + 1.0) / 2.0;
+    }
+    
+    auto type = static_cast<hartonomous::spatial::HilbertCurve4D::EntityType>(entity_type);
+    auto hilbert = hartonomous::spatial::HilbertCurve4D::encode(unit_coords, type);
+    
+    *out_hi = hilbert.hi;
+    *out_lo = hilbert.lo;
+}
+
+void hartonomous_s3_compute_centroid(const double* points_4d, size_t count, double* out_4d) {
+    auto centroid = Hartonomous::Geometry::compute_s3_centroid(points_4d, count);
+    std::memcpy(out_4d, centroid.data(), 4 * sizeof(double));
+}
+
+// =============================================================================
+//  Ingestion Service
+// =============================================================================
+
 h_ingester_t hartonomous_ingester_create(h_db_connection_t db_handle) {
     try {
         if (!db_handle) throw std::runtime_error("Invalid database handle");
@@ -87,7 +137,6 @@ bool hartonomous_ingest_text(h_ingester_t handle, const char* text, HIngestionSt
         auto* ingester = static_cast<Hartonomous::UniversalIngester*>(handle);
         auto stats = ingester->ingest_text(text);
         
-        // ... mapping stats ...
         out_stats->atoms_total = stats.atoms_total;
         out_stats->atoms_new = stats.atoms_new;
         out_stats->compositions_total = stats.compositions_total;
@@ -96,6 +145,8 @@ bool hartonomous_ingest_text(h_ingester_t handle, const char* text, HIngestionSt
         out_stats->relations_new = stats.relations_new;
         out_stats->evidence_count = stats.evidence_count;
         out_stats->original_bytes = stats.original_bytes;
+        out_stats->stored_bytes = stats.stored_bytes;
+        out_stats->compression_ratio = stats.compression_ratio;
         out_stats->ngrams_extracted = stats.ngrams_extracted;
         out_stats->ngrams_significant = stats.ngrams_significant;
         out_stats->cooccurrences_found = stats.cooccurrences_found;
@@ -122,6 +173,8 @@ bool hartonomous_ingest_file(h_ingester_t handle, const char* file_path, HIngest
         out_stats->relations_new = stats.relations_new;
         out_stats->evidence_count = stats.evidence_count;
         out_stats->original_bytes = stats.original_bytes;
+        out_stats->stored_bytes = stats.stored_bytes;
+        out_stats->compression_ratio = stats.compression_ratio;
         out_stats->ngrams_extracted = stats.ngrams_extracted;
         out_stats->ngrams_significant = stats.ngrams_significant;
         out_stats->cooccurrences_found = stats.cooccurrences_found;
@@ -342,8 +395,6 @@ void hartonomous_godel_free_plan(HResearchPlan* plan) {
         delete[] plan->knowledge_gaps;
     }
     
-    // We don't free the plan pointer itself as it's likely a stack object or managed by caller
-    // but we clear its members
     plan->original_problem = nullptr;
     plan->sub_problems = nullptr;
     plan->knowledge_gaps = nullptr;

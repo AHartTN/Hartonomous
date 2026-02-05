@@ -1,15 +1,19 @@
 === Hartonomous System Installation ===
 Project Root: /home/ahart/Projects/Hartonomous
 Build Dir:    /home/ahart/Projects/Hartonomous/build/linux-release-max-perf
+PG Lib Dir:   /usr/lib/postgresql/18/lib
 
+Cleaning up old installations...
 Installing Hartonomous Engine to /usr/local...
-✓ Engine library and headers copied.
-Installing libengine.so to PostgreSQL...
-✓ libengine.so copied to /usr/lib/postgresql/18/lib
+✓ libengine_core.so installed.
+✓ libengine_io.so installed.
+✓ Headers copied.
 Installing s3 extension...
-✓ s3 extension files copied.
+✓ s3.so installed.
+✓ s3 extension SQL/Control files copied.
 Installing hartonomous extension...
-✓ hartonomous extension files copied.
+✓ hartonomous.so installed.
+✓ hartonomous extension SQL/Control files copied.
 Updating shared library cache...
 /sbin/ldconfig.real: /opt/intel/oneapi/mkl/2025.3/lib/intel64/libmkl_sycl.so is not an ELF file - it has the wrong magic bytes at the start.
 

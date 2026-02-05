@@ -28,29 +28,48 @@ echo "========================================="
 
 EXTENSION_SO="$SCRIPT_DIR/../PostgresExtension/hartonomous/hartonomous.so"
 EXTENSION_SQL="$SCRIPT_DIR/../PostgresExtension/hartonomous/dist/hartonomous--0.1.0.sql"
+EXTENSION_CONTROL="$SCRIPT_DIR/../PostgresExtension/hartonomous/hartonomous.control"
 
+EXTENSION_S3_SO="$SCRIPT_DIR/../PostgresExtension/s3/s3.so"
+EXTENSION_S3_SQL="$SCRIPT_DIR/../PostgresExtension/s3/dist/s3--0.1.0.sql"
+EXTENSION_S3_CONTROL="$SCRIPT_DIR/../PostgresExtension/s3/s3.control"
+
+PG_LIB_DIR=$(pg_config --pkglibdir)
+PG_SHARE_DIR=$(pg_config --sharedir)
+sudo mkdir -p "$PG_SHARE_DIR/extension"
+
+# --- Install Hartonomous ---
 if [ -f "$EXTENSION_SO" ]; then
     echo "Installing Hartonomous extension files..."
-
-    PG_LIB_DIR=$(pg_config --pkglibdir)
-    PG_SHARE_DIR=$(pg_config --sharedir)
-
     sudo cp "$EXTENSION_SO" "$PG_LIB_DIR/"
-    sudo mkdir -p "$PG_SHARE_DIR/extension"
     sudo cp "$EXTENSION_SQL" "$PG_SHARE_DIR/extension/"
-
-    cat > /tmp/hartonomous.control <<EOF
-comment = 'Hartonomous: Universal Substrate for Intelligence'
-default_version = '0.1.0'
-module_pathname = '\$libdir/hartonomous'
-relocatable = true
-EOF
-
-    sudo cp /tmp/hartonomous.control "$PG_SHARE_DIR/extension/"
+    
+    if [ -f "$EXTENSION_CONTROL" ]; then
+        sudo cp "$EXTENSION_CONTROL" "$PG_SHARE_DIR/extension/"
+    else
+        echo "ERROR: Control file not found at $EXTENSION_CONTROL"
+        exit 1
+    fi
 else
     echo "ERROR: Hartonomous extension not found at $EXTENSION_SO"
     echo "Build it first: cmake --build build/linux-release-max-perf"
     exit 1
+fi
+
+# --- Install S3 ---
+if [ -f "$EXTENSION_S3_SO" ]; then
+    echo "Installing S3 extension files..."
+    sudo cp "$EXTENSION_S3_SO" "$PG_LIB_DIR/"
+    sudo cp "$EXTENSION_S3_SQL" "$PG_SHARE_DIR/extension/"
+    
+    if [ -f "$EXTENSION_S3_CONTROL" ]; then
+        sudo cp "$EXTENSION_S3_CONTROL" "$PG_SHARE_DIR/extension/"
+    else
+        echo "ERROR: Control file not found at $EXTENSION_S3_CONTROL"
+        exit 1
+    fi
+else
+    echo "WARNING: S3 extension not found at $EXTENSION_S3_SO (Skipping installation)"
 fi
 
 # ------------------------------------------------------------------------------
@@ -76,6 +95,7 @@ psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" <<EOF
 CREATE EXTENSION IF NOT EXISTS postgis;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS hartonomous;
+CREATE EXTENSION IF NOT EXISTS s3;
 EOF
 
 # ------------------------------------------------------------------------------

@@ -1,4 +1,4 @@
--- Generated from sql/s3--0.1.0.sql
+-- Generated from /home/ahart/Projects/Hartonomous/PostgresExtension/s3/sql/s3--0.1.0.sql
 -- s3--0.1.0.sql
 -- Core function/operator/opclass registration for s3 extension
 

@@ -11,8 +11,8 @@ SQL_SOURCES := $(shell find sql -type f -name '*.sql')
 DATA = dist/s3--0.1.0.sql
 
 dist/s3--0.1.0.sql: $(SQL_SOURCES)
-	mkdir -p dist
-	../../scripts/linux/build_extension_sql.sh sql/s3--0.1.0.sql dist/s3--0.1.0.sql
+    mkdir -p dist
+    ../../scripts/linux/build_extension_sql.sh sql/s3--0.1.0.sql dist/s3--0.1.0.sql
 
 # Include paths
 PG_CPPFLAGS += -I$(shell pg_config --includedir-server)
@@ -20,6 +20,7 @@ PG_CPPFLAGS += -I$(shell pwd)/../../Engine/include
 PG_CPPFLAGS += -I$(shell pwd)/../../Engine/external/eigen
 PG_CPPFLAGS += -I$(shell pwd)/../../Engine/external/postgis/liblwgeom
 PG_CPPFLAGS += -I$(shell pwd)/../../Engine/external/postgis/libpgcommon
+PG_CPPFLAGS += -I$(shell pwd)/../../Engine/external/postgis/postgis
 PG_CPPFLAGS += -DS3_USE_MKL
 
 # Compiler flags

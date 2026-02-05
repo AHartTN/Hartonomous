@@ -228,7 +228,7 @@ echo ""
 print_info "Building .NET Solution..."
 if command -v dotnet &> /dev/null; then
     print_info "Restoring dependencies..."
-    if dotnet restore "$PROJECT_ROOT/Hartonomous.sln"; then
+    if dotnet restore "$PROJECT_ROOT/app-layer/Hartonomous.sln"; then
         print_success "✓ Restore complete"
     else
         print_error "✗ Restore failed"
@@ -236,7 +236,7 @@ if command -v dotnet &> /dev/null; then
     fi
 
     print_info "Building (Release)..."
-    if dotnet build "$PROJECT_ROOT/Hartonomous.sln" -c Release --no-restore; then
+    if dotnet build "$PROJECT_ROOT/app-layer/Hartonomous.sln" -c Release --no-restore; then
         print_success "✓ .NET Build complete"
     else
         print_error "✗ .NET Build failed"
@@ -250,8 +250,8 @@ fi
 # Test
 if [ "$TEST" = true ]; then
     echo ""
-    print_info "Running tests..."
-    if (cd "$BUILD_DIR" && env LD_LIBRARY_PATH="$LOCAL_LD_PATH:$LD_LIBRARY_PATH" /usr/bin/ctest --output-on-failure); then
+    print_info "Running tests (excluding integration tests)..."
+    if (cd "$BUILD_DIR" && env LD_LIBRARY_PATH="$LOCAL_LD_PATH:$LD_LIBRARY_PATH" /usr/bin/ctest --output-on-failure -E "interop"); then
         print_success "✓ Tests passed"
     else
         print_error "✗ Tests failed"

@@ -97,6 +97,8 @@ public struct IngestionStats
     public nuint RelationsNew;
     public nuint EvidenceCount;
     public nuint OriginalBytes;
+    public nuint StoredBytes;
+    public double CompressionRatio;
     public nuint NgramsExtracted;
     public nuint NgramsSignificant;
     public nuint CooccurrencesFound;

@@ -1,4 +1,4 @@
--- Generated from sql/hartonomous--0.1.0.sql
+-- Generated from /home/ahart/Projects/Hartonomous/PostgresExtension/hartonomous/sql/hartonomous--0.1.0.sql
 -- hartonomous--0.1.0.sql
 -- Modular entry point for the Hartonomous Engine wrapper.
 

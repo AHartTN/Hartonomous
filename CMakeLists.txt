@@ -84,8 +84,8 @@ include(cmake/postgres-config.cmake)
 include(cmake/treesitter-config.cmake)
 
 # PostgreSQL (required for extension)
-find_package(PostgreSQL REQUIRED)
-message(STATUS "Found PostgreSQL: ${PostgreSQL_LIBRARY}")
+# find_package(PostgreSQL REQUIRED)  <-- REMOVED: Conflicing with manual config
+# include_directories(${PostgreSQL_INCLUDE_DIRS}) <-- REMOVED: Conflicing with manual config
 
 # ==============================================================================
 #  SUBPROJECTS

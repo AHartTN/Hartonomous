@@ -21,52 +21,77 @@ PG_EXT_DIR=$(pg_config --sharedir)/extension
 echo "=== Hartonomous System Installation ==="
 echo "Project Root: $PROJECT_ROOT"
 echo "Build Dir:    $BUILD_DIR"
+echo "PG Lib Dir:   $PG_LIB_DIR"
 echo ""
 
-# 1. Install Engine Library and Headers
+# 0. Clean up old artifacts
+echo "Cleaning up old installations..."
+sudo rm -f /usr/local/lib/libengine.so
+sudo rm -f "$PG_LIB_DIR/libengine.so"
+
+# 1. Install Engine Libraries (Core + IO)
 echo "Installing Hartonomous Engine to /usr/local..."
-if [ -f "$BUILD_DIR/Engine/libengine.so" ]; then
-    sudo cp "$BUILD_DIR/Engine/libengine.so" /usr/local/lib/
-    sudo mkdir -p /usr/local/include/hartonomous
-    sudo cp -r "$PROJECT_ROOT/Engine/include/"* /usr/local/include/hartonomous/
-    echo "✓ Engine library and headers copied."
-else
-    echo "⚠ libengine.so not found. Skipping engine install."
-fi
 
-# 2. Install Engine library to PG lib directory (for extension resolution)
-echo "Installing libengine.so to PostgreSQL..."
-if [ -f "$BUILD_DIR/Engine/libengine.so" ]; then
-    sudo cp "$BUILD_DIR/Engine/libengine.so" "$PG_LIB_DIR/"
-    echo "✓ libengine.so copied to $PG_LIB_DIR"
-fi
+# Function to install lib
+install_lib() {
+    local lib_name=$1
+    if [ -f "$BUILD_DIR/Engine/$lib_name" ]; then
+        sudo cp "$BUILD_DIR/Engine/$lib_name" /usr/local/lib/
+        sudo cp "$BUILD_DIR/Engine/$lib_name" "$PG_LIB_DIR/"
+        echo "✓ $lib_name installed."
+    else
+        echo "⚠ $lib_name not found in build directory."
+    fi
+}
 
-# 3. Install s3 extension
+install_lib "libengine_core.so"
+install_lib "libengine_io.so"
+
+# Headers
+sudo mkdir -p /usr/local/include/hartonomous
+sudo cp -r "$PROJECT_ROOT/Engine/include/"* /usr/local/include/hartonomous/
+echo "✓ Headers copied."
+
+# 2. Install s3 extension
 echo "Installing s3 extension..."
-S3_SO="$PROJECT_ROOT/PostgresExtension/s3/s3.so"
+S3_SO="$BUILD_DIR/PostgresExtension/s3/s3.so"
 S3_SQL="$PROJECT_ROOT/PostgresExtension/s3/dist/s3--0.1.0.sql"
 S3_CONTROL="$PROJECT_ROOT/PostgresExtension/s3/s3.control"
 
-if [ -f "$S3_SO" ] && [ -f "$S3_SQL" ]; then
+if [ -f "$S3_SO" ]; then
     sudo cp "$S3_SO" "$PG_LIB_DIR/"
-    sudo cp "$S3_SQL" "$PG_EXT_DIR/"
-    sudo cp "$S3_CONTROL" "$PG_EXT_DIR/"
-    echo "✓ s3 extension files copied."
+    echo "✓ s3.so installed."
 else
-    echo "⚠ s3 extension files not found. Ensure you built them."
+    echo "⚠ s3.so not found at $S3_SO"
 fi
 
-# 4. Install hartonomous extension
+if [ -f "$S3_SQL" ] && [ -f "$S3_CONTROL" ]; then
+    sudo cp "$S3_SQL" "$PG_EXT_DIR/"
+    sudo cp "$S3_CONTROL" "$PG_EXT_DIR/"
+    echo "✓ s3 extension SQL/Control files copied."
+else
+    echo "⚠ s3 extension SQL/Control files missing."
+fi
+
+# 3. Install hartonomous extension
 echo "Installing hartonomous extension..."
+HART_SO="$BUILD_DIR/PostgresExtension/hartonomous/hartonomous.so"
 HART_SQL="$PROJECT_ROOT/PostgresExtension/hartonomous/dist/hartonomous--0.1.0.sql"
 HART_CONTROL="$PROJECT_ROOT/PostgresExtension/hartonomous/hartonomous.control"
+
+if [ -f "$HART_SO" ]; then
+    sudo cp "$HART_SO" "$PG_LIB_DIR/"
+    echo "✓ hartonomous.so installed."
+else
+    echo "⚠ hartonomous.so not found at $HART_SO"
+fi
 
 if [ -f "$HART_SQL" ] && [ -f "$HART_CONTROL" ]; then
     sudo cp "$HART_SQL" "$PG_EXT_DIR/"
     sudo cp "$HART_CONTROL" "$PG_EXT_DIR/"
-    echo "✓ hartonomous extension files copied."
+    echo "✓ hartonomous extension SQL/Control files copied."
 else
-    echo "⚠ hartonomous extension files not found."
+    echo "⚠ hartonomous extension files missing."
 fi
 
 echo "Updating shared library cache..."

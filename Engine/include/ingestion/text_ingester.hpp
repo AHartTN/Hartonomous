@@ -31,6 +31,8 @@ struct IngestionStats {
     size_t relations_new = 0;
     size_t evidence_count = 0;
     size_t original_bytes = 0;
+    size_t stored_bytes = 0;
+    double compression_ratio = 0.0;
     size_t ngrams_extracted = 0;
     size_t ngrams_significant = 0;
     size_t cooccurrences_found = 0;

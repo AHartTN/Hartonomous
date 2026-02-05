@@ -16,7 +16,7 @@ target_include_directories(seed_unicode SYSTEM PRIVATE
 # Link directly to avoid MKL leakage
 find_package(PostgreSQL REQUIRED)
 target_link_libraries(seed_unicode PRIVATE
-    engine
+    engine_io
     PostgreSQL::PostgreSQL
     BLAKE3::BLAKE3
 )
@@ -26,15 +26,15 @@ install(TARGETS seed_unicode DESTINATION ${CMAKE_BINARY_DIR}/tools)
 
 add_executable(ingest_text ingest_text.cpp)
 target_include_directories(ingest_text PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
-target_link_libraries(ingest_text PRIVATE engine)
+target_link_libraries(ingest_text PRIVATE engine_io)
 install(TARGETS ingest_text DESTINATION ${CMAKE_BINARY_DIR}/tools)
 
 add_executable(ingest_model ingest_model.cpp)
 target_include_directories(ingest_model PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
-target_link_libraries(ingest_model PRIVATE engine)
+target_link_libraries(ingest_model PRIVATE engine_io)
 install(TARGETS ingest_model DESTINATION ${CMAKE_BINARY_DIR}/tools)
 
 add_executable(walk_test walk_test.cpp)
 target_include_directories(walk_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
-target_link_libraries(walk_test PRIVATE engine)
+target_link_libraries(walk_test PRIVATE engine_io)
 install(TARGETS walk_test DESTINATION ${CMAKE_BINARY_DIR}/tools)

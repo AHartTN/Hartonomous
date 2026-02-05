@@ -193,6 +193,35 @@ for ext in postgis s3 hartonomous; do
     fi
 done
 
+# Load Schema Objects (Order matters!)
+echo ""
+print_info "Loading schema objects..."
+SQL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts/sql" && pwd)"
+
+load_sql_files() {
+    local subdir=$1
+    if [ -d "$SQL_DIR/$subdir" ]; then
+        print_info "  Loading $subdir..."
+        for schema_file in "$SQL_DIR/$subdir"/*.sql; do
+            if [ -f "$schema_file" ]; then
+                # echo "    Loading $(basename "$schema_file")..."
+                if psql -U "$DB_USER" -h "$DB_HOST" -p "$DB_PORT" -d "$DB_NAME" -f "$schema_file" > /dev/null; then
+                     print_success "    ✓ Loaded $(basename "$schema_file")"
+                else
+                     print_error "    ✗ Failed to load $(basename "$schema_file")"
+                     exit 1
+                fi
+            fi
+        done
+    fi
+}
+
+load_sql_files "types"
+load_sql_files "domains"
+load_sql_files "functions"
+load_sql_files "tables"
+load_sql_files "views"
+
 # Set search_path
 psql -U "$DB_USER" -h "$DB_HOST" -p "$DB_PORT" -d "$DB_NAME" -c "ALTER DATABASE $DB_NAME SET search_path TO public, hartonomous;"
 

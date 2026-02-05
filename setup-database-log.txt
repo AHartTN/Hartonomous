@@ -28,10 +28,151 @@ CREATE EXTENSION
 CREATE EXTENSION
 [0;32m  ✓ s3 extension installed[0m
 [0;36m  Installing hartonomous...[0m
-ERROR:  could not load library "/usr/lib/postgresql/18/lib/hartonomous.so": /usr/lib/postgresql/18/lib/hartonomous.so: undefined symbol: VARDATA
-CONTEXT:  SQL statement "CREATE OR REPLACE FUNCTION uint64_add(hartonomous.uint64, hartonomous.uint64)
-RETURNS hartonomous.uint64
-AS '$libdir/hartonomous', 'uint64_add'
-LANGUAGE C IMMUTABLE STRICT"
-extension script file "hartonomous--0.1.0.sql", near line 37
-[0;31m  ✗ Could not install hartonomous extension[0m
+CREATE EXTENSION
+[0;32m  ✓ hartonomous extension installed[0m
+
+[0;36mLoading schema objects...[0m
+[0;36m  Loading types...[0m
+[0;32m    ✓ Loaded 00-custom_types.sql[0m
+[0;32m    ✓ Loaded ingestion_stats.sql[0m
+[0;32m    ✓ Loaded query_results.sql[0m
+[0;36m  Loading domains...[0m
+[0;32m    ✓ Loaded uint128.sql[0m
+[0;32m    ✓ Loaded uint16.sql[0m
+[0;32m    ✓ Loaded uint32.sql[0m
+[0;32m    ✓ Loaded uint64.sql[0m
+[0;36m  Loading functions...[0m
+[0;32m    ✓ Loaded add_edge_vote.sql[0m
+[0;32m    ✓ Loaded answer_question.sql[0m
+[0;32m    ✓ Loaded check_rate_limit.sql[0m
+[0;32m    ✓ Loaded check_s3_normalization.sql[0m
+[0;32m    ✓ Loaded compute_tortuosity.sql[0m
+[0;32m    ✓ Loaded compute_trajectory_tortuosity.sql[0m
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/functions/find_gravitational_centers.sql:36: ERROR:  relation "hartonomous.physicality" does not exist
+LINE 17:         FROM hartonomous.physicality p
+                      ^
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/functions/find_gravitational_centers.sql:38: ERROR:  could not find a function named "find_gravitational_centers"
+[0;32m    ✓ Loaded find_gravitational_centers.sql[0m
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/functions/find_nearest_atoms.sql:25: ERROR:  relation "atom" does not exist
+LINE 16:     FROM Atom a
+                  ^
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/functions/find_nearest_atoms.sql:28: ERROR:  could not find a function named "find_nearest_atoms"
+[0;32m    ✓ Loaded find_nearest_atoms.sql[0m
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/functions/find_similar_compositions.sql:31: ERROR:  relation "composition" does not exist
+LINE 18:         Composition c1
+                 ^
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/functions/find_similar_compositions.sql:33: ERROR:  could not find a function named "find_similar_compositions"
+[0;32m    ✓ Loaded find_similar_compositions.sql[0m
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/functions/find_similar_trajectories.sql:28: ERROR:  relation "relation" does not exist
+LINE 16:         Relation r
+                 ^
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/functions/find_similar_trajectories.sql:30: ERROR:  could not find a function named "find_similar_trajectories"
+[0;32m    ✓ Loaded find_similar_trajectories.sql[0m
+[0;32m    ✓ Loaded flag_content.sql[0m
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/functions/fuzzy_search.sql:28: ERROR:  relation "v_composition_text" does not exist
+LINE 17:         v_composition_text v
+                 ^
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/functions/fuzzy_search.sql:30: ERROR:  could not find a function named "fuzzy_search"
+[0;32m    ✓ Loaded fuzzy_search.sql[0m
+[0;32m    ✓ Loaded geodesic_distance_s3.sql[0m
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/functions/multi_hop_reasoning.sql:73: ERROR:  relation "relationsequence" does not exist
+LINE 43:         RelationSequence rs_source ON rs_source.CompositionI...
+                 ^
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/functions/multi_hop_reasoning.sql:75: ERROR:  could not find a function named "multi_hop_reasoning"
+[0;32m    ✓ Loaded multi_hop_reasoning.sql[0m
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/functions/phoenetic_search.sql:29: ERROR:  relation "v_composition_text" does not exist
+LINE 17:         v_composition_text v
+                 ^
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/functions/phoenetic_search.sql:31: ERROR:  could not find a function named "phoenetic_search"
+[0;32m    ✓ Loaded phoenetic_search.sql[0m
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/functions/semantic_search.sql:30: ERROR:  relation "physicality" does not exist
+LINE 18:         Physicality p
+                 ^
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/functions/semantic_search.sql:32: ERROR:  could not find a function named "semantic_search_geometric"
+[0;32m    ✓ Loaded semantic_search.sql[0m
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/functions/validate_relation_child.sql:19: ERROR:  relation "relationsequence" does not exist
+LINE 11:         FROM RelationSequence rs
+                      ^
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/functions/validate_relation_child.sql:21: ERROR:  could not find a function named "validate_relation_child"
+[0;32m    ✓ Loaded validate_relation_child.sql[0m
+[0;36m  Loading tables...[0m
+[0;32m    ✓ Loaded 01-Tenant.sql[0m
+[0;32m    ✓ Loaded 02-Tenant-User.sql[0m
+[0;32m    ✓ Loaded 03-Content.sql[0m
+[0;32m    ✓ Loaded 04-Physicality.sql[0m
+[0;32m    ✓ Loaded 05-Atom.sql[0m
+[0;32m    ✓ Loaded 06-Composition.sql[0m
+[0;32m    ✓ Loaded 07-CompositionSequence.sql[0m
+[0;32m    ✓ Loaded 08-Relation.sql[0m
+[0;32m    ✓ Loaded 09-RelationSequence.sql[0m
+[0;32m    ✓ Loaded 10-RelationRating.sql[0m
+[0;32m    ✓ Loaded 11-RelationEvidence.sql[0m
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/tables/98-NEEDSREVIEW-AuditLog.sql:27: ERROR:  syntax error at or near "User"
+LINE 4:     UserId UUID REFERENCES User(Id),
+                                   ^
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/tables/98-NEEDSREVIEW-AuditLog.sql:29: ERROR:  relation "auditlog" does not exist
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/tables/98-NEEDSREVIEW-AuditLog.sql:30: ERROR:  relation "auditlog" does not exist
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/tables/98-NEEDSREVIEW-AuditLog.sql:31: ERROR:  relation "auditlog" does not exist
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/tables/98-NEEDSREVIEW-AuditLog.sql:32: ERROR:  relation "auditlog" does not exist
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/tables/98-NEEDSREVIEW-AuditLog.sql:33: ERROR:  relation "auditlog" does not exist
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/tables/98-NEEDSREVIEW-AuditLog.sql:34: ERROR:  relation "auditlog" does not exist
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/tables/98-NEEDSREVIEW-AuditLog.sql:35: ERROR:  relation "auditlog" does not exist
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/tables/98-NEEDSREVIEW-AuditLog.sql:37: ERROR:  relation "auditlog" does not exist
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/tables/98-NEEDSREVIEW-AuditLog.sql:38: ERROR:  relation "auditlog" does not exist
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/tables/98-NEEDSREVIEW-AuditLog.sql:39: ERROR:  relation "auditlog" does not exist
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/tables/98-NEEDSREVIEW-AuditLog.sql:40: ERROR:  relation "auditlog" does not exist
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/tables/98-NEEDSREVIEW-AuditLog.sql:41: ERROR:  relation "auditlog" does not exist
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/tables/98-NEEDSREVIEW-AuditLog.sql:42: ERROR:  relation "auditlog" does not exist
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/tables/98-NEEDSREVIEW-AuditLog.sql:43: ERROR:  relation "auditlog" does not exist
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/tables/98-NEEDSREVIEW-AuditLog.sql:44: ERROR:  relation "auditlog" does not exist
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/tables/98-NEEDSREVIEW-AuditLog.sql:45: ERROR:  relation "auditlog" does not exist
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/tables/98-NEEDSREVIEW-AuditLog.sql:46: ERROR:  relation "auditlog" does not exist
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/tables/98-NEEDSREVIEW-AuditLog.sql:47: ERROR:  relation "auditlog" does not exist
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/tables/98-NEEDSREVIEW-AuditLog.sql:48: ERROR:  relation "auditlog" does not exist
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/tables/98-NEEDSREVIEW-AuditLog.sql:49: ERROR:  relation "auditlog" does not exist
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/tables/98-NEEDSREVIEW-AuditLog.sql:50: ERROR:  relation "auditlog" does not exist
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/tables/98-NEEDSREVIEW-AuditLog.sql:51: ERROR:  relation "auditlog" does not exist
+[0;32m    ✓ Loaded 98-NEEDSREVIEW-AuditLog.sql[0m
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/tables/98-NEEDSREVIEW-content_validation.sql:36: ERROR:  relation "users" does not exist
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/tables/98-NEEDSREVIEW-content_validation.sql:38: ERROR:  relation "content_validation" does not exist
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/tables/98-NEEDSREVIEW-content_validation.sql:39: ERROR:  relation "content_validation" does not exist
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/tables/98-NEEDSREVIEW-content_validation.sql:40: ERROR:  relation "content_validation" does not exist
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/tables/98-NEEDSREVIEW-content_validation.sql:42: ERROR:  relation "content_validation" does not exist
+[0;32m    ✓ Loaded 98-NEEDSREVIEW-content_validation.sql[0m
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/tables/98-NEEDSREVIEW-rate_limits.sql:24: ERROR:  relation "tenants" does not exist
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/tables/98-NEEDSREVIEW-rate_limits.sql:26: ERROR:  relation "rate_limits" does not exist
+[0;32m    ✓ Loaded 98-NEEDSREVIEW-rate_limits.sql[0m
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/tables/98-NEEDSREVIEW-Trajectory.sql:39: ERROR:  relation "relations" does not exist
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/tables/98-NEEDSREVIEW-Trajectory.sql:41: ERROR:  relation "trajectories" does not exist
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/tables/98-NEEDSREVIEW-Trajectory.sql:42: ERROR:  relation "trajectories" does not exist
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/tables/98-NEEDSREVIEW-Trajectory.sql:44: ERROR:  relation "trajectories" does not exist
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/tables/98-NEEDSREVIEW-Trajectory.sql:45: ERROR:  relation "trajectories" does not exist
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/tables/98-NEEDSREVIEW-Trajectory.sql:46: ERROR:  relation "trajectories" does not exist
+[0;32m    ✓ Loaded 98-NEEDSREVIEW-Trajectory.sql[0m
+[0;36m  Loading views...[0m
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/views/v_composition_details.sql:41: ERROR:  function repeat(text, uint32) does not exist
+LINE 6:         REPEAT(
+                ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/views/v_composition_details.sql:43: ERROR:  relation "v_composition_details" does not exist
+[0;32m    ✓ Loaded v_composition_details.sql[0m
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/views/v_composition_text.sql:23: ERROR:  function repeat(text, uint32) does not exist
+LINE 5:         REPEAT(
+                ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/views/v_composition_text.sql:25: ERROR:  relation "v_composition_text" does not exist
+[0;32m    ✓ Loaded v_composition_text.sql[0m
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/views/v_documents.sql:20: ERROR:  relation "relations" does not exist
+LINE 14:     relations r
+             ^
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/views/v_documents.sql:22: ERROR:  relation "v_documents" does not exist
+[0;32m    ✓ Loaded v_documents.sql[0m
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/views/v_relation_tree.sql:42: ERROR:  relation "relations" does not exist
+LINE 13:         relations r
+                 ^
+psql:/home/ahart/Projects/Hartonomous/scripts/sql/views/v_relation_tree.sql:44: ERROR:  relation "v_relation_tree" does not exist
+[0;32m    ✓ Loaded v_relation_tree.sql[0m
+ALTER DATABASE
+
+[0;36mVerifying installation...[0m
+[0;31m✗ Verification failed: Physicality table not found[0m

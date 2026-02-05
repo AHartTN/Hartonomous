@@ -34,16 +34,33 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql IMMUTABLE STRICT;
 
+-- Helper to convert 8 bytes of BYTEA to BIGINT (Big-Endian)
+CREATE OR REPLACE FUNCTION bytea_to_int8(b bytea) RETURNS BIGINT AS $$
+DECLARE
+    res BIGINT := 0;
+BEGIN
+    res := (get_byte(b, 0)::BIGINT << 56) |
+           (get_byte(b, 1)::BIGINT << 48) |
+           (get_byte(b, 2)::BIGINT << 40) |
+           (get_byte(b, 3)::BIGINT << 32) |
+           (get_byte(b, 4)::BIGINT << 24) |
+           (get_byte(b, 5)::BIGINT << 16) |
+           (get_byte(b, 6)::BIGINT << 8)  |
+           (get_byte(b, 7)::BIGINT);
+    RETURN res;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE STRICT;
+
 -- Helper to extract high 64 bits from UINT128
 CREATE OR REPLACE FUNCTION uint128_hi(value UINT128)
 RETURNS BIGINT AS $$
-    SELECT int8recv(substring(value, 1, 8));
+    SELECT bytea_to_int8(substring(value, 1, 8));
 $$ LANGUAGE SQL IMMUTABLE STRICT;
 
 -- Helper to extract low 64 bits from UINT128
 CREATE OR REPLACE FUNCTION uint128_lo(value UINT128)
 RETURNS BIGINT AS $$
-    SELECT int8recv(substring(value, 9, 8));
+    SELECT bytea_to_int8(substring(value, 9, 8));
 $$ LANGUAGE SQL IMMUTABLE STRICT;
 
 -- Compare two UINT128 values

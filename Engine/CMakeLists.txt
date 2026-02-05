@@ -8,11 +8,29 @@ project(HartonomousEngine LANGUAGES C CXX)
 find_package(OpenMP REQUIRED)
 
 # ==============================================================================
-#  SOURCES
+#  SOURCE CLASSIFICATION
 # ==============================================================================
-file(GLOB_RECURSE ENGINE_SOURCES
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c"
+
+# --- CORE (Math, Geometry, Hashing, ML) ---
+# NO Database dependencies allowed here.
+file(GLOB_RECURSE CORE_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/geometry/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/hashing/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/ml/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/unicode/*.cpp"
+)
+# Exclude ingestor from unicode core
+list(FILTER CORE_SOURCES EXCLUDE REGEX "src/unicode/ingestor/.*")
+
+# --- IO (Database, Ingestion, Cognitive) ---
+file(GLOB_RECURSE IO_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/database/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/ingestion/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/query/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/cognitive/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/storage/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/interop_api.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/unicode/ingestor/*.cpp"
 )
 
 file(GLOB_RECURSE ENGINE_HEADERS
@@ -21,20 +39,15 @@ file(GLOB_RECURSE ENGINE_HEADERS
 )
 
 # ==============================================================================
-#  TARGET (PURE COMPUTE ENGINE)
+#  TARGET: ENGINE CORE (Geometry/Math)
 # ==============================================================================
-add_library(engine SHARED ${ENGINE_SOURCES} ${ENGINE_HEADERS})
-add_library(Hartonomous::Engine ALIAS engine)
+add_library(engine_core SHARED ${CORE_SOURCES} ${ENGINE_HEADERS})
+add_library(Hartonomous::Core ALIAS engine_core)
 
-set_target_properties(engine PROPERTIES OUTPUT_NAME "engine")
+set_target_properties(engine_core PROPERTIES OUTPUT_NAME "engine_core")
+target_compile_definitions(engine_core PRIVATE HARTONOMOUS_EXPORT)
 
-# FORCE EXPORT DEFINITION GLOBALLY (Fixes Linux Visibility/Linker Issues)
-target_compile_definitions(engine PRIVATE HARTONOMOUS_EXPORT)
-
-# ==============================================================================
-#  INCLUDE PATHS (EXPLICIT, ZERO-GUESSING)
-# ==============================================================================
-target_include_directories(engine
+target_include_directories(engine_core
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
@@ -43,130 +56,84 @@ target_include_directories(engine
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
-# ==============================================================================
-#  LINKING (NO POSTGRES, NO DISCOVERY)
-# ==============================================================================
-#
-# The Engine is pure C++ compute. It must NOT:
-#   - link libpq
-#   - depend on PostgreSQL
-#   - depend on pg_config
-#   - depend on server headers
-#
-# The Postgres extension links *to the engine*, not the other way around.
-#
-target_link_libraries(engine
+target_link_libraries(engine_core
     PUBLIC
         BLAKE3::BLAKE3
         Eigen3::Eigen
         HNSW::HNSW
-        tree-sitter::tree-sitter
-        PostGIS::PostGIS
-        PostgreSQL::LibPQ
         OpenMP::OpenMP_CXX
     PRIVATE
         Spectra::Spectra
         MKL::MKL
+)
+
+# ==============================================================================
+#  TARGET: ENGINE IO (Database/Ingestion)
+# ==============================================================================
+add_library(engine_io SHARED ${IO_SOURCES} ${ENGINE_HEADERS})
+add_library(Hartonomous::IO ALIAS engine_io)
+# Alias "engine" to the full stack for tools
+add_library(engine ALIAS engine_io) 
+
+set_target_properties(engine_io PROPERTIES OUTPUT_NAME "engine_io")
+target_compile_definitions(engine_io PRIVATE HARTONOMOUS_EXPORT)
+
+target_include_directories(engine_io
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_link_libraries(engine_io
+    PUBLIC
+        engine_core
+        PostGIS::PostGIS
+        PostgreSQL::LibPQ
+        tree-sitter::tree-sitter
         nlohmann_json::nlohmann_json
 )
 
+# ==============================================================================
+#  COMPILER OPTIONS (Shared)
+# ==============================================================================
+function(configure_optimization target)
+    if(MSVC)
+        target_compile_options(${target} PRIVATE
+            /W4 /WX- $<$<CONFIG:Release>:/O2 /Oi /Ot /GL /fp:fast /arch:AVX512>
+        )
+        target_link_options(${target} PRIVATE $<$<CONFIG:Release>:/LTCG>)
+    else()
+        target_compile_options(${target} PRIVATE
+            -Wall -Wextra -Wpedantic
+            $<$<CONFIG:Release>:-O3 -march=native -mtune=native -ffast-math -funroll-loops -fomit-frame-pointer>
+        )
+    endif()
+
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT ipo_supported)
+    if(ipo_supported)
+        set_property(TARGET ${target} PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+    endif()
+endfunction()
+
+configure_optimization(engine_core)
+configure_optimization(engine_io)
 
 # ==============================================================================
-#  COGNITIVE / AI OPS
-# ==============================================================================
-file(GLOB_RECURSE COGNITIVE_SOURCES
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/cognitive/*.cpp"
-)
-
-file(GLOB_RECURSE GEOMETRY_SOURCES
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/geometry/*.cpp"
-)
-
-file(GLOB_RECURSE ML_SOURCES
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/ml/*.cpp"
-)
-
-file(GLOB_RECURSE UNICODE_SOURCES
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/unicode/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/unicode/ingestor/*.cpp"
-)
-
-target_sources(engine PRIVATE ${COGNITIVE_SOURCES} ${GEOMETRY_SOURCES} ${ML_SOURCES} ${UNICODE_SOURCES})
-
-# ==============================================================================
-#  TOOLS
+#  TOOLS & TESTS
 # ==============================================================================
 add_subdirectory(tools)
-
-# ==============================================================================
-#  TESTING
-# ==============================================================================
 enable_testing()
 add_subdirectory(tests)
-
-# ==============================================================================
-#  COMPILER OPTIONS (HIGH PERFORMANCE)
-# ==============================================================================
-if(MSVC)
-    target_compile_options(engine PRIVATE
-        /W4
-        /WX-
-        $<$<CONFIG:Release>:/O2>
-        $<$<CONFIG:Release>:/Oi>
-        $<$<CONFIG:Release>:/Ot>
-        $<$<CONFIG:Release>:/GL>
-        $<$<CONFIG:Release>:/fp:fast>
-        $<$<CONFIG:Release>:/arch:AVX512>
-    )
-    target_link_options(engine PRIVATE
-        $<$<CONFIG:Release>:/LTCG>
-    )
-else()
-    target_compile_options(engine PRIVATE
-        -Wall -Wextra -Wpedantic
-        $<$<CONFIG:Release>:-O3>
-        $<$<CONFIG:Release>:-march=native>
-        $<$<CONFIG:Release>:-mtune=native>
-        $<$<CONFIG:Release>:-ffast-math>
-        $<$<CONFIG:Release>:-funroll-loops>
-        $<$<CONFIG:Release>:-fomit-frame-pointer>
-    )
-endif()
-
-# ==============================================================================
-#  LTO / IPO
-# ==============================================================================
-include(CheckIPOSupported)
-check_ipo_supported(RESULT ipo_supported OUTPUT ipo_error)
-if(ipo_supported)
-    set_property(TARGET engine PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
-    message(STATUS "Engine: IPO/LTO enabled")
-else()
-    message(STATUS "Engine: IPO/LTO not supported: ${ipo_error}")
-endif()
-
-# ==============================================================================
-#  DEBUG OPTIMIZATIONS
-# ==============================================================================
-if(MSVC)
-    target_compile_options(engine PRIVATE
-        $<$<CONFIG:Debug>:/Od>
-        $<$<CONFIG:Debug>:/Zi>
-        $<$<CONFIG:Debug>:/RTC1>
-    )
-else()
-    target_compile_options(engine PRIVATE
-        $<$<CONFIG:Debug>:-O0>
-        $<$<CONFIG:Debug>:-g3>
-    )
-endif()
 
 # ==============================================================================
 #  INSTALLATION
 # ==============================================================================
 include(GNUInstallDirs)
 
-install(TARGETS engine
+install(TARGETS engine_core engine_io
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
