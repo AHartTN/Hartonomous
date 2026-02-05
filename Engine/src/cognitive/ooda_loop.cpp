@@ -11,9 +11,10 @@ namespace Hartonomous {
 OODALoop::OODALoop(PostgresConnection& db) : db_(db) {}
 
 void OODALoop::observe(const std::string& query, const std::string& result, int rating) {
-    auto query_hash = BLAKE3Pipeline::hash(query);
-    auto result_hash = BLAKE3Pipeline::hash(result);
+    [[maybe_unused]] auto query_hash = BLAKE3Pipeline::hash(query);
+    [[maybe_unused]] auto result_hash = BLAKE3Pipeline::hash(result);
 
+    // TODO: Complete implementation - need to use query_hash, result_hash, and rating
     // Create a relation between query and result if one doesn't exist,
     // then add evidence to the RelationEvidence table.
     
@@ -29,7 +30,9 @@ void OODALoop::observe(const std::string& query, const std::string& result, int 
     )";
 
     // Note: This needs actual ContentId from somewhere, or we store the observation itself.
-    // For now, updating RelationRating directly to demonstrate alignment.
+    // For now, using rating parameter to indicate positive/negative feedback
+    // TODO: Complete this implementation with proper hash and rating usage
+    (void)rating; // Suppress unused parameter warning until implementation is complete
 }
 
 std::vector<EdgeUpdate> OODALoop::orient() {

@@ -5,7 +5,7 @@
 CREATE TABLE AuditLog (
     Id BIGSERIAL PRIMARY KEY,
     TenantId UUID NOT NULL REFERENCES Tenant(Id),
-    UserId UUID REFERENCES User(Id),
+    UserId UUID REFERENCES TenantUser(Id),
     ActionType VARCHAR(50) NOT NULL, -- 'insert', 'query', 'update', 'delete', 'flag'
     ContentHash BYTEA,
     ContentType VARCHAR(20),

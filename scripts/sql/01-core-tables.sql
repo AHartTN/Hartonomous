@@ -5,7 +5,7 @@
 SET search_path TO hartonomous, public;
 
 \i tables/01-Tenant.sql
-\i tables/02-User.sql
+\i tables/02-Tenant-User.sql
 \i tables/03-Content.sql
 \i tables/04-Physicality.sql
 \i tables/05-Atom.sql
@@ -29,7 +29,7 @@ DO $$
 BEGIN
     RAISE NOTICE 'Core tables installed successfully';
     RAISE NOTICE '  - tenant: % rows', (SELECT COUNT(*) FROM Tenant);
-    RAISE NOTICE '  - user: % rows', (SELECT COUNT(*) FROM User);
+    RAISE NOTICE '  - tenantuser: % rows', (SELECT COUNT(*) FROM TenantUser);
     RAISE NOTICE '  - content: % rows', (SELECT COUNT(*) FROM Content);
     RAISE NOTICE '  - physicality: % rows', (SELECT COUNT(*) FROM Physicality);
     RAISE NOTICE '  - atoms: % rows', (SELECT COUNT(*) FROM Atom);

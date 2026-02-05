@@ -250,11 +250,11 @@ fi
 # Test
 if [ "$TEST" = true ]; then
     echo ""
-    print_info "Running tests (excluding integration tests)..."
-    if (cd "$BUILD_DIR" && env LD_LIBRARY_PATH="$LOCAL_LD_PATH:$LD_LIBRARY_PATH" /usr/bin/ctest --output-on-failure -E "interop"); then
-        print_success "✓ Tests passed"
+    print_info "Running unit tests only (integration tests run after DB setup)..."
+    if (cd "$BUILD_DIR" && env LD_LIBRARY_PATH="$LOCAL_LD_PATH:$LD_LIBRARY_PATH" /usr/bin/ctest --output-on-failure -L "unit"); then
+        print_success "✓ Unit tests passed"
     else
-        print_error "✗ Tests failed"
+        print_error "✗ Unit tests failed"
         exit 1
     fi
 fi

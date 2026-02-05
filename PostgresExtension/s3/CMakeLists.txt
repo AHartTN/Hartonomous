@@ -56,32 +56,28 @@ set_target_properties(${EXTENSION_NAME} PROPERTIES
     SUFFIX ".so"
 )
 
-# Handle modular SQL flattening
-set(SQL_SRC "${CMAKE_CURRENT_SOURCE_DIR}/sql/s3--0.1.0.sql")
-set(SQL_DIST "${CMAKE_CURRENT_SOURCE_DIR}/dist/s3--0.1.0.sql")
-set(FLATTEN_SCRIPT "${CMAKE_SOURCE_DIR}/scripts/linux/XX-build_extension_sql.sh")
-
-add_custom_command(
-    OUTPUT ${SQL_DIST}
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_SOURCE_DIR}/dist
-    COMMAND ${FLATTEN_SCRIPT} ${SQL_SRC} ${SQL_DIST}
-    DEPENDS ${SQL_SRC} ${FLATTEN_SCRIPT}
-    COMMENT "Flattening modular SQL for s3 extension"
-)
-
-add_custom_target(s3_sql_dist ALL DEPENDS ${SQL_DIST})
-add_dependencies(${EXTENSION_NAME} s3_sql_dist)
-
 # ==============================================================================
 #  5. INSTALLATION
 # ==============================================================================
+
+# Install extension library to local install/ and system PostgreSQL
+install(TARGETS ${EXTENSION_NAME}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+)
 
 install(TARGETS ${EXTENSION_NAME}
     LIBRARY DESTINATION "${PG_PKGLIBDIR}"
 )
 
+# Install extension SQL and control files to local install/ and system PostgreSQL
 install(FILES
-    "s3.control"
-    "${SQL_DIST}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/s3.control"
+    "${CMAKE_CURRENT_SOURCE_DIR}/dist/s3--0.1.0.sql"
+    DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/postgresql/extension
+)
+
+install(FILES
+    "${CMAKE_CURRENT_SOURCE_DIR}/s3.control"
+    "${CMAKE_CURRENT_SOURCE_DIR}/dist/s3--0.1.0.sql"
     DESTINATION "${PG_SHAREDIR}/extension"
 )

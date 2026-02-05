@@ -20,12 +20,11 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 -- Enable Hartonomous extension (BLAKE3, S³ projection, etc.)
 CREATE EXTENSION IF NOT EXISTS hartonomous;
 
--- Create schemas for organization
-CREATE SCHEMA IF NOT EXISTS hartonomous;
+-- Create internal schema for versioning/metadata
 CREATE SCHEMA IF NOT EXISTS hartonomous_internal;
 
--- Set search path
-SET search_path TO hartonomous, public;
+-- Set search path (public for all tables, hartonomous_internal for metadata)
+SET search_path TO public, hartonomous_internal;
 
 \i domains/uint16.sql
 \i domains/uint32.sql

@@ -1,9 +1,0 @@
-Starting Unicode Seeding...
-=== Hartonomous Unicode Seeding Tool ===
-Data Directory: /home/ahart/Projects/Hartonomous/UCDIngestor/data
-Checking existing atoms...
-
-FATAL ERROR: PostgreSQL query failed: ERROR:  relation "hartonomous.atom" does not exist
-LINE 1: SELECT count(*) FROM hartonomous.atom
-                             ^
-

@@ -3,57 +3,88 @@ cmake_minimum_required(VERSION 3.22)
 project(HartonomousEngine LANGUAGES C CXX)
 
 # ==============================================================================
-#  DEPENDENCIES
+#  INCLUDE ORGANIZED CMAKE MODULES
 # ==============================================================================
-find_package(OpenMP REQUIRED)
-
-# ==============================================================================
-#  SOURCE CLASSIFICATION
-# ==============================================================================
-
-# --- CORE (Math, Geometry, Hashing, ML) ---
-# NO Database dependencies allowed here.
-file(GLOB_RECURSE CORE_SOURCES
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/geometry/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/hashing/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/ml/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/unicode/*.cpp"
-)
-# Exclude ingestor from unicode core
-list(FILTER CORE_SOURCES EXCLUDE REGEX "src/unicode/ingestor/.*")
-
-# --- IO (Database, Ingestion, Cognitive) ---
-file(GLOB_RECURSE IO_SOURCES
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/database/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/ingestion/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/query/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/cognitive/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/storage/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/interop_api.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/unicode/ingestor/*.cpp"
-)
-
-file(GLOB_RECURSE ENGINE_HEADERS
-    "${CMAKE_CURRENT_SOURCE_DIR}/include/*.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp"
-)
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/utils")
+include(CompilerFlags)
+include(cmake/Dependencies.cmake)
+include(cmake/SourceLists.cmake)
 
 # ==============================================================================
-#  TARGET: ENGINE CORE (Geometry/Math)
+#  OBJECT LIBRARIES (Compiled once, used multiple times)
 # ==============================================================================
-add_library(engine_core SHARED ${CORE_SOURCES} ${ENGINE_HEADERS})
-add_library(Hartonomous::Core ALIAS engine_core)
+# Compile sources into object files that can be reused
+add_library(engine_core_objs OBJECT ${ENGINE_CORE_SOURCES} ${ENGINE_HEADERS})
+add_library(engine_io_objs OBJECT ${ENGINE_IO_SOURCES} ${ENGINE_HEADERS})
 
-set_target_properties(engine_core PROPERTIES OUTPUT_NAME "engine_core")
-target_compile_definitions(engine_core PRIVATE HARTONOMOUS_EXPORT)
+# Enable PIC for shared library linking
+enable_pic(engine_core_objs)
+enable_pic(engine_io_objs)
 
-target_include_directories(engine_core
+# Set compile definitions
+target_compile_definitions(engine_core_objs PRIVATE HARTONOMOUS_EXPORT)
+target_compile_definitions(engine_io_objs PRIVATE HARTONOMOUS_EXPORT)
+
+# Configure includes and dependencies for object libraries
+target_include_directories(engine_core_objs
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
         ${CMAKE_CURRENT_SOURCE_DIR}/external/hilbert
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_include_directories(engine_io_objs
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+# Object libraries need to know about dependencies for includes
+target_link_libraries(engine_core_objs
+    PUBLIC
+        BLAKE3::BLAKE3
+        Eigen3::Eigen
+        HNSW::HNSW
+        OpenMP::OpenMP_CXX
+    PRIVATE
+        Spectra::Spectra
+        MKL::MKL
+)
+
+target_link_libraries(engine_io_objs
+    PUBLIC
+        engine_core_objs  # Need core headers/includes
+        PostGIS::PostGIS
+        PostgreSQL::LibPQ
+        tree-sitter::tree-sitter
+        nlohmann_json::nlohmann_json
+        BLAKE3::BLAKE3      # IO code includes blake3 headers
+        Eigen3::Eigen
+        HNSW::HNSW
+        OpenMP::OpenMP_CXX
+)
+
+# ==============================================================================
+#  TARGET: ENGINE CORE (Geometry/Math)
+# ==============================================================================
+# Use pre-compiled object files - NO RECOMPILATION!
+add_library(engine_core SHARED $<TARGET_OBJECTS:engine_core_objs>)
+add_library(Hartonomous::Core ALIAS engine_core)
+
+set_target_properties(engine_core PROPERTIES
+    OUTPUT_NAME "engine_core"
+)
+
+# Inherit includes and dependencies from object library
+target_include_directories(engine_core
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+        ${CMAKE_CURRENT_SOURCE_DIR}/external/hilbert
 )
 
 target_link_libraries(engine_core
@@ -67,23 +98,24 @@ target_link_libraries(engine_core
         MKL::MKL
 )
 
+# Apply optimized compiler flags
+apply_hartonomous_compiler_flags(engine_core)
+
 # ==============================================================================
 #  TARGET: ENGINE IO (Database/Ingestion)
 # ==============================================================================
-add_library(engine_io SHARED ${IO_SOURCES} ${ENGINE_HEADERS})
+# Use pre-compiled object files - NO RECOMPILATION!
+add_library(engine_io SHARED $<TARGET_OBJECTS:engine_io_objs>)
 add_library(Hartonomous::IO ALIAS engine_io)
-# Alias "engine" to the full stack for tools
-add_library(engine ALIAS engine_io) 
 
-set_target_properties(engine_io PROPERTIES OUTPUT_NAME "engine_io")
-target_compile_definitions(engine_io PRIVATE HARTONOMOUS_EXPORT)
+set_target_properties(engine_io PROPERTIES
+    OUTPUT_NAME "engine_io"
+)
 
 target_include_directories(engine_io
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
 target_link_libraries(engine_io
@@ -95,31 +127,50 @@ target_link_libraries(engine_io
         nlohmann_json::nlohmann_json
 )
 
-# ==============================================================================
-#  COMPILER OPTIONS (Shared)
-# ==============================================================================
-function(configure_optimization target)
-    if(MSVC)
-        target_compile_options(${target} PRIVATE
-            /W4 /WX- $<$<CONFIG:Release>:/O2 /Oi /Ot /GL /fp:fast /arch:AVX512>
-        )
-        target_link_options(${target} PRIVATE $<$<CONFIG:Release>:/LTCG>)
-    else()
-        target_compile_options(${target} PRIVATE
-            -Wall -Wextra -Wpedantic
-            $<$<CONFIG:Release>:-O3 -march=native -mtune=native -ffast-math -funroll-loops -fomit-frame-pointer>
-        )
-    endif()
+# Apply optimized compiler flags
+apply_hartonomous_compiler_flags(engine_io)
 
-    include(CheckIPOSupported)
-    check_ipo_supported(RESULT ipo_supported)
-    if(ipo_supported)
-        set_property(TARGET ${target} PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
-    endif()
-endfunction()
+# ==============================================================================
+#  TARGET: UNIFIED ENGINE (for .NET interop)
+# ==============================================================================
+# Combine BOTH object libraries into one unified .so for .NET P/Invoke
+# This is what the .NET build expects - all symbols in one library
+# Uses pre-compiled objects - NO RECOMPILATION!
+add_library(engine SHARED
+    $<TARGET_OBJECTS:engine_core_objs>
+    $<TARGET_OBJECTS:engine_io_objs>
+)
+add_library(Hartonomous::Engine ALIAS engine)
 
-configure_optimization(engine_core)
-configure_optimization(engine_io)
+set_target_properties(engine PROPERTIES
+    OUTPUT_NAME "engine"
+)
+
+target_include_directories(engine
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+        ${CMAKE_CURRENT_SOURCE_DIR}/external/hilbert
+)
+
+# Unified library needs ALL dependencies
+target_link_libraries(engine
+    PUBLIC
+        BLAKE3::BLAKE3
+        Eigen3::Eigen
+        HNSW::HNSW
+        OpenMP::OpenMP_CXX
+        PostGIS::PostGIS
+        PostgreSQL::LibPQ
+        tree-sitter::tree-sitter
+        nlohmann_json::nlohmann_json
+    PRIVATE
+        Spectra::Spectra
+        MKL::MKL
+)
+
+# Apply optimized compiler flags
+apply_hartonomous_compiler_flags(engine)
 
 # ==============================================================================
 #  TOOLS & TESTS
@@ -127,16 +178,17 @@ configure_optimization(engine_io)
 add_subdirectory(tools)
 enable_testing()
 add_subdirectory(tests)
-
 # ==============================================================================
 #  INSTALLATION
 # ==============================================================================
 include(GNUInstallDirs)
 
-install(TARGETS engine_core engine_io
+# Install all three libraries
+install(TARGETS engine_core engine_io engine
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
+# Install headers
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/hartonomous)

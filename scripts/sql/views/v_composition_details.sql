@@ -9,9 +9,8 @@ SELECT
     -- Reconstruct text for display
     STRING_AGG(
         REPEAT(
-            -- Convert UINT32 (bytea) to Integer for chr()
             chr(a.Codepoint), 
-            cs.Occurrences
+            uint32_to_int(cs.Occurrences)
         ),
         '' ORDER BY cs.Ordinal
     ) AS text,

@@ -1,1 +1,0 @@
-./full-send.sh: 6: ./scripts/linux/04_run_ingestion.sh: not found

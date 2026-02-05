@@ -18,6 +18,10 @@ build/
 Build/
 cmake-build-*/
 out/
+install/
+
+# Development mode marker
+.dev-symlinks-active
 
 # CMake generated artifacts
 CMakeCache.txt

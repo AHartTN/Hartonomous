@@ -21,10 +21,12 @@ const char* TEST_CONN_STRING = "host=localhost dbname=hartonomous user=postgres 
 class InteropTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        // Verify DB is reachable before trying to create handle
-        // This avoids segfaults if the DB is down and the code doesn't handle it gracefully (though it should)
+        // Try to connect - skip tests if database unavailable
         db_handle = hartonomous_db_create(TEST_CONN_STRING);
-        ASSERT_TRUE(db_handle != nullptr) << "Failed to connect to real database. Is Postgres running with 'hartonomous' db?";
+        if (db_handle == nullptr) {
+            GTEST_SKIP() << "Database not available - skipping integration test. "
+                        << "Run after database setup.";
+        }
     }
 
     void TearDown() override {

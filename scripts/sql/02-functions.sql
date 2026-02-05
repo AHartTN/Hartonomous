@@ -4,6 +4,9 @@
 
 SET search_path TO hartonomous, public;
 
+\i functions/uint32_to_int.sql
+\i functions/uint64_to_bigint.sql
+
 \i functions/hartonomous/find_composition.sql
 \i functions/hartonomous/find_related_compositions.sql
 \i functions/hartonomous/reindex_all.sql

@@ -1,6 +1,6 @@
 \i types/00-custom_types.sql
 \i tables/01-Tenant.sql
-\i tables/02-User.sql
+\i tables/02-Tenant-User.sql
 \i tables/03-Content.sql
 \i tables/04-Physicality.sql
 \i tables/05-Atom.sql

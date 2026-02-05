@@ -1,37 +1,39 @@
 ---
 name: cognitive-tuning
-description: Optimize Walk Engine parameters (weights, energy, temperature) for specific navigation goals. Use when you need to adjust how the system explores the semantic-geometric cascade.
+description: Optimize ELO-weighted graph navigation parameters for query strategies. Use when adjusting how the system explores relationship graph for specific reasoning goals.
 ---
 
-# Cognitive Tuning: Trajectory Optimization
+# Cognitive Tuning: ELO Navigation Optimization
 
-This skill provides the levers for optimizing the generative navigation of the Hartonomous DAG.
+This skill provides parameters for optimizing relationship graph navigation in Hartonomous.
 
-## Parameter Resonance
+## Core Navigation Parameters
 
-Tuning is about balancing the pull of high-level Relationships against the evidence of base Atoms.
+Intelligence = navigating ELO-weighted relationship paths. Parameters control exploration vs exploitation.
 
-| Parameter | Cascading Role |
+| Parameter | Role in Navigation |
 | :--- | :--- |
-| `w_model` | **Consensus**: External AI model intuition (MKL-accelerated KNN). |
-| `w_text` | **Evidence**: Weight of decimal-atom sequencing (trajectories). |
-| `w_rel` | **Trajectory**: Strength of Level 2 Relationship paths. |
-| `w_geo` | **Physics**: Proximity on the S³ hypersphere. |
-| `w_hilbert` | **Address**: Locality in the 128-bit geometric index. |
+| `temperature` | **Exploration**: Higher = more stochastic path selection (like transformer sampling). Lower = greedy high-ELO only. |
+| `elo_threshold` | **Quality Filter**: Minimum ELO score to consider a relation. Prevents low-confidence paths. |
+| `max_depth` | **Reasoning Depth**: How many relation hops from query. Deeper = more creative but slower. |
+| `cross_modal_weight` | **Modality Fusion**: Bonus for paths bridging different content types (text↔image↔audio). |
+| `novelty_bonus` | **Exploration Bias**: Reward for visiting underexplored relations (preventsループs). |
 
 ## Strategy Guides
 
-### 1. High-Tortuosity Exploration
-When the engine needs to find non-obvious semantic links.
-- `energy`: Start high (2.0+) to allow "jumps" across S³.
-- `w_novelty`: Increase to 0.4 to prevent local trajectory loops.
-- `base_temp`: Higher (0.5+) for stochastic traversal.
+### 1. Creative Exploration
+When seeking non-obvious connections or cross-modal reasoning.
+- `temperature`: 0.7-1.0 for stochastic path sampling.
+- `novelty_bonus`: 0.3-0.5 to encourage new paths.
+- `max_depth`: 5-10 hops for distant connections.
+- `cross_modal_weight`: 1.5x to reward bridging modalities.
 
-### 2. Greedy Convergence (Convergent Thinking)
-When pulling toward a specific goal node.
-- `goal_attraction`: Increase to 5.0+.
-- `energy_decay`: Increase to drain momentum as the goal is approached.
-- `w_rel`: Priority 1. Follow the strongest existing Relationship trajectories.
+### 2. Precise Retrieval
+When seeking established facts or high-confidence answers.
+- `temperature`: 0.1-0.3 for greedy high-ELO selection.
+- `elo_threshold`: 1000+ to filter weak relations.
+- `max_depth`: 2-3 hops for direct connections.
+- `cross_modal_weight`: 1.0x (no bonus).
 
-## Parity-Aware Walk
-Always bias the engine toward **Even** identifiers when seeking structured meaning (Compositions/Relations).
+## ELO Dynamics
+Relation strength evolves through competition. Successful query paths increase ELO of traversed relations. Failed paths decrease ELO. System self-improves through usage.

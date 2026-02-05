@@ -3,8 +3,8 @@
     <PropertyGroup>
       <NativeLibName Condition="'$(OS)' != 'Windows_NT'">libengine.so</NativeLibName>
       <NativeLibName Condition="'$(OS)' == 'Windows_NT'">engine.dll</NativeLibName>
-      <!-- Adjust path based on your CMake preset output -->
-      <NativeBuildDir>$(MSBuildThisFileDirectory)build/linux-release-max-perf/Engine</NativeBuildDir>
+      <!-- Path to C++ build output (relative to app-layer directory) -->
+      <NativeBuildDir>$(MSBuildThisFileDirectory)../build/linux-release-max-perf/Engine</NativeBuildDir>
     </PropertyGroup>
     
     <Message Text="Copying native library $(NativeLibName) from $(NativeBuildDir) to $(OutDir)" Importance="high" />

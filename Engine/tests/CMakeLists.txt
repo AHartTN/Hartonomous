@@ -27,9 +27,9 @@ if(USE_GTEST)
     list(APPEND TEST_LINK_LIBS GTest::GTest GTest::Main)
 endif()
 
-# Macro to add a test
-macro(add_hartonomous_test REL_PATH)
-    # Convert path to valid target name (e.g. suite/test -> suite_test)
+# Macro to add a test with category label
+macro(add_hartonomous_test REL_PATH CATEGORY)
+    # Convert path to valid target name (e.g. unit/test_hashing -> unit_test_hashing)
     string(REPLACE "/" "_" TEST_NAME ${REL_PATH})
     
     add_executable(${TEST_NAME} ${REL_PATH}.cpp)
@@ -40,6 +40,7 @@ macro(add_hartonomous_test REL_PATH)
         gtest_discover_tests(
             ${TEST_NAME}
             PROPERTIES 
+                LABELS "${CATEGORY}"
                 WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
                 ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:engine>:$ENV{LD_LIBRARY_PATH}"
             DISCOVERY_MODE PRE_TEST
@@ -48,19 +49,30 @@ macro(add_hartonomous_test REL_PATH)
         # Basic CTest integration
         add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
         set_tests_properties(${TEST_NAME} PROPERTIES
+            LABELS "${CATEGORY}"
             WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         )
     endif()
 endmacro()
 
-# Refactored Test Suite
-add_hartonomous_test(suite/test_hashing)
-add_hartonomous_test(suite/test_geometry_core)
-add_hartonomous_test(suite/test_projections)
-add_hartonomous_test(suite/test_spatial_index)
-add_hartonomous_test(suite/test_database_marshal)
-add_hartonomous_test(suite/test_end_to_end_pipeline)
-add_hartonomous_test(suite/test_interop_functionality)
+# ==============================================================================
+# Unit Tests (No external dependencies - pure logic)
+# ==============================================================================
+add_hartonomous_test(unit/test_hashing "unit")
+add_hartonomous_test(unit/test_geometry_core "unit")
+add_hartonomous_test(unit/test_projections "unit")
+add_hartonomous_test(unit/test_spatial_index "unit")
+add_hartonomous_test(unit/test_database_marshal "unit")
+
+# ==============================================================================
+# Integration Tests (Require database and/or external services)
+# ==============================================================================
+add_hartonomous_test(integration/test_interop_functionality "integration")
+
+# ==============================================================================
+# End-to-End Tests (Full pipeline validation)
+# ==============================================================================
+add_hartonomous_test(e2e/test_end_to_end_pipeline "e2e")
 
 # Benchmark executables (not part of CTest)
 
