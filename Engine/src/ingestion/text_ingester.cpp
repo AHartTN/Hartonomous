@@ -88,126 +88,204 @@ BLAKE3Pipeline::Hash TextIngester::create_content_record(const std::string& text
     return BLAKE3Pipeline::hash(id_data);
 }
 
-// Token structure: a word/subword made of atoms
-struct Token {
-    std::u32string codepoints;           // The actual codepoints
-    BLAKE3Pipeline::Hash comp_id;        // Composition hash
-    BLAKE3Pipeline::Hash phys_id;        // Physicality hash
-    Eigen::Vector4d centroid;            // S³ centroid position
-    std::vector<Eigen::Vector4d> trajectory; // 4D Trajectory
-    std::vector<BLAKE3Pipeline::Hash> atom_ids;  // Atom IDs in order
-};
-
-// Tokenize text into words (whitespace/punctuation separated)
-static std::vector<std::u32string> tokenize(const std::u32string& text) {
-    std::vector<std::u32string> tokens;
-    std::u32string current;
-
-    for (char32_t cp : text) {
-        // Check if word boundary (space, newline, common punctuation)
-        bool is_boundary = (cp == ' ' || cp == '\t' || cp == '\n' || cp == '\r' ||
-                           cp == '.' || cp == ',' || cp == '!' || cp == '?' ||
-                           cp == ';' || cp == ':' || cp == '"' || cp == '\'' ||
-                           cp == '(' || cp == ')' || cp == '[' || cp == ']' ||
-                           cp == '{' || cp == '}' || cp == '-' || cp == 0);
-
-        if (is_boundary) {
-            if (!current.empty()) {
-                tokens.push_back(current);
-                current.clear();
-            }
-            // Include punctuation as its own token (single character compositions)
-            if (cp != ' ' && cp != '\t' && cp != '\n' && cp != '\r' && cp != 0) {
-                tokens.push_back({cp});
-            }
-        } else {
-            current.push_back(cp);
-        }
-    }
-    if (!current.empty()) {
-        tokens.push_back(current);
-    }
-    return tokens;
-}
-
 IngestionStats TextIngester::ingest(const std::string& text) {
     auto t_total = Clock::now();
     IngestionStats stats;
     stats.original_bytes = text.size();
+
+    // Content dedup: same content hash = already ingested, skip entirely
+    auto content_hash = BLAKE3Pipeline::hash(text);
+    auto existing = db_.query_single(
+        "SELECT id::text FROM hartonomous.content WHERE contenthash = $1",
+        {hash_to_uuid(content_hash)});
+    if (existing.has_value()) {
+        std::cout << "  Content already ingested (hash match), skipping." << std::endl;
+        return stats;
+    }
 
     // Ensure atoms are preloaded (one-time cost, cached forever)
     auto t0 = Clock::now();
     preload_atoms();
     double t_atoms = ms_since(t0);
 
-    // Phase 1: UTF-8 → UTF-32 → tokens
+    // Phase 1: UTF-8 → UTF-32 → suffix array composition discovery
     t0 = Clock::now();
     std::u32string utf32 = utf8_to_utf32(text);
-    auto raw_tokens = tokenize(utf32);
-    double t_tokenize = ms_since(t0);
+    NGramConfig ng_config;
+    ng_config.min_n = config_.min_ngram_size;
+    ng_config.max_n = config_.max_ngram_size;
+    ng_config.min_frequency = config_.min_frequency;
+    extractor_ = NGramExtractor(ng_config);
+    extractor_.extract(utf32);
+    double t_extract = ms_since(t0);
 
-    // Phase 2: Build compositions from token atoms (all lookups from cached atoms)
+    // Phase 2: Significant compositions
     t0 = Clock::now();
-    std::unordered_map<BLAKE3Pipeline::Hash, Token, HashHasher> token_map;
-    std::vector<BLAKE3Pipeline::Hash> token_sequence;
-    token_sequence.reserve(raw_tokens.size());
+    auto sig_ngrams = extractor_.significant_ngrams();
+    stats.ngrams_extracted = extractor_.total_ngrams();
+    stats.ngrams_significant = sig_ngrams.size();
 
-    // Session-local dedup — no DB query needed, stores handle ON CONFLICT
-    std::unordered_set<BLAKE3Pipeline::Hash, HashHasher> session_comp_ids;
-    std::unordered_set<BLAKE3Pipeline::Hash, HashHasher> session_rel_ids;
+    // Build composition records for each significant n-gram
+    struct CompInfo {
+        BLAKE3Pipeline::Hash comp_id;
+        BLAKE3Pipeline::Hash phys_id;
+        Eigen::Vector4d centroid;
+        std::vector<Eigen::Vector4d> trajectory;
+        std::vector<BLAKE3Pipeline::Hash> atom_ids;
+        uint32_t n;  // length in codepoints
+    };
+    std::unordered_map<BLAKE3Pipeline::Hash, CompInfo, HashHasher> comp_map;
+    // Map ngram hash → composition id
+    std::unordered_map<BLAKE3Pipeline::Hash, BLAKE3Pipeline::Hash, HashHasher> ngram_to_comp;
+
     std::unordered_set<BLAKE3Pipeline::Hash, HashHasher> phys_seen;
 
-    for (const auto& tok_cps : raw_tokens) {
+    for (const auto* ng : sig_ngrams) {
         std::vector<BLAKE3Pipeline::Hash> atom_ids;
         std::vector<Eigen::Vector4d> positions;
 
-        for (char32_t cp : tok_cps) {
+        for (char32_t cp : ng->text) {
             auto info = atom_lookup_.lookup(cp);
             if (info) {
                 atom_ids.push_back(info->id);
                 positions.push_back(info->position);
             }
         }
-
         if (atom_ids.empty()) continue;
 
+        // Composition ID = BLAKE3(0x43 + atom_id sequence)
         size_t comp_data_len = 1 + atom_ids.size() * 16;
-        uint8_t comp_buf[1 + 64 * 16]; // stack buffer for typical tokens (up to 64 atoms)
-        uint8_t* comp_data = (comp_data_len <= sizeof(comp_buf)) ? comp_buf : new uint8_t[comp_data_len];
+        std::vector<uint8_t> comp_data(comp_data_len);
         comp_data[0] = 0x43;
         for (size_t k = 0; k < atom_ids.size(); ++k)
-            std::memcpy(comp_data + 1 + k * 16, atom_ids[k].data(), 16);
-        auto comp_id = BLAKE3Pipeline::hash(comp_data, comp_data_len);
-        if (comp_data != comp_buf) delete[] comp_data;
+            std::memcpy(comp_data.data() + 1 + k * 16, atom_ids[k].data(), 16);
+        auto comp_id = BLAKE3Pipeline::hash(comp_data.data(), comp_data_len);
 
-        token_sequence.push_back(comp_id);
+        ngram_to_comp[ng->hash] = comp_id;
 
-        if (token_map.find(comp_id) == token_map.end()) {
-            Token tok;
-            tok.codepoints = tok_cps;
-            tok.comp_id = comp_id;
-            tok.atom_ids = atom_ids;
-            tok.trajectory = positions;
+        if (comp_map.find(comp_id) != comp_map.end()) continue;
 
-            Eigen::Vector4d centroid = Eigen::Vector4d::Zero();
-            for (const auto& p : positions) centroid += p;
-            centroid /= static_cast<double>(positions.size());
-            double norm = centroid.norm();
-            if (norm > 1e-10) centroid /= norm;
-            else centroid = Eigen::Vector4d(1, 0, 0, 0);
-            tok.centroid = centroid;
+        Eigen::Vector4d centroid = Eigen::Vector4d::Zero();
+        for (const auto& p : positions) centroid += p;
+        centroid /= static_cast<double>(positions.size());
+        double norm = centroid.norm();
+        if (norm > 1e-10) centroid /= norm;
+        else centroid = Eigen::Vector4d(1, 0, 0, 0);
 
-            uint8_t phys_data[33];
-            phys_data[0] = 0x50;
-            std::memcpy(phys_data + 1, centroid.data(), sizeof(double) * 4);
-            tok.phys_id = BLAKE3Pipeline::hash(phys_data, 33);
+        uint8_t phys_data[33];
+        phys_data[0] = 0x50;
+        std::memcpy(phys_data + 1, centroid.data(), sizeof(double) * 4);
+        auto phys_id = BLAKE3Pipeline::hash(phys_data, 33);
 
-            token_map[comp_id] = tok;
-        }
+        comp_map[comp_id] = {comp_id, phys_id, centroid, positions, atom_ids, ng->n};
     }
     double t_compose = ms_since(t0);
 
-    // Phase 3: Collect composition records (new ones only within this session)
+    // Phase 3: Greedy tiling → adjacency-based relations
+    // Walk the text left-to-right. At each position, find the longest composition.
+    // Adjacent compositions in the tiling form relations.
+    t0 = Clock::now();
+
+    // Build a position→longest-composition lookup from the extractor's position data
+    // For each significant ngram, record all its positions with length
+    struct PosComp {
+        BLAKE3Pipeline::Hash ngram_hash;
+        uint32_t length;
+    };
+    // pos → list of compositions starting here (we'll pick longest)
+    std::unordered_map<uint32_t, PosComp> best_at_pos;
+    for (const auto* ng : sig_ngrams) {
+        auto comp_it = ngram_to_comp.find(ng->hash);
+        if (comp_it == ngram_to_comp.end()) continue;
+        
+        for (uint32_t pos : ng->positions) {
+            auto it = best_at_pos.find(pos);
+            if (it == best_at_pos.end() || ng->n > it->second.length) {
+                best_at_pos[pos] = {ng->hash, ng->n};
+            }
+        }
+    }
+
+    // Walk text greedily: always take the longest match
+    struct TileEntry {
+        BLAKE3Pipeline::Hash comp_id;
+        uint32_t position;
+        uint32_t length;
+    };
+    std::vector<TileEntry> tiling;
+    tiling.reserve(utf32.size() / 3); // rough estimate
+
+    uint32_t pos = 0;
+    while (pos < utf32.size()) {
+        auto it = best_at_pos.find(pos);
+        if (it != best_at_pos.end()) {
+            auto comp_it = ngram_to_comp.find(it->second.ngram_hash);
+            if (comp_it != ngram_to_comp.end()) {
+                tiling.push_back({comp_it->second, pos, it->second.length});
+                pos += it->second.length;
+                continue;
+            }
+        }
+        // No composition found — single atom (unigram)
+        char32_t cp = utf32[pos];
+        auto hash = BLAKE3Pipeline::hash(reinterpret_cast<const uint8_t*>(&cp), sizeof(char32_t));
+        // Look up the unigram composition
+        auto ng_it = ngram_to_comp.find(hash);
+        if (ng_it != ngram_to_comp.end()) {
+            tiling.push_back({ng_it->second, pos, 1});
+        }
+        pos++;
+    }
+
+    std::cout << "  Tiling: " << tiling.size() << " tiles covering " << utf32.size()
+              << " codepoints" << std::endl;
+
+    // Count adjacent composition pairs
+    struct AdjPair {
+        BLAKE3Pipeline::Hash comp_a;
+        BLAKE3Pipeline::Hash comp_b;
+    };
+    struct AdjPairHash {
+        size_t operator()(const AdjPair& p) const {
+            size_t h = 0;
+            for (int i = 0; i < 4; ++i) h ^= std::hash<uint32_t>{}(reinterpret_cast<const uint32_t*>(p.comp_a.data())[i]) << (i * 8);
+            for (int i = 0; i < 4; ++i) h ^= std::hash<uint32_t>{}(reinterpret_cast<const uint32_t*>(p.comp_b.data())[i]) << (i * 8 + 4);
+            return h;
+        }
+    };
+    struct AdjPairEq {
+        bool operator()(const AdjPair& a, const AdjPair& b) const {
+            return a.comp_a == b.comp_a && a.comp_b == b.comp_b;
+        }
+    };
+
+    // Adjacency pairs: count + total gap distance
+    struct AdjStats {
+        uint32_t count = 0;
+        double total_distance = 0.0;
+    };
+    std::unordered_map<AdjPair, AdjStats, AdjPairHash, AdjPairEq> adj_pairs;
+
+    for (size_t i = 0; i + 1 < tiling.size(); ++i) {
+        const auto& a = tiling[i];
+        const auto& b = tiling[i + 1];
+        if (a.comp_id == b.comp_id) continue; // Self-relation not useful
+
+        // Canonical order for deterministic relation ID
+        bool a_first = std::memcmp(a.comp_id.data(), b.comp_id.data(), 16) < 0;
+        AdjPair key = a_first ? AdjPair{a.comp_id, b.comp_id} : AdjPair{b.comp_id, a.comp_id};
+        
+        uint32_t gap = (b.position >= a.position + a.length) ? (b.position - a.position - a.length) : 0;
+        adj_pairs[key].count++;
+        adj_pairs[key].total_distance += gap;
+    }
+
+    std::cout << "  Adjacency: " << adj_pairs.size() << " unique pairs from "
+              << tiling.size() - 1 << " transitions" << std::endl;
+
+    double t_relations = ms_since(t0);
+
+    // Phase 4: Build persistence records
     t0 = Clock::now();
     std::vector<PhysicalityRecord> phys_records;
     std::vector<CompositionRecord> comp_records;
@@ -217,120 +295,95 @@ IngestionStats TextIngester::ingest(const std::string& text) {
     std::vector<RelationRatingRecord> rating_records;
     std::vector<RelationEvidenceRecord> ev_records;
 
-    for (auto& [comp_id, tok] : token_map) {
-        if (session_comp_ids.insert(comp_id).second) {
-            if (phys_seen.insert(tok.phys_id).second) {
-                Eigen::Vector4d hc;
-                for (int k = 0; k < 4; ++k) hc[k] = (tok.centroid[k] + 1.0) / 2.0;
-                phys_records.push_back({tok.phys_id, HilbertCurve4D::encode(hc), tok.centroid, tok.trajectory});
-            }
-            comp_records.push_back({comp_id, tok.phys_id});
-            stats.compositions_new++;
+    for (auto& [comp_id, ci] : comp_map) {
+        if (phys_seen.insert(ci.phys_id).second) {
+            Eigen::Vector4d hc;
+            for (int k = 0; k < 4; ++k) hc[k] = (ci.centroid[k] + 1.0) / 2.0;
+            phys_records.push_back({ci.phys_id, HilbertCurve4D::encode(hc), ci.centroid, ci.trajectory});
+        }
+        comp_records.push_back({comp_id, ci.phys_id});
+        stats.compositions_new++;
 
-            for (size_t i = 0; i < tok.atom_ids.size(); ) {
-                uint32_t ordinal = static_cast<uint32_t>(i);
-                uint32_t occurrences = 1;
-                while (i + occurrences < tok.atom_ids.size() && tok.atom_ids[i + occurrences] == tok.atom_ids[i]) ++occurrences;
-                uint8_t seq_data[37];
-                seq_data[0] = 0x53;
-                std::memcpy(seq_data + 1, comp_id.data(), 16);
-                std::memcpy(seq_data + 17, tok.atom_ids[i].data(), 16);
-                std::memcpy(seq_data + 33, &ordinal, 4);
-                seq_records.push_back({ BLAKE3Pipeline::hash(seq_data, 37), comp_id, tok.atom_ids[i], ordinal, occurrences });
-                i += occurrences;
-            }
+        for (size_t i = 0; i < ci.atom_ids.size(); ) {
+            uint32_t ordinal = static_cast<uint32_t>(i);
+            uint32_t occurrences = 1;
+            while (i + occurrences < ci.atom_ids.size() && ci.atom_ids[i + occurrences] == ci.atom_ids[i]) ++occurrences;
+            uint8_t seq_data[37];
+            seq_data[0] = 0x53;
+            std::memcpy(seq_data + 1, comp_id.data(), 16);
+            std::memcpy(seq_data + 17, ci.atom_ids[i].data(), 16);
+            std::memcpy(seq_data + 33, &ordinal, 4);
+            seq_records.push_back({ BLAKE3Pipeline::hash(seq_data, 37), comp_id, ci.atom_ids[i], ordinal, occurrences });
+            i += occurrences;
         }
     }
 
-    // Phase 4: Relations (windowed co-occurrence) — aggregate per relation
-    BLAKE3Pipeline::Hash content_hash;
-    auto content_id = create_content_record(text, &content_hash);
+    // Content ID for evidence
+    std::vector<uint8_t> id_data;
+    id_data.push_back(0x43);
+    id_data.insert(id_data.end(), content_hash.begin(), content_hash.end());
+    id_data.insert(id_data.end(), config_.tenant_id.begin(), config_.tenant_id.end());
+    id_data.insert(id_data.end(), config_.user_id.begin(), config_.user_id.end());
+    auto content_id = BLAKE3Pipeline::hash(id_data);
 
-    struct RelAgg { size_t count = 0; double total_signal = 0.0; };
-    std::unordered_map<BLAKE3Pipeline::Hash, RelAgg, HashHasher> rel_agg;
+    // Build relation records from adjacency pairs
+    for (const auto& [pair, adj] : adj_pairs) {
+        uint8_t rel_input[33];
+        rel_input[0] = 0x52;
+        std::memcpy(rel_input + 1, pair.comp_a.data(), 16);
+        std::memcpy(rel_input + 17, pair.comp_b.data(), 16);
+        auto rel_id = BLAKE3Pipeline::hash(rel_input, 33);
 
-    for (size_t i = 0; i < token_sequence.size(); ++i) {
-        auto& comp1_id = token_sequence[i];
-        size_t max_j = std::min(token_sequence.size(), i + config_.cooccurrence_window + 1);
-        for (size_t j = i + 1; j < max_j; ++j) {
-            auto& comp2_id = token_sequence[j];
+        auto ci_a = comp_map.find(pair.comp_a);
+        auto ci_b = comp_map.find(pair.comp_b);
+        if (ci_a == comp_map.end() || ci_b == comp_map.end()) continue;
 
-            const auto& lo = (std::memcmp(comp1_id.data(), comp2_id.data(), 16) < 0) ? comp1_id : comp2_id;
-            const auto& hi = (&lo == &comp1_id) ? comp2_id : comp1_id;
-            uint8_t rel_input[33];
-            rel_input[0] = 0x52;
-            std::memcpy(rel_input + 1, lo.data(), 16);
-            std::memcpy(rel_input + 17, hi.data(), 16);
-            auto rel_id = BLAKE3Pipeline::hash(rel_input, 33);
+        // Relation centroid = midpoint of the two composition centroids on S³
+        Eigen::Vector4d rel_centroid = (ci_a->second.centroid + ci_b->second.centroid) * 0.5;
+        double norm = rel_centroid.norm();
+        if (norm > 1e-10) rel_centroid /= norm;
+        else rel_centroid = Eigen::Vector4d(1, 0, 0, 0);
 
-            auto& agg = rel_agg[rel_id];
-            agg.count++;
-            agg.total_signal += 1.0 / static_cast<double>(j - i);
+        uint8_t rel_phys_data[33];
+        rel_phys_data[0] = 0x50;
+        std::memcpy(rel_phys_data + 1, rel_centroid.data(), sizeof(double) * 4);
+        auto rel_phys_id = BLAKE3Pipeline::hash(rel_phys_data, 33);
 
-            if (session_rel_ids.insert(rel_id).second) {
-                auto& tok1 = token_map[comp1_id];
-                auto& tok2 = token_map[comp2_id];
-
-                Eigen::Vector4d rel_centroid = (tok1.centroid + tok2.centroid) * 0.5;
-                double norm = rel_centroid.norm();
-                if (norm > 1e-10) rel_centroid /= norm;
-                else rel_centroid = Eigen::Vector4d(1, 0, 0, 0);
-
-                uint8_t rel_phys_data[33];
-                rel_phys_data[0] = 0x50;
-                std::memcpy(rel_phys_data + 1, rel_centroid.data(), sizeof(double) * 4);
-                auto rel_phys_id = BLAKE3Pipeline::hash(rel_phys_data, 33);
-
-                if (phys_seen.insert(rel_phys_id).second) {
-                    Eigen::Vector4d hc;
-                    for (int k = 0; k < 4; ++k) hc[k] = (rel_centroid[k] + 1.0) / 2.0;
-                    std::vector<Eigen::Vector4d> rel_trajectory = {tok1.centroid, tok2.centroid};
-                    phys_records.push_back({rel_phys_id, HilbertCurve4D::encode(hc), rel_centroid, rel_trajectory});
-                }
-                rel_records.push_back({rel_id, rel_phys_id});
-                stats.relations_new++;
-
-                for (uint32_t k = 0; k < 2; ++k) {
-                    const auto& cid = (k == 0) ? lo : hi;
-                    uint8_t rs_data[37];
-                    rs_data[0] = 0x54;
-                    std::memcpy(rs_data + 1, rel_id.data(), 16);
-                    std::memcpy(rs_data + 17, cid.data(), 16);
-                    std::memcpy(rs_data + 33, &k, 4);
-                    rel_seq_records.push_back({ BLAKE3Pipeline::hash(rs_data, 37), rel_id, cid, k, 1 });
-                }
-            }
+        if (phys_seen.insert(rel_phys_id).second) {
+            Eigen::Vector4d hc;
+            for (int k = 0; k < 4; ++k) hc[k] = (rel_centroid[k] + 1.0) / 2.0;
+            std::vector<Eigen::Vector4d> rel_trajectory = {ci_a->second.centroid, ci_b->second.centroid};
+            phys_records.push_back({rel_phys_id, HilbertCurve4D::encode(hc), rel_centroid, rel_trajectory});
         }
-    }
+        rel_records.push_back({rel_id, rel_phys_id});
+        stats.relations_new++;
 
-    // One evidence record per (content, relation) — aggregated
-    for (const auto& [rel_id, agg] : rel_agg) {
+        for (uint32_t k = 0; k < 2; ++k) {
+            const auto& cid = (k == 0) ? pair.comp_a : pair.comp_b;
+            uint8_t rs_data[37];
+            rs_data[0] = 0x54;
+            std::memcpy(rs_data + 1, rel_id.data(), 16);
+            std::memcpy(rs_data + 17, cid.data(), 16);
+            std::memcpy(rs_data + 33, &k, 4);
+            rel_seq_records.push_back({ BLAKE3Pipeline::hash(rs_data, 37), rel_id, cid, k, 1 });
+        }
+
+        // Signal strength: 1/(1+avg_gap). Adjacent (gap=0) = 1.0, gap=1 = 0.5, etc.
+        double avg_gap = adj.total_distance / adj.count;
+        double signal = std::min(1.0, 1.0 / (1.0 + avg_gap));
+        double src_rating = 1200.0 + 400.0 * std::log2(static_cast<double>(adj.count) + 1.0);
+
         uint8_t ev_data[32];
         std::memcpy(ev_data, content_id.data(), 16);
         std::memcpy(ev_data + 16, rel_id.data(), 16);
-        double avg_signal = agg.total_signal / static_cast<double>(agg.count);
-        ev_records.push_back({ BLAKE3Pipeline::hash(ev_data, 32), content_id, rel_id, true, avg_signal, static_cast<double>(agg.count) });
+        ev_records.push_back({ BLAKE3Pipeline::hash(ev_data, 32), content_id, rel_id, true, src_rating, signal });
         stats.evidence_count++;
-    }
 
-    // Ratings from aggregated counts
-    for (const auto& [rel_id, agg] : rel_agg) {
-        if (agg.count >= config_.min_cooccurrence) {
-            stats.cooccurrences_significant++;
-            double elo = 800.0 + 400.0 * std::log2(static_cast<double>(agg.count) + 1.0);
-            rating_records.push_back({ rel_id, static_cast<uint64_t>(agg.count), elo, 32.0 });
-        }
+        rating_records.push_back({ rel_id, static_cast<uint64_t>(adj.count), src_rating, 32.0 });
     }
-    stats.cooccurrences_found = rel_agg.size();
-    stats.ngrams_extracted = token_sequence.size();
-    for (const auto& [id, tok] : token_map) {
-        size_t cnt = 0;
-        for (const auto& sid : token_sequence) if (sid == id) ++cnt;
-        if (cnt >= 2) stats.ngrams_significant++;
-    }
-    double t_relations = ms_since(t0);
 
     // Phase 5: Persist — single transaction, COPY-based bulk with ON CONFLICT
+    double t_build = ms_since(t0);
     t0 = Clock::now();
     {
         PostgresConnection::Transaction txn(db_);
@@ -349,16 +402,21 @@ IngestionStats TextIngester::ingest(const std::string& text) {
     }
     double t_persist = ms_since(t0);
 
-    stats.compositions_total = token_map.size();
-    stats.relations_total = rel_agg.size();
+    stats.compositions_total = comp_map.size();
+    stats.relations_total = adj_pairs.size();
     stats.atoms_total = 0;
-    for (const auto& [cp, tok] : token_map) stats.atoms_total += tok.atom_ids.size();
+    for (const auto& [id, ci] : comp_map) stats.atoms_total += ci.atom_ids.size();
 
     double t_total_ms = ms_since(t_total);
-    std::cout << "  Ingestion timing: atoms=" << std::fixed << std::setprecision(0) << t_atoms
-              << "ms tokenize=" << t_tokenize << "ms compose=" << t_compose
-              << "ms relations=" << t_relations << "ms persist=" << t_persist
-              << "ms total=" << t_total_ms << "ms" << std::endl;
+    std::cout << "  Timing: atoms=" << std::fixed << std::setprecision(0) << t_atoms
+              << "ms extract=" << t_extract << "ms compose=" << t_compose
+              << "ms relations=" << t_relations << "ms build=" << t_build
+              << "ms persist=" << t_persist << "ms total=" << t_total_ms << "ms" << std::endl;
+    std::cout << "  Compositions: " << stats.ngrams_extracted << " discovered, "
+              << stats.ngrams_significant << " significant → "
+              << stats.compositions_new << " stored" << std::endl;
+    std::cout << "  Relations: " << adj_pairs.size() << " adjacency pairs → "
+              << stats.relations_new << " relations, " << stats.evidence_count << " evidence" << std::endl;
 
     return stats;
 }

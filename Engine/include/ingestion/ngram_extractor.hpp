@@ -1,6 +1,10 @@
 /**
  * @file ngram_extractor.hpp
- * @brief N-gram extraction and co-occurrence discovery with advanced metrics
+ * @brief Suffix array-based composition discovery from text
+ *
+ * Uses SA+LCP to find all repeated substrings (no length limit).
+ * Compositions emerge from frequency — not from an arbitrary n-gram window.
+ * Relations are computed externally from adjacency, not co-occurrence.
  */
 
 #pragma once
@@ -17,65 +21,52 @@
 namespace Hartonomous {
 
 /**
- * @brief N-gram with frequency, position, and statistical metrics
+ * @brief A discovered composition: repeated substring with statistics
  */
 struct NGram {
     std::u32string text;
     BLAKE3Pipeline::Hash hash;
-    uint32_t n;
+    uint32_t n;                       // Length in codepoints
     uint32_t frequency = 0;
-    std::vector<uint32_t> positions;
+    std::vector<uint32_t> positions;  // Sorted positions in text where this appears
     
-    // Advanced Metrics for Promotion
+    // Statistical metrics
     double pmi = 0.0;
     double npmi = 0.0;
     double left_entropy = 0.0;
     double right_entropy = 0.0;
-    uint32_t branching_factor = 0;    // Number of distinct continuations
+    uint32_t branching_factor = 0;
     
-    bool is_rle = false;              // Repeating atom sequence
+    bool is_rle = false;              // Repeating atom sequence (e.g., "aaa")
+    std::string pattern_signature;    // Structural pattern (e.g., "XYYX" for "abba")
 };
 
 /**
- * @brief Co-occurrence record (A appears near B)
- */
-struct CoOccurrence {
-    BLAKE3Pipeline::Hash ngram_a;
-    BLAKE3Pipeline::Hash ngram_b;
-    uint32_t count = 0;
-    int32_t direction_sum = 0;
-    double avg_distance = 0.0;
-
-    double signal_strength() const {
-        if (count == 0) return 0.0;
-        double proximity = 1.0 / (1.0 + avg_distance);
-        double freq_factor = std::log2(1.0 + count) / 10.0;
-        return std::min(1.0, proximity * (0.5 + freq_factor));
-    }
-
-    bool is_forward() const { return direction_sum > 0; }
-};
-
-/**
- * @brief Configuration for n-gram extraction and promotion
+ * @brief Configuration for composition discovery
  */
 struct NGramConfig {
     uint32_t min_n = 1;
-    uint32_t max_n = 8;
-    uint32_t min_frequency = 2;
-    uint32_t cooccurrence_window = 5;
+    uint32_t max_n = 256;             // Practical cap, not semantic — SA handles any length
+    uint32_t min_frequency = 3;       // Minimum occurrences to be a composition
     bool track_positions = true;
     bool track_direction = true;
     
-    // Promotion thresholds
+    // Promotion thresholds for multi-codepoint compositions
     double min_pmi = 1.0;
     double min_npmi = 0.1;
     double min_entropy = 0.5;
-    uint32_t max_branching_factor = 50; // Filter out unstable prefixes
+    uint32_t max_branching_factor = 50;
+
+    // Legacy fields (unused, kept for compat)
+    uint32_t cooccurrence_window = 5;
 };
 
 /**
- * @brief N-gram extractor: The "Semantic Microscope"
+ * @brief Suffix array-based composition discoverer
+ *
+ * Discovers all repeated substrings in text via SA+LCP.
+ * No arbitrary n-gram window. No co-occurrence computation.
+ * Relations are computed by the caller from position/adjacency data.
  */
 class NGramExtractor {
 public:
@@ -86,30 +77,23 @@ public:
     const std::unordered_map<BLAKE3Pipeline::Hash, NGram, HashHasher>& ngrams() const { return ngrams_; }
     std::vector<const NGram*> significant_ngrams() const;
 
-    const std::map<std::pair<BLAKE3Pipeline::Hash, BLAKE3Pipeline::Hash>, CoOccurrence>& cooccurrences() const {
-        return cooccurrences_;
-    }
-
-    std::vector<const CoOccurrence*> significant_cooccurrences(uint32_t min_count = 2) const;
-
     void clear();
 
     size_t total_ngrams() const { return ngrams_.size(); }
-    size_t total_cooccurrences() const { return cooccurrences_.size(); }
+    uint64_t total_unigrams() const { return total_unigrams_; }
 
 private:
     NGramConfig config_;
     std::unordered_map<BLAKE3Pipeline::Hash, NGram, HashHasher> ngrams_;
-    std::map<std::pair<BLAKE3Pipeline::Hash, BLAKE3Pipeline::Hash>, CoOccurrence> cooccurrences_;
     
     std::unordered_map<BLAKE3Pipeline::Hash, std::unordered_map<char32_t, uint32_t>, HashHasher> left_context_;
     std::unordered_map<BLAKE3Pipeline::Hash, std::unordered_map<char32_t, uint32_t>, HashHasher> right_context_;
 
     uint64_t total_unigrams_ = 0;
 
-    void record_cooccurrence(const BLAKE3Pipeline::Hash& h1, const BLAKE3Pipeline::Hash& h2, uint32_t p1, uint32_t p2);
     void finalize_metrics();
     double calculate_entropy(const std::unordered_map<char32_t, uint32_t>& counts, uint32_t total);
+    static std::string compute_pattern_signature(const std::u32string& text);
 };
 
 }

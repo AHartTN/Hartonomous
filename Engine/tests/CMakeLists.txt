@@ -63,6 +63,7 @@ add_hartonomous_test(unit/test_geometry_core "unit")
 add_hartonomous_test(unit/test_projections "unit")
 add_hartonomous_test(unit/test_spatial_index "unit")
 add_hartonomous_test(unit/test_database_marshal "unit")
+add_hartonomous_test(unit/test_ngram_extractor "unit")
 
 # ==============================================================================
 # Integration Tests (Require database and/or external services)

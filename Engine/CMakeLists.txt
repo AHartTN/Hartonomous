@@ -66,6 +66,8 @@ target_link_libraries(engine_io_objs
         Eigen3::Eigen
         HNSW::HNSW
         OpenMP::OpenMP_CXX
+    PRIVATE
+        divsufsort
 )
 
 # ==============================================================================
@@ -125,6 +127,8 @@ target_link_libraries(engine_io
         PostgreSQL::LibPQ
         tree-sitter::tree-sitter
         nlohmann_json::nlohmann_json
+    PRIVATE
+        divsufsort
 )
 
 # Apply optimized compiler flags
@@ -167,6 +171,7 @@ target_link_libraries(engine
     PRIVATE
         Spectra::Spectra
         MKL::MKL
+        divsufsort
 )
 
 # Apply optimized compiler flags

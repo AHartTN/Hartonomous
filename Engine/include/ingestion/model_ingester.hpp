@@ -1,16 +1,15 @@
 /**
  * @file model_ingester.hpp
- * @brief AI model ingestion: Extract semantic edges from models
+ * @brief AI model ingestion: Extract semantic edges from model embeddings
  *
- * Key insight:
- * - "King" in substrate = composition of atoms [K,i,n,g] = just the word
- * - "King" in AI model = entire CONCEPT with all learned relationships
+ * The embedding matrix IS the value from AI models:
+ * - Each row = a token's learned position in the model's semantic space
+ * - KNN on rows = token-to-token relationships (the model's OPINIONS)
+ * - Weight matrices (Q/K/V/FFN) are internal plumbing — dimensions don't map to tokens
  *
- * Model ingestion extracts the concept by mining semantic edges:
- * - Vocab tokens → Compositions (same pipeline as text)
- * - Embedding KNN → Relations (semantic neighbors)
- * - Attention weights → Relations (A attends to B with weight W)
- * - All edges become Relations with Evidence from the model
+ * Model ingestion pipeline:
+ * 1. Vocab tokens → Compositions (same pipeline as text ingestion)
+ * 2. Embedding KNN → Relations with ELO (model opinions, lower than observed text)
  */
 
 #pragma once

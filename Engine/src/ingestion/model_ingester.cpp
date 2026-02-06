@@ -15,7 +15,6 @@
 #include <algorithm>
 #include <numeric>
 #include <atomic>
-#include <queue>
 #include <chrono>
 #include <omp.h>
 
@@ -29,7 +28,7 @@ static double ms_since(Clock::time_point t0) {
     return std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
 }
 
-// Thread-local accumulators for parallel KNN edge extraction
+// Thread-local accumulators for parallel edge extraction
 struct ThreadLocalRecords {
     std::vector<PhysicalityRecord> phys;
     std::vector<RelationRecord> rel;
@@ -41,8 +40,8 @@ struct ThreadLocalRecords {
     size_t relations_created = 0;
 };
 
-// Flush one layer's worth of records to DB in a single transaction
-static void flush_layer_records(
+// Flush records to DB in a single transaction
+static void flush_records(
     PostgresConnection& db,
     std::vector<ThreadLocalRecords>& locals,
     std::unordered_set<BLAKE3Pipeline::Hash, HashHasher>& session_rel_seen,
@@ -54,13 +53,11 @@ static void flush_layer_records(
     size_t n_created = 0;
     for (auto& tl : locals) n_created += tl.relations_created;
     if (n_created == 0) {
-        std::cout << "      (no new relations)" << std::endl;
+        std::cout << "    (no new relations)" << std::endl;
         return;
     }
 
     auto t0 = Clock::now();
-
-    // All stores in one transaction — each COPY completes sequentially via flush()
     PostgresConnection::Transaction txn(db);
 
     {
@@ -92,171 +89,8 @@ static void flush_layer_records(
     txn.commit();
     total_relations += n_created;
 
-    std::cout << "      Flushed " << n_created << " relations in " 
+    std::cout << "    Flushed " << n_created << " relations in "
               << std::fixed << std::setprecision(0) << ms_since(t0) << "ms" << std::endl;
-}
-
-// Score a layer's representation quality: mean max similarity
-// Low score = collapsed or scattered = skip it
-static float score_layer_quality(const Eigen::MatrixXf& vecs, size_t sample_size = 512) {
-    size_t n = static_cast<size_t>(vecs.rows());
-    if (n < 10) return 0.0f;
-    
-    size_t step = std::max(size_t(1), n / sample_size);
-    double total_max_sim = 0.0;
-    size_t count = 0;
-    
-    for (size_t i = 0; i < n; i += step) {
-        float best = -1.0f;
-        // Compare against a random sample of other tokens
-        for (size_t s = 0; s < std::min(sample_size, n); ++s) {
-            size_t j = (i + 1 + s * step) % n;
-            if (j == i) continue;
-            float sim = vecs.row(i).dot(vecs.row(j));
-            if (sim > best) best = sim;
-        }
-        if (best > -1.0f) { total_max_sim += best; count++; }
-    }
-    return count > 0 ? static_cast<float>(total_max_sim / count) : 0.0f;
-}
-
-// Blocked GEMM edge extraction
-// Instead of 30K individual GEMV calls, compute Q[block]*K^T as a single MKL GEMM.
-// Block size 1024: 1024×30K×4B = 120MB per block, ~30 blocks, MKL-optimized.
-// Scan result for above-threshold entries (the intersections).
-static void extract_streaming_edges(
-    const Eigen::MatrixXf& query_vecs,
-    const Eigen::MatrixXf& key_vecs,
-    size_t n, size_t max_k, float sim_threshold,
-    const std::vector<std::string>& vocab,
-    const std::unordered_map<std::string, BLAKE3Pipeline::Hash>& token_to_comp,
-    const std::unordered_set<BLAKE3Pipeline::Hash, HashHasher>& session_rel_seen,
-    const BLAKE3Pipeline::Hash& model_id,
-    const std::vector<uint8_t>& evidence_suffix,
-    double base_elo, double elo_range,
-    const std::unordered_map<BLAKE3Pipeline::Hash, Eigen::Vector4d, HashHasher>& comp_centroids,
-    std::vector<ThreadLocalRecords>& locals)
-{
-    auto t0 = Clock::now();
-    constexpr size_t BLOCK = 1024;
-
-    std::atomic<size_t> total_candidates{0};
-    std::atomic<size_t> total_above_threshold{0};
-
-    for (size_t block_start = 0; block_start < n; block_start += BLOCK) {
-        size_t block_end = std::min(block_start + BLOCK, n);
-        size_t block_rows = block_end - block_start;
-
-        // Single MKL GEMM: (block_rows, dim) × (dim, n) → (block_rows, n)
-        Eigen::MatrixXf scores = query_vecs.middleRows(block_start, block_rows) * key_vecs.topRows(n).transpose();
-
-        // Parallel scan for above-threshold entries
-        #pragma omp parallel for schedule(dynamic, 32)
-        for (size_t bi = 0; bi < block_rows; ++bi) {
-            size_t i = block_start + bi;
-            auto& tl = locals[omp_get_thread_num()];
-            auto it_s = token_to_comp.find(vocab[i]);
-            if (it_s == token_to_comp.end()) continue;
-            const auto& scid = it_s->second;
-
-            // Collect above-threshold entries from this row
-            struct Edge { size_t j; float sim; };
-            std::vector<Edge> candidates;
-            candidates.reserve(128);
-
-            for (size_t j = 0; j < n; ++j) {
-                if (j == i) continue;
-                float sim = scores(bi, j);
-                if (sim < sim_threshold) continue;
-                candidates.push_back({j, sim});
-            }
-
-            if (candidates.empty()) continue;
-            total_above_threshold.fetch_add(candidates.size(), std::memory_order_relaxed);
-
-            // Keep top-K
-            if (candidates.size() > max_k) {
-                std::partial_sort(candidates.begin(), candidates.begin() + max_k, candidates.end(),
-                                  [](const Edge& a, const Edge& b) { return a.sim > b.sim; });
-                candidates.resize(max_k);
-            }
-            total_candidates.fetch_add(candidates.size(), std::memory_order_relaxed);
-
-            for (auto& [j, sim] : candidates) {
-                auto it_t = token_to_comp.find(vocab[j]);
-                if (it_t == token_to_comp.end()) continue;
-                const auto& tcid = it_t->second;
-
-                const auto& lo = (std::memcmp(scid.data(), tcid.data(), 16) < 0) ? scid : tcid;
-                const auto& hi = (&lo == &scid) ? tcid : scid;
-
-                uint8_t rdata[33];
-                rdata[0] = 0x52;
-                std::memcpy(rdata + 1, lo.data(), 16);
-                std::memcpy(rdata + 17, hi.data(), 16);
-                auto rid = BLAKE3Pipeline::hash(rdata, 33);
-
-                if (tl.rel_seen.insert(rid).second && session_rel_seen.find(rid) == session_rel_seen.end()) {
-                    Eigen::Vector4d rel_centroid;
-                    auto it_sc = comp_centroids.find(scid);
-                    auto it_tc = comp_centroids.find(tcid);
-                    if (it_sc != comp_centroids.end() && it_tc != comp_centroids.end()) {
-                        rel_centroid = (it_sc->second + it_tc->second) * 0.5;
-                        double nrm = rel_centroid.norm();
-                        if (nrm > 1e-10) rel_centroid /= nrm;
-                        else rel_centroid = Eigen::Vector4d(1, 0, 0, 0);
-                    } else {
-                        rel_centroid = Eigen::Vector4d(0.5, 0.5, 0.5, 0.5);
-                        rel_centroid.normalize();
-                    }
-
-                    uint8_t pdata[33];
-                    pdata[0] = 0x50;
-                    std::memcpy(pdata + 1, rel_centroid.data(), sizeof(double) * 4);
-                    auto prid = BLAKE3Pipeline::hash(pdata, 33);
-
-                    if (tl.phys_seen.insert(prid).second) {
-                        Eigen::Vector4d hc;
-                        for (int d = 0; d < 4; ++d) hc[d] = (rel_centroid[d] + 1.0) / 2.0;
-                        std::vector<Eigen::Vector4d> traj;
-                        if (it_sc != comp_centroids.end()) traj.push_back(it_sc->second);
-                        if (it_tc != comp_centroids.end()) traj.push_back(it_tc->second);
-                        tl.phys.push_back({prid, HilbertCurve4D::encode(hc), rel_centroid, traj});
-                    }
-                    tl.rel.push_back({rid, prid});
-
-                    for (uint32_t ord = 0; ord < 2; ++ord) {
-                        const auto& cid = (ord == 0) ? scid : tcid;
-                        uint8_t sdata[37];
-                        sdata[0] = 0x54;
-                        std::memcpy(sdata + 1, rid.data(), 16);
-                        std::memcpy(sdata + 17, cid.data(), 16);
-                        std::memcpy(sdata + 33, &ord, 4);
-                        tl.rel_seq.push_back({BLAKE3Pipeline::hash(sdata, 37), rid, cid, ord, 1});
-                    }
-
-                    size_t ev_len = 32 + evidence_suffix.size();
-                    uint8_t edata[64];
-                    std::memcpy(edata, model_id.data(), 16);
-                    std::memcpy(edata + 16, rid.data(), 16);
-                    if (!evidence_suffix.empty())
-                        std::memcpy(edata + 32, evidence_suffix.data(), evidence_suffix.size());
-                    tl.ev.push_back({BLAKE3Pipeline::hash(edata, ev_len), model_id, rid, true, static_cast<double>(sim), 1.0});
-                    tl.relations_created++;
-                }
-
-                tl.rating.push_back({rid, 1, base_elo + elo_range * static_cast<double>(sim), 32.0});
-            }
-        }
-    }
-
-    double total_ms = ms_since(t0);
-    size_t total_new = 0;
-    for (auto& tl : locals) total_new += tl.relations_created;
-    std::cout << "      Blocked GEMM (" << BLOCK << "): " << std::fixed << std::setprecision(0) << total_ms
-              << "ms | " << total_new << " new relations"
-              << " (above-threshold: " << total_above_threshold.load()
-              << ", kept: " << total_candidates.load() << ")" << std::endl;
 }
 
 ModelIngester::ModelIngester(PostgresConnection& db, const ModelIngestionConfig& config)
@@ -277,10 +111,9 @@ ModelIngestionStats ModelIngester::ingest_package(const std::filesystem::path& p
         stats.vocab_tokens = metadata.vocab.size();
         std::cout << "Ingesting model with " << stats.vocab_tokens << " vocab tokens..." << std::endl;
         std::cout << "  Content ID: " << hash_to_uuid(model_id_) << std::endl;
-
-        // Bulk COPY through temp tables with ON CONFLICT handles all dedup/upsert
         std::cout << "  Starting model ingestion pipeline..." << std::endl;
 
+        // Content record for provenance
         try {
             PostgresConnection::Transaction txn(db_);
             ContentStore content_store(db_);
@@ -295,39 +128,23 @@ ModelIngestionStats ModelIngester::ingest_package(const std::filesystem::path& p
         // Phase 1: Vocab → Compositions
         auto t0 = Clock::now();
         auto token_to_comp = ingest_vocab_as_text(metadata.vocab, stats);
-        std::cout << "  Phase 1 (vocab): " << std::fixed << std::setprecision(0) 
+        std::cout << "  Phase 1 (vocab): " << std::fixed << std::setprecision(0)
                   << ms_since(t0) << "ms | " << stats.compositions_created << " compositions" << std::endl;
 
-        std::unordered_set<BLAKE3Pipeline::Hash, HashHasher> session_rel_seen;
-
-        // Phase 2: Embedding layer → relations (baseline for semantic deltas)
+        // Phase 2: Embedding KNN → Relations
+        // The embedding matrix IS the model's learned opinions about token relatedness.
+        // Cosine similarity between embedding rows = the model's pre-computed score.
+        // This is an OPINION, not an observed fact — ELO reflects that.
         auto embeddings = loader.get_embeddings();
-        Eigen::MatrixXf norm_embeddings;
         if (embeddings.rows() > 0) {
             auto t1 = Clock::now();
             size_t n = std::min(metadata.vocab.size(), static_cast<size_t>(embeddings.rows()));
-            norm_embeddings = embeddings.topRows(n);
+            Eigen::MatrixXf norm_embeddings = embeddings.topRows(n);
             norm_embeddings.rowwise().normalize();
+
+            std::unordered_set<BLAKE3Pipeline::Hash, HashHasher> session_rel_seen;
             extract_embedding_edges(metadata.vocab, norm_embeddings, token_to_comp, session_rel_seen, stats);
-            std::cout << "  Phase 2 (embeddings): " << ms_since(t1) << "ms" << std::endl;
-        }
-
-        // Phase 3: Attention layers → relations (with quality scoring + semantic deltas)
-        auto attention_layers = loader.get_attention_layers();
-        if (!attention_layers.empty() && norm_embeddings.rows() > 0) {
-            auto t2 = Clock::now();
-            extract_attention_layer_edges(attention_layers, metadata.vocab, embeddings,
-                                          norm_embeddings, token_to_comp, session_rel_seen, stats);
-            std::cout << "  Phase 3 (attention): " << ms_since(t2) << "ms" << std::endl;
-        }
-
-        // Phase 4: FFN layers → relations (with quality scoring + semantic deltas)
-        auto ffn_layers = loader.get_ffn_layers();
-        if (!ffn_layers.empty() && norm_embeddings.rows() > 0) {
-            auto t3 = Clock::now();
-            extract_ffn_layer_edges(ffn_layers, metadata.vocab, embeddings,
-                                     norm_embeddings, token_to_comp, session_rel_seen, stats);
-            std::cout << "  Phase 4 (FFN): " << ms_since(t3) << "ms" << std::endl;
+            std::cout << "  Phase 2 (embedding KNN): " << ms_since(t1) << "ms" << std::endl;
         }
 
         double total_ms = ms_since(t_pipeline);
@@ -486,137 +303,153 @@ void ModelIngester::extract_embedding_edges(
 
     size_t n = static_cast<size_t>(norm_embeddings.rows());
     if (n < 2) return;
-    size_t k_neighbors = std::min(config_.max_neighbors_per_token, n - 1);
-    std::cout << "    Embedding layer: " << n << " tokens, k=" << k_neighbors 
-              << ", threshold=" << std::fixed << std::setprecision(2) 
-              << config_.embedding_similarity_threshold << std::endl;
+    size_t k = std::min(config_.max_neighbors_per_token, n - 1);
+    float threshold = static_cast<float>(config_.embedding_similarity_threshold);
 
-    float quality = score_layer_quality(norm_embeddings);
-    std::cout << "      Layer quality score: " << std::fixed << std::setprecision(3) << quality << std::endl;
+    std::cout << "    Embedding KNN: " << n << " tokens, k=" << k
+              << ", threshold=" << std::fixed << std::setprecision(2) << threshold << std::endl;
 
+    auto t0 = Clock::now();
+    constexpr size_t BLOCK = 1024;
     int num_threads = omp_get_max_threads();
     std::vector<ThreadLocalRecords> locals(num_threads);
 
-    // Embedding layer: proximity relations (nearest neighbors in embedding space)
-    extract_streaming_edges(norm_embeddings, norm_embeddings, n, k_neighbors,
-                      config_.embedding_similarity_threshold,
-                      vocab, token_to_comp, session_rel_seen, model_id_,
-                      {}, 800.0, 1200.0, comp_centroids_, locals);
+    // Model opinions get moderate ELO — not as authoritative as observed text
+    // sim=0.4 → ELO=1200, sim=0.8 → ELO=1400, sim=1.0 → ELO=1500
+    double base_elo = 1000.0;
+    double elo_range = 500.0;
 
-    flush_layer_records(db_, locals, session_rel_seen, stats.relations_created);
-}
+    std::atomic<size_t> edges_found{0};
 
-void ModelIngester::extract_attention_layer_edges(
-    const std::vector<AttentionLayer>& layers, const std::vector<std::string>& vocab,
-    const Eigen::MatrixXf& embeddings, const Eigen::MatrixXf& norm_embeddings,
-    const std::unordered_map<std::string, BLAKE3Pipeline::Hash>& token_to_comp,
-    std::unordered_set<BLAKE3Pipeline::Hash, HashHasher>& session_rel_seen,
-    ModelIngestionStats& stats) {
+    for (size_t block_start = 0; block_start < n; block_start += BLOCK) {
+        size_t block_end = std::min(block_start + BLOCK, n);
+        size_t block_rows = block_end - block_start;
 
-    size_t n = std::min(vocab.size(), static_cast<size_t>(embeddings.rows()));
-    if (n < 2 || layers.empty()) return;
-    size_t k_neighbors = std::min(config_.max_neighbors_per_token, n - 1);
+        // Blocked GEMM: cosine similarity for this block against all tokens
+        Eigen::MatrixXf scores = norm_embeddings.middleRows(block_start, block_rows) * norm_embeddings.topRows(n).transpose();
 
-    std::cout << "    Attention: " << layers.size() << " layers, " << n << " tokens, k=" << k_neighbors << std::endl;
+        #pragma omp parallel for schedule(dynamic, 32)
+        for (size_t bi = 0; bi < block_rows; ++bi) {
+            size_t i = block_start + bi;
+            auto& tl = locals[omp_get_thread_num()];
+            auto it_s = token_to_comp.find(vocab[i]);
+            if (it_s == token_to_comp.end()) continue;
+            const auto& scid = it_s->second;
 
-    for (const auto& layer : layers) {
-        if (!layer.q_weight || !layer.k_weight) continue;
-        auto t0 = Clock::now();
+            // Collect above-threshold neighbors
+            struct Edge { size_t j; float sim; };
+            std::vector<Edge> candidates;
+            candidates.reserve(128);
 
-        Eigen::Map<const Eigen::MatrixXf> Q(layer.q_weight->data.data(), layer.q_weight->shape[0], layer.q_weight->shape[1]);
-        Eigen::Map<const Eigen::MatrixXf> K(layer.k_weight->data.data(), layer.k_weight->shape[0], layer.k_weight->shape[1]);
+            for (size_t j = 0; j < n; ++j) {
+                if (j == i) continue;
+                float sim = scores(bi, j);
+                if (sim < threshold) continue;
+                candidates.push_back({j, sim});
+            }
 
-        // Project embeddings through Q and K — HNSW on these IS the attention top-K
-        Eigen::MatrixXf Qp = embeddings.topRows(n) * Q.transpose();
-        Qp.rowwise().normalize();
-        Eigen::MatrixXf Kp = embeddings.topRows(n) * K.transpose();
-        Kp.rowwise().normalize();
+            if (candidates.empty()) continue;
 
-        float quality = score_layer_quality(Qp);
-        std::cout << "      Attention layer " << layer.layer_index 
-                  << " quality=" << std::fixed << std::setprecision(3) << quality;
-        if (quality < 0.05f) {
-            std::cout << " → SKIPPED (collapsed)" << std::endl;
-            continue;
+            // Keep top-K
+            if (candidates.size() > k) {
+                std::partial_sort(candidates.begin(), candidates.begin() + k, candidates.end(),
+                                  [](const Edge& a, const Edge& b) { return a.sim > b.sim; });
+                candidates.resize(k);
+            }
+
+            for (auto& [j, sim] : candidates) {
+                auto it_t = token_to_comp.find(vocab[j]);
+                if (it_t == token_to_comp.end()) continue;
+                const auto& tcid = it_t->second;
+
+                // Canonical ordering for deterministic relation ID
+                const auto& lo = (std::memcmp(scid.data(), tcid.data(), 16) < 0) ? scid : tcid;
+                const auto& hi = (&lo == &scid) ? tcid : scid;
+
+                uint8_t rdata[33];
+                rdata[0] = 0x52;
+                std::memcpy(rdata + 1, lo.data(), 16);
+                std::memcpy(rdata + 17, hi.data(), 16);
+                auto rid = BLAKE3Pipeline::hash(rdata, 33);
+
+                if (tl.rel_seen.insert(rid).second && session_rel_seen.find(rid) == session_rel_seen.end()) {
+                    Eigen::Vector4d rel_centroid;
+                    auto it_sc = comp_centroids_.find(scid);
+                    auto it_tc = comp_centroids_.find(tcid);
+                    if (it_sc != comp_centroids_.end() && it_tc != comp_centroids_.end()) {
+                        rel_centroid = (it_sc->second + it_tc->second) * 0.5;
+                        double nrm = rel_centroid.norm();
+                        if (nrm > 1e-10) rel_centroid /= nrm;
+                        else rel_centroid = Eigen::Vector4d(1, 0, 0, 0);
+                    } else {
+                        rel_centroid = Eigen::Vector4d(0.5, 0.5, 0.5, 0.5);
+                        rel_centroid.normalize();
+                    }
+
+                    uint8_t pdata[33];
+                    pdata[0] = 0x50;
+                    std::memcpy(pdata + 1, rel_centroid.data(), sizeof(double) * 4);
+                    auto prid = BLAKE3Pipeline::hash(pdata, 33);
+
+                    if (tl.phys_seen.insert(prid).second) {
+                        Eigen::Vector4d hc;
+                        for (int d = 0; d < 4; ++d) hc[d] = (rel_centroid[d] + 1.0) / 2.0;
+                        std::vector<Eigen::Vector4d> traj;
+                        if (it_sc != comp_centroids_.end()) traj.push_back(it_sc->second);
+                        if (it_tc != comp_centroids_.end()) traj.push_back(it_tc->second);
+                        tl.phys.push_back({prid, HilbertCurve4D::encode(hc), rel_centroid, traj});
+                    }
+                    tl.rel.push_back({rid, prid});
+
+                    for (uint32_t ord = 0; ord < 2; ++ord) {
+                        const auto& cid = (ord == 0) ? scid : tcid;
+                        uint8_t sdata[37];
+                        sdata[0] = 0x54;
+                        std::memcpy(sdata + 1, rid.data(), 16);
+                        std::memcpy(sdata + 17, cid.data(), 16);
+                        std::memcpy(sdata + 33, &ord, 4);
+                        tl.rel_seq.push_back({BLAKE3Pipeline::hash(sdata, 37), rid, cid, ord, 1});
+                    }
+
+                    // Evidence: model opinion, signal_strength = cosine similarity [0,1]
+                    uint8_t edata[32];
+                    std::memcpy(edata, model_id_.data(), 16);
+                    std::memcpy(edata + 16, rid.data(), 16);
+                    tl.ev.push_back({BLAKE3Pipeline::hash(edata, 32), model_id_, rid, true,
+                                     base_elo + elo_range * static_cast<double>(sim),
+                                     static_cast<double>(sim)});
+                    tl.relations_created++;
+                }
+
+                // Rating: model opinion, moderate ELO
+                tl.rating.push_back({rid, 1, base_elo + elo_range * static_cast<double>(sim), 32.0});
+            }
+            edges_found.fetch_add(candidates.size(), std::memory_order_relaxed);
         }
-        std::cout << std::endl;
-
-        int num_threads = omp_get_max_threads();
-        std::vector<ThreadLocalRecords> locals(num_threads);
-
-        uint32_t lidx = static_cast<uint32_t>(layer.layer_index);
-        std::vector<uint8_t> ev_suffix(reinterpret_cast<uint8_t*>(&lidx), reinterpret_cast<uint8_t*>(&lidx) + 4);
-
-        float threshold = config_.embedding_similarity_threshold;
-        double elo_range = 1000.0 / (1.0 - threshold);
-        double base_elo = 1000.0 - elo_range * threshold;
-
-        // Attention: relevance relations (Q·K^T = semantic intersections)
-        // Threshold discards near-zero scores. No neighborhood filter — relevance ≠ proximity.
-        extract_streaming_edges(Qp, Kp, n, k_neighbors, threshold,
-                          vocab, token_to_comp, session_rel_seen, model_id_,
-                          ev_suffix, base_elo, elo_range, comp_centroids_, locals);
-
-        std::cout << "      Attention layer " << layer.layer_index << " (" 
-                  << std::fixed << std::setprecision(0) << ms_since(t0) << "ms total): ";
-        flush_layer_records(db_, locals, session_rel_seen, stats.relations_created);
     }
+
+    double total_ms = ms_since(t0);
+    std::cout << "    Embedding KNN (" << BLOCK << "-block GEMM): "
+              << std::fixed << std::setprecision(0) << total_ms << "ms | "
+              << edges_found.load() << " edges found" << std::endl;
+
+    flush_records(db_, locals, session_rel_seen, stats.relations_created);
 }
+
+// Stub implementations — attention/FFN weight matrices don't map to tokens
+void ModelIngester::extract_attention_layer_edges(
+    const std::vector<AttentionLayer>&, const std::vector<std::string>&,
+    const Eigen::MatrixXf&, const Eigen::MatrixXf&,
+    const std::unordered_map<std::string, BLAKE3Pipeline::Hash>&,
+    std::unordered_set<BLAKE3Pipeline::Hash, HashHasher>&,
+    ModelIngestionStats&) {}
 
 void ModelIngester::extract_ffn_layer_edges(
-    const std::vector<FFNLayer>& layers, const std::vector<std::string>& vocab,
-    const Eigen::MatrixXf& embeddings, const Eigen::MatrixXf& norm_embeddings,
-    const std::unordered_map<std::string, BLAKE3Pipeline::Hash>& token_to_comp,
-    std::unordered_set<BLAKE3Pipeline::Hash, HashHasher>& session_rel_seen,
-    ModelIngestionStats& stats) {
-
-    size_t n = std::min(vocab.size(), static_cast<size_t>(embeddings.rows()));
-    if (n < 2 || layers.empty()) return;
-    size_t k_neighbors = std::min(config_.max_neighbors_per_token, n - 1);
-
-    std::cout << "    FFN: " << layers.size() << " layers, " << n << " tokens, k=" << k_neighbors << std::endl;
-
-    for (const auto& layer : layers) {
-        const TensorData* p_tensor = layer.gate_weight ? layer.gate_weight : layer.up_weight;
-        if (!p_tensor || p_tensor->data.empty()) continue;
-        auto t0 = Clock::now();
-
-        Eigen::Map<const Eigen::MatrixXf> W(p_tensor->data.data(), p_tensor->shape[0], p_tensor->shape[1]);
-        Eigen::MatrixXf acts = (embeddings.topRows(n) * W.transpose()).cwiseMax(0);
-        acts.rowwise().normalize();
-
-        float quality = score_layer_quality(acts);
-        std::cout << "      FFN layer " << layer.layer_index
-                  << " quality=" << std::fixed << std::setprecision(3) << quality;
-        if (quality < 0.10f) {
-            std::cout << " → SKIPPED (noise)" << std::endl;
-            continue;
-        }
-        std::cout << std::endl;
-
-        int num_threads = omp_get_max_threads();
-        std::vector<ThreadLocalRecords> locals(num_threads);
-
-        uint32_t lidx = static_cast<uint32_t>(layer.layer_index);
-        std::vector<uint8_t> ev_suffix(reinterpret_cast<uint8_t*>(&lidx), reinterpret_cast<uint8_t*>(&lidx) + 4);
-        ev_suffix.push_back(0xFF);
-
-        // FFN activations are non-negative (ReLU) + normalized → inherently high similarity.
-        // Use a higher threshold than embeddings to avoid explosion.
-        float threshold = std::max(config_.embedding_similarity_threshold, 0.70f);
-        double elo_range = 1000.0 / (1.0 - threshold);
-        double base_elo = 1000.0 - elo_range * threshold;
-
-        // FFN: relevance relations (activation intersections)
-        extract_streaming_edges(acts, acts, n, k_neighbors, threshold,
-                          vocab, token_to_comp, session_rel_seen, model_id_,
-                          ev_suffix, base_elo, elo_range, comp_centroids_, locals);
-
-        std::cout << "      FFN layer " << layer.layer_index << " (" 
-                  << std::fixed << std::setprecision(0) << ms_since(t0) << "ms total): ";
-        flush_layer_records(db_, locals, session_rel_seen, stats.relations_created);
-    }
-}
+    const std::vector<FFNLayer>&, const std::vector<std::string>&,
+    const Eigen::MatrixXf&, const Eigen::MatrixXf&,
+    const std::unordered_map<std::string, BLAKE3Pipeline::Hash>&,
+    std::unordered_set<BLAKE3Pipeline::Hash, HashHasher>&,
+    ModelIngestionStats&) {}
 
 void ModelIngester::extract_attention_edges(const std::vector<Eigen::MatrixXd>&, const std::vector<std::string>&, const std::unordered_map<std::string, BLAKE3Pipeline::Hash>&, ModelIngestionStats&) {}
 
