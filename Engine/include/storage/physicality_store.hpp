@@ -19,7 +19,6 @@ struct PhysicalityRecord {
 
 class PhysicalityStore {
 public:
-    // use_temp_table=false for direct COPY (fast, requires pre-deduplication)
     explicit PhysicalityStore(PostgresConnection& db, bool use_temp_table = true, bool use_binary = false);
     void store(const PhysicalityRecord& rec);
     void flush();
@@ -29,8 +28,6 @@ private:
     bool use_dedup_;
     bool use_binary_;
     std::unordered_set<BLAKE3Pipeline::Hash, HashHasher> seen_;
-    std::string hash_to_uuid(const BLAKE3Pipeline::Hash& hash);
-    std::string hilbert_to_hex(const HilbertIndex& h);
     std::string geom_to_hex(const Eigen::Vector4d& pt);
 };
 

@@ -1,6 +1,9 @@
 /**
  * @file walk_engine.hpp
- * @brief Core engine for generative walks over the semantic-geometric substrate
+ * @brief Core engine for generative walks = forward pass through relation graph
+ *
+ * The walk IS inference. Relations are weights. ELO is activation strength.
+ * Geometry is for indexing/fuzzy search — semantics emerge from relation traversal.
  */
 
 #pragma once
@@ -16,16 +19,17 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <deque>
+#include <string>
 
 namespace Hartonomous {
 
 struct WalkParameters {
-    // Adjacency Weights
-    double w_model = 0.35;               // From AI model KNN
-    double w_text = 0.40;                // From text co-occurrence
-    double w_rel = 0.15;                 // From relation ratings
-    double w_geo = 0.05;                 // S3 proximity
-    double w_hilbert = 0.05;             // Hilbert locality
+    // Relation graph weights (semantics emerge from relations, not proximity)
+    double w_model = 0.35;               // ELO quality weight
+    double w_text = 0.40;                // Observation frequency weight
+    double w_rel = 0.15;                 // Sigmoid-gated relation strength
+    double w_geo = 0.05;                 // Reserved (C ABI compat)
+    double w_hilbert = 0.05;             // Reserved (C ABI compat)
 
     // Penalties
     double w_repeat = 0.25;              // Per-visit penalty
@@ -36,9 +40,10 @@ struct WalkParameters {
 
     // Energy / Exploration
     double w_energy = 0.10;              // Energy bonus
-    double base_temp = 0.4;              // Minimum temperature
-    double energy_alpha = 0.6;           // Energy-to-temp multiplier
-    double energy_decay = 0.05;          // Energy lost per step
+    double base_temp = 0.55;              // Maximum temperature (start of walk)
+    double min_temp = 0.35;               // Minimum temperature (end of walk, greedy)
+    double energy_alpha = 0.20;           // Energy-to-temp modulation (small effect)
+    double energy_decay = 0.03;          // Energy lost per step (~33 steps at 1.0)
     
     size_t recent_window = 16;           // For novelty loop detection
 };
@@ -70,20 +75,27 @@ public:
     explicit WalkEngine(PostgresConnection& db);
 
     WalkState init_walk(const BLAKE3Pipeline::Hash& start_id, double initial_energy = 1.0);
+    WalkState init_walk_from_prompt(const std::string& prompt, double initial_energy = 1.0);
     WalkStepResult step(WalkState& state, const WalkParameters& params);
     void set_goal(WalkState& state, const BLAKE3Pipeline::Hash& goal_id);
+
+    // High-level: prompt → coherent text response
+    std::string generate(const std::string& prompt, const WalkParameters& params, size_t max_steps = 50);
+
+    // Utilities
+    std::string lookup_text(const BLAKE3Pipeline::Hash& id) const;
+    BLAKE3Pipeline::Hash find_composition(const std::string& text);
 
 private:
     struct Candidate {
         BLAKE3Pipeline::Hash id;
-        Eigen::Vector4d position;
+        std::string text;
         
-        // Adjacency signals
-        double model_sim = 0.0;
-        double text_sim = 0.0;
-        double rel_strength = 0.0;
-        double geo_sim = 0.0;
-        double hilbert_sim = 0.0;
+        // Relation graph signals
+        double elo_score = 0.0;      // Locally normalized ELO rating
+        double obs_score = 0.0;      // Observation ratio (obs / max_obs)
+        double rel_strength = 0.0;   // Raw observation count for sigmoid gating
+        bool is_stop_word = false;
         
         double score = 0.0;
     };
@@ -91,12 +103,11 @@ private:
     std::vector<Candidate> get_candidates(const WalkState& state);
     double score_candidate(const WalkState& state, const Candidate& c, const WalkParameters& params);
     size_t select_index(const std::vector<double>& probs);
-    Eigen::Vector4d get_position(const BLAKE3Pipeline::Hash& comp_id);
+    void preload_composition_text();
 
     PostgresConnection& db_;
-
-    // In-memory position cache for microsecond lookups
-    std::unordered_map<BLAKE3Pipeline::Hash, Eigen::Vector4d, HashHasher> position_cache_;
+    std::unordered_map<BLAKE3Pipeline::Hash, std::string, HashHasher> comp_text_cache_;
+    std::vector<BLAKE3Pipeline::Hash> context_seeds_; // From multi-seed prompt init
 };
 
 } // namespace Hartonomous

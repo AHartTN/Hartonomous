@@ -9,14 +9,14 @@
         "EMBEDDING_PROVIDER": "openai-compatable",
         "EMBEDDING_BASE_URL": "http://hart-desktop:8711/v1/embeddings",
         "EMBEDDING_MODEL": "Embedding",
-        "EMBEDDING_API_KEY": "Welcome!123"
+        "EMBEDDING_API_KEY": "${EMBEDDING_API_KEY}"
       }
     },
     "pinecone": {
       "command": "npx",
       "args": ["-y", "@pinecone-database/mcp"],
       "env": {
-        "PINECONE_API_KEY": "Welcome!123"
+        "PINECONE_API_KEY": "${PINECONE_API_KEY}"
       }
     }
   }

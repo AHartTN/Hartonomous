@@ -8,17 +8,26 @@
 #include <ml/s3_hnsw.hpp>
 #include <vector>
 #include <Eigen/Core>
+#include <cstring>
 
 using namespace hartonomous::spatial;
 using namespace s3::ann;
+
+// Helper: Convert HilbertIndex to __int128 for tests (big-endian order)
+static unsigned __int128 to_uint128(const HilbertCurve4D::HilbertIndex& idx) {
+    unsigned __int128 result = 0;
+    for (int i = 0; i < 16; ++i) {
+        result = (result << 8) | idx[i];
+    }
+    return result;
+}
 
 TEST(SpatialIndexTest, HilbertDeterminism) {
     Eigen::Vector4d p = {0.1, 0.2, 0.3, 0.4};
     auto h1 = HilbertCurve4D::encode(p);
     auto h2 = HilbertCurve4D::encode(p);
     
-    EXPECT_EQ(h1.hi, h2.hi);
-    EXPECT_EQ(h1.lo, h2.lo);
+    EXPECT_EQ(h1, h2);
 }
 
 TEST(SpatialIndexTest, HilbertBoundary) {
@@ -29,7 +38,7 @@ TEST(SpatialIndexTest, HilbertBoundary) {
     auto h_min = HilbertCurve4D::encode(p_min);
     auto h_max = HilbertCurve4D::encode(p_max);
     
-    EXPECT_LT(h_min.to_uint128(), h_max.to_uint128());
+    EXPECT_LT(to_uint128(h_min), to_uint128(h_max));
 }
 
 TEST(SpatialIndexTest, HilbertLocality) {
@@ -38,9 +47,9 @@ TEST(SpatialIndexTest, HilbertLocality) {
     Eigen::Vector4d p2 = {0.250001, 0.25, 0.25, 0.25}; // Very close
     Eigen::Vector4d p3 = {0.75, 0.75, 0.75, 0.75};      // Very far
     
-    auto h1 = HilbertCurve4D::encode(p1).to_uint128();
-    auto h2 = HilbertCurve4D::encode(p2).to_uint128();
-    auto h3 = HilbertCurve4D::encode(p3).to_uint128();
+    auto h1 = to_uint128(HilbertCurve4D::encode(p1));
+    auto h2 = to_uint128(HilbertCurve4D::encode(p2));
+    auto h3 = to_uint128(HilbertCurve4D::encode(p3));
     
     unsigned __int128 d12_val = (h1 > h2) ? (h1 - h2) : (h2 - h1);
     unsigned __int128 d13_val = (h1 > h3) ? (h1 - h3) : (h3 - h1);
@@ -51,15 +60,7 @@ TEST(SpatialIndexTest, HilbertLocality) {
     EXPECT_LT(d12, d13);
 }
 
-TEST(SpatialIndexTest, HilbertStringConversion) {
-    HilbertCurve4D::HilbertIndex h = {0x1234, 0x5678};
-    std::string s = h.to_string();
-    
-    EXPECT_FALSE(s.empty());
-    for(char c : s) {
-        EXPECT_TRUE(isdigit(c));
-    }
-}
+// HilbertStringConversion test removed - HilbertIndex is now binary UUID
 
 TEST(SpatialIndexTest, HNSWIndexPlaceholder) {
     // Current implementation is a placeholder, test basic lifecycle

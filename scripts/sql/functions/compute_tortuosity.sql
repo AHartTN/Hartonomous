@@ -30,13 +30,7 @@ BEGIN
         curr_point := rec.Centroid;
 
         IF prev_point IS NOT NULL THEN
-            -- Add segment length (Geodesic on S3)
-            -- Use PostGIS 3D distance as approximation or custom S3 distance if defined
-            -- Since we have geodesic_distance_s3 defined for coordinates, we use it by extracting coords.
-            total_path_length := total_path_length + geodesic_distance_s3(
-                ST_X(prev_point), ST_Y(prev_point), ST_Z(prev_point), ST_M(prev_point),
-                ST_X(curr_point), ST_Y(curr_point), ST_Z(curr_point), ST_M(curr_point)
-            );
+            total_path_length := total_path_length + geodesic_distance_s3(prev_point, curr_point);
         ELSE
             start_point := curr_point;
         END IF;
@@ -51,10 +45,7 @@ BEGIN
     END IF;
 
     -- 2. Calculate straight-line distance (Geodesic)
-    euclidean_distance := geodesic_distance_s3(
-        ST_X(start_point), ST_Y(start_point), ST_Z(start_point), ST_M(start_point),
-        ST_X(end_point), ST_Y(end_point), ST_Z(end_point), ST_M(end_point)
-    );
+    euclidean_distance := geodesic_distance_s3(start_point, end_point);
 
     IF euclidean_distance = 0 THEN
         RETURN 0.0;

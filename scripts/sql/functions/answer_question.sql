@@ -35,10 +35,10 @@ BEGIN
         LIMIT 1
     )
     SELECT
-        v.text AS answer,
-        (1.0 - (1.0 / (1.0 + rc.cumulative_elo))) AS confidence, -- Sigmoid-like normalization of ELO
+        v.reconstructed_text AS answer,
+        (1.0 - (1.0 / (1.0 + rc.cumulative_elo))) AS confidence,
         (
-            SELECT ARRAY_AGG(vp.text ORDER BY ordinal)
+            SELECT ARRAY_AGG(vp.reconstructed_text ORDER BY ordinal)
             FROM UNNEST(rc.path) WITH ORDINALITY AS p(id, ordinal)
             JOIN v_composition_text vp ON vp.composition_id = p.id
         ) AS reasoning_path

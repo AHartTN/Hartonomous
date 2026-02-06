@@ -57,14 +57,14 @@ std::vector<KnowledgeGap> GodelEngine::identify_knowledge_gaps(const std::string
         concept_strength AS (
             SELECT 
                 rc.concept_id,
-                c.text,
+                v.reconstructed_text,
                 COALESCE(rr.ratingvalue, 0) as rating,
-                COALESCE(rr.observations, 0) as observations
+                COALESCE(uint64_to_double(rr.observations), 0) as observations
             FROM related_concepts rc
-            JOIN hartonomous.composition c ON c.id = rc.concept_id
+            JOIN hartonomous.v_composition_text v ON v.composition_id = rc.concept_id
             LEFT JOIN hartonomous.relationrating rr ON rr.relationid = rc.concept_id
         )
-        SELECT text, observations, rating
+        SELECT reconstructed_text, observations, rating
         FROM concept_strength
         WHERE rating < 1200 OR observations < 5
         ORDER BY rating ASC
@@ -91,12 +91,12 @@ std::vector<SubProblem> GodelEngine::decompose_problem_recursive(const std::stri
     std::string sql = R"(
         SELECT 
             rs2.compositionid,
-            c.text,
+            v.reconstructed_text,
             COALESCE(rr.ratingvalue, 0),
-            COALESCE(rr.observations, 0)
+            COALESCE(uint64_to_double(rr.observations), 0)
         FROM hartonomous.relationsequence rs1
         JOIN hartonomous.relationsequence rs2 ON rs2.relationid = rs1.relationid
-        JOIN hartonomous.composition c ON c.id = rs2.compositionid
+        JOIN hartonomous.v_composition_text v ON v.composition_id = rs2.compositionid
         LEFT JOIN hartonomous.relationrating rr ON rr.relationid = rs1.relationid
         WHERE rs1.compositionid = $1 AND rs2.compositionid != $1
         ORDER BY rr.ratingvalue DESC
@@ -111,8 +111,8 @@ std::vector<SubProblem> GodelEngine::decompose_problem_recursive(const std::stri
         sub.is_solvable = (rating > 1800);
         
         // Find prerequisites for this sub-problem
-        std::string prereq_sql = "SELECT c.text FROM hartonomous.relationsequence rs "
-                                "JOIN hartonomous.composition c ON c.id = rs.compositionid "
+        std::string prereq_sql = "SELECT v.reconstructed_text FROM hartonomous.relationsequence rs "
+                                "JOIN hartonomous.v_composition_text v ON v.composition_id = rs.compositionid "
                                 "WHERE rs.relationid = (SELECT relationid FROM hartonomous.relationsequence "
                                 "WHERE compositionid = $1 LIMIT 1) AND rs.compositionid != $1";
         

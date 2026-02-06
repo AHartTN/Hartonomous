@@ -1,5 +1,5 @@
+using Hartonomous.Core.Services;
 using Microsoft.AspNetCore.Mvc;
-using Hartonomous.Marshal;
 
 namespace Hartonomous.API.Controllers;
 
@@ -7,12 +7,12 @@ namespace Hartonomous.API.Controllers;
 [Route("api/[controller]")]
 public class IngestionController : ControllerBase
 {
-    private readonly IConfiguration _configuration;
+    private readonly IngestionService _ingestion;
     private readonly ILogger<IngestionController> _logger;
 
-    public IngestionController(IConfiguration configuration, ILogger<IngestionController> logger)
+    public IngestionController(IngestionService ingestion, ILogger<IngestionController> logger)
     {
-        _configuration = configuration;
+        _ingestion = ingestion;
         _logger = logger;
     }
 
@@ -22,14 +22,16 @@ public class IngestionController : ControllerBase
         if (string.IsNullOrWhiteSpace(request.Text))
             return BadRequest("Text is required");
 
-        return ExecuteIngestion((ingester) => 
+        try
         {
-            if (NativeMethods.IngestText(ingester, request.Text, out var stats))
-            {
-                return Ok(stats);
-            }
-            return StatusCode(500, "Ingestion failed internally. " + GetLastError());
-        });
+            var stats = _ingestion.IngestText(request.Text);
+            return Ok(stats);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Text ingestion failed");
+            return StatusCode(500, new { error = ex.Message });
+        }
     }
 
     [HttpPost("file")]
@@ -38,62 +40,24 @@ public class IngestionController : ControllerBase
         if (string.IsNullOrWhiteSpace(request.FilePath))
             return BadRequest("FilePath is required");
 
-        return ExecuteIngestion((ingester) => 
-        {
-            if (NativeMethods.IngestFile(ingester, request.FilePath, out var stats))
-            {
-                return Ok(stats);
-            }
-            return StatusCode(500, "File ingestion failed internally.");
-        });
-    }
-
-    private IActionResult ExecuteIngestion(Func<IntPtr, IActionResult> action)
-    {
-        var connString = _configuration.GetConnectionString("DefaultConnection");
-        if (string.IsNullOrEmpty(connString))
-            return StatusCode(500, "Database connection string not configured.");
-
-        // 1. Connect to DB
-        var dbHandle = NativeMethods.DbCreate(connString);
-        if (dbHandle == IntPtr.Zero)
-            return StatusCode(500, "Failed to connect to native database. " + GetLastError());
-
         try
         {
-            // 2. Create Ingester
-            var ingesterHandle = NativeMethods.IngesterCreate(dbHandle);
-            if (ingesterHandle == IntPtr.Zero)
-                return StatusCode(500, "Failed to create native ingester. " + GetLastError());
-
-            try
-            {
-                // 3. Execute Action
-                return action(ingesterHandle);
-            }
-            finally
-            {
-                NativeMethods.IngesterDestroy(ingesterHandle);
-            }
+            var stats = _ingestion.IngestFile(request.FilePath);
+            return Ok(stats);
         }
-        finally
+        catch (Exception ex)
         {
-            NativeMethods.DbDestroy(dbHandle);
+            _logger.LogError(ex, "File ingestion failed");
+            return StatusCode(500, new { error = ex.Message });
         }
     }
 
-    private string GetLastError()
-    {
-        var ptr = NativeMethods.GetLastError();
-        return ptr != IntPtr.Zero ? System.Runtime.InteropServices.Marshal.PtrToStringAnsi(ptr) ?? "Unknown error" : "Unknown error";
-    }
-
-    public class IngestTextRequest
+    public sealed class IngestTextRequest
     {
         public string Text { get; set; } = string.Empty;
     }
 
-    public class IngestFileRequest
+    public sealed class IngestFileRequest
     {
         public string FilePath { get; set; } = string.Empty;
     }

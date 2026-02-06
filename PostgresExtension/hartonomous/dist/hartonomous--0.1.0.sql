@@ -49,3 +49,44 @@ LANGUAGE C VOLATILE STRICT;
 CREATE OR REPLACE FUNCTION hartonomous_version()
 RETURNS text AS 'MODULE_PATHNAME', 'hartonomous_version'
 LANGUAGE C IMMUTABLE STRICT;
+
+-- UINT64 native arithmetic (operates directly on raw bytes, full unsigned range)
+CREATE OR REPLACE FUNCTION uint64_add(uint64, uint64)
+RETURNS uint64 AS 'MODULE_PATHNAME', 'uint64_add'
+LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION uint64_to_double(uint64)
+RETURNS float8 AS 'MODULE_PATHNAME', 'uint64_to_double'
+LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OPERATOR + (
+    LEFTARG = uint64,
+    RIGHTARG = uint64,
+    PROCEDURE = uint64_add
+);
+
+-- Weighted ELO update using native uint64 observation counts
+CREATE OR REPLACE FUNCTION weighted_elo_update(
+    old_elo DOUBLE PRECISION,
+    old_obs uint64,
+    new_elo DOUBLE PRECISION,
+    new_obs uint64
+)
+RETURNS DOUBLE PRECISION
+LANGUAGE SQL IMMUTABLE AS $$
+    SELECT (old_elo * uint64_to_double(old_obs) + new_elo * uint64_to_double(new_obs)) /
+           (uint64_to_double(old_obs) + uint64_to_double(new_obs));
+$$;
+
+-- UINT128 operations
+CREATE OR REPLACE FUNCTION uint128_from_parts(bigint, bigint)
+RETURNS uint128 AS 'MODULE_PATHNAME', 'uint128_from_parts'
+LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION uint128_hi(uint128)
+RETURNS bigint AS 'MODULE_PATHNAME', 'uint128_hi'
+LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION uint128_lo(uint128)
+RETURNS bigint AS 'MODULE_PATHNAME', 'uint128_lo'
+LANGUAGE C IMMUTABLE STRICT;

@@ -1,39 +1,26 @@
 ---
 name: cognitive-tuning
-description: Optimize ELO-weighted graph navigation parameters for query strategies. Use when adjusting how the system explores relationship graph for specific reasoning goals.
+description: Configure WalkEngine graph navigation parameters. Use when adjusting query exploration vs exploitation tradeoffs.
 ---
 
-# Cognitive Tuning: ELO Navigation Optimization
+# Cognitive Tuning
 
-This skill provides parameters for optimizing relationship graph navigation in Hartonomous.
+## Navigation Parameters
 
-## Core Navigation Parameters
+| Parameter | Effect | Low Value | High Value |
+|-----------|--------|-----------|------------|
+| `temperature` | Path selection randomness | Greedy (high-ELO only) | Stochastic (creative) |
+| `elo_threshold` | Minimum relation quality | Include weak relations | High-confidence only |
+| `max_depth` | Relation hops from query | Direct connections | Distant/creative paths |
+| `cross_modal_weight` | Bonus for modality bridging | No bonus | Reward cross-modal paths |
+| `novelty_bonus` | Reward for unexplored relations | Stick to known paths | Explore new territory |
 
-Intelligence = navigating ELO-weighted relationship paths. Parameters control exploration vs exploitation.
+## Presets
 
-| Parameter | Role in Navigation |
-| :--- | :--- |
-| `temperature` | **Exploration**: Higher = more stochastic path selection (like transformer sampling). Lower = greedy high-ELO only. |
-| `elo_threshold` | **Quality Filter**: Minimum ELO score to consider a relation. Prevents low-confidence paths. |
-| `max_depth` | **Reasoning Depth**: How many relation hops from query. Deeper = more creative but slower. |
-| `cross_modal_weight` | **Modality Fusion**: Bonus for paths bridging different content types (text↔image↔audio). |
-| `novelty_bonus` | **Exploration Bias**: Reward for visiting underexplored relations (preventsループs). |
+**Precise retrieval**: `temperature=0.1, elo_threshold=1000, max_depth=3`
+**Creative exploration**: `temperature=0.8, novelty_bonus=0.4, max_depth=8`
 
-## Strategy Guides
-
-### 1. Creative Exploration
-When seeking non-obvious connections or cross-modal reasoning.
-- `temperature`: 0.7-1.0 for stochastic path sampling.
-- `novelty_bonus`: 0.3-0.5 to encourage new paths.
-- `max_depth`: 5-10 hops for distant connections.
-- `cross_modal_weight`: 1.5x to reward bridging modalities.
-
-### 2. Precise Retrieval
-When seeking established facts or high-confidence answers.
-- `temperature`: 0.1-0.3 for greedy high-ELO selection.
-- `elo_threshold`: 1000+ to filter weak relations.
-- `max_depth`: 2-3 hops for direct connections.
-- `cross_modal_weight`: 1.0x (no bonus).
-
-## ELO Dynamics
-Relation strength evolves through competition. Successful query paths increase ELO of traversed relations. Failed paths decrease ELO. System self-improves through usage.
+## Implementation
+- WalkEngine: `Engine/src/cognitive/walk_engine.cpp`
+- Parameters passed via `hartonomous_walk_step()` in `interop_api.h`
+- ELO evolves through usage: successful paths increase, failed paths decrease

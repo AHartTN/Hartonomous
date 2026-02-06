@@ -36,50 +36,12 @@ public:
     static constexpr uint32_t BITS_PER_DIMENSION = 32;
 
     /**
-     * @brief Represents a 128-bit Hilbert index.
-     * Stored as two 64-bit integers for database compatibility.
+     * @brief Represents a 128-bit Hilbert index as 16-byte array (same format as UUID).
+     * Stored as UUID in PostgreSQL for optimal performance on 16-byte fixed values.
      */
-    struct HilbertIndex {
-        uint64_t hi;
-        uint64_t lo;
+    using HilbertIndex = std::array<uint8_t, 16>;
 
-        // Use the non-standard but widely supported `unsigned __int128` for arithmetic.
-        unsigned __int128 to_uint128() const {
-            return (static_cast<unsigned __int128>(hi) << 64) | lo;
-        }
 
-        std::string to_string() const {
-            unsigned __int128 val = to_uint128();
-            if (val == 0) return "0";
-            std::string s;
-            while (val > 0) {
-                s += (char)('0' + (val % 10));
-                val /= 10;
-            }
-            std::reverse(s.begin(), s.end());
-            return s;
-        }
-
-        // Comparison operators
-        bool operator==(const HilbertIndex& other) const {
-            return hi == other.hi && lo == other.lo;
-        }
-        bool operator!=(const HilbertIndex& other) const {
-            return !(*this == other);
-        }
-        bool operator>(const HilbertIndex& other) const {
-            return to_uint128() > other.to_uint128();
-        }
-        bool operator<(const HilbertIndex& other) const {
-            return to_uint128() < other.to_uint128();
-        }
-        bool operator>=(const HilbertIndex& other) const {
-            return to_uint128() >= other.to_uint128();
-        }
-        bool operator<=(const HilbertIndex& other) const {
-            return to_uint128() <= other.to_uint128();
-        }
-    };
 
     /**
      * @brief Entity type for parity-based ID partitioning.
@@ -123,26 +85,33 @@ public:
             index_val &= ~static_cast<unsigned __int128>(1); // Force Even
         }
 
-        // 5. Split the 128-bit index into two 64-bit parts for storage.
-        return {
-            static_cast<uint64_t>(index_val >> 64),
-            static_cast<uint64_t>(index_val)
-        };
+        // 5. Convert to 16-byte array (big-endian for consistency)
+        HilbertIndex result;
+        for (int i = 0; i < 16; ++i) {
+            result[15 - i] = static_cast<uint8_t>(index_val >> (i * 8));
+        }
+        return result;
     }
 
     /**
      * @brief Calculates the absolute distance between two curve indices.
      * @return HilbertIndex A 128-bit value representing the distance.
      */
-    static HilbertIndex curve_distance(HilbertIndex a, HilbertIndex b) {
-        unsigned __int128 val_a = a.to_uint128();
-        unsigned __int128 val_b = b.to_uint128();
+    static HilbertIndex curve_distance(const HilbertIndex& a, const HilbertIndex& b) {
+        // Convert to __int128 for arithmetic
+        unsigned __int128 val_a = 0, val_b = 0;
+        for (int i = 0; i < 16; ++i) {
+            val_a = (val_a << 8) | a[i];
+            val_b = (val_b << 8) | b[i];
+        }
         unsigned __int128 diff = (val_a > val_b) ? (val_a - val_b) : (val_b - val_a);
-
-        return {
-            static_cast<uint64_t>(diff >> 64),
-            static_cast<uint64_t>(diff)
-        };
+        
+        // Convert back to array
+        HilbertIndex result;
+        for (int i = 0; i < 16; ++i) {
+            result[15 - i] = static_cast<uint8_t>(diff >> (i * 8));
+        }
+        return result;
     }
 };
 

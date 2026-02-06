@@ -32,7 +32,6 @@ private:
     bool use_dedup_;
     bool use_binary_;
     std::unordered_set<BLAKE3Pipeline::Hash, HashHasher> seen_;
-    std::string hash_to_uuid(const BLAKE3Pipeline::Hash& hash);
 };
 
 class CompositionSequenceStore {
@@ -45,7 +44,6 @@ public:
 private:
     BulkCopy copy_;
     bool use_binary_;
-    std::string hash_to_uuid(const BLAKE3Pipeline::Hash& hash);
 };
 
 }

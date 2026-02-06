@@ -16,7 +16,7 @@ using namespace Hartonomous::unicode;
 
 int main(int argc, char** argv) {
     try {
-        std::string data_dir = "UCDIngestor/data";
+        std::string data_dir = "Engine/data/ucd";
         if (argc > 1) {
             data_dir = argv[1];
         }
@@ -41,9 +41,8 @@ int main(int argc, char** argv) {
         size_t atom_count = count_str ? std::stoul(*count_str) : 0;
 
         if (atom_count >= 1114112) {
-            std::cout << "✓ Atoms already seeded (" << atom_count << "). Loading metadata from Gene Pool...\n";
-            processor.load_from_database();
-            processor.ingest_ucd_metadata();
+            std::cout << "✓ Atoms already seeded (" << atom_count << "). Skipping.\n";
+            return 0;
         } else {
             processor.process_and_ingest();
         }

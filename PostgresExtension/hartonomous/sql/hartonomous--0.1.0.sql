@@ -7,6 +7,10 @@
 \i 'functions/analysis.sql'
 \i 'functions/ingestion.sql'
 
+-- Native unsigned integer operators
+\i 'uint64_ops.sql'
+\i 'uint128_ops.sql'
+
 -- Versioning
 CREATE OR REPLACE FUNCTION hartonomous_version()
 RETURNS text AS 'MODULE_PATHNAME', 'hartonomous_version'

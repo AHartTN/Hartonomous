@@ -15,16 +15,12 @@ LANGUAGE SQL STABLE
 AS $$
     SELECT
         c.Id AS composition_id,
-        geodesic_distance_s3(
-            ST_X(query_point), ST_Y(query_point), ST_Z(query_point), ST_M(query_point),
-            ST_X(p.Centroid), ST_Y(p.Centroid), ST_Z(p.Centroid), ST_M(p.Centroid)
-        ) AS distance
+        geodesic_distance_s3(query_point, p.Centroid) AS distance
     FROM
         Physicality p
     JOIN
         Composition c ON c.PhysicalityId = p.Id
     ORDER BY
-        -- Use Euclidean distance for fast GIST index sorting (approximates Geodesic order locally)
         p.Centroid <-> query_point
     LIMIT max_results;
 $$;

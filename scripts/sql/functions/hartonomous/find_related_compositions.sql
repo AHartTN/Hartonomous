@@ -19,7 +19,8 @@ DECLARE
     query_centroid GEOMETRY;
 BEGIN
     -- 1. Compute ID from Text (Fast, Deterministic)
-    query_id := uuid_send(blake3_hash(query_text));
+    -- blake3_hash returns 16-byte bytea, cast directly to UUID
+    query_id := blake3_hash(query_text)::uuid;
 
     -- 2. Get Centroid (Index Scan on Primary Key)
     SELECT p.Centroid INTO query_centroid
@@ -35,7 +36,7 @@ BEGIN
     RETURN QUERY
     SELECT
         s.composition_id,
-        v.text,
+        v.reconstructed_text,
         s.distance
     FROM
         semantic_search_geometric(query_centroid, max_results) s

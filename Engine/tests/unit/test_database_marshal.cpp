@@ -54,12 +54,4 @@ TEST(DatabaseMarshalTest, UUIDFormatting) {
     EXPECT_EQ(ss.str().substr(0, 8), "deadbeef");
 }
 
-TEST(DatabaseMarshalTest, HilbertDecimalFormatting) {
-    // Ensure 128-bit values format correctly for numeric(39,0)
-    hartonomous::spatial::HilbertCurve4D::HilbertIndex h = {0, 12345};
-    EXPECT_EQ(h.to_string(), "12345");
-    
-    h = {1, 0}; // 2^64
-    // 18,446,744,073,709,551,616
-    EXPECT_EQ(h.to_string(), "18446744073709551616");
-}
+// HilbertIndex formatting test removed - now it's a binary UUID

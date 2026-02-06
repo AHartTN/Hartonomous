@@ -7,8 +7,18 @@
 #include <unicode/codepoint_projection.hpp>
 #include <hashing/blake3_pipeline.hpp>
 #include <cmath>
+#include <cstring>
 
 using namespace hartonomous::unicode;
+
+// Helper: Convert HilbertIndex to __int128 (big-endian order)
+static unsigned __int128 to_uint128(const std::array<uint8_t, 16>& idx) {
+    unsigned __int128 result = 0;
+    for (int i = 0; i < 16; ++i) {
+        result = (result << 8) | idx[i];
+    }
+    return result;
+}
 
 TEST(PipelineTest, UnicodeToSpatialResult) {
     uint32_t cp = 0x1F30D; // 🌍
@@ -26,7 +36,7 @@ TEST(PipelineTest, UnicodeToSpatialResult) {
     }
     
     // Hilbert index should be non-zero for most points
-    EXPECT_NE(result.hilbert_index.lo, 0);
+    EXPECT_NE(to_uint128(result.hilbert_index), 0u);
 }
 
 TEST(PipelineTest, DeterminismAcrossComponents) {
@@ -34,8 +44,7 @@ TEST(PipelineTest, DeterminismAcrossComponents) {
     auto r1 = CodepointProjection::project(cp);
     auto r2 = CodepointProjection::project(cp);
     
-    EXPECT_EQ(r1.hilbert_index.hi, r2.hilbert_index.hi);
-    EXPECT_EQ(r1.hilbert_index.lo, r2.hilbert_index.lo);
+    EXPECT_EQ(r1.hilbert_index, r2.hilbert_index);
     EXPECT_EQ(r1.s3_position, r2.s3_position);
 }
 
@@ -58,8 +67,8 @@ TEST(PipelineTest, DistanceMetricCoherence) {
     double d12 = CodepointProjection::geometric_distance(r1, r2);
     double d13 = CodepointProjection::geometric_distance(r1, r3);
     
-    auto h12 = CodepointProjection::hilbert_distance(r1, r2).to_uint128();
-    auto h13 = CodepointProjection::hilbert_distance(r1, r3).to_uint128();
+    auto h12 = to_uint128(CodepointProjection::hilbert_distance(r1, r2));
+    auto h13 = to_uint128(CodepointProjection::hilbert_distance(r1, r3));
     
     // Note: Hilbert curves aren't perfect, but for 1D range queries to work,
     // they must generally preserve order.

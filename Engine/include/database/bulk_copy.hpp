@@ -66,6 +66,13 @@ public:
         void add_text(const std::string& text);
         void add_bytes(const void* data, size_t len);
         void add_null();
+        void add_bool(bool val);
+
+        // Bytea domain helpers — send unsigned integers as raw big-endian bytes.
+        // These match the PostgreSQL uint16/uint32/uint64 bytea domains.
+        void add_uint16(uint16_t val);
+        void add_uint32(uint32_t val);
+        void add_uint64(uint64_t val);
         
         void clear() { buffer.clear(); num_fields = 0; }
     };

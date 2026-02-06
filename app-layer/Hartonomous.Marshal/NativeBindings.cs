@@ -29,6 +29,29 @@ public static unsafe class NativeMethods
     public static extern bool DbIsConnected(IntPtr handle);
 
     // =========================================================================
+    //  Core Primitives (Hashing & Projection)
+    // =========================================================================
+
+    [DllImport(LibName, EntryPoint = "hartonomous_get_version", CallingConvention = CallingConvention.Cdecl)]
+    public static extern IntPtr GetVersion();
+
+    [DllImport(LibName, EntryPoint = "hartonomous_blake3_hash", CallingConvention = CallingConvention.Cdecl)]
+    public static extern void Blake3Hash(byte* data, nuint len, byte* out16b);
+
+    [DllImport(LibName, EntryPoint = "hartonomous_blake3_hash_codepoint", CallingConvention = CallingConvention.Cdecl)]
+    public static extern void Blake3HashCodepoint(uint codepoint, byte* out16b);
+
+    [DllImport(LibName, EntryPoint = "hartonomous_codepoint_to_s3", CallingConvention = CallingConvention.Cdecl)]
+    [return: MarshalAs(UnmanagedType.I1)]
+    public static extern bool CodepointToS3(uint codepoint, double* out4d);
+
+    [DllImport(LibName, EntryPoint = "hartonomous_s3_to_hilbert", CallingConvention = CallingConvention.Cdecl)]
+    public static extern void S3ToHilbert(double* in4d, uint entityType, ulong* outHi, ulong* outLo);
+
+    [DllImport(LibName, EntryPoint = "hartonomous_s3_compute_centroid", CallingConvention = CallingConvention.Cdecl)]
+    public static extern void S3ComputeCentroid(double* points4d, nuint count, double* out4d);
+
+    // =========================================================================
     //  Ingestion Service
     // =========================================================================
 
@@ -84,6 +107,72 @@ public static unsafe class NativeMethods
     [DllImport(LibName, EntryPoint = "hartonomous_walk_set_goal", CallingConvention = CallingConvention.Cdecl)]
     [return: MarshalAs(UnmanagedType.I1)]
     public static extern bool WalkSetGoal(IntPtr handle, ref WalkState state, byte* goalId);
+
+    // =========================================================================
+    //  Text Generation
+    // =========================================================================
+
+    [DllImport(LibName, EntryPoint = "hartonomous_generate", CallingConvention = CallingConvention.Cdecl)]
+    [return: MarshalAs(UnmanagedType.I1)]
+    public static extern bool Generate(IntPtr walkHandle, IntPtr dbHandle,
+        [MarshalAs(UnmanagedType.LPStr)] string prompt, ref GenerateParams params_,
+        out GenerateResult result);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    [return: MarshalAs(UnmanagedType.I1)]
+    public delegate bool GenerateCallback(
+        [MarshalAs(UnmanagedType.LPStr)] string fragment,
+        nuint step, double energyRemaining, IntPtr userData);
+
+    [DllImport(LibName, EntryPoint = "hartonomous_generate_stream", CallingConvention = CallingConvention.Cdecl)]
+    [return: MarshalAs(UnmanagedType.I1)]
+    public static extern bool GenerateStream(IntPtr walkHandle, IntPtr dbHandle,
+        [MarshalAs(UnmanagedType.LPStr)] string prompt, ref GenerateParams params_,
+        GenerateCallback callback, IntPtr userData, out GenerateResult result);
+
+    [DllImport(LibName, EntryPoint = "hartonomous_free_string", CallingConvention = CallingConvention.Cdecl)]
+    public static extern void FreeString(IntPtr str);
+
+    // =========================================================================
+    //  Semantic Query
+    // =========================================================================
+
+    [DllImport(LibName, EntryPoint = "hartonomous_query_create", CallingConvention = CallingConvention.Cdecl)]
+    public static extern IntPtr QueryCreate(IntPtr dbHandle);
+
+    [DllImport(LibName, EntryPoint = "hartonomous_query_destroy", CallingConvention = CallingConvention.Cdecl)]
+    public static extern void QueryDestroy(IntPtr handle);
+
+    [DllImport(LibName, EntryPoint = "hartonomous_query_related", CallingConvention = CallingConvention.Cdecl)]
+    [return: MarshalAs(UnmanagedType.I1)]
+    public static extern bool QueryRelated(IntPtr handle,
+        [MarshalAs(UnmanagedType.LPStr)] string text, nuint limit,
+        out IntPtr results, out nuint count);
+
+    [DllImport(LibName, EntryPoint = "hartonomous_query_truth", CallingConvention = CallingConvention.Cdecl)]
+    [return: MarshalAs(UnmanagedType.I1)]
+    public static extern bool QueryTruth(IntPtr handle,
+        [MarshalAs(UnmanagedType.LPStr)] string text, double minElo, nuint limit,
+        out IntPtr results, out nuint count);
+
+    [DllImport(LibName, EntryPoint = "hartonomous_query_answer", CallingConvention = CallingConvention.Cdecl)]
+    [return: MarshalAs(UnmanagedType.I1)]
+    public static extern bool QueryAnswer(IntPtr handle,
+        [MarshalAs(UnmanagedType.LPStr)] string question, out QueryResult result);
+
+    [DllImport(LibName, EntryPoint = "hartonomous_query_free_results", CallingConvention = CallingConvention.Cdecl)]
+    public static extern void QueryFreeResults(IntPtr results, nuint count);
+
+    // =========================================================================
+    //  Composition Lookup
+    // =========================================================================
+
+    [DllImport(LibName, EntryPoint = "hartonomous_composition_text", CallingConvention = CallingConvention.Cdecl)]
+    public static extern IntPtr CompositionText(IntPtr dbHandle, byte* hash16b);
+
+    [DllImport(LibName, EntryPoint = "hartonomous_composition_position", CallingConvention = CallingConvention.Cdecl)]
+    [return: MarshalAs(UnmanagedType.I1)]
+    public static extern bool CompositionPosition(IntPtr dbHandle, byte* hash16b, double* out4d);
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -176,4 +265,31 @@ public unsafe struct ResearchPlan
     public nuint KnowledgeGapsCount;
     public int TotalSteps;
     public int SolvableSteps;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+public unsafe struct GenerateParams
+{
+    public double Temperature;
+    public nuint MaxTokens;
+    public double EnergyDecay;
+    public double TopP;
+    public nuint N;
+    public fixed byte StopText[256];
+}
+
+[StructLayout(LayoutKind.Sequential)]
+public unsafe struct GenerateResult
+{
+    public IntPtr Text;        // Allocated by C++, free with FreeString
+    public nuint Steps;
+    public double TotalEnergyUsed;
+    public fixed byte FinishReason[64];
+}
+
+[StructLayout(LayoutKind.Sequential)]
+public struct QueryResult
+{
+    public IntPtr Text;         // Allocated by C++, free with QueryFreeResults
+    public double Confidence;
 }

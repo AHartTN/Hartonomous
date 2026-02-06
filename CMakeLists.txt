@@ -93,4 +93,7 @@ include(cmake/treesitter-config.cmake)
 
 add_subdirectory(Engine)
 add_subdirectory(PostgresExtension)
-add_subdirectory(UCDIngestor)
+
+# UCDIngestor removed — Engine's built-in UCD pipeline (Engine/src/unicode/ingestor/)
+# handles all UCD/UCA parsing, semantic sequencing, and S³ projection.
+# UCD data files live in Engine/data/ucd/.

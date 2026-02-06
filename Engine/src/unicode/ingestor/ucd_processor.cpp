@@ -12,6 +12,7 @@
 #include <bitset>
 #include <cstring>
 #include <mutex>
+#include <chrono>
 #include <nlohmann/json.hpp>
 
 using json = nlohmann::json;
@@ -207,21 +208,31 @@ void UCDProcessor::load_from_database() {
 }
 
 void UCDProcessor::process_and_ingest() {
+    using Clock = std::chrono::high_resolution_clock;
+    auto pipeline_start = Clock::now();
+    
     std::cout << "--- Starting Full Unicode Codespace Ingestion ---" << std::endl;
-    load_from_database();
-    parser_.find_base_characters();
-    parser_.build_semantic_edges();
+    
+    auto step_start = Clock::now();
+    std::cout << "[1/5] Parsing UCD files (XML + UCA + Confusables + Unihan + Emoji)..." << std::flush;
+    parser_.parse_all();
     auto& codepoints = parser_.get_codepoints_mutable();
+    auto step_duration = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - step_start).count();
+    std::cout << " (" << step_duration << "ms)" << std::endl;
 
-    std::cout << "[2/6] Semantic sequencing (" << codepoints.size() << " assigned codepoints)..." << std::endl;
+    step_start = Clock::now();
+    std::cout << "[2/5] Semantic sequencing (" << codepoints.size() << " assigned codepoints)..." << std::flush;
     sequencer_.build_graph(codepoints);
     sorted_codepoints_ = sequencer_.linearize(codepoints);
 
     for (size_t i = 0; i < sorted_codepoints_.size(); ++i) {
         sorted_codepoints_[i]->sequence_index = static_cast<uint32_t>(i);
     }
+    step_duration = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - step_start).count();
+    std::cout << " (" << step_duration << "ms)" << std::endl;
 
-    std::cout << "[3/6] Computing S³ positions for assigned codepoints..." << std::endl;
+    step_start = Clock::now();
+    std::cout << "[3/5] Computing S³ positions for assigned codepoints..." << std::flush;
     size_t num_threads = std::thread::hardware_concurrency();
     size_t chunk_size = (sorted_codepoints_.size() + num_threads - 1) / num_threads;
     std::vector<std::thread> threads;
@@ -232,18 +243,28 @@ void UCDProcessor::process_and_ingest() {
         threads.emplace_back([this, start, end]() {
             for (size_t j = start; j < end; ++j) {
                 auto* meta = sorted_codepoints_[j];
-                meta->position = NodeGenerator::generate_node(meta->sequence_index);
+                meta->position = NodeGenerator::generate_node(meta->sequence_index, NodeGenerator::UNICODE_TOTAL);
             }
         });
     }
     for (auto& t : threads) t.join();
+    step_duration = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - step_start).count();
+    std::cout << " (" << step_duration << "ms)" << std::endl;
 
-    std::cout << "[4/6] Ingesting " << sorted_codepoints_.size() << " assigned codepoints..." << std::endl;
+    step_start = Clock::now();
+    std::cout << "[4/5] Ingesting " << sorted_codepoints_.size() << " assigned codepoints..." << std::flush;
     ingest_assigned_codepoints();
-    std::cout << "[5/6] Streaming unassigned codepoints to complete codespace..." << std::endl;
+    step_duration = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - step_start).count();
+    std::cout << " (" << step_duration << "ms)" << std::endl;
+    
+    step_start = Clock::now();
+    std::cout << "[5/5] Streaming unassigned codepoints to complete codespace..." << std::flush;
     ingest_unassigned_codepoints();
-    ingest_ucd_metadata();
-    std::cout << "✓ Full Unicode codespace seeded." << std::endl;
+    step_duration = std::chrono::duration_cast<std::chrono::seconds>(Clock::now() - step_start).count();
+    std::cout << " (" << step_duration << "s)" << std::endl;
+    
+    auto total_duration = std::chrono::duration_cast<std::chrono::seconds>(Clock::now() - pipeline_start).count();
+    std::cout << "✓ Full Unicode codespace seeded in " << total_duration << "s." << std::endl;
 }
 
 void UCDProcessor::ingest_assigned_codepoints() {
@@ -264,14 +285,15 @@ void UCDProcessor::ingest_assigned_codepoints() {
                 auto atom_hash = BLAKE3Pipeline::hash_codepoint(meta->codepoint);
                 format_uuid_to_string(atom_hash.data(), row.atom_uuid);
 
-                std::vector<uint8_t> phys_data(16);
-                std::memcpy(phys_data.data(), meta->position.data(), 16);
+                std::vector<uint8_t> phys_data(sizeof(double) * 4);
+                std::memcpy(phys_data.data(), meta->position.data(), sizeof(double) * 4);
                 auto phys_hash = BLAKE3Pipeline::hash(phys_data);
                 format_uuid_to_string(phys_hash.data(), row.phys_uuid);
 
                 Eigen::Vector4d hypercube_coords;
                 for (int k = 0; k < 4; ++k) hypercube_coords[k] = (meta->position[k] + 1.0) / 2.0;
-                row.hilbert = hartonomous::spatial::HilbertCurve4D::encode(hypercube_coords).to_string();
+                auto hilbert_idx = hartonomous::spatial::HilbertCurve4D::encode(hypercube_coords);
+                format_uuid_to_string(hilbert_idx.data(), row.hilbert);
                 geom_to_hex_fast(meta->position, row.centroid_hex);
                 row.codepoint_str = std::to_string(meta->codepoint);
             }
@@ -323,14 +345,15 @@ void UCDProcessor::ingest_unassigned_codepoints() {
                     uint32_t cp = unassigned_cps[batch_start + i];
                     uint32_t seq = base_sequence + static_cast<uint32_t>(batch_start + i);
                     ComputedRow& row = rows_buffer[i];
-                    Eigen::Vector4d position = NodeGenerator::generate_node(seq);
-                    std::vector<uint8_t> phys_data(16);
-                    std::memcpy(phys_data.data(), position.data(), 16);
+                    Eigen::Vector4d position = NodeGenerator::generate_node(seq, NodeGenerator::UNICODE_TOTAL);
+                    std::vector<uint8_t> phys_data(sizeof(double) * 4);
+                    std::memcpy(phys_data.data(), position.data(), sizeof(double) * 4);
                     auto phys_hash = BLAKE3Pipeline::hash(phys_data);
                     format_uuid_to_string(phys_hash.data(), row.phys_uuid);
                     Eigen::Vector4d hypercube_coords;
                     for (int k = 0; k < 4; ++k) hypercube_coords[k] = (position[k] + 1.0) / 2.0;
-                    row.hilbert = hartonomous::spatial::HilbertCurve4D::encode(hypercube_coords).to_string();
+                    auto hilbert_idx = hartonomous::spatial::HilbertCurve4D::encode(hypercube_coords);
+                    format_uuid_to_string(hilbert_idx.data(), row.hilbert);
                     geom_to_hex_fast(position, row.centroid_hex);
                     auto atom_hash = BLAKE3Pipeline::hash_codepoint(cp);
                     format_uuid_to_string(atom_hash.data(), row.atom_uuid);
@@ -354,73 +377,6 @@ void UCDProcessor::ingest_unassigned_codepoints() {
         std::cout << "\r  Progress: " << ((batch_end * 100) / total) << "%" << std::flush;
     }
     std::cout << std::endl;
-}
-
-void UCDProcessor::ingest_ucd_metadata() {
-    std::cout << "[6/6] Ingesting full UCD metadata from Gene Pool..." << std::endl;
-    PostgresConnection::Transaction txn(db_);
-    parser_.find_base_characters();
-    parser_.build_semantic_edges();
-    const auto& codepoints = parser_.get_codepoints();
-    std::vector<const CodepointMetadata*> all_metadata;
-    all_metadata.reserve(codepoints.size());
-    for (const auto& [cp, meta] : codepoints) all_metadata.push_back(&meta);
-
-    db_.execute("TRUNCATE TABLE hartonomous.atommetadata");
-    std::vector<std::string> cols = {
-        "atomid", "codepoint", "name", "name1", "generalcategory", "combiningclass",
-        "script", "scriptextensions", "block", "age", "decompositiontype", "decompositionmapping",
-        "uppercasemapping", "lowercasemapping", "titlecasemapping", "simplecasefolding",
-        "casefolding", "numerictype", "numericvalue", "bidiclass", "bidimirrored",
-        "bidimirroringglyph", "bidicontrol", "joiningtype", "joininggroup", "joincontrol",
-        "eastasianwidth", "linebreak", "wordbreak", "sentencebreak", "graphemeclusterbreak",
-        "hangulsyllabletype", "isalphabetic", "isuppercase", "islowercase", "iscased",
-        "ismath", "ishexdigit", "isideographic", "isunifiedideograph", "isradical",
-        "isdash", "iswhitespace", "isquotationmark", "isterminalpunctuation",
-        "issentenceterminal", "isdiacritic", "isextender", "issoftdotted", "isdeprecated",
-        "isdefaultignorable", "isvariationselector", "isnoncharacter", "ispatternwhitespace",
-        "ispatternsyntax", "isgraphemebase", "isgraphemeextend", "isidstart", "isidcontinue",
-        "isxidstart", "isxidcontinue", "compositionexclusion", "fullcompositionexclusion",
-        "isemoji", "isemojipresentation", "isemojimodifier", "isemojimodifierbase",
-        "isemojicomponent", "isextendedpictographic", "radical", "strokes",
-        "nfcquickcheck", "nfdquickcheck", "nfkcquickcheck", "nfkdquickcheck"
-    };
-
-    BulkCopy copy(db_, false);
-    copy.begin_table("hartonomous.atommetadata", cols);
-    auto bool_str = [](bool b) -> std::string { return b ? "TRUE" : "FALSE"; };
-
-    size_t count = 0;
-    for (const auto* m : all_metadata) {
-        auto atom_hash = BLAKE3Pipeline::hash_codepoint(m->codepoint);
-        std::string atom_uuid;
-        format_uuid_to_string(atom_hash.data(), atom_uuid);
-        copy.add_row({
-            atom_uuid, std::to_string(m->codepoint), m->name, m->name1, m->general_category, std::to_string(m->combining_class),
-            m->script, m->script_extensions, m->block, m->age, m->decomposition_type, m->decomposition_mapping,
-            m->uppercase_mapping, m->lowercase_mapping, m->titlecase_mapping, m->simple_case_folding, m->case_folding,
-            m->numeric_type, m->numeric_value, m->bidi_class, bool_str(m->bidi_mirrored), m->bidi_mirroring_glyph,
-            bool_str(m->bidi_control), m->joining_type, m->joining_group, bool_str(m->join_control), m->east_asian_width,
-            m->line_break, m->word_break, m->sentence_break, m->grapheme_cluster_break, m->hangul_syllable_type,
-            bool_str(m->is_alphabetic), bool_str(m->is_uppercase), bool_str(m->is_lowercase), bool_str(m->is_cased),
-            bool_str(m->is_math), bool_str(m->is_hex_digit), bool_str(m->is_ideographic), bool_str(m->is_unified_ideograph),
-            bool_str(m->is_radical), bool_str(m->is_dash), bool_str(m->is_whitespace), bool_str(m->is_quotation_mark),
-            bool_str(m->is_terminal_punctuation), bool_str(m->is_sentence_terminal), bool_str(m->is_diacritic),
-            bool_str(m->is_extender), bool_str(m->is_soft_dotted), bool_str(m->is_deprecated), bool_str(m->is_default_ignorable),
-            bool_str(m->is_variation_selector), bool_str(m->is_noncharacter), bool_str(m->is_pattern_whitespace),
-            bool_str(m->is_pattern_syntax), bool_str(m->is_grapheme_base), bool_str(m->is_grapheme_extend),
-            bool_str(m->is_id_start), bool_str(m->is_id_continue), bool_str(m->is_xid_start), bool_str(m->is_xid_continue),
-            bool_str(m->composition_exclusion), bool_str(m->full_composition_exclusion), bool_str(m->is_emoji),
-            bool_str(m->is_emoji_presentation), bool_str(m->is_emoji_modifier), bool_str(m->is_emoji_modifier_base),
-            bool_str(m->is_emoji_component), bool_str(m->is_extended_pictographic),
-            (m->radical > 0 ? std::to_string(m->radical) : "\\N"), (m->strokes != 0 ? std::to_string(m->strokes) : "\\N"),
-            m->nfc_quick_check, m->nfd_quick_check, m->nfkc_quick_check, m->nfkd_quick_check
-        });
-        if (++count % 50000 == 0) std::cout << "\r  Ingested " << count << " / " << all_metadata.size() << " records..." << std::flush;
-    }
-    copy.flush();
-    txn.commit();
-    std::cout << "\r  Inserted " << all_metadata.size() << " UCD metadata records." << std::endl;
 }
 
 } // namespace Hartonomous::unicode

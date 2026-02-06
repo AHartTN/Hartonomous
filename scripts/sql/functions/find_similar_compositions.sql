@@ -11,10 +11,7 @@ LANGUAGE SQL STABLE
 AS $$
     SELECT
         c2.Id,
-        geodesic_distance_s3(
-            ST_X(p1.Centroid), ST_Y(p1.Centroid), ST_Z(p1.Centroid), ST_M(p1.Centroid),
-            ST_X(p2.Centroid), ST_Y(p2.Centroid), ST_Z(p2.Centroid), ST_M(p2.Centroid)
-        ) AS distance
+        geodesic_distance_s3(p1.Centroid, p2.Centroid) AS distance
     FROM
         Composition c1
     JOIN

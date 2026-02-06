@@ -1,6 +1,7 @@
 #include <interop_api.h>
 #include <cognitive/godel_engine.hpp>
 #include <cognitive/walk_engine.hpp>
+#include <query/semantic_query.hpp>
 #include <ingestion/universal_ingester.hpp>
 #include <database/postgres_connection.hpp>
 #include <hashing/blake3_pipeline.hpp>
@@ -11,6 +12,7 @@
 #include <cstring>
 #include <memory>
 #include <endian.h>
+#include <sstream>
 
 // Thread-local error storage
 thread_local std::string g_last_error;
@@ -100,8 +102,9 @@ void hartonomous_s3_to_hilbert(const double* in_4d, uint32_t entity_type, uint64
     auto type = static_cast<hartonomous::spatial::HilbertCurve4D::EntityType>(entity_type);
     auto hilbert = hartonomous::spatial::HilbertCurve4D::encode(unit_coords, type);
     
-    *out_hi = hilbert.hi;
-    *out_lo = hilbert.lo;
+    // Extract two uint64_t values from 16-byte array
+    std::memcpy(out_hi, hilbert.data(), 8);
+    std::memcpy(out_lo, hilbert.data() + 8, 8);
 }
 
 void hartonomous_s3_compute_centroid(const double* points_4d, size_t count, double* out_4d) {
@@ -398,4 +401,271 @@ void hartonomous_godel_free_plan(HResearchPlan* plan) {
     plan->original_problem = nullptr;
     plan->sub_problems = nullptr;
     plan->knowledge_gaps = nullptr;
+}
+
+// =============================================================================
+//  Composition Lookup
+// =============================================================================
+
+// Resolve a composition hash to its reconstructed text via v_composition_text
+static std::string resolve_composition_text(Hartonomous::PostgresConnection& db,
+                                            const Hartonomous::BLAKE3Pipeline::Hash& hash) {
+    std::string hex_id = Hartonomous::BLAKE3Pipeline::to_hex(hash);
+    std::string text;
+    db.query(
+        "SELECT reconstructed_text FROM hartonomous.v_composition_text WHERE composition_id = $1",
+        {hex_id},
+        [&](const std::vector<std::string>& row) { text = row[0]; }
+    );
+    return text;
+}
+
+char* hartonomous_composition_text(h_db_connection_t db_handle, const uint8_t* hash_16b) {
+    try {
+        if (!db_handle || !hash_16b) return nullptr;
+        auto* db = static_cast<Hartonomous::PostgresConnection*>(db_handle);
+        Hartonomous::BLAKE3Pipeline::Hash hash;
+        std::memcpy(hash.data(), hash_16b, 16);
+        auto text = resolve_composition_text(*db, hash);
+        return text.empty() ? nullptr : strdup_safe(text);
+    } catch (const std::exception& e) {
+        set_error(e);
+        return nullptr;
+    }
+}
+
+bool hartonomous_composition_position(h_db_connection_t db_handle, const uint8_t* hash_16b, double* out_4d) {
+    try {
+        if (!db_handle || !hash_16b || !out_4d) return false;
+        auto* db = static_cast<Hartonomous::PostgresConnection*>(db_handle);
+        Hartonomous::BLAKE3Pipeline::Hash hash;
+        std::memcpy(hash.data(), hash_16b, 16);
+        std::string hex_id = Hartonomous::BLAKE3Pipeline::to_hex(hash);
+        bool found = false;
+        db->query(
+            "SELECT ST_X(p.centroid), ST_Y(p.centroid), ST_Z(p.centroid), ST_M(p.centroid) "
+            "FROM hartonomous.physicality p "
+            "JOIN hartonomous.composition c ON c.physicalityid = p.id "
+            "WHERE c.id = $1",
+            {hex_id},
+            [&](const std::vector<std::string>& row) {
+                out_4d[0] = std::stod(row[0]);
+                out_4d[1] = std::stod(row[1]);
+                out_4d[2] = std::stod(row[2]);
+                out_4d[3] = std::stod(row[3]);
+                found = true;
+            }
+        );
+        return found;
+    } catch (const std::exception& e) {
+        set_error(e);
+        return false;
+    }
+}
+
+void hartonomous_free_string(char* str) {
+    if (str) free(str);
+}
+
+// =============================================================================
+//  Text Generation (Walk → Text)
+// =============================================================================
+
+// Hash a prompt into a starting composition by extracting its BLAKE3 hash
+static Hartonomous::BLAKE3Pipeline::Hash prompt_to_seed(
+    Hartonomous::PostgresConnection& db, const std::string& prompt) {
+    // Try to find the prompt text (or a keyword from it) as an existing composition.
+    // If not found, hash the whole prompt as a seed.
+    Hartonomous::SemanticQuery query(db);
+
+    // Try exact match first
+    auto comp = query.get_composition_info(prompt);
+    if (comp) return Hartonomous::BLAKE3Pipeline::from_hex(comp->hash);
+
+    // Extract keywords from the prompt and find the highest-confidence related composition
+    auto keywords = query.extract_keywords(prompt);
+    for (const auto& kw : keywords) {
+        auto kw_comp = query.get_composition_info(kw);
+        if (kw_comp) return Hartonomous::BLAKE3Pipeline::from_hex(kw_comp->hash);
+    }
+
+    // Fallback: hash the prompt bytes directly
+    return Hartonomous::BLAKE3Pipeline::hash(prompt.data(), prompt.size());
+}
+
+static Hartonomous::WalkParameters map_generate_params(const HGenerateParams* params) {
+    Hartonomous::WalkParameters wp;
+    if (params->temperature > 0.0) wp.base_temp = params->temperature;
+    if (params->energy_decay > 0.0) wp.energy_decay = params->energy_decay;
+    return wp;
+}
+
+bool hartonomous_generate(h_walk_engine_t walk_handle, h_db_connection_t db_handle,
+                          const char* prompt, const HGenerateParams* params,
+                          HGenerateResult* out_result) {
+    try {
+        if (!walk_handle || !db_handle || !prompt || !params || !out_result) return false;
+        auto* engine = static_cast<Hartonomous::WalkEngine*>(walk_handle);
+
+        auto wp = map_generate_params(params);
+        size_t max_steps = (params->max_tokens > 0) ? params->max_tokens : 50;
+
+        auto text = engine->generate(prompt, wp, max_steps);
+
+        out_result->text = strdup_safe(text);
+        out_result->steps = max_steps;
+        out_result->total_energy_used = 1.0;
+        std::strncpy(out_result->finish_reason, "stop", 63);
+        return true;
+    } catch (const std::exception& e) {
+        set_error(e);
+        return false;
+    }
+}
+
+bool hartonomous_generate_stream(h_walk_engine_t walk_handle, h_db_connection_t db_handle,
+                                  const char* prompt, const HGenerateParams* params,
+                                  HGenerateCallback callback, void* user_data,
+                                  HGenerateResult* out_result) {
+    try {
+        if (!walk_handle || !db_handle || !prompt || !params || !callback || !out_result) return false;
+        auto* engine = static_cast<Hartonomous::WalkEngine*>(walk_handle);
+
+        auto wp = map_generate_params(params);
+        size_t max_steps = (params->max_tokens > 0) ? params->max_tokens : 50;
+
+        auto state = engine->init_walk_from_prompt(prompt, 1.0);
+
+        std::ostringstream full_output;
+        size_t steps = 0;
+        std::string prev_text;
+
+        while (steps < max_steps) {
+            auto result = engine->step(state, wp);
+            if (result.terminated) {
+                std::strncpy(out_result->finish_reason, result.reason.c_str(), 63);
+                out_result->finish_reason[63] = '\0';
+                break;
+            }
+
+            auto text = engine->lookup_text(result.next_composition);
+            if (!text.empty() && text != prev_text) {
+                std::string token = (full_output.tellp() == 0) ? text : (" " + text);
+                full_output << token;
+                if (!callback(token.c_str(), steps, result.energy_remaining, user_data)) {
+                    std::strncpy(out_result->finish_reason, "stop", 63);
+                    break;
+                }
+                prev_text = text;
+            }
+            ++steps;
+        }
+
+        if (out_result->finish_reason[0] == '\0') {
+            std::strncpy(out_result->finish_reason, "length", 63);
+        }
+
+        out_result->text = strdup_safe(full_output.str());
+        out_result->steps = steps;
+        out_result->total_energy_used = 1.0 - state.current_energy;
+        return true;
+    } catch (const std::exception& e) {
+        set_error(e);
+        return false;
+    }
+}
+
+// =============================================================================
+//  Semantic Query
+// =============================================================================
+
+h_query_t hartonomous_query_create(h_db_connection_t db_handle) {
+    try {
+        if (!db_handle) throw std::runtime_error("Invalid database handle");
+        auto* db = static_cast<Hartonomous::PostgresConnection*>(db_handle);
+        auto* query = new Hartonomous::SemanticQuery(*db);
+        return static_cast<h_query_t>(query);
+    } catch (const std::exception& e) {
+        set_error(e);
+        return nullptr;
+    }
+}
+
+void hartonomous_query_destroy(h_query_t handle) {
+    if (handle) {
+        delete static_cast<Hartonomous::SemanticQuery*>(handle);
+    }
+}
+
+bool hartonomous_query_related(h_query_t handle, const char* text, size_t limit,
+                               HQueryResult** out_results, size_t* out_count) {
+    try {
+        if (!handle || !text || !out_results || !out_count) return false;
+        auto* query = static_cast<Hartonomous::SemanticQuery*>(handle);
+        auto results = query->find_related(text, limit);
+
+        *out_count = results.size();
+        if (results.empty()) { *out_results = nullptr; return true; }
+
+        *out_results = new HQueryResult[results.size()];
+        for (size_t i = 0; i < results.size(); ++i) {
+            (*out_results)[i].text = strdup_safe(results[i].text);
+            (*out_results)[i].confidence = results[i].confidence;
+        }
+        return true;
+    } catch (const std::exception& e) {
+        set_error(e);
+        return false;
+    }
+}
+
+bool hartonomous_query_truth(h_query_t handle, const char* text, double min_elo,
+                              size_t limit, HQueryResult** out_results, size_t* out_count) {
+    try {
+        if (!handle || !text || !out_results || !out_count) return false;
+        auto* query = static_cast<Hartonomous::SemanticQuery*>(handle);
+        auto results = query->find_gravitational_truth(text, min_elo, limit);
+
+        *out_count = results.size();
+        if (results.empty()) { *out_results = nullptr; return true; }
+
+        *out_results = new HQueryResult[results.size()];
+        for (size_t i = 0; i < results.size(); ++i) {
+            (*out_results)[i].text = strdup_safe(results[i].text);
+            (*out_results)[i].confidence = results[i].confidence;
+        }
+        return true;
+    } catch (const std::exception& e) {
+        set_error(e);
+        return false;
+    }
+}
+
+bool hartonomous_query_answer(h_query_t handle, const char* question, HQueryResult* out_result) {
+    try {
+        if (!handle || !question || !out_result) return false;
+        auto* query = static_cast<Hartonomous::SemanticQuery*>(handle);
+        auto result = query->answer_question(question);
+
+        if (!result) {
+            out_result->text = nullptr;
+            out_result->confidence = 0.0;
+            return true; // No answer found is not an error
+        }
+
+        out_result->text = strdup_safe(result->text);
+        out_result->confidence = result->confidence;
+        return true;
+    } catch (const std::exception& e) {
+        set_error(e);
+        return false;
+    }
+}
+
+void hartonomous_query_free_results(HQueryResult* results, size_t count) {
+    if (!results) return;
+    for (size_t i = 0; i < count; ++i) {
+        if (results[i].text) free(results[i].text);
+    }
+    delete[] results;
 }

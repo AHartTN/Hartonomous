@@ -120,6 +120,82 @@ HARTONOMOUS_API bool hartonomous_walk_step(h_walk_engine_t handle, HWalkState* i
 HARTONOMOUS_API bool hartonomous_walk_set_goal(h_walk_engine_t handle, HWalkState* in_out_state, const uint8_t* goal_id);
 
 // =============================================================================
+//  Text Generation (Walk → Text)
+// =============================================================================
+
+typedef struct HGenerateParams {
+    double temperature;       // Maps to base_temp (0.0-2.0)
+    size_t max_tokens;        // Walk steps (energy = max_tokens * energy_decay)
+    double energy_decay;      // Energy per step (default 0.05)
+    double top_p;             // Reserved (walk uses softmax naturally)
+    size_t n;                 // Number of independent walks (choices)
+    char stop_text[256];      // If set, walk toward this as goal
+} HGenerateParams;
+
+typedef struct HGenerateResult {
+    char* text;               // Generated text (caller must free with hartonomous_free_string)
+    size_t steps;             // Walk steps taken
+    double total_energy_used;
+    char finish_reason[64];   // "stop", "length", "energy"
+} HGenerateResult;
+
+// Callback for streaming: called once per walk step with the decoded text fragment.
+// Return false from callback to abort generation.
+typedef bool (*HGenerateCallback)(const char* fragment, size_t step, double energy_remaining, void* user_data);
+
+// Generate text from prompt (non-streaming). Caller must free result->text.
+HARTONOMOUS_API bool hartonomous_generate(h_walk_engine_t walk_handle, h_db_connection_t db_handle,
+                                          const char* prompt, const HGenerateParams* params,
+                                          HGenerateResult* out_result);
+
+// Generate text with streaming callback (called per step)
+HARTONOMOUS_API bool hartonomous_generate_stream(h_walk_engine_t walk_handle, h_db_connection_t db_handle,
+                                                  const char* prompt, const HGenerateParams* params,
+                                                  HGenerateCallback callback, void* user_data,
+                                                  HGenerateResult* out_result);
+
+// Free text allocated by generate functions
+HARTONOMOUS_API void hartonomous_free_string(char* str);
+
+// =============================================================================
+//  Semantic Query
+// =============================================================================
+
+typedef void* h_query_t;
+
+typedef struct HQueryResult {
+    char* text;
+    double confidence;
+} HQueryResult;
+
+HARTONOMOUS_API h_query_t hartonomous_query_create(h_db_connection_t db_handle);
+HARTONOMOUS_API void hartonomous_query_destroy(h_query_t handle);
+
+// Find compositions that co-occur with query text. Caller must free results.
+HARTONOMOUS_API bool hartonomous_query_related(h_query_t handle, const char* text, size_t limit,
+                                               HQueryResult** out_results, size_t* out_count);
+
+// Find gravitational truth (topological consensus). Caller must free results.
+HARTONOMOUS_API bool hartonomous_query_truth(h_query_t handle, const char* text, double min_elo,
+                                              size_t limit, HQueryResult** out_results, size_t* out_count);
+
+// Answer a natural language question. Caller must free result->text.
+HARTONOMOUS_API bool hartonomous_query_answer(h_query_t handle, const char* question, HQueryResult* out_result);
+
+// Free query results array
+HARTONOMOUS_API void hartonomous_query_free_results(HQueryResult* results, size_t count);
+
+// =============================================================================
+//  Composition Lookup (Hash → Text)
+// =============================================================================
+
+// Look up text for a composition hash. Returns allocated string (caller must free).
+HARTONOMOUS_API char* hartonomous_composition_text(h_db_connection_t db_handle, const uint8_t* hash_16b);
+
+// Look up S3 position for a composition. Returns false if not found.
+HARTONOMOUS_API bool hartonomous_composition_position(h_db_connection_t db_handle, const uint8_t* hash_16b, double* out_4d);
+
+// =============================================================================
 //  Godel Engine
 // =============================================================================
 

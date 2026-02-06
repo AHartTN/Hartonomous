@@ -79,8 +79,9 @@ public:
 
     std::optional<CompositionInfo> get_composition_info(const std::string& text);
 
-private:
     std::vector<std::string> extract_keywords(const std::string& text);
+
+private:
     bool is_proper_noun(const std::string& text);
 
     PostgresConnection& db_;

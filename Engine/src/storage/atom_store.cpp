@@ -1,22 +1,10 @@
 #include <storage/atom_store.hpp>
-#include <iomanip>
-#include <sstream>
-#include <endian.h>
+#include <storage/format_utils.hpp>
 
 namespace Hartonomous {
 
 AtomStore::AtomStore(PostgresConnection& db) : copy_(db) {
     copy_.begin_table("hartonomous.atom", {"id", "codepoint", "physicalityid"});
-}
-
-std::string AtomStore::hash_to_uuid(const BLAKE3Pipeline::Hash& hash) {
-    std::ostringstream ss;
-    ss << std::hex << std::setfill('0');
-    for (int i = 0; i < 16; ++i) {
-        if (i == 4 || i == 6 || i == 8 || i == 10) ss << '-';
-        ss << std::setw(2) << static_cast<int>(hash[i]);
-    }
-    return ss.str();
 }
 
 void AtomStore::store(const AtomRecord& rec) {

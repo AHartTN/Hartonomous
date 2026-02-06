@@ -120,4 +120,5 @@ config.status
 
 test-data/
 UCDIngestor/data/
+Engine/data/ucd/
 backups/

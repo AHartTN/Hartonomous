@@ -1,6 +1,10 @@
 /**
  * @file text_ingester.hpp
  * @brief Universal text ingestion pipeline
+ * 
+ * Text ingestion IS the inference path. Every prompt, every conversation,
+ * every document goes through here. It must be fast enough for real-time
+ * interaction — ingestion is training, there is no context window.
  */
 
 #pragma once
@@ -10,6 +14,7 @@
 #include <unicode/codepoint_projection.hpp>
 #include <geometry/super_fibonacci.hpp>
 #include <spatial/hilbert_curve_4d.hpp>
+#include <storage/atom_lookup.hpp>
 #include <ingestion/ngram_extractor.hpp>
 #include <string>
 #include <vector>
@@ -60,7 +65,9 @@ public:
     IngestionStats ingest(const std::string& text);
     IngestionStats ingest_file(const std::string& path);
     void set_config(const IngestionConfig& config) { config_ = config; }
-    void load_global_caches();
+
+    // Preload atom cache — call once at startup for fast subsequent ingestions
+    void preload_atoms();
 
 private:
     struct Physicality { BLAKE3Pipeline::Hash id; Vec4 centroid; HilbertCurve4D::HilbertIndex hilbert_index; };
@@ -71,7 +78,7 @@ private:
 
     std::u32string utf8_to_utf32(const std::string& s);
     std::string utf32_to_utf8(const std::u32string& s);
-    BLAKE3Pipeline::Hash create_content_record(const std::string& text);
+    BLAKE3Pipeline::Hash create_content_record(const std::string& text, BLAKE3Pipeline::Hash* content_hash);
     std::vector<Atom> extract_atoms(const std::u32string& text);
     std::vector<Composition> extract_compositions(const std::u32string& text, const std::unordered_map<BLAKE3Pipeline::Hash, Atom, HashHasher>& atom_map);
     std::vector<Relation> extract_relations(const std::unordered_map<BLAKE3Pipeline::Hash, Composition, HashHasher>& comp_map);
@@ -85,10 +92,8 @@ private:
     PostgresConnection& db_;
     IngestionConfig config_;
     NGramExtractor extractor_;
-    std::unordered_set<BLAKE3Pipeline::Hash, HashHasher> seen_physicality_ids_;
-    std::unordered_set<BLAKE3Pipeline::Hash, HashHasher> seen_atom_ids_;
-    std::unordered_set<BLAKE3Pipeline::Hash, HashHasher> seen_composition_ids_;
-    std::unordered_set<BLAKE3Pipeline::Hash, HashHasher> seen_relation_ids_;
+    AtomLookup atom_lookup_;  // Long-lived, preloaded once
+    bool atoms_preloaded_ = false;
 };
 
 }

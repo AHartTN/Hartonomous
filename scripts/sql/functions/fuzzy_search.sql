@@ -15,13 +15,12 @@ LANGUAGE sql STABLE
 AS $$
     SELECT
         v.composition_id,
-        v.text,
-        similarity(v.text, query_text) AS similarity
+        v.reconstructed_text,
+        similarity(v.reconstructed_text, query_text) AS similarity
     FROM
         v_composition_text v
     WHERE
-        -- Trigram index support if available on the view (materialized) or scan
-        v.text % query_text
+        v.reconstructed_text % query_text
     ORDER BY
         similarity DESC
     LIMIT max_results;

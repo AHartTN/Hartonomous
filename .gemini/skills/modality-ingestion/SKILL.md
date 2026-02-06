@@ -3,77 +3,40 @@ name: modality-ingestion
 description: Map any data modality (text, audio, images, code) into Hartonomous via Unicode → Atoms → Compositions → Relations. Use when adding support for new content types.
 ---
 
-# Modality Ingestion: Universal Content Mapping
+# Modality Ingestion
 
-This skill governs conversion of any digital content into the geometric intelligence substrate.
+**All digital content → Unicode codepoints → Atoms → Compositions → Relations (intelligence)**
 
-## Universal Content Pipeline
+## Content Type Mapping
 
-**Core principle**: All digital content is Unicode. Unicode maps to Atoms. Atoms sequence to Compositions. Co-occurrence creates Relations (where intelligence emerges).
+| Content | Unicode Extraction | Parser |
+|---------|-------------------|--------|
+| Text | Direct UTF-8 → codepoints | `Engine/src/ingestion/text_ingester.cpp` |
+| Code | Tree-sitter AST → structure + symbols | `Engine/external/tree-sitter/` |
+| Images | RGB decimals: `[255,128,64]` → digit atoms | Not yet implemented |
+| Audio | PCM decimals: `0.123` → digit + punct atoms | Not yet implemented |
+| Structured | JSON/XML → canonical Unicode serialization | Not yet implemented |
 
-### 1. Unicode Extraction
-Every content type resolves to Unicode codepoints.
-- **Text**: Direct Unicode (UTF-8 → codepoints).
-- **Code**: Via Tree-sitter AST → structure + symbols as Unicode.
-- **Images**: RGB values as decimal digits: `[255, 128, 64]` → `"255"`, `"128"`, `"64"` → Unicode digit Atoms.
-- **Audio**: PCM samples as decimal: `0.123` → `"0.123"` → Unicode digit + punctuation Atoms.
-- **Structured Data**: JSON/XML → Unicode text via canonical serialization.
+## Pipeline Steps
 
-### 2. Atom Mapping
-Unicode codepoints map to pre-existing Atoms (~1.114M immutable positions on S³).
-- **Tool**: Lookup in `hartonomous.atom` table by codepoint.
-- **Immutability**: Atoms are NEVER added after initial seed_unicode population.
-
-### 3. Composition Creation
-Sequences of Atoms (n-grams) become Compositions.
-- **Storage**: `hartonomous.composition` with `hartonomous.composition_sequence` for ordering.
-- **Content-Addressing**: BLAKE3 hash of Atom sequence for deduplication.
-- **Run-Length Encoding**: Occurrences field for repeated sequences ("Mississippi" → "ss" stored once, occurs 2x).
-- **Cascading Deduplication**: Compositions can reference other Compositions by hash (hierarchical).
-- **Geometric Position**: Centroid of constituent Atom positions (normalized to S³ surface).
-
-**CRITICAL**: For content requiring reconstruction (documents, user data), MUST store complete composition_sequence with correct ordering/positions to enable bit-perfect reconstruction.
-
-### 4. Relation Detection (Intelligence Layer)
-Co-occurring Compositions create Relations with initial ELO.
-- **Storage**: `hartonomous.relation` + `hartonomous.relation_rating` (ELO score) + `hartonomous.relation_evidence` (provenance).
-- **Intelligence**: Relations ARE the intelligence. ELO weights define semantic proximity, NOT geometric distance.
-- **Evidence Tracking**: MUST record content_id (ingestion event) for surgical deletion capability.
+1. **Extract Unicode** — Parse content to codepoint stream
+2. **Map to Atoms** — Lookup pre-seeded atoms (NEVER create new atoms)
+3. **Create Compositions** — N-grams with BLAKE3 content-addressing, run-length encoded
+4. **Detect Relations** — Co-occurrence → initial ELO rating
+5. **Track Evidence** — `content_id` in `relation_evidence` for provenance/GDPR
 
 ## Two Storage Modes
 
-### Dense Storage (Content Requiring Reconstruction)
-**When:** Documents, images, audio files, user data, trusted content  
-**Requirement:** Bit-perfect reconstruction via Relations → Compositions → Atoms → Unicode  
-**Storage:**
-- Complete composition_sequence with positions (NO gaps)
-- Track in `hartonomous.content` table (ingestion event)
-- 90-95% compression from deduplication
+| Mode | When | Requirement |
+|------|------|-------------|
+| **Dense** | Documents, user data, trusted content | Bit-perfect reconstruction via complete `composition_sequence` |
+| **Sparse** | AI models, statistical patterns | Relationships only, reconstruction NOT needed |
 
-**Validation:**
-```sql
--- Test reconstruction
-SELECT reconstruct_content(content_id) FROM content WHERE source_identifier = 'test_file.txt';
--- Output hash MUST match input file hash
+Dense = 90-95% compression from deduplication.
+Sparse = 10,000-100,000x compression from cross-model deduplication.
+
+## Scripts
+```bash
+./scripts/linux/30-ingest-text.sh    # Text ingestion
+./scripts/linux/20-ingest-mini-lm.sh # Model ingestion (sparse)
 ```
-
-### Sparse Storage (Models/Statistical Patterns)
-**When:** AI models, attention patterns, embeddings  
-**Requirement:** Extract relationships only, reconstruction NOT needed  
-**Storage:**
-- Relation evidence entries (layer, head, weight, position)
-- Deduplicate aggressively (same relation across 1000s of layers → ONE record)
-- 10,000-100,000x compression from cross-model deduplication
-
-**Example:** BERT has 12 layers × 12 heads = 144 matrices. Same relationship may appear in 50+ heads with different weights. Store as: ONE relation + 50 evidence entries.
-
-## Implementation Workflow
-1. **Parse Content**: Extract values using appropriate parser (Tree-sitter, PCM decoder, PNG reader, etc.).
-2. **Map to Atoms**: Look up Unicode codepoints in existing Atom table.
-3. **Determine Storage Mode**: Dense (reconstruction required) vs Sparse (extraction only).
-4. **Create Compositions**: 
-   - Dense: Insert ALL n-grams with positions for reconstruction
-   - Sparse: Insert only relationship-forming n-grams
-5. **Detect Relations**: Sliding window or co-occurrence analysis to find Composition pairs.
-6. **Track Evidence**: Insert into `content` table for provenance + surgical deletion.
-7. **Initialize ELO**: New relations start at base ELO (e.g., 1000), evolve through evidence aggregation.

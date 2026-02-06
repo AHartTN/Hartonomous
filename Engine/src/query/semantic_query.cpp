@@ -16,7 +16,8 @@ SemanticQuery::SemanticQuery(PostgresConnection& db) : db_(db) {}
 
 std::optional<std::string> SemanticQuery::find_composition(const std::string& text) {
     auto result = db_.query_single(
-        "SELECT text FROM hartonomous.composition WHERE LOWER(text) = LOWER($1) LIMIT 1",
+        "SELECT v.composition_id::text FROM hartonomous.v_composition_text v "
+        "WHERE LOWER(v.reconstructed_text) = LOWER($1) LIMIT 1",
         {text}
     );
 
@@ -27,7 +28,9 @@ std::optional<SemanticQuery::CompositionInfo> SemanticQuery::get_composition_inf
     std::optional<CompositionInfo> info;
 
     db_.query(
-        "SELECT id, text FROM hartonomous.composition WHERE LOWER(text) = LOWER($1) LIMIT 1",
+        "SELECT v.composition_id, v.reconstructed_text "
+        "FROM hartonomous.v_composition_text v "
+        "WHERE LOWER(v.reconstructed_text) = LOWER($1) LIMIT 1",
         {text},
         [&](const std::vector<std::string>& row) {
             CompositionInfo comp;
@@ -57,17 +60,18 @@ std::vector<QueryResult> SemanticQuery::find_related(const std::string& query_te
         cooccurring AS (
             SELECT
                 c.id,
-                c.text,
                 COUNT(DISTINCT qr.relationid) AS co_occurrence_count
             FROM query_relations qr
             JOIN hartonomous.relationsequence rs ON rs.relationid = qr.relationid
             JOIN hartonomous.composition c ON c.id = rs.compositionid
             WHERE c.id != $1
-            GROUP BY c.id, c.text
+            GROUP BY c.id
             ORDER BY co_occurrence_count DESC
             LIMIT $2
         )
-        SELECT text, co_occurrence_count FROM cooccurring
+        SELECT v.reconstructed_text, co.co_occurrence_count
+        FROM cooccurring co
+        JOIN hartonomous.v_composition_text v ON v.composition_id = co.id
     )";
 
     db_.query(
@@ -99,9 +103,8 @@ std::vector<QueryResult> SemanticQuery::find_gravitational_truth(const std::stri
         WITH candidates AS (
             SELECT 
                 rs2.compositionid as target_id,
-                c.text,
                 rr.ratingvalue as elo,
-                rr.observations,
+                uint64_to_double(rr.observations) as observations,
                 p.centroid
             FROM hartonomous.relationsequence rs1
             JOIN hartonomous.relationsequence rs2 ON rs2.relationid = rs1.relationid
@@ -114,7 +117,6 @@ std::vector<QueryResult> SemanticQuery::find_gravitational_truth(const std::stri
         clusters AS (
             SELECT 
                 c1.target_id,
-                c1.text,
                 c1.elo,
                 c1.observations,
                 (
@@ -125,9 +127,10 @@ std::vector<QueryResult> SemanticQuery::find_gravitational_truth(const std::stri
             FROM candidates c1
         )
         SELECT 
-            text, 
-            (elo * LOG(observations + 1) * cluster_density) as gravitational_mass
-        FROM clusters
+            v.reconstructed_text, 
+            (cl.elo * LOG(cl.observations + 1) * cl.cluster_density) as gravitational_mass
+        FROM clusters cl
+        JOIN hartonomous.v_composition_text v ON v.composition_id = cl.target_id
         ORDER BY gravitational_mass DESC
         LIMIT $3
     )";

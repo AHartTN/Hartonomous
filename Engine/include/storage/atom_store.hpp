@@ -22,7 +22,6 @@ public:
 private:
     BulkCopy copy_;
     std::unordered_set<std::string> seen_;
-    std::string hash_to_uuid(const BLAKE3Pipeline::Hash& hash);
 };
 
 }

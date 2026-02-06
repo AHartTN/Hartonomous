@@ -3,25 +3,28 @@
 # Quick Rebuild Script (Sudo-Free!)
 # ==============================================================================
 # Use this after setting up dev symlinks with 02-install-dev-symlinks.sh
-# Builds, installs to local install/ directory, and the symlinks make it work!
-# No sudo needed - ldconfig isn't required when symlinks are active.
+# Builds and uses cmake --install to populate local install/ directory.
+# Symlinks make it visible to PostgreSQL without sudo.
 #
 # Usage: ./rebuild.sh [--test] [--clean]
 # ==============================================================================
 
 set -e
 
-# Colors
 GREEN='\033[0;32m'
+RED='\033[0;31m'
 CYAN='\033[0;36m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
 print_success() { echo -e "${GREEN}✓ $1${NC}"; }
+print_error() { echo -e "${RED}✗ $1${NC}"; }
 print_info() { echo -e "${CYAN}$1${NC}"; }
 print_warning() { echo -e "${YELLOW}⚠ $1${NC}"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PRESET="linux-release-max-perf"
+BUILD_DIR="$SCRIPT_DIR/build/$PRESET"
 
 # Check if dev symlinks are active
 if [ ! -f "$SCRIPT_DIR/.dev-symlinks-active" ]; then
@@ -29,14 +32,13 @@ if [ ! -f "$SCRIPT_DIR/.dev-symlinks-active" ]; then
     echo ""
     echo "Run this first (one-time setup):"
     echo "  1. ./scripts/linux/01-build.sh"
-    echo "  2. ./scripts/linux/01a-install-local.sh"
+    echo "  2. cmake --install build/$PRESET --prefix install"
     echo "  3. sudo ./scripts/linux/02-install-dev-symlinks.sh"
     echo ""
     echo "Then you can use this quick rebuild script without sudo"
     exit 1
 fi
 
-# Parse arguments
 CLEAN=""
 TEST=""
 
@@ -56,44 +58,32 @@ print_info "[1/3] Building..."
 if ./scripts/linux/01-build.sh $CLEAN $TEST; then
     print_success "Build complete"
 else
-    echo ""
-    print_warning "Build failed - check output above"
+    print_error "Build failed"
     exit 1
 fi
 
-# Step 2: Install to local directory
+# Step 2: Install to local directory via cmake
 print_info "[2/3] Installing locally..."
-if ./scripts/linux/01a-install-local.sh; then
+if cmake --install "$BUILD_DIR" --prefix "$SCRIPT_DIR/install" 2>&1; then
     print_success "Local install complete"
 else
-    echo ""
-    print_warning "Install failed - check output above"
+    print_error "Install failed"
     exit 1
 fi
 
-# Step 3: Update library cache (optional with symlinks)
+# Step 3: Library cache
 echo ""
 print_info "[3/3] Checking library cache..."
-# With symlinks in place, ldconfig usually isn't needed for each rebuild
-# The symlinks already point to the updated files in install/
 if [ "${EUID:-$(id -u)}" -eq 0 ]; then
-    # Already running as root, just run it
-    if ldconfig; then
-        print_success "Library cache updated"
-    fi
+    ldconfig && print_success "Library cache updated"
 else
-    # Not root - skip ldconfig, symlinks handle it
     print_success "Symlinks active - ldconfig not needed"
-    echo "  (If you encounter library loading issues, run: sudo ldconfig)"
 fi
 
 echo ""
-print_success "=== Rebuild Complete (No Sudo Required!) ==="
-echo ""
-print_info "Symlinks automatically use updated files from install/!"
+print_success "=== Rebuild Complete ==="
 echo ""
 echo "Next steps:"
-echo "  - Restart services that use the libraries"
-echo "  - Run tests: cd build/linux-release-max-perf/Engine/tests && ./suite_test_*"
+echo "  - Run unit tests: cd build/$PRESET && ctest --output-on-failure -L unit"
 echo "  - Setup database: ./scripts/linux/03-setup-database.sh --drop"
 echo ""

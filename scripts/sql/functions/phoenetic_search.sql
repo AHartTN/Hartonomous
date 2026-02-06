@@ -15,14 +15,13 @@ LANGUAGE sql STABLE
 AS $$
     SELECT
         v.composition_id,
-        v.text,
-        similarity(v.text, query_text) AS similarity
+        v.reconstructed_text,
+        similarity(v.reconstructed_text, query_text) AS similarity
     FROM
         v_composition_text v
     WHERE
-        -- Use Soundex/Metaphone for blocking
-        soundex(v.text) = soundex(query_text)
-        OR metaphone(v.text, 4) = metaphone(query_text, 4)
+        soundex(v.reconstructed_text) = soundex(query_text)
+        OR metaphone(v.reconstructed_text, 4) = metaphone(query_text, 4)
     ORDER BY
         similarity DESC
     LIMIT max_results;

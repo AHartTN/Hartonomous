@@ -121,15 +121,15 @@
     {
       "name": "linux-debug",
       "displayName": "Linux Debug",
-      "description": "Debug build with sanitizers",
+      "description": "Debug build with symbols, no fast-math",
       "inherits": "linux-base",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "HARTONOMOUS_ENABLE_NATIVE_ARCH": "OFF",
+        "HARTONOMOUS_ENABLE_NATIVE_ARCH": "ON",
         "HARTONOMOUS_ENABLE_FAST_MATH": "OFF",
         "HARTONOMOUS_MKL_THREADING": "SEQUENTIAL",
         "HARTONOMOUS_MKL_INTERFACE": "LP64",
-        "HARTONOMOUS_HNSW_SIMD": "SSE"
+        "HARTONOMOUS_HNSW_SIMD": "AUTO"
       }
     }
   ],

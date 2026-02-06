@@ -1,24 +1,8 @@
 #include <storage/relation_store.hpp>
-#include <iomanip>
-#include <sstream>
+#include <storage/format_utils.hpp>
 #include <cstring>
 
 namespace Hartonomous {
-
-// Centralized, high-performance hex conversion for UUIDs
-static const char* hex_chars = "0123456789abcdef";
-
-static std::string internal_hash_to_uuid(const BLAKE3Pipeline::Hash& hash) {
-    char buf[37];
-    char* p = buf;
-    for (int i = 0; i < 16; ++i) {
-        if (i == 4 || i == 6 || i == 8 || i == 10) *p++ = '-';
-        *p++ = hex_chars[(hash[i] >> 4) & 0xF];
-        *p++ = hex_chars[hash[i] & 0xF];
-    }
-    *p = '\0';
-    return std::string(buf, 36);
-}
 
 // ============================================================================
 // RelationStore
@@ -28,10 +12,6 @@ RelationStore::RelationStore(PostgresConnection& db, bool use_temp_table, bool u
     : copy_(db, use_temp_table), use_dedup_(use_temp_table), use_binary_(use_binary) {
     copy_.set_binary(use_binary);
     copy_.begin_table("hartonomous.relation", {"id", "physicalityid"});
-}
-
-std::string RelationStore::hash_to_uuid(const BLAKE3Pipeline::Hash& hash) {
-    return internal_hash_to_uuid(hash);
 }
 
 void RelationStore::store(const RelationRecord& rec) {
@@ -63,32 +43,45 @@ void RelationStore::flush() {
 // ============================================================================
 
 RelationSequenceStore::RelationSequenceStore(PostgresConnection& db, bool use_temp_table, bool use_binary)
-    : copy_(db, use_temp_table), use_binary_(use_binary) {
+    : copy_(db, use_temp_table), use_dedup_(use_temp_table), use_binary_(use_binary) {
     copy_.set_binary(use_binary);
     copy_.begin_table("hartonomous.relationsequence",
                       {"id", "relationid", "compositionid", "ordinal", "occurrences"});
-}
 
-std::string RelationSequenceStore::hash_to_uuid(const BLAKE3Pipeline::Hash& hash) {
-    return internal_hash_to_uuid(hash);
+    // Handle cross-batch duplicates: same (relation, ordinal) may appear in different batches.
+    // Accumulate occurrences to preserve training signal.
+    // uint32 is stored as 4-byte big-endian bytea; decode → add → re-encode.
+    copy_.set_conflict_clause(
+        "ON CONFLICT (relationid, ordinal) DO UPDATE SET "
+        "occurrences = int4send("
+            "uint32_to_int(hartonomous.relationsequence.occurrences) + "
+            "uint32_to_int(EXCLUDED.occurrences)"
+        "), "
+        "modifiedat = CURRENT_TIMESTAMP"
+    );
 }
 
 void RelationSequenceStore::store(const RelationSequenceRecord& rec) {
+    if (use_dedup_) {
+        SeqKey key{rec.relation_id, rec.ordinal};
+        if (seen_.count(key)) return;
+        seen_.insert(key);
+    }
     if (use_binary_) {
         BulkCopy::BinaryRow row;
         row.add_uuid(rec.id);
         row.add_uuid(rec.relation_id);
         row.add_uuid(rec.composition_id);
-        row.add_int32(static_cast<int32_t>(rec.ordinal));
-        row.add_int32(static_cast<int32_t>(rec.occurrences));
+        row.add_uint32(rec.ordinal);
+        row.add_uint32(rec.occurrences);
         copy_.add_row(row);
     } else {
         copy_.add_row({
             hash_to_uuid(rec.id),
             hash_to_uuid(rec.relation_id),
             hash_to_uuid(rec.composition_id),
-            std::to_string(rec.ordinal),
-            std::to_string(rec.occurrences)
+            uint32_to_bytea_hex(rec.ordinal),
+            uint32_to_bytea_hex(rec.occurrences)
         });
     }
 }
@@ -105,45 +98,58 @@ RelationRatingStore::RelationRatingStore(PostgresConnection& db, bool use_binary
     : copy_(db, true), use_binary_(use_binary) {
     copy_.set_binary(use_binary);
     copy_.begin_table("hartonomous.relationrating",
-                      {"relationid", "observations", "consensuselo", "baseelo", "kfactor"});
+                      {"relationid", "observations", "ratingvalue", "kfactor"});
 
-    // Dual-ELO Evolution Logic using native weighted_elo_update
+    // Cross-batch conflict: native C uint64_add for observations,
+    // weighted_elo_update for rating (both operate on raw bytes, no casting).
     copy_.set_conflict_clause(
         "ON CONFLICT (relationid) DO UPDATE SET "
-        "baseelo = hartonomous.weighted_elo_update("
-                   "hartonomous.relationrating.baseelo, hartonomous.relationrating.observations, "
-                   "EXCLUDED.baseelo, EXCLUDED.observations), "
-        "consensuselo = hartonomous.relationrating.consensuselo + EXCLUDED.consensuselo, "
-        "observations = hartonomous.relationrating.observations + EXCLUDED.observations"
+        "observations = uint64_add(hartonomous.relationrating.observations, EXCLUDED.observations), "
+        "ratingvalue = weighted_elo_update("
+            "hartonomous.relationrating.ratingvalue, hartonomous.relationrating.observations, "
+            "EXCLUDED.ratingvalue, EXCLUDED.observations), "
+        "kfactor = LEAST(hartonomous.relationrating.kfactor, EXCLUDED.kfactor), "
+        "modifiedat = CURRENT_TIMESTAMP"
     );
 }
 
-std::string RelationRatingStore::hash_to_uuid(const BLAKE3Pipeline::Hash& hash) {
-    return internal_hash_to_uuid(hash);
-}
-
 void RelationRatingStore::store(const RelationRatingRecord& rec) {
-    if (use_binary_) {
-        BulkCopy::BinaryRow row;
-        row.add_uuid(rec.relation_id);
-        row.add_int64(static_cast<int64_t>(rec.observations));
-        row.add_double(rec.consensus_elo);
-        row.add_double(rec.base_elo);
-        row.add_double(rec.k_factor);
-        copy_.add_row(row);
+    // Pre-aggregate within the batch: accumulate observations,
+    // weighted-average rating_value, minimum k_factor.
+    auto it = pending_.find(rec.relation_id);
+    if (it != pending_.end()) {
+        auto& existing = it->second;
+        double total_obs = static_cast<double>(existing.observations) + static_cast<double>(rec.observations);
+        existing.rating_value = (existing.rating_value * existing.observations + 
+                                 rec.rating_value * rec.observations) / total_obs;
+        existing.observations += rec.observations;
+        existing.k_factor = std::min(existing.k_factor, rec.k_factor);
     } else {
-        copy_.add_row({
-            hash_to_uuid(rec.relation_id),
-            std::to_string(rec.observations),
-            std::to_string(rec.consensus_elo),
-            std::to_string(rec.base_elo),
-            std::to_string(rec.k_factor)
-        });
+        pending_[rec.relation_id] = rec;
     }
 }
 
 void RelationRatingStore::flush() {
+    // Write pre-aggregated records to the database
+    for (const auto& [_, rec] : pending_) {
+        if (use_binary_) {
+            BulkCopy::BinaryRow row;
+            row.add_uuid(rec.relation_id);
+            row.add_uint64(rec.observations);
+            row.add_double(rec.rating_value);
+            row.add_double(rec.k_factor);
+            copy_.add_row(row);
+        } else {
+            copy_.add_row({
+                hash_to_uuid(rec.relation_id),
+                uint64_to_bytea_hex(rec.observations),
+                std::to_string(rec.rating_value),
+                std::to_string(rec.k_factor)
+            });
+        }
+    }
     copy_.flush();
+    pending_.clear();
 }
 
 }

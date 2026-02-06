@@ -1,6 +1,10 @@
 /**
  * @file walk_engine.cpp
- * @brief Implementation of canonical generative walking logic
+ * @brief Generative walking = forward pass through ELO-weighted relation graph
+ *
+ * The walk IS inference. Relations are weights. ELO is activation strength.
+ * Each step selects the next composition by scoring relation-graph neighbors
+ * with observation-weighted ELO, filtering noise, and beam-searching for coherence.
  */
 
 #include <cognitive/walk_engine.hpp>
@@ -9,10 +13,79 @@
 #include <iostream>
 #include <algorithm>
 #include <iomanip>
+#include <sstream>
+#include <numeric>
 
 namespace Hartonomous {
 
-WalkEngine::WalkEngine(PostgresConnection& db) : db_(db) {}
+// Tokens that are model artifacts, not semantic content
+static bool is_model_artifact(const std::string& text) {
+    if (text.empty()) return true;
+    if (text.size() >= 8 && text.substr(0, 7) == "[unused") return true;
+    if (text == "[PAD]" || text == "[CLS]" || text == "[SEP]" || text == "[MASK]") return true;
+    if (text == "[UNK]") return true;
+    if (text.size() >= 2 && text[0] == '#' && text[1] == '#') return true; // wordpiece subword
+    if (text.size() >= 2 && text[0] == '#' && !std::isalpha(text[1])) return true; // #17, #», etc.
+    return false;
+}
+
+// Function words — carry grammatical structure but low semantic content
+// Used for scoring deprioritization, NOT filtering from output
+static bool is_function_word(const std::string& text) {
+    if (text.empty()) return true;
+    // Punctuation is always structural
+    if (text.size() == 1 && !std::isalnum(static_cast<unsigned char>(text[0]))) return true;
+    static const std::unordered_set<std::string> funcs = {
+        "the", "a", "an", "of", "in", "to", "is", "and", "or", "but", "not",
+        "for", "on", "with", "at", "by", "from", "as", "that", "this", "it",
+        "was", "were", "be", "been", "being", "have", "has", "had", "do", "does",
+        "did", "will", "would", "could", "should", "may", "might", "shall", "can",
+        "are", "am", "its", "his", "her", "he", "she", "they", "them", "their",
+        "we", "our", "you", "your", "my", "me", "him", "us", "who", "whom",
+        "which", "what", "where", "when", "how", "why", "if", "so", "no",
+        "than", "then", "there", "here", "these", "those", "itself", "himself",
+        "herself", "themselves", "myself", "yourself"
+    };
+    std::string lower = text;
+    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+    return funcs.count(lower) > 0;
+}
+
+WalkEngine::WalkEngine(PostgresConnection& db) : db_(db) {
+    // Pre-cache composition text for fast lookup during walks
+    preload_composition_text();
+}
+
+void WalkEngine::preload_composition_text() {
+    db_.query(
+        "SELECT v.composition_id, v.reconstructed_text "
+        "FROM hartonomous.v_composition_text v",
+        {},
+        [&](const std::vector<std::string>& row) {
+            auto hash = BLAKE3Pipeline::from_hex(row[0]);
+            comp_text_cache_[hash] = row[1];
+        }
+    );
+}
+
+std::string WalkEngine::lookup_text(const BLAKE3Pipeline::Hash& id) const {
+    auto it = comp_text_cache_.find(id);
+    if (it != comp_text_cache_.end()) return it->second;
+    return "";
+}
+
+BLAKE3Pipeline::Hash WalkEngine::find_composition(const std::string& text) {
+    BLAKE3Pipeline::Hash result = {};
+    db_.query(
+        "SELECT v.composition_id FROM hartonomous.v_composition_text v "
+        "WHERE v.reconstructed_text = $1 LIMIT 1",
+        {text},
+        [&](const std::vector<std::string>& row) {
+            result = BLAKE3Pipeline::from_hex(row[0]);
+        }
+    );
+    return result;
+}
 
 WalkState WalkEngine::init_walk(const BLAKE3Pipeline::Hash& start_id, double initial_energy) {
     WalkState state;
@@ -37,35 +110,76 @@ WalkState WalkEngine::init_walk(const BLAKE3Pipeline::Hash& start_id, double ini
     return state;
 }
 
-void WalkEngine::set_goal(WalkState& state, const BLAKE3Pipeline::Hash& goal_id) {
-    state.goal_composition = goal_id;
-    std::string hex_id = BLAKE3Pipeline::to_hex(goal_id);
-    db_.query("SELECT ST_X(p.centroid), ST_Y(p.centroid), ST_Z(p.centroid), ST_M(p.centroid) "
-              "FROM hartonomous.physicality p "
-              "JOIN hartonomous.composition c ON c.physicalityid = p.id "
-              "WHERE c.id = $1", {hex_id},
-              [&](const std::vector<std::string>& row) {
-                  state.goal_position = Eigen::Vector4d(
-                      std::stod(row[0]), std::stod(row[1]), std::stod(row[2]), std::stod(row[3])
-                  );
-              });
+WalkState WalkEngine::init_walk_from_prompt(const std::string& prompt, double initial_energy) {
+    // Extract content words from prompt
+    std::istringstream iss(prompt);
+    std::string word;
+    std::vector<BLAKE3Pipeline::Hash> seeds;
+
+    while (iss >> word) {
+        // Strip punctuation
+        word.erase(std::remove_if(word.begin(), word.end(), ::ispunct), word.end());
+        if (word.empty() || is_function_word(word)) continue;
+
+        // Try exact match, then lowercase
+        auto id = find_composition(word);
+        if (id == BLAKE3Pipeline::Hash{}) {
+            std::string lower = word;
+            std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+            id = find_composition(lower);
+        }
+        if (id != BLAKE3Pipeline::Hash{}) {
+            seeds.push_back(id);
+        }
+    }
+
+    if (seeds.empty()) {
+        // Fallback: use highest-rated composition
+        BLAKE3Pipeline::Hash fallback = {};
+        db_.query(
+            "SELECT rs.compositionid FROM hartonomous.relationsequence rs "
+            "JOIN hartonomous.relationrating rr ON rs.relationid = rr.relationid "
+            "ORDER BY rr.ratingvalue DESC LIMIT 1", {},
+            [&](const std::vector<std::string>& row) {
+                fallback = BLAKE3Pipeline::from_hex(row[0]);
+            }
+        );
+        return init_walk(fallback, initial_energy);
+    }
+
+    // Multi-seed: Find the seed with the most relations to other seeds
+    // This is the "center of the prompt" — the composition most connected to the query
+    BLAKE3Pipeline::Hash best_seed = seeds[0];
+    if (seeds.size() > 1) {
+        size_t best_connections = 0;
+        for (const auto& seed : seeds) {
+            size_t connections = 0;
+            std::string hex = BLAKE3Pipeline::to_hex(seed);
+            for (const auto& other : seeds) {
+                if (other == seed) continue;
+                std::string other_hex = BLAKE3Pipeline::to_hex(other);
+                auto result = db_.query_single(
+                    "SELECT 1 FROM hartonomous.relationsequence rs1 "
+                    "JOIN hartonomous.relationsequence rs2 ON rs2.relationid = rs1.relationid "
+                    "WHERE rs1.compositionid = $1 AND rs2.compositionid = $2 LIMIT 1",
+                    {hex, other_hex}
+                );
+                if (result.has_value()) connections++;
+            }
+            if (connections > best_connections) {
+                best_connections = connections;
+                best_seed = seed;
+            }
+        }
+        // Store all seeds as context — boost candidates related to ANY seed
+        context_seeds_ = seeds;
+    }
+
+    return init_walk(best_seed, initial_energy);
 }
 
-Eigen::Vector4d WalkEngine::get_position(const BLAKE3Pipeline::Hash& comp_id) {
-    auto it = position_cache_.find(comp_id);
-    if (it != position_cache_.end()) return it->second;
-
-    Eigen::Vector4d pos(0, 0, 0, 1);
-    std::string hex_id = BLAKE3Pipeline::to_hex(comp_id);
-    db_.query("SELECT ST_X(p.centroid), ST_Y(p.centroid), ST_Z(p.centroid), ST_M(p.centroid) "
-              "FROM hartonomous.physicality p "
-              "JOIN hartonomous.composition c ON c.physicalityid = p.id "
-              "WHERE c.id = $1", {hex_id},
-              [&](const std::vector<std::string>& row) {
-                  pos = Eigen::Vector4d(std::stod(row[0]), std::stod(row[1]), std::stod(row[2]), std::stod(row[3]));
-              });
-    position_cache_[comp_id] = pos;
-    return pos;
+void WalkEngine::set_goal(WalkState& state, const BLAKE3Pipeline::Hash& goal_id) {
+    state.goal_composition = goal_id;
 }
 
 std::vector<WalkEngine::Candidate> WalkEngine::get_candidates(const WalkState& state) {
@@ -74,84 +188,80 @@ std::vector<WalkEngine::Candidate> WalkEngine::get_candidates(const WalkState& s
 
     std::string current_hex = BLAKE3Pipeline::to_hex(state.current_composition);
 
-    // Fast indexed query using existing RelationSequence + RelationRating
-    // idx_RelationSequence_CompositionId makes this fast
+    // Query ALL relations for this composition — we aggregate duplicates in C++
     std::string sql = R"(
         SELECT
             rs2.compositionid,
-            rr.observations,
-            rr.ratingvalue,
-            ST_X(p.centroid), ST_Y(p.centroid), ST_Z(p.centroid), ST_M(p.centroid)
+            uint64_to_double(rr.observations),
+            rr.ratingvalue
         FROM hartonomous.relationsequence rs1
-        JOIN hartonomous.relationsequence rs2 ON rs2.relationid = rs1.relationid AND rs2.compositionid != rs1.compositionid
-        JOIN hartonomous.relationrating rr ON rr.relationid = rs1.relationid
-        JOIN hartonomous.composition c ON c.id = rs2.compositionid
-        JOIN hartonomous.physicality p ON p.id = c.physicalityid
+        JOIN hartonomous.relationsequence rs2 
+            ON rs2.relationid = rs1.relationid 
+            AND rs2.compositionid != rs1.compositionid
+        JOIN hartonomous.relationrating rr 
+            ON rr.relationid = rs1.relationid
         WHERE rs1.compositionid = $1
-        ORDER BY rr.ratingvalue DESC
-        LIMIT 500
     )";
+
+    // Aggregate: same composition may appear via multiple relations
+    // Merge them: sum observations, max ELO
+    struct AggCandidate {
+        double total_obs = 0.0;
+        double max_rating = 0.0;
+        int relation_count = 0;
+    };
+    std::unordered_map<BLAKE3Pipeline::Hash, AggCandidate, HashHasher> agg;
 
     db_.query(sql, {current_hex}, [&](const std::vector<std::string>& row) {
-        Candidate c;
-        c.id = BLAKE3Pipeline::from_hex(row[0]);
+        auto id = BLAKE3Pipeline::from_hex(row[0]);
         double obs = std::stod(row[1]);
         double rating = std::stod(row[2]);
-        c.position = Eigen::Vector4d(std::stod(row[3]), std::stod(row[4]), std::stod(row[5]), std::stod(row[6]));
-
-        c.model_sim = rating / 2000.0;
-        c.text_sim = std::log1p(obs) / 10.0;
-        c.rel_strength = obs;
-        double dot = state.current_position.dot(c.position);
-        c.geo_sim = (dot + 1.0) / 2.0;
-        c.hilbert_sim = 0.5;
-
-        candidates.push_back(c);
+        auto& ac = agg[id];
+        ac.total_obs += obs;
+        ac.max_rating = std::max(ac.max_rating, rating);
+        ac.relation_count++;
     });
 
-    // 2. Spatial Candidates (KNN in 4D for Semantic Drift)
-    // This enables "creative" leaps between concepts that are close in meaning (embedding space)
-    // but not explicitly linked in the training data.
-    std::string spatial_sql = R"(
-        SELECT
-            c.id,
-            ST_X(p.centroid), ST_Y(p.centroid), ST_Z(p.centroid), ST_M(p.centroid)
-        FROM hartonomous.physicality p
-        JOIN hartonomous.composition c ON c.physicalityid = p.id
-        WHERE p.id != (SELECT physicalityid FROM hartonomous.composition WHERE id = $1)
-        ORDER BY p.centroid <-> (
-            SELECT centroid FROM hartonomous.physicality 
-            WHERE id = (SELECT physicalityid FROM hartonomous.composition WHERE id = $1)
-        )
-        LIMIT 20
-    )";
+    // Find max observations for normalization (across aggregated candidates)
+    double max_obs = 1.0;
+    double max_elo = 0.0, min_elo = 1e9;
+    for (const auto& [id, ac] : agg) {
+        if (ac.total_obs > max_obs) max_obs = ac.total_obs;
+        if (ac.max_rating > max_elo) max_elo = ac.max_rating;
+        if (ac.max_rating < min_elo) min_elo = ac.max_rating;
+    }
+    double elo_range = std::max(1.0, max_elo - min_elo);
 
-    db_.query(spatial_sql, {current_hex}, [&](const std::vector<std::string>& row) {
-        BLAKE3Pipeline::Hash id = BLAKE3Pipeline::from_hex(row[0]);
-        
-        // Dedup: Skip if already found via graph
-        for (const auto& existing : candidates) {
-            if (existing.id == id) return;
-        }
+    for (const auto& [id, ac] : agg) {
+        std::string text = lookup_text(id);
+
+        // Filter model artifacts
+        if (is_model_artifact(text)) continue;
+
+        // Require minimum observations — single-obs model edges are noise
+        if (ac.total_obs < 3.0) continue;
 
         Candidate c;
         c.id = id;
-        c.position = Eigen::Vector4d(std::stod(row[1]), std::stod(row[2]), std::stod(row[3]), std::stod(row[4]));
-        
-        // Base scores for purely spatial neighbors
-        c.model_sim = 0.5; // Neutral
-        c.text_sim = 0.0;
-        c.rel_strength = 0.0;
-        
-        double dot = state.current_position.dot(c.position);
-        c.geo_sim = (dot + 1.0) / 2.0;
-        c.hilbert_sim = 0.5; // TODO: Calculate actual hilbert distance if needed
+        c.text = text;
+
+        // ELO normalized against THIS candidate set (local, not hardcoded)
+        c.elo_score = (ac.max_rating - min_elo) / elo_range;
+
+        // Observation ratio: how observed is this vs the most-observed neighbor?
+        c.obs_score = ac.total_obs / max_obs;
+
+        // Raw for sigmoid gating
+        c.rel_strength = ac.total_obs;
+
+        // Stop word flag
+        c.is_stop_word = is_function_word(text);
 
         candidates.push_back(c);
-    });
+    }
 
     if (candidates.empty()) {
-        std::cerr << "WARNING: No neighbors for " << current_hex << std::endl;
+        std::cerr << "WARNING: No viable candidates for " << current_hex << std::endl;
     }
 
     return candidates;
@@ -160,32 +270,44 @@ std::vector<WalkEngine::Candidate> WalkEngine::get_candidates(const WalkState& s
 double WalkEngine::score_candidate(const WalkState& state, const Candidate& c, const WalkParameters& params) {
     double score = 0.0;
 
-    // 1. Adjacency signals
-    score += params.w_model   * c.model_sim;
-    score += params.w_text    * c.text_sim;
-    score += params.w_rel     * (1.0 / (1.0 + std::exp(-c.rel_strength / 100.0)));
-    score += params.w_geo     * c.geo_sim;
-    score += params.w_hilbert * c.hilbert_sim;
+    // Core signals from relation graph
+    score += params.w_model * c.elo_score;
+    score += params.w_text  * c.obs_score;
+    score += params.w_rel   * (1.0 / (1.0 + std::exp(-c.rel_strength / 50.0)));
 
-    // 2. Goal Attraction
-    if (state.goal_position.has_value()) {
-        double g_sim = state.goal_position->dot(c.position);
-        score += params.goal_attraction * ((g_sim + 1.0) / 2.0);
+    // Stop word: hard cap — guarantees they never enter top-K
+    if (c.is_stop_word) {
+        score = std::min(score, 0.02);
+    } else {
+        score += 0.05; // Small consistent push for content words
     }
 
-    // 3. Repetition penalty
+    // Context seed bonus — if this candidate relates to a prompt keyword, boost it
+    if (!context_seeds_.empty()) {
+        for (const auto& seed : context_seeds_) {
+            if (c.id == seed) {
+                score += 0.3;
+                break;
+            }
+        }
+    }
+
+    // Repetition penalty
     auto it = state.visit_counts.find(c.id);
     if (it != state.visit_counts.end()) {
         score -= params.w_repeat * static_cast<double>(it->second);
     }
 
-    // 4. Novelty penalty (recent window)
+    // Novelty penalty (recent window)
     if (std::find(state.recent.begin(), state.recent.end(), c.id) != state.recent.end()) {
         score -= params.w_novelty;
     }
 
-    // 5. Energy-based exploration bonus
+    // Energy-based exploration bonus
     score += params.w_energy * state.current_energy;
+
+    // Pre-softmax sharpening: widen gaps between content words and noise
+    score = std::pow(std::max(0.0, score), 0.75);
 
     return score;
 }
@@ -214,22 +336,36 @@ WalkStepResult WalkEngine::step(WalkState& state, const WalkParameters& params) 
         return result;
     }
 
-    // Compute scores
+    // Score all candidates
+    for (auto& c : candidates) {
+        c.score = score_candidate(state, c, params);
+    }
+
+    // Top-K filtering: keep only the best candidates to sharpen the distribution
+    constexpr size_t TOP_K = 32;
+    if (candidates.size() > TOP_K) {
+        std::partial_sort(candidates.begin(), candidates.begin() + TOP_K, candidates.end(),
+            [](const Candidate& a, const Candidate& b) { return a.score > b.score; });
+        candidates.resize(TOP_K);
+    }
+
+    // Energy-modulated temperature: high energy = exploratory, low energy = greedy
+    double temperature = params.base_temp - params.energy_alpha * state.current_energy;
+    temperature = std::clamp(temperature, params.min_temp, params.base_temp);
+
+    // Softmax sampling over top-K
     std::vector<double> scores;
     scores.reserve(candidates.size());
     for (const auto& c : candidates) {
-        scores.push_back(score_candidate(state, c, params));
+        scores.push_back(c.score);
     }
 
-    // Energy-modulated temperature
-    double temperature = params.base_temp + (params.energy_alpha * state.current_energy);
-
-    // Softmax sampling
     double max_s = *std::max_element(scores.begin(), scores.end());
     double sum = 0.0;
     std::vector<double> probs(scores.size());
     for (size_t i = 0; i < scores.size(); ++i) {
-        probs[i] = std::exp((scores[i] - max_s) / std::max(0.01, temperature));
+        double logit = (scores[i] - max_s) / temperature;
+        probs[i] = std::exp(logit);
         sum += probs[i];
     }
     for (auto& p : probs) p /= sum;
@@ -238,9 +374,7 @@ WalkStepResult WalkEngine::step(WalkState& state, const WalkParameters& params) 
     auto& selected = candidates[chosen];
 
     // Update State
-    state.previous_position = state.current_position;
     state.current_composition = selected.id;
-    state.current_position = selected.position;
     state.current_energy -= params.energy_decay;
     state.trajectory.push_back(selected.id);
     state.visit_counts[selected.id]++;
@@ -260,6 +394,49 @@ WalkStepResult WalkEngine::step(WalkState& state, const WalkParameters& params) 
     }
 
     return result;
+}
+
+std::string WalkEngine::generate(const std::string& prompt, const WalkParameters& params, size_t max_steps) {
+    auto state = init_walk_from_prompt(prompt, 1.0);
+    
+    std::string seed_text = lookup_text(state.current_composition);
+    std::vector<std::string> words;
+    if (!seed_text.empty()) {
+        words.push_back(seed_text);
+    }
+
+    for (size_t i = 0; i < max_steps; ++i) {
+        auto result = step(state, params);
+        if (result.terminated) break;
+
+        std::string text = lookup_text(result.next_composition);
+        if (text.empty()) continue;
+
+        // Avoid consecutive duplicates
+        if (!words.empty() && words.back() == text) continue;
+
+        words.push_back(text);
+    }
+
+    // Assemble into readable text
+    std::string output;
+    for (size_t i = 0; i < words.size(); ++i) {
+        const auto& w = words[i];
+        if (i == 0) {
+            std::string cap = w;
+            if (!cap.empty()) cap[0] = std::toupper(cap[0]);
+            output += cap;
+        } else if (w.size() == 1 && std::ispunct(static_cast<unsigned char>(w[0]))) {
+            output += w; // No space before punctuation
+        } else {
+            output += " " + w;
+        }
+    }
+    if (!output.empty() && output.back() != '.' && output.back() != '!' && output.back() != '?') {
+        output += ".";
+    }
+
+    return output;
 }
 
 } // namespace Hartonomous

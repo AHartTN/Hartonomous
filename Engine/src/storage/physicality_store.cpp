@@ -1,4 +1,5 @@
 #include <storage/physicality_store.hpp>
+#include <storage/format_utils.hpp>
 #include <iomanip>
 #include <sstream>
 #include <endian.h>
@@ -8,26 +9,10 @@
 
 namespace Hartonomous {
 
-// Fast hex lookup table
-static const char* hex_lut = "0123456789abcdef";
-
 PhysicalityStore::PhysicalityStore(PostgresConnection& db, bool use_temp_table, bool use_binary)
     : copy_(db, use_temp_table), use_dedup_(use_temp_table), use_binary_(use_binary) {
     copy_.set_binary(use_binary);
     copy_.begin_table("hartonomous.physicality", {"id", "hilbert", "centroid", "trajectory"});
-}
-
-std::string PhysicalityStore::hash_to_uuid(const BLAKE3Pipeline::Hash& hash) {
-    // Fast UUID conversion without ostringstream
-    char buf[37];
-    char* p = buf;
-    for (int i = 0; i < 16; ++i) {
-        if (i == 4 || i == 6 || i == 8 || i == 10) *p++ = '-';
-        *p++ = hex_lut[(hash[i] >> 4) & 0xF];
-        *p++ = hex_lut[hash[i] & 0xF];
-    }
-    *p = '\0';
-    return std::string(buf, 36);
 }
 
 std::string PhysicalityStore::geom_to_hex(const Eigen::Vector4d& pt) {
@@ -50,8 +35,8 @@ std::string PhysicalityStore::geom_to_hex(const Eigen::Vector4d& pt) {
     // Fast hex encoding
     char hex[75]; // 37 * 2 + 1
     for (int i = 0; i < 37; ++i) {
-        hex[i * 2] = hex_lut[(wkb[i] >> 4) & 0xF];
-        hex[i * 2 + 1] = hex_lut[wkb[i] & 0xF];
+        hex[i * 2] = k_hex_lut[(wkb[i] >> 4) & 0xF];
+        hex[i * 2 + 1] = k_hex_lut[wkb[i] & 0xF];
     }
     hex[74] = '\0';
     return std::string(hex, 74);
@@ -69,11 +54,8 @@ void PhysicalityStore::store(const PhysicalityRecord& rec) {
         BulkCopy::BinaryRow row;
         row.add_uuid(rec.id);
         
-        // 1. Hilbert Index as 16 bytes (bytea)
-        uint64_t h_bytes[2];
-        h_bytes[0] = htobe64(rec.hilbert_index.hi);
-        h_bytes[1] = htobe64(rec.hilbert_index.lo);
-        row.add_bytes(h_bytes, 16);
+        // 1. Hilbert Index as UUID (16 bytes)
+        row.add_uuid(rec.hilbert_index);
         
         // 2. Centroid as WKB (POINTZM)
         uint8_t wkb[37];
@@ -160,10 +142,15 @@ void PhysicalityStore::store(const PhysicalityRecord& rec) {
             traj_wkt = ss.str();
         }
 
+        // Centroid as WKT format
+        char centroid_wkt[128];
+        snprintf(centroid_wkt, sizeof(centroid_wkt), "POINTZM(%.10f %.10f %.10f %.10f)",
+            rec.centroid[0], rec.centroid[1], rec.centroid[2], rec.centroid[3]);
+        
         copy_.add_row(std::vector<std::string>{
             uuid,
-            rec.hilbert_index.to_string(),
-            geom_to_hex(rec.centroid),
+            hash_to_uuid(rec.hilbert_index),
+            centroid_wkt,
             traj_wkt.empty() ? "\\N" : traj_wkt
         });
     }

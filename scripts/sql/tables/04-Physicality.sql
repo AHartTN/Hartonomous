@@ -5,8 +5,8 @@
 CREATE TABLE IF NOT EXISTS Physicality (
     Id UUID PRIMARY KEY,
 
-    -- Hilbert curve index (128-bit)
-    Hilbert UINT128 NOT NULL,
+    -- Hilbert curve index (128-bit) - stored as UUID for performance
+    Hilbert UUID NOT NULL,
 
     -- PostGIS 4D geometry (SRID 0 for abstract space)
     Centroid GEOMETRY(POINTZM, 0) NOT NULL,

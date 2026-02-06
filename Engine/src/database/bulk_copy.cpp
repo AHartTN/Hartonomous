@@ -101,6 +101,49 @@ void BulkCopy::BinaryRow::add_null() {
     num_fields++;
 }
 
+void BulkCopy::BinaryRow::add_bool(bool val) {
+    int32_t len = htonl(1);
+    uint8_t* p = reinterpret_cast<uint8_t*>(&len);
+    buffer.insert(buffer.end(), p, p + 4);
+    uint8_t b = val ? 1 : 0;
+    buffer.push_back(b);
+    num_fields++;
+}
+
+void BulkCopy::BinaryRow::add_uint16(uint16_t val) {
+    // Send as 2-byte big-endian bytea (matches PostgreSQL uint16 domain)
+    int32_t len = htonl(2);
+    uint8_t* p = reinterpret_cast<uint8_t*>(&len);
+    buffer.insert(buffer.end(), p, p + 4);
+    uint8_t bytes[2];
+    bytes[0] = static_cast<uint8_t>((val >> 8) & 0xFF);
+    bytes[1] = static_cast<uint8_t>(val & 0xFF);
+    buffer.insert(buffer.end(), bytes, bytes + 2);
+    num_fields++;
+}
+
+void BulkCopy::BinaryRow::add_uint32(uint32_t val) {
+    // Send as 4-byte big-endian bytea (matches PostgreSQL uint32 domain)
+    int32_t len = htonl(4);
+    uint8_t* p = reinterpret_cast<uint8_t*>(&len);
+    buffer.insert(buffer.end(), p, p + 4);
+    uint32_t be = htonl(val);
+    uint8_t* v = reinterpret_cast<uint8_t*>(&be);
+    buffer.insert(buffer.end(), v, v + 4);
+    num_fields++;
+}
+
+void BulkCopy::BinaryRow::add_uint64(uint64_t val) {
+    // Send as 8-byte big-endian bytea (matches PostgreSQL uint64 domain)
+    int32_t len = htonl(8);
+    uint8_t* p = reinterpret_cast<uint8_t*>(&len);
+    buffer.insert(buffer.end(), p, p + 4);
+    uint64_t be = __builtin_bswap64(val);
+    uint8_t* v = reinterpret_cast<uint8_t*>(&be);
+    buffer.insert(buffer.end(), v, v + 8);
+    num_fields++;
+}
+
 // ============================================================================
 // BulkCopy Implementation
 // ============================================================================

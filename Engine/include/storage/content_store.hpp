@@ -22,16 +22,15 @@ struct ContentRecord {
 
 class ContentStore {
 public:
-    explicit ContentStore(PostgresConnection& db);
+    explicit ContentStore(PostgresConnection& db, bool use_temp_table = true, bool use_binary = false);
     void store(const ContentRecord& rec);
     void flush();
     size_t count() const { return copy_.count(); }
 
 private:
     BulkCopy copy_;
+    bool use_binary_;
     std::unordered_set<std::string> seen_;
-    std::string hash_to_uuid(const BLAKE3Pipeline::Hash& hash);
-    std::string hash_to_bytea(const BLAKE3Pipeline::Hash& hash);
 };
 
 }

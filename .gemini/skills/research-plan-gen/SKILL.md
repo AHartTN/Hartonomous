@@ -1,31 +1,30 @@
 ---
 name: research-plan-gen
-description: Generate recursive research plans and decompose complex problems using structured meta-reasoning. Use when facing multi-step architectural changes or knowledge gaps in the relationship graph.
+description: Decompose complex problems into executable sequences respecting Hartonomous architecture layers. Use for multi-step architectural changes.
 ---
 
-# Research Plan Generation: Structured Meta-Reasoning
+# Research Plan Generation
 
-This skill breaks down complex, multi-component tasks into executable sequences aligned with Hartonomous architecture.
+## Task Decomposition Framework
 
-## The Meta-Reasoning Framework
+1. **Check existing code**: `grep -r "feature_name" Engine/src/ Engine/tests/`
+2. **Identify correct layer**: Atoms (immutable) → Compositions (sequences) → Relations (intelligence)
+3. **Respect dependencies**: Build → DB → Extensions → Seed → Ingest → Query
+4. **Break into atomic steps** with clear inputs/outputs
 
-1.  **Direct Retrieval (Level 0)**: Can I solve this with existing code, schemas, or tools?
-2.  **Component Audit (Level 1)**: What Atoms, Compositions, Relations already exist? What tools are available (seed_unicode, ingest_model, ingest_text)?
-3.  **Gap Analysis (Level 2)**: Identify missing implementations, undefined schema elements, or empty regions in relationship graph (Mendeleev parallel).
-4.  **Recursive Decomposition (Level 3)**: Break task into atomic sub-problems with clear dependencies.
-5.  **Execution Roadmap (Level 4)**: Sequence sub-problems respecting build order, data dependencies, and architectural constraints.
+## Layer Rules
+- **Geometry/math changes** → `Engine/src/geometry/`, `Engine/src/spatial/`
+- **Storage/DB changes** → `Engine/src/storage/`, `scripts/sql/`
+- **Ingestion pipeline** → `Engine/src/ingestion/`, `Engine/src/unicode/ingestor/`
+- **Cognitive/reasoning** → `Engine/src/cognitive/`, `Engine/src/query/`
+- **SQL interface** → `PostgresExtension/hartonomous/src/`
+- **API layer** → `app-layer/`
 
-## Agentic Application
+## Example: "Add audio ingestion"
+1. Parse PCM samples → numeric Unicode sequences (digits + decimal point atoms)
+2. Map to existing Atoms (already seeded, immutable)
+3. Create Compositions (n-grams with BLAKE3 content-addressing)
+4. Detect co-occurrences → Relations with initial ELO
+5. Track evidence → `relation_evidence` with `content_id` for provenance
 
-When given an ambiguous architectural request:
-1.  **Audit**: Use semantic_search and grep_search to map existing implementations across Engine/, PostgresExtension/, UCDIngestor/.
-2.  **Decompose**: Create structured plan with clear dependencies.
-    *   Example: "Add audio ingestion support"
-    *   Sub-Problem A: Parse PCM samples to numeric sequences.
-    *   Sub-Problem B: Map sequences to existing Atoms (digits, decimal point).
-    *   Sub-Problem C: Create Compositions (n-grams of Atoms).
-    *   Sub-Problem D: Detect co-occurrences → Relations with initial ELO.
-3.  **Execute**: Address gaps in dependency order, validating each step.
-
-## Strategy
-Ensure plan respects architectural layers: Atoms (immutable) → Compositions (sequences) → Relations (intelligence). Changes must preserve geometric substrate integrity.
+**Always verify:** Does build pass? Do existing tests still pass?

@@ -36,11 +36,6 @@ public:
      */
     void load_from_database();
 
-    /**
-     * @brief Ingest all UCD metadata into AtomMetadata table
-     */
-    void ingest_ucd_metadata();
-
 private:
     void ingest_assigned_codepoints();
     void ingest_unassigned_codepoints();

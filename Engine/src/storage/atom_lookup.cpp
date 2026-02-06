@@ -40,27 +40,9 @@ AtomLookup::Vec4 AtomLookup::parse_geometry(const std::string& geom_hex) {
 }
 
 AtomLookup::HilbertIndex AtomLookup::parse_hilbert(const std::string& hilbert_str) {
-    HilbertIndex idx{};
-    // Parse as decimal string into high/low parts
-    // For simplicity, parse as two 64-bit halves if needed
-    // The format depends on how it's stored - check the schema
-
-    // Assuming it's stored as a decimal string representation
-    // We need to parse it back to high/low uint64 parts
-    if (hilbert_str.empty()) return idx;
-
-    // Simple approach: if it fits in uint64, use that
-    // For full 128-bit, would need proper parsing
-    try {
-        unsigned long long val = std::stoull(hilbert_str);
-        idx.lo = val;
-        idx.hi = 0;
-    } catch (...) {
-        // If it's too large, we'd need proper 128-bit parsing
-        // For now, set to zero
-    }
-
-    return idx;
+    // Parse UUID string (Hilbert is stored as UUID column)
+    // Format: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+    return uuid_to_hash(hilbert_str);
 }
 
 std::optional<AtomLookup::AtomInfo> AtomLookup::lookup(uint32_t codepoint) {
@@ -75,7 +57,7 @@ std::optional<AtomLookup::AtomInfo> AtomLookup::lookup(uint32_t codepoint) {
         SELECT a.id, a.codepoint, p.id as phys_id,
                ST_X(p.centroid) as x, ST_Y(p.centroid) as y,
                ST_Z(p.centroid) as z, ST_M(p.centroid) as m,
-               p.hilbert::text
+               p.hilbert
         FROM hartonomous.atom a
         JOIN hartonomous.physicality p ON a.physicalityid = p.id
         WHERE a.codepoint = $1
@@ -136,12 +118,10 @@ std::unordered_map<uint32_t, AtomLookup::AtomInfo> AtomLookup::lookup_batch(
         SELECT a.id, a.codepoint, p.id as phys_id,
                ST_X(p.centroid) as x, ST_Y(p.centroid) as y,
                ST_Z(p.centroid) as z, ST_M(p.centroid) as m,
-               p.hilbert::text
+               p.hilbert
         FROM hartonomous.atom a
         JOIN hartonomous.physicality p ON a.physicalityid = p.id
         WHERE a.codepoint IN )" + in_clause.str();
-
-    std::cout << "DEBUG: AtomLookup SQL: " << sql.substr(0, 200) << "..." << std::endl;
 
     db_.query(sql, [&](const std::vector<std::string>& row) {
         if (row.size() >= 8) {
@@ -173,7 +153,7 @@ void AtomLookup::preload_all() {
         SELECT a.id, a.codepoint, p.id as phys_id,
                ST_X(p.centroid) as x, ST_Y(p.centroid) as y,
                ST_Z(p.centroid) as z, ST_M(p.centroid) as m,
-               p.hilbert::text
+               p.hilbert
         FROM hartonomous.atom a
         JOIN hartonomous.physicality p ON a.physicalityid = p.id
     )";

@@ -9,18 +9,27 @@
 #include <cmath>
 #include <limits>
 #include <iostream>
+#include <cstring>
 
 using namespace hartonomous::spatial;
 using Vec4 = HilbertCurve4D::Vec4;
 
 using HilbertIndex = HilbertCurve4D::HilbertIndex;
 
+// Helper: Convert HilbertIndex to __int128 (big-endian order)
+static unsigned __int128 to_uint128(const HilbertIndex& idx) {
+    unsigned __int128 result = 0;
+    for (int i = 0; i < 16; ++i) {
+        result = (result << 8) | idx[i];
+    }
+    return result;
+}
+
 TEST(HilbertCurve4DTest, Determinism) {
     Vec4 point(0.5, 0.5, 0.5, 0.5);
     auto index1 = HilbertCurve4D::encode(point, HilbertCurve4D::EntityType::Composition);
     auto index2 = HilbertCurve4D::encode(point, HilbertCurve4D::EntityType::Composition);
-    EXPECT_EQ(index1.hi, index2.hi);
-    EXPECT_EQ(index1.lo, index2.lo);
+    EXPECT_EQ(index1, index2);
 }
 
 // The implementation uses a true Hilbert curve (Skilling's algorithm).
@@ -32,26 +41,26 @@ TEST(HilbertCurve4DTest, ParityRule) {
     auto atom_index = HilbertCurve4D::encode(point, HilbertCurve4D::EntityType::Atom);
     auto comp_index = HilbertCurve4D::encode(point, HilbertCurve4D::EntityType::Composition);
     
-    // Atom must be odd
-    EXPECT_EQ(atom_index.lo & 1, 1ULL);
+    // Atom must be odd (check last byte)
+    EXPECT_EQ(atom_index[15] & 1, 1);
     // Composition must be even
-    EXPECT_EQ(comp_index.lo & 1, 0ULL);
+    EXPECT_EQ(comp_index[15] & 1, 0);
     
     // They should be identical except for the last bit
-    EXPECT_EQ(atom_index.hi, comp_index.hi);
-    EXPECT_EQ(atom_index.lo >> 1, comp_index.lo >> 1);
+    auto atom_128 = to_uint128(atom_index);
+    auto comp_128 = to_uint128(comp_index);
+    EXPECT_EQ(atom_128 >> 1, comp_128 >> 1);
 }
 
 TEST(HilbertCurve4DTest, KnownValuesBoundary) {
     // Test the minimum input coordinates should produce the minimum Hilbert index
     auto index_min = HilbertCurve4D::encode(Vec4(0.0, 0.0, 0.0, 0.0), HilbertCurve4D::EntityType::Composition);
-    EXPECT_EQ(index_min.hi, 0ULL);
-    EXPECT_EQ(index_min.lo, 0ULL);
+    EXPECT_EQ(to_uint128(index_min), 0u);
 
     // Test the maximum input coordinates (1.0, 1.0, 1.0, 1.0)
     // The exact value depends on the Skilling transformation, but it must be even for Composition.
     auto index_max = HilbertCurve4D::encode(Vec4(1.0, 1.0, 1.0, 1.0), HilbertCurve4D::EntityType::Composition);
-    EXPECT_EQ(index_max.lo & 1, 0ULL);
+    EXPECT_EQ(index_max[15] & 1, 0);
 }
 
 TEST(HilbertCurve4DTest, Uniqueness) {
@@ -97,7 +106,7 @@ TEST(HilbertCurve4DTest, Locality) {
     // For such a truly minimal perturbation, the Hilbert distance should be extremely small.
     // It should definitely be much less than 0.1% of the total range, and likely
     // be contained entirely within the 'lo' part of the 128-bit index.
-    unsigned __int128 total_distance = distance.to_uint128();
+    unsigned __int128 total_distance = to_uint128(distance);
     unsigned __int128 max_possible_distance = static_cast<unsigned __int128>(std::numeric_limits<uint64_t>::max()) << 64 | std::numeric_limits<uint64_t>::max();
     
     // Expect the distance to be a very tiny fraction of the total range.

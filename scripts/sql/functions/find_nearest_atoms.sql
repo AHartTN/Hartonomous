@@ -9,7 +9,7 @@ CREATE OR REPLACE FUNCTION find_nearest_atoms(
 )
 RETURNS TABLE (
     id UUID,
-    codepoint UINT32,
+    codepoint INT,
     distance DOUBLE PRECISION
 )
 LANGUAGE SQL STABLE
@@ -20,9 +20,9 @@ AS $$
         geodesic_distance_s3(target, p.Centroid) AS distance
     FROM Atom a
     JOIN Physicality p ON a.PhysicalityId = p.Id
-    ORDER BY p.Centroid <=> target
+    ORDER BY p.Centroid <-> target
     LIMIT max_results;
 $$;
 
 COMMENT ON FUNCTION find_nearest_atoms IS
-'Find k-nearest atoms to a target 4D POINTZM on S³ using the <=> operator.';
+'Find k-nearest atoms to a target 4D POINTZM on S³ using PostGIS distance ordering.';

@@ -1,53 +1,34 @@
 #include <unicode/ingestor/node_generator.hpp>
+#include <geometry/hopf_fibration.hpp>
 #include <cmath>
-#include <algorithm>
 
 namespace Hartonomous::unicode {
 
-double NodeGenerator::halton(size_t index, int base) {
-    double result = 0;
-    double f = 1.0 / base;
-    size_t i = index;
-    while (i > 0) {
-        result += f * (i % base);
-        i /= base;
-        f /= base;
-    }
-    return result;
-}
+// Golden ratio and Plastic constant — irrational bases that produce
+// maximally uniform angular distributions without periodic repetition
+static constexpr double PHI = 1.61803398874989484820;
+static constexpr double PSI = 1.32471795724474602596;
 
-NodeGenerator::Vec4 NodeGenerator::generate_node(size_t i) {
-    // 1. Generate 3D low-discrepancy point in [0,1)^3 using Halton sequence (bases 2, 3, 5)
-    // We offset i by 1 because Halton(0) is often (0,0,0) which can be degenerate.
-    double u = halton(i + 1, 2);
-    double v = halton(i + 1, 3);
-    double w = halton(i + 1, 5);
+NodeGenerator::Vec4 NodeGenerator::generate_node(size_t i, size_t N) {
+    if (N == 0) return Vec4::Zero();
 
-    // 2. Map to S3 via Hopf coordinates
-    double alpha = 2.0 * M_PI * u;
-    double beta = 2.0 * M_PI * v;
-    
-    // Uniform theta on [0, PI] for S3 uniform sampling
-    // theta = arccos(1 - 2*w)
-    double theta = std::acos(std::clamp(1.0 - 2.0 * w, -1.0, 1.0));
+    // Normalized index with midpoint rule (avoids poles)
+    double t = (static_cast<double>(i) + 0.5) / static_cast<double>(N);
 
-    // Hopf parameterization:
-    // x0 = cos(alpha) * sin(theta)
-    // x1 = sin(alpha) * sin(theta)
-    // x2 = cos(beta) * cos(theta)
-    // x3 = sin(beta) * cos(theta)
-    
-    double sin_theta = std::sin(theta);
-    double cos_theta = std::cos(theta);
+    // Fibonacci lattice on S²: golden angle drives longitude
+    double s2_y = 1.0 - 2.0 * t;
+    double radius = std::sqrt(std::max(0.0, 1.0 - s2_y * s2_y));
+    double theta_s2 = 2.0 * M_PI * t * PHI;
 
-    Vec4 p;
-    p[0] = std::cos(alpha) * sin_theta;
-    p[1] = std::sin(alpha) * sin_theta;
-    p[2] = std::cos(beta) * cos_theta;
-    p[3] = std::sin(beta) * cos_theta;
+    double s2_x = radius * std::cos(theta_s2);
+    double s2_z = radius * std::sin(theta_s2);
 
-    // Normalize for safety
-    return p.normalized();
+    // Fiber phase: Plastic constant decouples from golden ratio
+    double fiber_angle = 2.0 * M_PI * t * PSI;
+
+    // Hopf inverse: S² × S¹ → S³
+    hartonomous::geometry::HopfFibration::Vec3 s2_point(s2_x, s2_y, s2_z);
+    return hartonomous::geometry::HopfFibration::inverse(s2_point, fiber_angle);
 }
 
 } // namespace Hartonomous::unicode

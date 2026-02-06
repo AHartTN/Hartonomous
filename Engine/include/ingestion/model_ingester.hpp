@@ -19,7 +19,6 @@
 #include <database/postgres_connection.hpp>
 #include <ingestion/safetensor_loader.hpp>
 #include <nlohmann/json.hpp>
-#include <hnswlib/hnswlib.h>
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -45,8 +44,7 @@ struct ModelIngestionConfig {
     BLAKE3Pipeline::Hash tenant_id;
     BLAKE3Pipeline::Hash user_id;
     double embedding_similarity_threshold = 0.40;  // Similarity threshold for edge inclusion
-    size_t max_neighbors_per_token = 500;          // Max KNN neighbors to query
-    size_t hnsw_ef_search = 50;                    // HNSW ef parameter for search (lower = faster, less accurate)
+    size_t max_neighbors_per_token = 64;           // Max neighbors to extract per token
     size_t db_batch_size = 100000;                 // Records per DB batch
 };
 
@@ -85,6 +83,7 @@ private:
         const std::vector<AttentionLayer>& layers,
         const std::vector<std::string>& vocab,
         const Eigen::MatrixXf& embeddings,
+        const Eigen::MatrixXf& norm_embeddings,
         const std::unordered_map<std::string, BLAKE3Pipeline::Hash>& token_to_comp,
         std::unordered_set<BLAKE3Pipeline::Hash, HashHasher>& session_rel_seen,
         ModelIngestionStats& stats
@@ -94,6 +93,7 @@ private:
         const std::vector<FFNLayer>& layers,
         const std::vector<std::string>& vocab,
         const Eigen::MatrixXf& embeddings,
+        const Eigen::MatrixXf& norm_embeddings,
         const std::unordered_map<std::string, BLAKE3Pipeline::Hash>& token_to_comp,
         std::unordered_set<BLAKE3Pipeline::Hash, HashHasher>& session_rel_seen,
         ModelIngestionStats& stats
@@ -106,11 +106,7 @@ private:
 
     std::string hash_to_uuid(const BLAKE3Pipeline::Hash& hash);
 
-    std::unordered_set<BLAKE3Pipeline::Hash, HashHasher> seen_physicality_ids_;
-    std::unordered_set<BLAKE3Pipeline::Hash, HashHasher> seen_atom_ids_;
-    std::unordered_set<BLAKE3Pipeline::Hash, HashHasher> seen_composition_ids_;
-    std::unordered_set<BLAKE3Pipeline::Hash, HashHasher> seen_relation_ids_;
-    void load_global_caches();
+    std::unordered_map<BLAKE3Pipeline::Hash, Eigen::Vector4d, HashHasher> comp_centroids_;
 };
 
 } // namespace Hartonomous

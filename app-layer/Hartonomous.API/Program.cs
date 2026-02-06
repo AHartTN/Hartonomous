@@ -1,8 +1,4 @@
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.Identity.Web;
-using Microsoft.Identity.Abstractions;
-using Microsoft.Identity.Web.Resource;
+using Hartonomous.Core.Services;
 
 namespace Hartonomous.API;
 
@@ -13,12 +9,22 @@ public class Program
         var builder = WebApplication.CreateBuilder(args);
         builder.AddServiceDefaults();
 
-        // Add services to the container.
-        builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-            .AddMicrosoftIdentityWebApi(builder.Configuration.GetSection("AzureAd"));
+        // Native engine — singleton (one DB connection for the app lifetime)
+        var connString = builder.Configuration.GetConnectionString("DefaultConnection")
+            ?? throw new InvalidOperationException("ConnectionStrings:DefaultConnection is required.");
+
+        builder.Services.AddSingleton(sp =>
+            new EngineService(connString, sp.GetRequiredService<ILogger<EngineService>>()));
+
+        // Walk, Query, Ingestion services — singleton (they hold native handles)
+        builder.Services.AddSingleton(sp =>
+            new WalkService(sp.GetRequiredService<EngineService>(), sp.GetRequiredService<ILogger<WalkService>>()));
+        builder.Services.AddSingleton(sp =>
+            new QueryService(sp.GetRequiredService<EngineService>(), sp.GetRequiredService<ILogger<QueryService>>()));
+        builder.Services.AddSingleton(sp =>
+            new IngestionService(sp.GetRequiredService<EngineService>(), sp.GetRequiredService<ILogger<IngestionService>>()));
 
         builder.Services.AddControllers();
-        // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddSwaggerGen();
 
@@ -26,20 +32,14 @@ public class Program
 
         app.MapDefaultEndpoints();
 
-        // Configure the HTTP request pipeline.
         if (app.Environment.IsDevelopment())
         {
             app.UseSwagger();
             app.UseSwaggerUI();
         }
 
-        app.UseHttpsRedirection();
-
-        app.UseAuthorization();
-
-
         app.MapControllers();
-
         app.Run();
     }
 }
+

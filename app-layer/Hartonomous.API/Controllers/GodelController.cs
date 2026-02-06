@@ -1,5 +1,7 @@
-using Microsoft.AspNetCore.Mvc;
+using System.Runtime.InteropServices;
+using Hartonomous.Core.Services;
 using Hartonomous.Marshal;
+using Microsoft.AspNetCore.Mvc;
 
 namespace Hartonomous.API.Controllers;
 
@@ -7,12 +9,12 @@ namespace Hartonomous.API.Controllers;
 [Route("api/[controller]")]
 public class GodelController : ControllerBase
 {
-    private readonly IConfiguration _configuration;
+    private readonly EngineService _engine;
     private readonly ILogger<GodelController> _logger;
 
-    public GodelController(IConfiguration configuration, ILogger<GodelController> logger)
+    public GodelController(EngineService engine, ILogger<GodelController> logger)
     {
-        _configuration = configuration;
+        _engine = engine;
         _logger = logger;
     }
 
@@ -22,60 +24,42 @@ public class GodelController : ControllerBase
         if (string.IsNullOrWhiteSpace(request.Problem))
             return BadRequest("Problem statement is required");
 
-        var connString = _configuration.GetConnectionString("DefaultConnection");
-        if (string.IsNullOrEmpty(connString))
-            return StatusCode(500, "Database connection string not configured.");
-
-        var dbHandle = NativeMethods.DbCreate(connString);
-        if (dbHandle == IntPtr.Zero)
-            return StatusCode(500, "Failed to connect to native database.");
+        var godelHandle = NativeMethods.GodelCreate(_engine.DbHandle);
+        if (godelHandle == IntPtr.Zero)
+            return StatusCode(500, new { error = EngineService.GetLastError() });
 
         try
         {
-            var godelHandle = NativeMethods.GodelCreate(dbHandle);
-            if (godelHandle == IntPtr.Zero)
-                return StatusCode(500, "Failed to create Godel engine.");
-
-            try
+            if (NativeMethods.GodelAnalyze(godelHandle, request.Problem, out var plan))
             {
-                if (NativeMethods.GodelAnalyze(godelHandle, request.Problem, out var plan))
+                var result = new
                 {
-                    // Marshal the plan to a managed object (simplified for JSON response)
-                    // In a real app, you'd map the pointers to C# objects manually here 
-                    // or use a more sophisticated marshaler.
-                    // For now, we return a summary.
-                    
-                    var result = new
+                    Plan = new
                     {
-                        Plan = new
-                        {
-                            TotalSteps = plan.TotalSteps,
-                            SolvableSteps = plan.SolvableSteps,
-                            SubProblemsCount = plan.SubProblemsCount,
-                            KnowledgeGapsCount = plan.KnowledgeGapsCount
-                        }
-                    };
+                        plan.TotalSteps,
+                        plan.SolvableSteps,
+                        SubProblemsCount = (int)plan.SubProblemsCount,
+                        KnowledgeGapsCount = (int)plan.KnowledgeGapsCount,
+                    }
+                };
 
-                    // Free the native plan memory
-                    NativeMethods.GodelFreePlan(ref plan);
-
-                    return Ok(result);
-                }
-                
-                return StatusCode(500, "Godel analysis failed.");
+                NativeMethods.GodelFreePlan(ref plan);
+                return Ok(result);
             }
-            finally
-            {
-                NativeMethods.GodelDestroy(godelHandle);
-            }
+            return StatusCode(500, new { error = "Godel analysis failed" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Godel analysis failed");
+            return StatusCode(500, new { error = ex.Message });
         }
         finally
         {
-            NativeMethods.DbDestroy(dbHandle);
+            NativeMethods.GodelDestroy(godelHandle);
         }
     }
 
-    public class AnalyzeRequest
+    public sealed class AnalyzeRequest
     {
         public string Problem { get; set; } = string.Empty;
     }

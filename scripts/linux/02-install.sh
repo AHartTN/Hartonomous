@@ -1,101 +1,120 @@
 #!/usr/bin/env bash
 # Hartonomous Installation Script
-# Uses sudo only for the final copy to system directories.
+# Installs directly from build directory to PostgreSQL system directories.
 
 set -e
 
-# Base directories
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+print_success() { echo -e "${GREEN}✓ $1${NC}"; }
+print_error() { echo -e "${RED}✗ $1${NC}"; }
+print_info() { echo -e "${CYAN}$1${NC}"; }
+
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 BUILD_DIR="$PROJECT_ROOT/build/linux-release-max-perf"
 
 # Check pg_config
 if ! command -v pg_config &> /dev/null; then
-    echo "Error: pg_config not found. PostgreSQL development files must be installed."
+    print_error "pg_config not found. Install PostgreSQL development files."
     exit 1
 fi
 
 PG_LIB_DIR=$(pg_config --pkglibdir)
 PG_EXT_DIR=$(pg_config --sharedir)/extension
 
-echo "=== Hartonomous System Installation ==="
-echo "Project Root: $PROJECT_ROOT"
+print_info "=== Installing PostgreSQL Extensions ==="
 echo "Build Dir:    $BUILD_DIR"
 echo "PG Lib Dir:   $PG_LIB_DIR"
+echo "PG Ext Dir:   $PG_EXT_DIR"
 echo ""
 
-# 0. Clean up old artifacts
-echo "Cleaning up old installations..."
-sudo rm -f /usr/local/lib/libengine.so
+# Check build directory exists
+if [ ! -d "$BUILD_DIR" ]; then
+    print_error "Build directory not found: $BUILD_DIR"
+    echo "Run ./scripts/linux/01-build.sh first"
+    exit 1
+fi
+
+# Clean up old installations
+print_info "Cleaning old installations..."
+sudo rm -f "$PG_LIB_DIR/libengine_core.so"
+sudo rm -f "$PG_LIB_DIR/libengine_io.so"
 sudo rm -f "$PG_LIB_DIR/libengine.so"
+sudo rm -f "$PG_LIB_DIR/s3.so"
+sudo rm -f "$PG_LIB_DIR/hartonomous.so"
+sudo rm -f "$PG_EXT_DIR/s3.control"
+sudo rm -f "$PG_EXT_DIR/s3--0.1.0.sql"
+sudo rm -f "$PG_EXT_DIR/hartonomous.control"
+sudo rm -f "$PG_EXT_DIR/hartonomous--0.1.0.sql"
+# Remove stale copies from /usr/local/lib (ldconfig finds these first)
+sudo rm -f /usr/local/lib/libengine_core.so
+sudo rm -f /usr/local/lib/libengine_io.so
+sudo rm -f /usr/local/lib/libengine.so
 
-# 1. Install Engine Libraries (Core + IO)
-echo "Installing Hartonomous Engine to /usr/local..."
-
-# Function to install lib
-install_lib() {
-    local lib_name=$1
-    if [ -f "$BUILD_DIR/Engine/$lib_name" ]; then
-        sudo cp "$BUILD_DIR/Engine/$lib_name" /usr/local/lib/
-        sudo cp "$BUILD_DIR/Engine/$lib_name" "$PG_LIB_DIR/"
-        echo "✓ $lib_name installed."
+# Install Engine libraries to PG lib dir and /usr/local/lib
+print_info "Installing Engine libraries..."
+for lib in libengine_core.so libengine_io.so libengine.so; do
+    if [ -f "$BUILD_DIR/Engine/$lib" ]; then
+        sudo install -m 755 "$BUILD_DIR/Engine/$lib" "$PG_LIB_DIR/"
+        sudo install -m 755 "$BUILD_DIR/Engine/$lib" "/usr/local/lib/"
+        print_success "$lib installed"
     else
-        echo "⚠ $lib_name not found in build directory."
+        if [ "$lib" = "libengine.so" ]; then
+            print_info "$lib not found (optional unified library)"
+        else
+            print_error "$lib not found in build directory"
+            exit 1
+        fi
     fi
-}
+done
+sudo ldconfig
 
-install_lib "libengine_core.so"
-install_lib "libengine_io.so"
-
-# Headers
-sudo mkdir -p /usr/local/include/hartonomous
-sudo cp -r "$PROJECT_ROOT/Engine/include/"* /usr/local/include/hartonomous/
-echo "✓ Headers copied."
-
-# 2. Install s3 extension
-echo "Installing s3 extension..."
-S3_SO="$BUILD_DIR/PostgresExtension/s3/s3.so"
-S3_SQL="$PROJECT_ROOT/PostgresExtension/s3/dist/s3--0.1.0.sql"
-S3_CONTROL="$PROJECT_ROOT/PostgresExtension/s3/s3.control"
-
-if [ -f "$S3_SO" ]; then
-    sudo cp "$S3_SO" "$PG_LIB_DIR/"
-    echo "✓ s3.so installed."
+# Install s3 extension
+print_info "Installing s3 extension..."
+if [ -f "$BUILD_DIR/PostgresExtension/s3/s3.so" ]; then
+    sudo install -m 755 "$BUILD_DIR/PostgresExtension/s3/s3.so" "$PG_LIB_DIR/"
+    print_success "s3.so installed"
 else
-    echo "⚠ s3.so not found at $S3_SO"
+    print_error "s3.so not found"
+    exit 1
 fi
 
-if [ -f "$S3_SQL" ] && [ -f "$S3_CONTROL" ]; then
-    sudo cp "$S3_SQL" "$PG_EXT_DIR/"
-    sudo cp "$S3_CONTROL" "$PG_EXT_DIR/"
-    echo "✓ s3 extension SQL/Control files copied."
+if [ -f "$PROJECT_ROOT/PostgresExtension/s3/s3.control" ]; then
+    sudo install -m 644 "$PROJECT_ROOT/PostgresExtension/s3/s3.control" "$PG_EXT_DIR/"
+    sudo install -m 644 "$PROJECT_ROOT/PostgresExtension/s3/dist/s3--0.1.0.sql" "$PG_EXT_DIR/"
+    print_success "s3 extension files installed"
 else
-    echo "⚠ s3 extension SQL/Control files missing."
+    print_error "s3 extension files not found"
+    exit 1
 fi
 
-# 3. Install hartonomous extension
-echo "Installing hartonomous extension..."
-HART_SO="$BUILD_DIR/PostgresExtension/hartonomous/hartonomous.so"
-HART_SQL="$PROJECT_ROOT/PostgresExtension/hartonomous/dist/hartonomous--0.1.0.sql"
-HART_CONTROL="$PROJECT_ROOT/PostgresExtension/hartonomous/hartonomous.control"
-
-if [ -f "$HART_SO" ]; then
-    sudo cp "$HART_SO" "$PG_LIB_DIR/"
-    echo "✓ hartonomous.so installed."
+# Install hartonomous extension
+print_info "Installing hartonomous extension..."
+if [ -f "$BUILD_DIR/PostgresExtension/hartonomous/hartonomous.so" ]; then
+    sudo install -m 755 "$BUILD_DIR/PostgresExtension/hartonomous/hartonomous.so" "$PG_LIB_DIR/"
+    print_success "hartonomous.so installed"
 else
-    echo "⚠ hartonomous.so not found at $HART_SO"
+    print_error "hartonomous.so not found"
+    exit 1
 fi
 
-if [ -f "$HART_SQL" ] && [ -f "$HART_CONTROL" ]; then
-    sudo cp "$HART_SQL" "$PG_EXT_DIR/"
-    sudo cp "$HART_CONTROL" "$PG_EXT_DIR/"
-    echo "✓ hartonomous extension SQL/Control files copied."
+if [ -f "$PROJECT_ROOT/PostgresExtension/hartonomous/hartonomous.control" ]; then
+    sudo install -m 644 "$PROJECT_ROOT/PostgresExtension/hartonomous/hartonomous.control" "$PG_EXT_DIR/"
+    sudo install -m 644 "$PROJECT_ROOT/PostgresExtension/hartonomous/dist/hartonomous--0.1.0.sql" "$PG_EXT_DIR/"
+    print_success "hartonomous extension files installed"
 else
-    echo "⚠ hartonomous extension files missing."
+    print_error "hartonomous extension files not found"
+    exit 1
 fi
 
-echo "Updating shared library cache..."
+print_info "Updating shared library cache..."
 sudo ldconfig
 
 echo ""
-echo "Installation complete."
+print_success "=== Installation Complete ==="

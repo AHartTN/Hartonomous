@@ -12,7 +12,7 @@ DECLARE
     target_id UUID;
 BEGIN
     -- 1. Compute ID
-    target_id := uuid_send(blake3_hash(p_text));
+    target_id := blake3_hash(p_text)::uuid;
 
     -- 2. Check Existence
     IF EXISTS (SELECT 1 FROM Composition WHERE Id = target_id) THEN

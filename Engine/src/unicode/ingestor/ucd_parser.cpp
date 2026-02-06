@@ -429,17 +429,18 @@ uint32_t UCDParser::trace_decomposition(uint32_t cp) {
 void UCDParser::build_semantic_edges() {
     // Build edges from case mappings, decompositions, etc.
     for (auto& [cp, meta] : codepoints_) {
-        // Case pair edges
+        auto& cp_ref = cp;
+        auto& meta_ref = meta;
         auto add_case_edge = [&](const std::string& mapping, const char* type) {
             if (mapping.empty() || mapping == "#") return;
             try {
                 uint32_t target = std::stoul(mapping, nullptr, 16);
-                if (target != cp && codepoints_.count(target)) {
+                if (target != cp_ref && codepoints_.count(target)) {
                     SemanticEdge edge;
                     edge.target_cp = target;
                     edge.weight = static_cast<uint32_t>(EdgeWeight::CasePair);
                     edge.type = type;
-                    meta.edges.push_back(edge);
+                    meta_ref.edges.push_back(edge);
                 }
             } catch (...) {}
         };

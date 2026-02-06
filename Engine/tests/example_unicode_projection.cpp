@@ -15,9 +15,19 @@
 #include <iomanip>
 #include <string>
 #include <vector>
+#include <sstream>
 
 using namespace hartonomous::unicode;
 using namespace hartonomous::geometry;
+
+// Helper: Display HilbertIndex as hex
+static std::string hilbert_to_hex(const std::array<uint8_t, 16>& idx) {
+    std::ostringstream ss;
+    for (int i = 0; i < 16; ++i) {
+        ss << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(idx[i]);
+    }
+    return ss.str();
+}
 using Vec3 = HopfFibration::Vec3;
 
 void print_separator() {
@@ -85,7 +95,7 @@ void project_and_display(const std::u32string& text) {
                   << result.s3_position[3] << ")";
 
         // Display Hilbert index
-        std::cout << "  " << result.hilbert_index.hi << " " << result.hilbert_index.lo;
+        std::cout << "  " << hilbert_to_hex(result.hilbert_index);
 
         std::cout << "\n";
     }
@@ -160,11 +170,11 @@ void analyze_hilbert_ordering(const std::u32string& text) {
               [](const auto& a, const auto& b) { return a.second < b.second; });
 
     std::cout << "\nCharacters sorted by Hilbert index (spatial ordering):\n\n";
-    std::cout << std::setw(35) << "Hilbert Index (hi lo)" << "  Character\n";
+    std::cout << std::setw(35) << "Hilbert Index (hex)" << "  Character\n";
     std::cout << std::string(50, '-') << "\n";
 
     for (const auto& [cp, index] : char_indices) {
-        std::cout << std::setw(17) << index.hi << " " << std::setw(17) << index.lo << "  ";
+        std::cout << hilbert_to_hex(index) << "  ";
         if (cp < 128 && cp >= 32) {
             std::cout << "'" << (char)cp << "'";
         } else if (cp == U' ') {

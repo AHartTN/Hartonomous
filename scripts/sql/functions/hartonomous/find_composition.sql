@@ -14,7 +14,7 @@ BEGIN
     RETURN QUERY
     SELECT
         c.Id,
-        v.text,
+        v.reconstructed_text,
         ST_X(p.Centroid),
         ST_Y(p.Centroid),
         ST_Z(p.Centroid),
@@ -26,7 +26,7 @@ BEGIN
     JOIN
         Physicality p ON c.PhysicalityId = p.Id
     WHERE
-        v.text = search_text;
+        v.reconstructed_text = search_text;
 END;
 $$;
 
