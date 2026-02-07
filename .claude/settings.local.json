@@ -36,7 +36,9 @@
       "Bash(LD_LIBRARY_PATH=*:*)",
       "Bash(PGDATABASE=*:*)",
       "WebSearch",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(dmesg:*)",
+      "Bash(journalctl:*)"
     ]
   }
 }
