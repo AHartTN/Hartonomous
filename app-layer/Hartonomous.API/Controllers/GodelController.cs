@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using Hartonomous.Core.Services;
 using Hartonomous.Marshal;
+using Hartonomous.Shared.Models;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Hartonomous.API.Controllers;
@@ -32,12 +33,12 @@ public class GodelController : ControllerBase
         {
             if (NativeMethods.GodelAnalyze(godelHandle, request.Problem, out var plan))
             {
-                var result = new
+                var result = new AnalyzeResponse
                 {
-                    Plan = new
+                    Plan = new GodelPlan
                     {
-                        plan.TotalSteps,
-                        plan.SolvableSteps,
+                        TotalSteps = plan.TotalSteps,
+                        SolvableSteps = plan.SolvableSteps,
                         SubProblemsCount = (int)plan.SubProblemsCount,
                         KnowledgeGapsCount = (int)plan.KnowledgeGapsCount,
                     }
@@ -57,10 +58,5 @@ public class GodelController : ControllerBase
         {
             NativeMethods.GodelDestroy(godelHandle);
         }
-    }
-
-    public sealed class AnalyzeRequest
-    {
-        public string Problem { get; set; } = string.Empty;
     }
 }

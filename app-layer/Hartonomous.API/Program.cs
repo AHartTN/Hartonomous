@@ -1,4 +1,5 @@
 using Hartonomous.Core.Services;
+using Hartonomous.Core.Services.Domain;
 
 namespace Hartonomous.API;
 
@@ -15,6 +16,9 @@ public class Program
 
         builder.Services.AddSingleton(sp =>
             new EngineService(connString, sp.GetRequiredService<ILogger<EngineService>>()));
+            
+        // Domain services
+        builder.Services.AddSingleton<IDomainRegistry, StaticDomainRegistry>();
 
         // Walk, Query, Ingestion services — singleton (they hold native handles)
         builder.Services.AddSingleton(sp =>

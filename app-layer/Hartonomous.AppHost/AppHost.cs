@@ -1,5 +1,9 @@
 var builder = DistributedApplication.CreateBuilder(args);
 
-builder.AddProject<Projects.Hartonomous_API>("hartonomous-api");
+var api = builder.AddProject<Projects.Hartonomous_API>("hartonomous-api");
+
+builder.AddProject<Projects.Hartonomous_Web>("hartonomous-web")
+    .WithExternalHttpEndpoints()
+    .WithReference(api);
 
 builder.Build().Run();

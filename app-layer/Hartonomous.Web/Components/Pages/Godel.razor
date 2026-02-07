@@ -1,0 +1,152 @@
+@page "/godel"
+@using Hartonomous.Shared.Models
+@using Hartonomous.Web.Services
+@inject HartonomousApiClient Api
+@inject IJSRuntime JS
+
+<PageTitle>Godel Analysis</PageTitle>
+
+<div class="container py-4">
+    <div class="text-center mb-5">
+        <h1 class="display-4 fw-bold text-light">Godel <span class="text-danger">Analysis</span></h1>
+        <p class="lead text-muted">Geometric decomposition of complex problems via the Incompleteness Engine.</p>
+    </div>
+
+    <div class="row justify-content-center mb-5">
+        <div class="col-md-8">
+            <div class="input-group input-group-lg">
+                <input @bind="ProblemStatement" class="form-control bg-dark text-light border-secondary" placeholder="Enter a problem statement..." @onkeydown="@Enter" />
+                <button class="btn btn-danger" @onclick="Analyze" disabled="@(IsAnalyzing || string.IsNullOrWhiteSpace(ProblemStatement))">
+                    <i class="bi bi-diagram-3-fill me-2"></i>Analyze
+                </button>
+            </div>
+        </div>
+    </div>
+
+    @if (IsAnalyzing)
+    {
+        <div class="text-center my-5">
+            <div class="spinner-border text-danger" role="status" style="width: 3rem; height: 3rem;"></div>
+            <p class="mt-3 text-muted">Traversing semantic substrate...</p>
+        </div>
+    }
+
+    @if (Result != null)
+    {
+        <div class="row">
+            <div class="col-md-4">
+                <div class="card bg-dark border-secondary mb-3">
+                    <div class="card-header border-secondary text-uppercase fw-bold text-muted small">Metrics</div>
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>Total Steps:</span>
+                            <span class="fw-bold">@Result.Plan.TotalSteps</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>Solvable:</span>
+                            <span class="fw-bold text-success">@Result.Plan.SolvableSteps</span>
+                        </div>
+                         <div class="d-flex justify-content-between mb-2">
+                            <span>Knowledge Gaps:</span>
+                            <span class="fw-bold @(Result.Plan.KnowledgeGapsCount > 0 ? "text-warning" : "text-success")">@Result.Plan.KnowledgeGapsCount</span>
+                        </div>
+                        <hr class="border-secondary" />
+                        <div class="text-center">
+                            @if (Result.Plan.KnowledgeGapsCount > 0)
+                            {
+                                <span class="badge bg-warning text-dark">INCOMPLETE KNOWLEDGE</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-success">THEORETICALLY SOLVABLE</span>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-8">
+                <div class="card bg-dark border-secondary h-100">
+                     <div class="card-header border-secondary text-uppercase fw-bold text-muted small">Geometric Decomposition Plan</div>
+                     <div class="card-body bg-black rounded-bottom p-0 overflow-hidden">
+                         <div id="mermaid-diagram" class="p-3" style="min-height: 300px;"></div>
+                     </div>
+                </div>
+            </div>
+        </div>
+    }
+    
+    @if (ErrorMessage != null)
+    {
+        <div class="alert alert-danger mt-3">@ErrorMessage</div>
+    }
+</div>
+
+@code {
+    private string ProblemStatement = "";
+    private bool IsAnalyzing = false;
+    private AnalyzeResponse? Result;
+    private string? ErrorMessage;
+    private IJSObjectReference? _module;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/app.js");
+        }
+    }
+
+    private async Task Enter(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await Analyze();
+    }
+
+    private async Task Analyze()
+    {
+        if (string.IsNullOrWhiteSpace(ProblemStatement)) return;
+
+        IsAnalyzing = true;
+        Result = null;
+        ErrorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            Result = await Api.AnalyzeAsync(ProblemStatement);
+            if (Result != null && _module != null)
+            {
+                // Generate Mermaid Graph
+                // For now, we mock the structure since the shared DTO doesn't expose the full tree (pointer issue in C# struct mapping earlier).
+                // In a real implementation, we'd recursively map SubProblems. 
+                // Using a synthetic graph based on counts for visual demo.
+                
+                var graph = "graph TD;\n";
+                graph += $"    ROOT[{ProblemStatement}]:::root\n";
+                graph += "    classDef root fill:#b91c1c,stroke:#fff,stroke-width:2px,color:#fff;\n";
+                graph += "    classDef solvable fill:#15803d,stroke:#fff,color:#fff;\n";
+                graph += "    classDef gap fill:#a16207,stroke:#fff,color:#fff;\n";
+
+                // Simulate decomposition based on counts
+                for(int i=0; i<Result.Plan.SubProblemsCount; i++) {
+                    graph += $"    ROOT --> SP{i}[Sub-Problem {i+1}]:::solvable\n";
+                }
+                
+                for(int i=0; i<Result.Plan.KnowledgeGapsCount; i++) {
+                     graph += $"    ROOT --> KG{i}[Missing Axiom {i+1}]:::gap\n";
+                }
+
+                await _module.InvokeVoidAsync("renderMermaid", "mermaid-diagram", graph);
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+        }
+        finally
+        {
+            IsAnalyzing = false;
+        }
+    }
+}
+

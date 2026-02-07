@@ -1,4 +1,5 @@
 using Hartonomous.Core.Services;
+using Hartonomous.Shared.Models;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Hartonomous.API.Controllers;
@@ -50,15 +51,5 @@ public class IngestionController : ControllerBase
             _logger.LogError(ex, "File ingestion failed");
             return StatusCode(500, new { error = ex.Message });
         }
-    }
-
-    public sealed class IngestTextRequest
-    {
-        public string Text { get; set; } = string.Empty;
-    }
-
-    public sealed class IngestFileRequest
-    {
-        public string FilePath { get; set; } = string.Empty;
     }
 }

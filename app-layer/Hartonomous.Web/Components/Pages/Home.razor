@@ -1,0 +1,109 @@
+@page "/dashboard"
+@using Hartonomous.Shared.Models
+@using Hartonomous.Web.Services
+@inject HartonomousApiClient Api
+
+<PageTitle>Dashboard</PageTitle>
+
+<div class="container py-5">
+    <div class="row mb-5">
+        <div class="col-12 text-center">
+            <h1 class="display-3 fw-bold text-light">Hartonomous <span class="text-primary">Console</span></h1>
+            <p class="lead text-muted">Geometric Semantic Engine v1.0</p>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <!-- Chat Card -->
+        <div class="col-md-3">
+            <div class="card h-100 bg-dark border-secondary hover-card text-decoration-none">
+                <div class="card-body text-center d-flex flex-column justify-content-center p-5">
+                    <div class="mb-3 text-primary">
+                        <i class="bi bi-chat-dots-fill display-1"></i>
+                    </div>
+                    <h3 class="card-title text-light">Semantic Chat</h3>
+                    <p class="card-text text-muted">Interact with the Walk Engine using natural language.</p>
+                    <a href="chat" class="btn btn-outline-primary mt-3 stretched-link">Enter Chat</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Ingestion Card -->
+        <div class="col-md-3">
+            <div class="card h-100 bg-dark border-secondary hover-card">
+                <div class="card-body text-center d-flex flex-column justify-content-center p-5">
+                    <div class="mb-3 text-success">
+                        <i class="bi bi-database-fill-up display-1"></i>
+                    </div>
+                    <h3 class="card-title text-light">Ingestion</h3>
+                    <p class="card-text text-muted">Feed the engine with raw text or files.</p>
+                    <a href="ingestion" class="btn btn-outline-success mt-3 stretched-link">Manage Data</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Godel Card -->
+        <div class="col-md-3">
+            <div class="card h-100 bg-dark border-secondary hover-card">
+                <div class="card-body text-center d-flex flex-column justify-content-center p-5">
+                    <div class="mb-3 text-danger">
+                        <i class="bi bi-diagram-3-fill display-1"></i>
+                    </div>
+                    <h3 class="card-title text-light">Godel Analysis</h3>
+                    <p class="card-text text-muted">Decompose complex problems geometrically.</p>
+                    <a href="godel" class="btn btn-outline-danger mt-3 stretched-link">Analyze</a>
+                </div>
+            </div>
+        </div>
+        <!-- Explorer Card -->
+        <div class="col-md-3">
+            <div class="card h-100 bg-dark border-secondary hover-card">
+                <div class="card-body text-center d-flex flex-column justify-content-center p-5">
+                    <div class="mb-3 text-warning">
+                        <i class="bi bi-compass-fill display-1"></i>
+                    </div>
+                    <h3 class="card-title text-light">Explorer</h3>
+                    <p class="card-text text-muted">Navigate the master/detail hierarchy of the semantic substrate.</p>
+                    <a href="explorer" class="btn btn-outline-warning mt-3 stretched-link">Explore</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row mt-5">
+        <div class="col-12">
+            <div class="card bg-black border-secondary">
+                <div class="card-body p-4">
+                    <h5 class="text-muted text-uppercase mb-3">System Status</h5>
+                    <div class="d-flex align-items-center">
+                        <div class="me-4">
+                            <span class="d-block text-muted small">Engine Core</span>
+                            <span class="badge bg-success">ONLINE</span>
+                        </div>
+                         <div class="me-4">
+                            <span class="d-block text-muted small">Database</span>
+                            <span class="badge bg-success">CONNECTED</span>
+                        </div>
+                         <div class="me-4">
+                            <span class="d-block text-muted small">API Version</span>
+                            <span class="text-light">v1.0.0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .hover-card {
+        transition: transform 0.2s ease, border-color 0.2s ease;
+    }
+    .hover-card:hover {
+        transform: translateY(-5px);
+        border-color: var(--bs-primary) !important;
+    }
+</style>
+
+@code {
+}

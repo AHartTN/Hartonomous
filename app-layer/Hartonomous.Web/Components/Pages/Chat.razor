@@ -1,0 +1,150 @@
+@page "/"
+@page "/chat"
+@using Hartonomous.Shared.Models
+@using Hartonomous.Web.Services
+@using System.Text.Json
+@inject HartonomousApiClient Api
+@inject IJSRuntime JS
+
+<PageTitle>Chat</PageTitle>
+
+<div class="container-fluid d-flex flex-column h-100" style="max-height: 90vh;">
+    <div class="flex-grow-1 overflow-auto p-3 mb-3 border rounded bg-dark text-light" id="chat-container">
+        @foreach (var msg in Messages)
+        {
+            <div class="row mb-3">
+                <div class="col-12">
+                    <div class="@(msg.Role == "user" ? "text-end" : "text-start")">
+                        <div class="d-inline-block" style="max-width: 80%;">
+                             <div class="small text-muted mb-1">@msg.Role.ToUpper()</div>
+                             <div class="card border-0 @(msg.Role == "user" ? "bg-primary text-white" : "bg-secondary text-white")">
+                                <div class="card-body p-2" style="white-space: pre-wrap;">@msg.Content</div>
+                             </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+        @if (IsLoading)
+        {
+             <div class="text-start">
+                 <div class="spinner-grow spinner-grow-sm text-light" role="status"></div>
+             </div>
+        }
+    </div>
+
+    <div class="p-2 border-top bg-dark">
+        <div class="input-group">
+            <textarea @bind="CurrentInput" @bind:event="oninput" @onkeydown="HandleKeyDown" class="form-control bg-secondary text-white border-0" placeholder="Ask the engine..." rows="2" disabled="@IsLoading"></textarea>
+            <button class="btn btn-primary" @onclick="SendMessage" disabled="@(IsLoading || string.IsNullOrWhiteSpace(CurrentInput))">
+                <i class="bi bi-send-fill"></i>
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<ChatMessage> Messages = new();
+    private string CurrentInput = "";
+    private bool IsLoading = false;
+    private IJSObjectReference? _module;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/app.js");
+        }
+        await ScrollToBottom();
+    }
+
+    private async Task ScrollToBottom()
+    {
+        if (_module is not null)
+        {
+            await _module.InvokeVoidAsync("scrollToBottom", "chat-container");
+        }
+    }
+
+    private async Task SendMessage()
+    {
+        if (string.IsNullOrWhiteSpace(CurrentInput)) return;
+
+        var prompt = CurrentInput;
+        Messages.Add(new ChatMessage { Role = "user", Content = prompt });
+        CurrentInput = "";
+        IsLoading = true;
+        
+        // Add placeholder for assistant response
+        var assistantMsg = new ChatMessage { Role = "assistant", Content = "" };
+        Messages.Add(assistantMsg);
+        StateHasChanged();
+
+        try
+        {
+            // We use direct HttpClient for streaming here since ApiClient is request/response
+            // In a real app, I'd move this logic to the service, but Blazor WASM/Server streaming diffs make it tricky.
+            // Assuming Server interactive mode here.
+            
+            var request = new ChatCompletionRequest
+            {
+                Messages = Messages.Where(m => m != assistantMsg).ToList(),
+                Temperature = 0.7,
+                MaxTokens = 500,
+                Stream = true
+            };
+
+            using var client = new HttpClient { BaseAddress = new Uri("https+http://hartonomous-api") };
+            var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/v1/chat/completions");
+            httpRequest.Content = JsonContent.Create(request);
+            
+            using var response = await client.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead);
+            response.EnsureSuccessStatusCode();
+
+            await using var stream = await response.Content.ReadAsStreamAsync();
+            using var reader = new StreamReader(stream);
+
+            while (!reader.EndOfStream)
+            {
+                var line = await reader.ReadLineAsync();
+                if (string.IsNullOrWhiteSpace(line)) continue;
+                if (line.StartsWith("data: "))
+                {
+                    var data = line["data: ".Length..];
+                    if (data == "[DONE]") break;
+                    
+                    try
+                    {
+                        var chunk = JsonSerializer.Deserialize<ChatCompletionChunk>(data);
+                        var delta = chunk?.Choices?.FirstOrDefault()?.Delta?.Content;
+                        if (!string.IsNullOrEmpty(delta))
+                        {
+                            assistantMsg.Content += delta;
+                            StateHasChanged();
+                            await ScrollToBottom();
+                        }
+                    }
+                    catch { /* ignore */ }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            assistantMsg.Content += $"\n[Error: {ex.Message}]";
+        }
+        finally
+        {
+            IsLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey)
+        {
+            await SendMessage();
+        }
+    }
+}
+

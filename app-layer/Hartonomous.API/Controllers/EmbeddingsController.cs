@@ -1,7 +1,7 @@
 using System.Text.Json;
-using Hartonomous.Core.Models;
 using Hartonomous.Core.Services;
 using Hartonomous.Marshal;
+using Hartonomous.Shared.Models;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Hartonomous.API.Controllers;

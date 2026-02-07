@@ -17,6 +17,7 @@
     <ProjectReference Include="..\Hartonomous.ServiceDefaults\Hartonomous.ServiceDefaults.csproj" />
     <ProjectReference Include="..\Hartonomous.Core\Hartonomous.Core.csproj" />
     <ProjectReference Include="..\Hartonomous.Marshal\Hartonomous.Marshal.csproj" />
+    <ProjectReference Include="..\Hartonomous.Shared\Hartonomous.Shared.csproj" />
   </ItemGroup>
 
 </Project>

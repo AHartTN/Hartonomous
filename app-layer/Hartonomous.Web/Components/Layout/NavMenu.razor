@@ -1,0 +1,35 @@
+<div class="top-row ps-3 navbar navbar-dark">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="">Hartonomous</a>
+    </div>
+</div>
+
+<input type="checkbox" title="Navigation menu" class="navbar-toggler" />
+
+<div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
+    <nav class="nav flex-column">
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
+                <span class="bi bi-chat-dots-fill-nav-menu" aria-hidden="true"></span> Chat
+            </NavLink>
+        </div>
+
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="ingestion">
+                <span class="bi bi-upload-nav-menu" aria-hidden="true"></span> Ingestion
+            </NavLink>
+        </div>
+
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="explorer">
+                <span class="bi bi-compass-fill-nav-menu" aria-hidden="true"></span> Explorer
+            </NavLink>
+        </div>
+
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="godel">
+                <span class="bi bi-cpu-fill-nav-menu" aria-hidden="true"></span> Godel Analysis
+            </NavLink>
+        </div>
+    </nav>
+</div>

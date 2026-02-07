@@ -1,4 +1,4 @@
-using Hartonomous.Core.Models;
+using Hartonomous.Shared.Models;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Hartonomous.API.Controllers;

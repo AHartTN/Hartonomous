@@ -1,0 +1,157 @@
+@page "/ingestion"
+@using Hartonomous.Shared.Models
+@using Hartonomous.Web.Services
+@inject HartonomousApiClient Api
+
+<PageTitle>Ingestion</PageTitle>
+
+<div class="container py-4">
+    <h1 class="display-5 fw-bold text-light mb-4">Data Ingestion</h1>
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card bg-dark border-secondary mb-4">
+                <div class="card-header border-secondary text-white">
+                    <i class="bi bi-file-text me-2"></i>Text Ingestion
+                </div>
+                <div class="card-body">
+                    <textarea @bind="TextToIngest" class="form-control bg-secondary text-white border-0 mb-3" rows="8" placeholder="Paste raw text here..."></textarea>
+                    <button class="btn btn-primary" @onclick="IngestText" disabled="@IsProcessing">
+                        @if (IsProcessing) { <span class="spinner-border spinner-border-sm me-2"></span> }
+                        Ingest Text
+                    </button>
+                </div>
+            </div>
+
+            <div class="card bg-dark border-secondary mb-4">
+                <div class="card-header border-secondary text-white">
+                    <i class="bi bi-upload me-2"></i>File Upload
+                </div>
+                <div class="card-body">
+                     <div class="mb-3">
+                        <InputFile OnChange="@LoadFiles" class="form-control bg-secondary text-white border-0" disabled="@IsProcessing" />
+                     </div>
+                     @if (UploadedFile != null)
+                     {
+                         <div class="alert alert-info py-2">
+                             Ready to ingest: <strong>@UploadedFile.Name</strong> (@(UploadedFile.Size / 1024) KB)
+                         </div>
+                         <button class="btn btn-success" @onclick="IngestUploadedFile" disabled="@IsProcessing">
+                            @if (IsProcessing) { <span class="spinner-border spinner-border-sm me-2"></span> }
+                            Ingest File
+                         </button>
+                     }
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+             @if (Stats != null)
+             {
+                 <div class="card border-success bg-dark mb-3">
+                     <div class="card-header bg-success text-white fw-bold">Ingestion Result</div>
+                     <div class="card-body text-light">
+                         <div class="row">
+                             <div class="col-6 mb-2">
+                                 <small class="text-muted">Atoms</small>
+                                 <div class="h4 text-info">@Stats.Atoms</div>
+                             </div>
+                             <div class="col-6 mb-2">
+                                 <small class="text-muted">Compositions</small>
+                                 <div class="h4 text-success">@Stats.Compositions</div>
+                             </div>
+                             <div class="col-6 mb-2">
+                                 <small class="text-muted">Relations</small>
+                                 <div class="h4 text-warning">@Stats.Relations</div>
+                             </div>
+                             <div class="col-6 mb-2">
+                                 <small class="text-muted">Time</small>
+                                 <div class="h4">@Stats.TimeMs ms</div>
+                             </div>
+                         </div>
+                     </div>
+                 </div>
+             }
+             @if (ErrorMessage != null)
+             {
+                 <div class="alert alert-danger">
+                     <i class="bi bi-exclamation-triangle-fill me-2"></i>@ErrorMessage
+                 </div>
+             }
+        </div>
+    </div>
+</div>
+
+@code {
+    private string TextToIngest = "";
+    private bool IsProcessing = false;
+    private IngestStats? Stats;
+    private string? ErrorMessage;
+    private IBrowserFile? UploadedFile;
+
+    private async Task IngestText()
+    {
+        if (string.IsNullOrWhiteSpace(TextToIngest)) return;
+        await ProcessIngestion(() => Api.IngestTextAsync(TextToIngest));
+        if (Stats != null) TextToIngest = "";
+    }
+
+    private void LoadFiles(InputFileChangeEventArgs e)
+    {
+        UploadedFile = e.File;
+        Stats = null;
+        ErrorMessage = null;
+    }
+
+    private async Task IngestUploadedFile()
+    {
+        if (UploadedFile == null) return;
+        
+        // Note: The current API expects a file path on the server (Shared Volume).
+        // Since we are uploading from browser, we normally need to stream the content to the API.
+        // However, IngestFileRequest takes a string FilePath.
+        // For this demo to work "conceptually" without rewriting the API to accept IFormFile,
+        // we will simulate the upload by reading the text content client-side (if small) and sending as text,
+        // OR we just acknowledge this limitation.
+        // Let's read it as text to make it functional for text files.
+        
+        if (UploadedFile.Size > 1024 * 1024) // 1MB limit for client-side read
+        {
+            ErrorMessage = "File too large for client-side read (Limit: 1MB)";
+            return;
+        }
+
+        try 
+        {
+            using var stream = UploadedFile.OpenReadStream();
+            using var reader = new StreamReader(stream);
+            var text = await reader.ReadToEndAsync();
+            await ProcessIngestion(() => Api.IngestTextAsync(text)); // Re-use text ingestion for now
+            if (Stats != null) UploadedFile = null;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Upload failed: {ex.Message}";
+        }
+    }
+
+    private async Task ProcessIngestion(Func<Task<IngestStats?>> action)
+    {
+        IsProcessing = true;
+        Stats = null;
+        ErrorMessage = null;
+        try
+        {
+            Stats = await action();
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+        }
+        finally
+        {
+            IsProcessing = false;
+        }
+    }
+}
+

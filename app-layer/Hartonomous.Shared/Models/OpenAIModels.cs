@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace Hartonomous.Core.Models;
+namespace Hartonomous.Shared.Models;
 
 // =============================================================================
 //  OpenAI-compatible request/response models

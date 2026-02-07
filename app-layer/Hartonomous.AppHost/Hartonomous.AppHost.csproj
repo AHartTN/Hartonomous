@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Hartonomous.API\Hartonomous.API.csproj" />
+    <ProjectReference Include="..\Hartonomous.Web\Hartonomous.Web.csproj" />
   </ItemGroup>
 
 </Project>

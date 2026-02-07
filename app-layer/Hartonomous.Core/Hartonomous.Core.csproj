@@ -13,6 +13,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Hartonomous.Marshal\Hartonomous.Marshal.csproj" />
+    <ProjectReference Include="..\Hartonomous.Shared\Hartonomous.Shared.csproj" />
   </ItemGroup>
 
 </Project>

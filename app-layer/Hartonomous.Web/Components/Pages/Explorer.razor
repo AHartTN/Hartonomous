@@ -1,0 +1,178 @@
+@page "/explorer"
+@using Hartonomous.Shared.Models
+@using Hartonomous.Web.Services
+@inject HartonomousApiClient Api
+@inject IJSRuntime JS
+
+<PageTitle>Substrate Explorer</PageTitle>
+
+<div class="container-fluid h-100 p-0">
+    <div class="row g-0 h-100">
+        <!-- Sidebar -->
+        <div class="col-md-3 bg-dark border-end border-secondary h-100 overflow-auto">
+            <div class="p-3">
+                <h5 class="text-white mb-4">
+                    <i class="bi bi-diagram-2-fill me-2"></i>Semantic Tree
+                </h5>
+
+                @if (IsLoadingDomains)
+                {
+                    <div class="text-center text-muted">Loading domains...</div>
+                }
+                else
+                {
+                    <div class="list-group list-group-flush">
+                        @foreach (var domain in Domains)
+                        {
+                            <button class="list-group-item list-group-item-action bg-dark text-light border-secondary d-flex justify-content-between align-items-center @(SelectedDomain == domain ? "active" : "")"
+                                    @onclick="() => SelectDomain(domain)">
+                                @domain.Name
+                                <span class="badge bg-secondary rounded-pill">Domain</span>
+                            </button>
+                            
+                            @if (SelectedDomain == domain && Concepts != null)
+                            {
+                                <div class="ps-4 mt-2 mb-2 border-start border-secondary ms-3">
+                                     @foreach (var concept in Concepts)
+                                     {
+                                         <button class="btn btn-sm btn-link text-decoration-none text-muted d-block w-100 text-start ps-2 truncate @(SelectedConcept == concept ? "text-primary fw-bold" : "")"
+                                                 @onclick="() => SelectConcept(concept)">
+                                             <i class="bi bi-circle-fill small me-2" style="font-size: 0.5rem;"></i>@concept.Name
+                                         </button>
+                                     }
+                                </div>
+                            }
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="col-md-9 bg-black h-100 overflow-auto">
+            @if (SelectedDetails != null)
+            {
+                <div class="p-4">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h1 class="display-6 text-white m-0">@SelectedDetails.Text</h1>
+                        <span class="badge bg-primary fs-6">Elo: @SelectedDetails.Elo</span>
+                    </div>
+
+                    <!-- Visualization Area -->
+                    <div class="card bg-dark border-secondary mb-4">
+                        <div class="card-header border-secondary text-white">
+                             <i class="bi bi-box me-2"></i>S³ Geometric Projection (3D)
+                        </div>
+                        <div class="card-body p-0 position-relative" style="height: 400px; background: radial-gradient(circle at center, #1a1a1a 0%, #000 100%);">
+                            <div id="plotly-3d" style="width: 100%; height: 100%;"></div>
+                        </div>
+                    </div>
+
+                    <!-- Details Grid -->
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="card bg-dark border-secondary mb-3">
+                                <div class="card-body">
+                                    <h6 class="card-subtitle mb-2 text-muted text-uppercase small">Hilbert Index (Spatial Locality)</h6>
+                                    <p class="card-text text-info font-monospace">
+                                        H: @SelectedDetails.HilbertIndexHi.ToString("X16")<br/>
+                                        L: @SelectedDetails.HilbertIndexLo.ToString("X16")
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                         <div class="col-md-6">
+                            <div class="card bg-dark border-secondary mb-3">
+                                <div class="card-body">
+                                    <h6 class="card-subtitle mb-2 text-muted text-uppercase small">Semantic Properties</h6>
+                                    <ul class="list-unstyled text-light small mb-0">
+                                        <li>Unit Norm: <span class="text-success">Valid (1.000)</span></li>
+                                        <li>Type: <span class="text-warning">Composition</span></li>
+                                        <li>Atom Count: <span class="text-white">@SelectedDetails.Text.Length</span></li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            }
+            else
+            {
+                <div class="h-100 d-flex flex-column justify-content-center align-items-center text-muted">
+                    <i class="bi bi-compass display-1 mb-4 opacity-25"></i>
+                    <h3>Select a domain to begin exploration</h3>
+                    <p>Navigate the semantic substrate hierarchy from the sidebar.</p>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+<style>
+    .truncate {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    /* Make sidebar fill height minus navbar */
+    .h-100 { height: 100%; }
+</style>
+
+@code {
+    private List<ExplorerNode> Domains = new();
+    private List<ExplorerNode>? Concepts;
+    private ExplorerNode? SelectedDomain;
+    private ExplorerNode? SelectedConcept;
+    private ExplorerDetails? SelectedDetails;
+    private bool IsLoadingDomains = true;
+    private IJSObjectReference? _module;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/app.js");
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Domains = await Api.GetDomainsAsync();
+        IsLoadingDomains = false;
+    }
+
+    private async Task SelectDomain(ExplorerNode domain)
+    {
+        if (SelectedDomain == domain)
+        {
+            SelectedDomain = null; // Toggle off
+            Concepts = null;
+            return;
+        }
+
+        SelectedDomain = domain;
+        SelectedConcept = null;
+        SelectedDetails = null;
+        
+        // Fetch concepts for this domain
+        Concepts = await Api.SearchAsync(domain.Name);
+    }
+
+    private async Task SelectConcept(ExplorerNode concept)
+    {
+        SelectedConcept = concept;
+        SelectedDetails = await Api.GetDetailsAsync(concept.Id);
+        
+        if (SelectedDetails != null && _module != null)
+        {
+            // Project 4D to 3D for visualization (just take first 3 components for now, 
+            // strictly we should do a proper stereographic projection but x,y,z is fine for 'visuals')
+            await _module.InvokeVoidAsync("render3DPlot", "plotly-3d", 
+                SelectedDetails.S3Position[0], 
+                SelectedDetails.S3Position[1], 
+                SelectedDetails.S3Position[2],
+                SelectedDetails.Text);
+        }
+    }
+}

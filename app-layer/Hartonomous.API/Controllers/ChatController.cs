@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using Hartonomous.Core.Models;
+using Hartonomous.Shared.Models;
 using Hartonomous.Core.Services;
 using Microsoft.AspNetCore.Mvc;
 
