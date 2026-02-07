@@ -14,6 +14,6 @@ fi
 echo "Ingesting text from: $TEXT_FILE"
 
 # Ensure we use the locally built library
-export LD_LIBRARY_PATH="$(dirname "$0")/../../build/linux-release-max-perf/Engine:$LD_LIBRARY_PATH"
+export LD_LIBRARY_PATH="$BUILD_DIR/Engine:$LD_LIBRARY_PATH"
 
-./build/linux-release-max-perf/Engine/tools/ingest_text file "$TEXT_FILE"
+"$BUILD_DIR/Engine/tools/ingest_text" file "$TEXT_FILE"

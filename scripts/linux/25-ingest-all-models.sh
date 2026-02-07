@@ -6,7 +6,7 @@
 source $(dirname "$0")/00_env.sh
 
 # Path to the Ingestion Tool
-INGEST_TOOL="./build/linux-release-max-perf/Engine/tools/ingest_model"
+INGEST_TOOL="$BUILD_DIR/Engine/tools/ingest_model"
 
 if [ ! -f "$INGEST_TOOL" ]; then
     echo "Error: Ingestion tool not found at $INGEST_TOOL"

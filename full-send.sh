@@ -103,7 +103,23 @@ timer_start
 
 if ./scripts/linux/05-seed-unicode.sh > "$LOG_DIR/04-seed-unicode.log" 2>&1; then
     print_success "Unicode codespace seeded"
+
     timer_end "Seed Unicode"
+
+    # ======================================================================
+    # STEP 4b: Ingest WordNet and OMW-data
+    # ======================================================================
+    CURRENT_STEP="Ingest WordNet/OMW"
+    print_info "STEP 4b: Ingest WordNet and OMW-data"
+    print_step "Populating Compositions and Relations from WordNet/OMW..."
+    timer_start
+    if ./scripts/linux/06-ingest-wordnet-omw.sh > "$LOG_DIR/04b-ingest-wordnet-omw.log" 2>&1; then
+        print_success "WordNet/OMW ingestion complete"
+        timer_end "Ingest WordNet/OMW"
+    else
+        print_error "WordNet/OMW ingestion failed (see logs/04b-ingest-wordnet-omw.log)"
+        exit 1
+    fi
 else
     print_error "Unicode seeding failed (see logs/04-seed-unicode.log)"
     exit 1

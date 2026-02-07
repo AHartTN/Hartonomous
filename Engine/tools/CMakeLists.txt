@@ -18,11 +18,15 @@ target_link_libraries(ingest_text PRIVATE engine_io)
 add_executable(ingest_model ingest_model.cpp)
 target_link_libraries(ingest_model PRIVATE engine_io)
 
+# --- Ingest WordNet/OMW: Multilingual semantic seed ---
+add_executable(ingest_wordnet_omw ingest_wordnet_omw.cpp)
+target_link_libraries(ingest_wordnet_omw PRIVATE engine_io)
+
 # --- Walk Test: Test graph navigation ---
 add_executable(walk_test walk_test.cpp)
 target_link_libraries(walk_test PRIVATE engine_io)
 
 # Install all tools
-install(TARGETS seed_unicode ingest_text ingest_model walk_test
+install(TARGETS seed_unicode ingest_text ingest_model ingest_wordnet_omw walk_test
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )

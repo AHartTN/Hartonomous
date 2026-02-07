@@ -25,3 +25,6 @@
 [submodule "Engine/external/omw-data"]
 	path = Engine/external/omw-data
 	url = https://github.com/omwn/omw-data.git
+[submodule "Engine/external/wiktextract"]
+	path = Engine/external/wiktextract
+	url = https://github.com/tatuylonen/wiktextract.git

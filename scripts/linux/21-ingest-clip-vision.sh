@@ -18,4 +18,4 @@ fi
 
 echo "Ingesting Vision Model: $MODEL_PATH"
 # Assuming ingest_model can handle safetensors structure of CLIP
-./build/linux-release-max-perf/Engine/tools/ingest_model "$MODEL_PATH"
+"$BUILD_DIR/Engine/tools/ingest_model" "$MODEL_PATH"

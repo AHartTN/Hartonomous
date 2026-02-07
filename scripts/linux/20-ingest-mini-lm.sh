@@ -8,4 +8,4 @@ MODEL_DIR="test-data/embedding_models/models--sentence-transformers--all-MiniLM-
 
 echo "Ingesting model from: $MODEL_DIR"
 
-./build/linux-release-max-perf/Engine/tools/ingest_model "$MODEL_DIR"
+"$BUILD_DIR/Engine/tools/ingest_model" "$MODEL_DIR"

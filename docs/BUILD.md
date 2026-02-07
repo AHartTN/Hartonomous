@@ -54,6 +54,15 @@ sudo apt install \
 ```bash
 # GCC 11+
 sudo apt install g++-12
+    - UCD (Unicode Character Database)
+    - UCA (Unicode Collation Algorithm)
+    - Semantic sequences, stroke counts, decompositions
+
+  #### Step 5b: Ingest WordNet and OMW-data
+  ```bash
+  ./scripts/linux/06-ingest-wordnet-omw.sh
+  ```
+
 
 # Verify
 g++-12 --version  # Should be 12.0+
