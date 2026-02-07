@@ -239,7 +239,8 @@ std::vector<WalkEngine::Candidate> WalkEngine::get_candidates(const WalkState& s
         if (is_model_artifact(text)) continue;
 
         // Require minimum observations — single-obs model edges are noise
-        if (ac.total_obs < 3.0) continue;
+        // Lowered to 1.0 for testing/sparse graphs
+        if (ac.total_obs < 1.0) continue;
 
         Candidate c;
         c.id = id;

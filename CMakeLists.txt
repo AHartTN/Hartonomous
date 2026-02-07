@@ -16,7 +16,7 @@ enable_testing()
 option(HARTONOMOUS_ENABLE_NATIVE_ARCH
     "Enable native CPU architecture optimizations (-march=native / /arch:AVX512)" ON)
 
-set(HARTONOMOUS_MKL_THREADING "SEQUENTIAL" CACHE STRING
+set(HARTONOMOUS_MKL_THREADING "GNU" CACHE STRING
     "MKL threading layer: SEQUENTIAL, INTEL, TBB, GNU")
     
 set_property(CACHE HARTONOMOUS_MKL_THREADING PROPERTY STRINGS

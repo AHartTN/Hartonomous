@@ -320,6 +320,8 @@ void ModelIngester::extract_embedding_edges(
     double elo_range = 500.0;
 
     std::atomic<size_t> edges_found{0};
+    size_t total_blocks = (n + BLOCK - 1) / BLOCK;
+    size_t blocks_processed = 0;
 
     for (size_t block_start = 0; block_start < n; block_start += BLOCK) {
         size_t block_end = std::min(block_start + BLOCK, n);
@@ -412,12 +414,15 @@ void ModelIngester::extract_embedding_edges(
                     }
 
                     // Evidence: model opinion, signal_strength = cosine similarity [0,1]
+                    // Clamp to [0,1] to prevent DB constraint violations (floating point error can yield > 1.0)
+                    double clamped_sim = std::clamp(static_cast<double>(sim), 0.0, 1.0);
+
                     uint8_t edata[32];
                     std::memcpy(edata, model_id_.data(), 16);
                     std::memcpy(edata + 16, rid.data(), 16);
                     tl.ev.push_back({BLAKE3Pipeline::hash(edata, 32), model_id_, rid, true,
-                                     base_elo + elo_range * static_cast<double>(sim),
-                                     static_cast<double>(sim)});
+                                     base_elo + elo_range * clamped_sim,
+                                     clamped_sim});
                     tl.relations_created++;
                 }
 
@@ -426,7 +431,18 @@ void ModelIngester::extract_embedding_edges(
             }
             edges_found.fetch_add(candidates.size(), std::memory_order_relaxed);
         }
+
+        blocks_processed++;
+        double elapsed_s = ms_since(t0) / 1000.0;
+        double avg_block_time = elapsed_s / blocks_processed;
+        double eta_s = avg_block_time * (total_blocks - blocks_processed);
+        
+        std::cout << "    [KNN] " << std::setw(3) << (100 * blocks_processed / total_blocks) << "% " 
+                  << blocks_processed << "/" << total_blocks << " blocks | "
+                  << "Edges: " << edges_found.load() << " | "
+                  << "ETA: " << std::fixed << std::setprecision(0) << eta_s << "s    \r" << std::flush;
     }
+    std::cout << std::endl; // Clear line after progress bar
 
     double total_ms = ms_since(t0);
     std::cout << "    Embedding KNN (" << BLOCK << "-block GEMM): "

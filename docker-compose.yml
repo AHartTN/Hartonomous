@@ -1,0 +1,29 @@
+services:
+  hartonomous-api:
+    container_name: hartonomous-api
+    build:
+      context: .
+      dockerfile: app-layer/Hartonomous.API/Dockerfile
+    environment:
+      # LibPQ connection string format (space separated)
+      - ConnectionStrings__DefaultConnection=host=host.docker.internal port=5432 dbname=hartonomous user=postgres password=postgres
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://aspire-dashboard:18889
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "5000:8080"
+    restart: unless-stopped
+
+  hartonomous-web:
+    container_name: hartonomous-web
+    build:
+      context: .
+      dockerfile: app-layer/Hartonomous.Web/Dockerfile
+    environment:
+      - services__hartonomous-api__http__0=http://hartonomous-api:8080
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://aspire-dashboard:18889
+    ports:
+      - "5001:8080"
+    depends_on:
+      - hartonomous-api
+    restart: unless-stopped

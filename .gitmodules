@@ -22,3 +22,6 @@
 [submodule "Engine/external/tree-sitter"]
 	path = Engine/external/tree-sitter
 	url = https://github.com/tree-sitter/tree-sitter.git
+[submodule "Engine/external/omw-data"]
+	path = Engine/external/omw-data
+	url = https://github.com/omwn/omw-data.git

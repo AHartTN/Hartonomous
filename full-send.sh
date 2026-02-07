@@ -114,12 +114,21 @@ fi
 # ==============================================================================
 CURRENT_STEP="Ingest Models"
 print_info "STEP 5: Ingest AI Models"
-print_step "Extracting relationships from MiniLM embedding model..."
+print_step "Extracting relationships from production models (MiniLM, Florence-2, Qwen)..."
 
-if [ -f "./scripts/linux/20-ingest-mini-lm.sh" ]; then
+if [ -f "./scripts/linux/25-ingest-all-models.sh" ]; then
+    timer_start
+    if ./scripts/linux/25-ingest-all-models.sh > "$LOG_DIR/05-ingest-models.log" 2>&1; then
+        print_success "Production models ingested"
+        timer_end "Ingest Models"
+    else
+        print_warning "Model ingestion had issues (see logs/05-ingest-models.log)"
+        timer_end "Ingest Models (with issues)"
+    fi
+elif [ -f "./scripts/linux/20-ingest-mini-lm.sh" ]; then
     timer_start
     if ./scripts/linux/20-ingest-mini-lm.sh > "$LOG_DIR/05-ingest-models.log" 2>&1; then
-        print_success "Models ingested"
+        print_success "Models ingested (fallback to MiniLM)"
         timer_end "Ingest Models"
     else
         print_warning "Model ingestion had issues (see logs/05-ingest-models.log)"
@@ -196,6 +205,33 @@ else
     timer_end "Integration Tests (with failures)"
 fi
 cd "$SCRIPT_DIR"
+
+# ==============================================================================
+# STEP 9: Deploy Docker Stack
+# ==============================================================================
+CURRENT_STEP="Deploy Docker"
+print_info "STEP 9: Deploy Docker Stack"
+print_step "Packaging native libs and launching containers..."
+
+timer_start
+
+# Prepare docker-libs
+mkdir -p docker-libs
+cp /usr/lib/x86_64-linux-gnu/libdivsufsort.so.3 docker-libs/ 2>/dev/null || true
+cp /opt/intel/oneapi/mkl/2025.3/lib/libmkl_intel_lp64.so.2 docker-libs/ 2>/dev/null || true
+cp /opt/intel/oneapi/mkl/2025.3/lib/libmkl_sequential.so.2 docker-libs/ 2>/dev/null || true
+cp /opt/intel/oneapi/mkl/2025.3/lib/libmkl_gnu_thread.so.2 docker-libs/ 2>/dev/null || true
+cp /opt/intel/oneapi/mkl/2025.3/lib/libmkl_core.so.2 docker-libs/ 2>/dev/null || true
+
+if docker compose up -d --build > "$LOG_DIR/09-docker-deploy.log" 2>&1; then
+    print_success "Docker stack deployed"
+    print_info "  API: http://localhost:5000"
+    print_info "  Web: http://localhost:5001"
+    timer_end "Deploy Docker"
+else
+    print_error "Docker deployment failed (see logs/09-docker-deploy.log)"
+    # Don't exit, just warn, as the pipeline itself succeeded
+fi
 
 # ==============================================================================
 # PIPELINE COMPLETE
