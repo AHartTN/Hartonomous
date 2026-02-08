@@ -6,38 +6,28 @@ namespace Hartonomous.Core.Services;
 /// <summary>
 /// Wraps text/file ingestion via native C++ interop.
 /// </summary>
-public sealed class IngestionService : IDisposable
+public sealed class IngestionService : NativeService
 {
-    private readonly EngineService _engine;
-    private readonly IntPtr _ingesterHandle;
     private readonly ILogger<IngestionService> _logger;
-    private bool _disposed;
 
     public IngestionService(EngineService engine, ILogger<IngestionService> logger)
+        : base(NativeMethods.IngesterCreate(engine.DbHandle))
     {
-        _engine = engine;
         _logger = logger;
-        _ingesterHandle = NativeMethods.IngesterCreate(engine.DbHandle);
-        if (_ingesterHandle == IntPtr.Zero)
-            throw new InvalidOperationException($"Failed to create ingester: {EngineService.GetLastError()}");
     }
 
     public IngestionOutput IngestText(string text)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-
-        if (!NativeMethods.IngestText(_ingesterHandle, text, out var stats))
-            throw new InvalidOperationException($"Text ingestion failed: {EngineService.GetLastError()}");
+        var stats = InvokeNative((IntPtr h, out IngestionStats s) => 
+            NativeMethods.IngestText(h, text, out s), "Text ingestion failed");
 
         return MapStats(stats);
     }
 
     public IngestionOutput IngestFile(string filePath)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-
-        if (!NativeMethods.IngestFile(_ingesterHandle, filePath, out var stats))
-            throw new InvalidOperationException($"File ingestion failed: {EngineService.GetLastError()}");
+        var stats = InvokeNative((IntPtr h, out IngestionStats s) => 
+            NativeMethods.IngestFile(h, filePath, out s), "File ingestion failed");
 
         return MapStats(stats);
     }
@@ -60,11 +50,9 @@ public sealed class IngestionService : IDisposable
         CooccurrencesSignificant = (long)stats.CooccurrencesSignificant,
     };
 
-    public void Dispose()
+    protected override void DestroyNative(IntPtr handle)
     {
-        if (_disposed) return;
-        _disposed = true;
-        NativeMethods.IngesterDestroy(_ingesterHandle);
+        NativeMethods.IngesterDestroy(handle);
     }
 }
 

@@ -25,13 +25,25 @@ const char* hartonomous_get_version() {
     return "0.1.0";
 }
 
-void set_error(const std::exception& e) {
+static void set_error(const std::exception& e) {
     g_last_error = e.what();
 }
 
-void set_error(const char* msg) {
-    g_last_error = msg;
-}
+#define INTEROP_TRY_CATCH(code) \
+    try { \
+        code \
+    } catch (const std::exception& e) { \
+        set_error(e); \
+        return false; \
+    }
+
+#define INTEROP_TRY_CATCH_PTR(code) \
+    try { \
+        code \
+    } catch (const std::exception& e) { \
+        set_error(e); \
+        return nullptr; \
+    }
 
 // Helper for string duplication
 char* strdup_safe(const std::string& str) {
@@ -47,13 +59,10 @@ char* strdup_safe(const std::string& str) {
 // =============================================================================
 
 h_db_connection_t hartonomous_db_create(const char* connection_string) {
-    try {
+    INTEROP_TRY_CATCH_PTR({
         auto* db = new Hartonomous::PostgresConnection(connection_string);
         return static_cast<h_db_connection_t>(db);
-    } catch (const std::exception& e) {
-        set_error(e);
-        return nullptr;
-    }
+    })
 }
 
 void hartonomous_db_destroy(h_db_connection_t handle) {
@@ -83,14 +92,11 @@ void hartonomous_blake3_hash_codepoint(uint32_t codepoint, uint8_t* out_16b) {
 }
 
 bool hartonomous_codepoint_to_s3(uint32_t codepoint, double* out_4d) {
-    try {
+    INTEROP_TRY_CATCH({
         auto proj = hartonomous::unicode::CodepointProjection::project(static_cast<char32_t>(codepoint));
         std::memcpy(out_4d, proj.s3_position.data(), 4 * sizeof(double));
         return true;
-    } catch (const std::exception& e) {
-        set_error(e);
-        return false;
-    }
+    })
 }
 
 void hartonomous_s3_to_hilbert(const double* in_4d, uint32_t entity_type, uint64_t* out_hi, uint64_t* out_lo) {
@@ -117,15 +123,12 @@ void hartonomous_s3_compute_centroid(const double* points_4d, size_t count, doub
 // =============================================================================
 
 h_ingester_t hartonomous_ingester_create(h_db_connection_t db_handle) {
-    try {
+    INTEROP_TRY_CATCH_PTR({
         if (!db_handle) throw std::runtime_error("Invalid database handle");
         auto* db = static_cast<Hartonomous::PostgresConnection*>(db_handle);
         auto* ingester = new Hartonomous::UniversalIngester(*db);
         return static_cast<h_ingester_t>(ingester);
-    } catch (const std::exception& e) {
-        set_error(e);
-        return nullptr;
-    }
+    })
 }
 
 void hartonomous_ingester_destroy(h_ingester_t handle) {
@@ -135,8 +138,8 @@ void hartonomous_ingester_destroy(h_ingester_t handle) {
 }
 
 bool hartonomous_ingest_text(h_ingester_t handle, const char* text, HIngestionStats* out_stats) {
-    try {
-        if (!handle || !text || !out_stats) return false;
+    INTEROP_TRY_CATCH({
+        if (!handle || !text || !out_stats) throw std::runtime_error("Invalid parameters");
         auto* ingester = static_cast<Hartonomous::UniversalIngester*>(handle);
         auto stats = ingester->ingest_text(text);
         
@@ -156,15 +159,12 @@ bool hartonomous_ingest_text(h_ingester_t handle, const char* text, HIngestionSt
         out_stats->cooccurrences_significant = stats.cooccurrences_significant;
 
         return true;
-    } catch (const std::exception& e) {
-        set_error(e);
-        return false;
-    }
+    })
 }
 
 bool hartonomous_ingest_file(h_ingester_t handle, const char* file_path, HIngestionStats* out_stats) {
-    try {
-        if (!handle || !file_path || !out_stats) return false;
+    INTEROP_TRY_CATCH({
+        if (!handle || !file_path || !out_stats) throw std::runtime_error("Invalid parameters");
         auto* ingester = static_cast<Hartonomous::UniversalIngester*>(handle);
         auto stats = ingester->ingest_path(file_path);
 
@@ -182,14 +182,10 @@ bool hartonomous_ingest_file(h_ingester_t handle, const char* file_path, HIngest
         out_stats->ngrams_significant = stats.ngrams_significant;
         out_stats->cooccurrences_found = stats.cooccurrences_found;
         out_stats->cooccurrences_significant = stats.cooccurrences_significant;
-        
-        return true;
-    } catch (const std::exception& e) {
-        set_error(e);
-        return false;
-    }
-}
 
+        return true;
+    })
+}
 // =============================================================================
 //  Walk Engine
 // =============================================================================

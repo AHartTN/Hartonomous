@@ -1,8 +1,6 @@
 #pragma once
 
-#include <hashing/blake3_pipeline.hpp>
-#include <database/bulk_copy.hpp>
-#include <unordered_set>
+#include <storage/substrate_store.hpp>
 
 namespace Hartonomous {
 
@@ -12,16 +10,10 @@ struct AtomRecord {
     uint32_t codepoint;
 };
 
-class AtomStore {
+class AtomStore : public SubstrateStore<AtomRecord> {
 public:
-    explicit AtomStore(PostgresConnection& db);
-    void store(const AtomRecord& rec);
-    void flush();
-    size_t count() const { return copy_.count(); }
-
-private:
-    BulkCopy copy_;
-    std::unordered_set<std::string> seen_;
+    explicit AtomStore(PostgresConnection& db, bool use_temp_table = true, bool use_binary = false);
+    void store(const AtomRecord& rec) override;
 };
 
 }

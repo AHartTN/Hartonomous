@@ -8,52 +8,40 @@ namespace Hartonomous.Core.Services;
 /// Wraps SemanticQuery — gravitational truth, co-occurrence, Q&A.
 /// All heavy lifting in C++.
 /// </summary>
-public sealed class QueryService : IDisposable
+public sealed class QueryService : NativeService
 {
-    private readonly IntPtr _queryHandle;
     private readonly ILogger<QueryService> _logger;
-    private bool _disposed;
 
     public QueryService(EngineService engine, ILogger<QueryService> logger)
+        : base(NativeMethods.QueryCreate(engine.DbHandle))
     {
         _logger = logger;
-        _queryHandle = NativeMethods.QueryCreate(engine.DbHandle);
-        if (_queryHandle == IntPtr.Zero)
-            throw new InvalidOperationException($"Failed to create query engine: {EngineService.GetLastError()}");
     }
 
     public List<QueryOutput> FindRelated(string text, int limit = 10)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-
-        if (!NativeMethods.QueryRelated(_queryHandle, text, (nuint)limit, out var resultsPtr, out var count))
-            throw new InvalidOperationException($"Query failed: {EngineService.GetLastError()}");
+        if (!NativeMethods.QueryRelated(RawHandle, text, (nuint)limit, out var resultsPtr, out var count))
+            throw new InvalidOperationException($"Query failed: {GetNativeError()}");
 
         return MarshalResults(resultsPtr, count);
     }
 
     public List<QueryOutput> FindGravitationalTruth(string text, double minElo = 1500.0, int limit = 10)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-
-        if (!NativeMethods.QueryTruth(_queryHandle, text, minElo, (nuint)limit, out var resultsPtr, out var count))
-            throw new InvalidOperationException($"Truth query failed: {EngineService.GetLastError()}");
+        if (!NativeMethods.QueryTruth(RawHandle, text, minElo, (nuint)limit, out var resultsPtr, out var count))
+            throw new InvalidOperationException($"Truth query failed: {GetNativeError()}");
 
         return MarshalResults(resultsPtr, count);
     }
 
     public QueryOutput? AnswerQuestion(string question)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-
-        if (!NativeMethods.QueryAnswer(_queryHandle, question, out var result))
-            throw new InvalidOperationException($"Answer failed: {EngineService.GetLastError()}");
+        if (!NativeMethods.QueryAnswer(RawHandle, question, out var result))
+            throw new InvalidOperationException($"Answer failed: {GetNativeError()}");
 
         if (result.Text == IntPtr.Zero) return null;
 
         var text = System.Runtime.InteropServices.Marshal.PtrToStringAnsi(result.Text) ?? "";
-        // Single result — text was allocated by C++, but QueryAnswer doesn't use the array path.
-        // We need to free it manually.
         NativeMethods.FreeString(result.Text);
         return new QueryOutput { Text = text, Confidence = result.Confidence };
     }
@@ -83,11 +71,9 @@ public sealed class QueryService : IDisposable
         return outputs;
     }
 
-    public void Dispose()
+    protected override void DestroyNative(IntPtr handle)
     {
-        if (_disposed) return;
-        _disposed = true;
-        NativeMethods.QueryDestroy(_queryHandle);
+        NativeMethods.QueryDestroy(handle);
     }
 }
 

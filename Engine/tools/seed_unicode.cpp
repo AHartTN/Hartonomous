@@ -8,8 +8,8 @@
 
 #include <unicode/ingestor/ucd_processor.hpp>
 #include <database/postgres_connection.hpp>
+#include <utils/time.hpp>
 #include <iostream>
-#include <chrono>
 
 using namespace Hartonomous;
 using namespace Hartonomous::unicode;
@@ -24,7 +24,7 @@ int main(int argc, char** argv) {
         std::cout << "=== Hartonomous Unicode Seeding Tool ===\n";
         std::cout << "Data Directory: " << data_dir << "\n";
 
-        auto start_time = std::chrono::high_resolution_clock::now();
+        Timer timer;
 
         // 1. Connect to DB
         PostgresConnection db;
@@ -47,10 +47,7 @@ int main(int argc, char** argv) {
             processor.process_and_ingest();
         }
 
-        auto end_time = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::seconds>(end_time - start_time).count();
-
-        std::cout << "\n✓ DONE. Unicode universe seeded in " << duration << "s.\n";
+        std::cout << "\n✓ DONE. Unicode universe seeded in " << timer.elapsed_sec() << "s.\n";
         return 0;
 
     } catch (const std::exception& e) {

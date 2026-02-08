@@ -1,4 +1,5 @@
 \i types/00-custom_types.sql
+\i tables/00-UCD-Metadata.sql
 \i tables/01-Tenant.sql
 \i tables/02-Tenant-User.sql
 \i tables/03-Content.sql

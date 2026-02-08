@@ -127,7 +127,7 @@ print_info "Loading schema objects..."
 cd "$SQL_DIR"
 
 # Step 1: Foundation (extensions, domains, types)
-print_info "  [1/3] Loading foundation..."
+print_info "  [1/4] Loading foundation..."
 if psql -U "$DB_USER" -h "$DB_HOST" -p "$DB_PORT" -d "$DB_NAME" -f "00-foundation.sql"; then
     print_success "    ✓ Foundation loaded"
 else
@@ -135,8 +135,17 @@ else
     exit 1
 fi
 
-# Step 2: Core Tables
-print_info "  [2/3] Loading core tables..."
+# Step 2: UCD Schema (Gene Pool)
+print_info "  [2/4] Loading UCD schema..."
+if psql -U "$DB_USER" -h "$DB_HOST" -p "$DB_PORT" -d "$DB_NAME" -f "tables/00-UCD-Metadata.sql"; then
+    print_success "    ✓ UCD schema loaded"
+else
+    print_error "    ✗ UCD schema failed"
+    exit 1
+fi
+
+# Step 3: Core Tables
+print_info "  [3/4] Loading core tables..."
 if psql -U "$DB_USER" -h "$DB_HOST" -p "$DB_PORT" -d "$DB_NAME" -f "01-core-tables.sql"; then
     print_success "    ✓ Core tables loaded"
 else
@@ -144,8 +153,8 @@ else
     exit 1
 fi
 
-# Step 3: Functions
-print_info "  [3/3] Loading functions..."
+# Step 4: Functions
+print_info "  [4/4] Loading functions..."
 if psql -U "$DB_USER" -h "$DB_HOST" -p "$DB_PORT" -d "$DB_NAME" -f "02-functions.sql" 2>&1 | tee /tmp/functions-load.log; then
     print_success "    ✓ Functions loaded"
     if grep -q "ERROR" /tmp/functions-load.log; then

@@ -3,7 +3,7 @@
 extern "C" {
 #include "postgres.h"
 #include "fmgr.h"
-#include "liblwgeom.h" // Provides GSERIALIZED typedef
+#include <liblwgeom.h> // Provides GSERIALIZED typedef
 }
 
 #include "geometry/s3_vec.hpp"

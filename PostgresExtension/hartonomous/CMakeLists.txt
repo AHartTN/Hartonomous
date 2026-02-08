@@ -3,16 +3,24 @@ cmake_minimum_required(VERSION 3.22)
 project(HartonomousPostgresExt LANGUAGES C)
 
 # ==============================================================================
-#  1. AUTO-DETECT POSTGRESQL (Via pg_config)
+#  1. AUTO-DETECT POSTGRESQL
 # ==============================================================================
 
-find_program(PG_CONFIG NAMES pg_config REQUIRED)
-
-execute_process(COMMAND ${PG_CONFIG} --includedir-server OUTPUT_VARIABLE PG_SERVER_INCLUDE_DIR OUTPUT_STRIP_TRAILING_WHITESPACE)
-execute_process(COMMAND ${PG_CONFIG} --pkglibdir         OUTPUT_VARIABLE PG_PKGLIBDIR        OUTPUT_STRIP_TRAILING_WHITESPACE)
-execute_process(COMMAND ${PG_CONFIG} --sharedir          OUTPUT_VARIABLE PG_SHAREDIR         OUTPUT_STRIP_TRAILING_WHITESPACE)
-
-message(STATUS "PostgreSQL Found: ${PG_CONFIG}")
+if(WIN32)
+    # Windows: Manual search or find_package
+    find_package(PostgreSQL REQUIRED)
+    set(PG_SERVER_INCLUDE_DIR "${PostgreSQL_INCLUDE_DIRS}/server")
+    set(PG_PKGLIBDIR "${PostgreSQL_INCLUDE_DIRS}/../lib")
+    set(PG_SHAREDIR "${PostgreSQL_INCLUDE_DIRS}/../share")
+    set(MODULE_SUFFIX ".dll")
+else()
+    # Linux/UNIX: pg_config
+    find_program(PG_CONFIG NAMES pg_config REQUIRED)
+    execute_process(COMMAND ${PG_CONFIG} --includedir-server OUTPUT_VARIABLE PG_SERVER_INCLUDE_DIR OUTPUT_STRIP_TRAILING_WHITESPACE)
+    execute_process(COMMAND ${PG_CONFIG} --pkglibdir         OUTPUT_VARIABLE PG_PKGLIBDIR        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    execute_process(COMMAND ${PG_CONFIG} --sharedir          OUTPUT_VARIABLE PG_SHAREDIR         OUTPUT_STRIP_TRAILING_WHITESPACE)
+    set(MODULE_SUFFIX ".so")
+endif()
 
 # ==============================================================================
 #  2. TARGET DEFINITION
@@ -39,13 +47,17 @@ target_include_directories(${EXTENSION_NAME}
         ${CMAKE_SOURCE_DIR}/Engine/include
 )
 
+# On Windows, we must link against postgres.lib to resolve server symbols
+if(WIN32)
+    find_library(POSTGRES_LIB NAMES postgres PATHS "${PostgreSQL_INCLUDE_DIRS}/../lib")
+    target_link_libraries(${EXTENSION_NAME} PRIVATE ${POSTGRES_LIB})
+endif()
+
 # Link against the Engine core
 target_link_libraries(${EXTENSION_NAME}
     PRIVATE
         engine_io
 )
-
-
 
 # ==============================================================================
 #  4. CONFIGURATION
@@ -53,31 +65,17 @@ target_link_libraries(${EXTENSION_NAME}
 
 set_target_properties(${EXTENSION_NAME} PROPERTIES
     PREFIX ""
-    SUFFIX ".so"
+    SUFFIX "${MODULE_SUFFIX}"
 )
 
 # ==============================================================================
 #  5. INSTALLATION
 # ==============================================================================
 
-# Install extension library to local install/ and system PostgreSQL
-install(TARGETS ${EXTENSION_NAME}
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-)
-
-install(TARGETS ${EXTENSION_NAME}
-    LIBRARY DESTINATION "${PG_PKGLIBDIR}"
-)
-
-# Install extension SQL and control files to local install/ and system PostgreSQL
-install(FILES
-    "${CMAKE_CURRENT_SOURCE_DIR}/hartonomous.control"
-    "${CMAKE_CURRENT_SOURCE_DIR}/dist/hartonomous--0.1.0.sql"
-    DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/postgresql/extension
-)
+install(TARGETS ${EXTENSION_NAME} LIBRARY DESTINATION "${PG_PKGLIBDIR}")
 
 install(FILES
-    "${CMAKE_CURRENT_SOURCE_DIR}/hartonomous.control"
-    "${CMAKE_CURRENT_SOURCE_DIR}/dist/hartonomous--0.1.0.sql"
+    "hartonomous.control"
+    "dist/hartonomous--0.1.0.sql"
     DESTINATION "${PG_SHAREDIR}/extension"
 )

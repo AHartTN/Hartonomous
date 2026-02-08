@@ -44,19 +44,21 @@ public:
 
 
     /**
-     * @brief Entity type for parity-based ID partitioning.
+     * @brief Entity type for bit-partitioning within the spatial index.
+     * Uses the last 2 bits of the 128-bit Hilbert index.
      */
     enum class EntityType {
-        Composition = 0, // Even IDs
-        Atom = 1         // Odd IDs
+        Composition = 0, // Binary 00
+        Atom = 1,        // Binary 01
+        Relation = 2     // Binary 10
     };
 
     /**
      * @brief Encodes a 4D point into a 128-bit Hilbert index.
      *
      * @param coords A 4D vector with each component normalized to the range [0.0, 1.0].
-     * @param type The type of entity being encoded (Atom or Composition).
-     * @return HilbertIndex The resulting 128-bit Hilbert index with enforced parity.
+     * @param type The type of entity being encoded.
+     * @return HilbertIndex The resulting 128-bit Hilbert index with enforced type bits.
      */
     static HilbertIndex encode(const Vec4& coords, EntityType type = EntityType::Composition) {
         // 1. Discretize the floating-point coordinates into a 4-element array of 32-bit integers.
@@ -68,7 +70,6 @@ public:
         }
 
         // 2. Call the PositionToIndex function from the hilbert.hpp library.
-        //    The library returns the untransposed index bits in an array of four uint32.
         std::array<uint32_t, 4> index_segments = hilbert::v2::PositionToIndex<uint32_t, 4>(discrete_coords);
 
         // 3. Pack the segments into a single 128-bit integer.
@@ -78,12 +79,9 @@ public:
         index_val |= static_cast<unsigned __int128>(index_segments[2]) << 32;
         index_val |= static_cast<unsigned __int128>(index_segments[3]);
 
-        // 4. Enforce Parity Rule: Even = Composition, Odd = Atom.
-        if (type == EntityType::Atom) {
-            index_val |= 1; // Force Odd
-        } else {
-            index_val &= ~static_cast<unsigned __int128>(1); // Force Even
-        }
+        // 4. Enforce Type Bits (using last 2 bits).
+        index_val &= ~static_cast<unsigned __int128>(3); // Clear last 2 bits
+        index_val |= static_cast<unsigned __int128>(type);
 
         // 5. Convert to 16-byte array (big-endian for consistency)
         HilbertIndex result;

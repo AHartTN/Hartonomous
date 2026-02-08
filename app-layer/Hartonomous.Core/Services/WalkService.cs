@@ -9,27 +9,21 @@ namespace Hartonomous.Core.Services;
 /// Wraps Walk Engine + text generation via native C++ interop.
 /// All heavy lifting happens in C++.
 /// </summary>
-public sealed class WalkService : IDisposable
+public sealed class WalkService : NativeService
 {
     private readonly EngineService _engine;
-    private readonly IntPtr _walkHandle;
     private readonly ILogger<WalkService> _logger;
-    private bool _disposed;
 
     public WalkService(EngineService engine, ILogger<WalkService> logger)
+        : base(NativeMethods.WalkCreate(engine.DbHandle))
     {
         _engine = engine;
         _logger = logger;
-        _walkHandle = NativeMethods.WalkCreate(engine.DbHandle);
-        if (_walkHandle == IntPtr.Zero)
-            throw new InvalidOperationException($"Failed to create walk engine: {EngineService.GetLastError()}");
     }
 
     public unsafe GenerationOutput Generate(string prompt, double temperature = 0.7,
         int maxTokens = 200, double energyDecay = 0.05, string? stopText = null)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-
         var gp = new GenerateParams
         {
             Temperature = temperature,
@@ -47,8 +41,8 @@ public sealed class WalkService : IDisposable
             gp.StopText[len] = 0;
         }
 
-        if (!NativeMethods.Generate(_walkHandle, _engine.DbHandle, prompt, ref gp, out var result))
-            throw new InvalidOperationException($"Generation failed: {EngineService.GetLastError()}");
+        if (!NativeMethods.Generate(RawHandle, _engine.DbHandle, prompt, ref gp, out var result))
+            throw new InvalidOperationException($"Generation failed: {GetNativeError()}");
 
         try
         {
@@ -80,8 +74,6 @@ public sealed class WalkService : IDisposable
     public unsafe GenerationOutput GenerateStream(string prompt, Action<string, int, double> onFragment,
         double temperature = 0.7, int maxTokens = 200, double energyDecay = 0.05, string? stopText = null)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-
         var gp = new GenerateParams
         {
             Temperature = temperature,
@@ -106,9 +98,9 @@ public sealed class WalkService : IDisposable
             return true;
         };
 
-        if (!NativeMethods.GenerateStream(_walkHandle, _engine.DbHandle, prompt, ref gp,
+        if (!NativeMethods.GenerateStream(RawHandle, _engine.DbHandle, prompt, ref gp,
                 callback, IntPtr.Zero, out var result))
-            throw new InvalidOperationException($"Streaming generation failed: {EngineService.GetLastError()}");
+            throw new InvalidOperationException($"Streaming generation failed: {GetNativeError()}");
 
         try
         {
@@ -135,11 +127,9 @@ public sealed class WalkService : IDisposable
         }
     }
 
-    public void Dispose()
+    protected override void DestroyNative(IntPtr handle)
     {
-        if (_disposed) return;
-        _disposed = true;
-        NativeMethods.WalkDestroy(_walkHandle);
+        NativeMethods.WalkDestroy(handle);
     }
 }
 

@@ -243,6 +243,42 @@ void PostgresConnection::query(const std::string& sql, const std::vector<std::st
     PQclear(result);
 }
 
+void PostgresConnection::stream_query(const std::string& sql, std::function<void(const std::vector<std::string>&)> callback) {
+    if (!is_connected()) throw std::runtime_error("Not connected to database");
+
+    if (PQsendQuery(conn_, sql.c_str()) == 0) {
+        throw std::runtime_error("PQsendQuery failed: " + std::string(PQerrorMessage(conn_)));
+    }
+
+    if (PQsetSingleRowMode(conn_) == 0) {
+        throw std::runtime_error("PQsetSingleRowMode failed");
+    }
+
+    PGresult* res;
+    while ((res = PQgetResult(conn_)) != nullptr) {
+        ExecStatusType status = PQresultStatus(res);
+        
+        if (status == PGRES_SINGLE_TUPLE) {
+            int nfields = PQnfields(res);
+            std::vector<std::string> row;
+            row.reserve(nfields);
+            for (int i = 0; i < nfields; ++i) {
+                row.push_back(PQgetvalue(res, 0, i));
+            }
+            callback(row);
+        } else if (status != PGRES_TUPLES_OK) {
+            // PGRES_TUPLES_OK marks the end of the result set
+            try {
+                check_result(res);
+            } catch (...) {
+                PQclear(res);
+                throw;
+            }
+        }
+        PQclear(res);
+    }
+}
+
 void PostgresConnection::copy_data(const char* buffer, int nbytes) {
     if (!is_connected()) {
         throw std::runtime_error("Not connected to database");

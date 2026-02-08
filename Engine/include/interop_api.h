@@ -205,7 +205,8 @@ HARTONOMOUS_API bool hartonomous_composition_position(h_db_connection_t db_handl
 
 typedef enum {
     H_ENTITY_COMPOSITION = 0,
-    H_ENTITY_ATOM = 1
+    H_ENTITY_ATOM = 1,
+    H_ENTITY_RELATION = 2
 } H_ENTITY_TYPE;
 
 typedef struct HKnowledgeGap {

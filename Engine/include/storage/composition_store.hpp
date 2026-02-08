@@ -1,9 +1,6 @@
 #pragma once
 
-#include <hashing/blake3_pipeline.hpp>
-#include <database/bulk_copy.hpp>
-#include <unordered_set>
-#include <vector>
+#include <storage/substrate_store.hpp>
 
 namespace Hartonomous {
 
@@ -20,30 +17,16 @@ struct CompositionSequenceRecord {
     uint32_t occurrences = 1;
 };
 
-class CompositionStore {
+class CompositionStore : public SubstrateStore<CompositionRecord> {
 public:
     explicit CompositionStore(PostgresConnection& db, bool use_temp_table = true, bool use_binary = false);
-    void store(const CompositionRecord& rec);
-    void flush();
-    size_t count() const { return copy_.count(); }
-
-private:
-    BulkCopy copy_;
-    bool use_dedup_;
-    bool use_binary_;
-    std::unordered_set<BLAKE3Pipeline::Hash, HashHasher> seen_;
+    void store(const CompositionRecord& rec) override;
 };
 
-class CompositionSequenceStore {
+class CompositionSequenceStore : public SubstrateStore<CompositionSequenceRecord> {
 public:
     explicit CompositionSequenceStore(PostgresConnection& db, bool use_temp_table = true, bool use_binary = false);
-    void store(const CompositionSequenceRecord& rec);
-    void flush();
-    size_t count() const { return copy_.count(); }
-
-private:
-    BulkCopy copy_;
-    bool use_binary_;
+    void store(const CompositionSequenceRecord& rec) override;
 };
 
 }

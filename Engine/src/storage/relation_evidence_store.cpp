@@ -4,20 +4,13 @@
 namespace Hartonomous {
 
 RelationEvidenceStore::RelationEvidenceStore(PostgresConnection& db, bool use_temp_table, bool use_binary)
-    : copy_(db, use_temp_table), use_binary_(use_binary), use_dedup_(use_temp_table) {
-    copy_.set_binary(use_binary);
-    copy_.set_conflict_clause(R"(ON CONFLICT ("id") DO UPDATE SET
-        "sourcerating" = EXCLUDED."sourcerating",
-        "signalstrength" = GREATEST(hartonomous.relationevidence."signalstrength", EXCLUDED."signalstrength"))");
-    copy_.begin_table("hartonomous.relationevidence", {
-        "id", "contentid", "relationid", "isvalid", "sourcerating", "signalstrength"
-    });
-}
+    : SubstrateStore(db, "hartonomous.relationevidence", 
+                     {"id", "contentid", "relationid", "isvalid", "sourcerating", "signalstrength"},
+                     use_temp_table, use_binary) {}
 
 void RelationEvidenceStore::store(const RelationEvidenceRecord& rec) {
-    if (use_dedup_) {
-        if (!seen_.insert(rec.id).second) return; // Keep first (highest signal from closer distance)
-    }
+    if (is_duplicate(rec.id)) return;
+
     if (use_binary_) {
         BulkCopy::BinaryRow row;
         row.add_uuid(rec.id);
@@ -39,8 +32,4 @@ void RelationEvidenceStore::store(const RelationEvidenceRecord& rec) {
     }
 }
 
-void RelationEvidenceStore::flush() {
-    copy_.flush();
-}
-
-}
+} // namespace Hartonomous

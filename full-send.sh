@@ -106,20 +106,81 @@ if ./scripts/linux/05-seed-unicode.sh > "$LOG_DIR/04-seed-unicode.log" 2>&1; the
 
     timer_end "Seed Unicode"
 
-    # ======================================================================
-    # STEP 4b: Ingest WordNet and OMW-data
-    # ======================================================================
-    CURRENT_STEP="Ingest WordNet/OMW"
-    print_info "STEP 4b: Ingest WordNet and OMW-data"
-    print_step "Populating Compositions and Relations from WordNet/OMW..."
-    timer_start
-    if ./scripts/linux/06-ingest-wordnet-omw.sh > "$LOG_DIR/04b-ingest-wordnet-omw.log" 2>&1; then
-        print_success "WordNet/OMW ingestion complete"
-        timer_end "Ingest WordNet/OMW"
-    else
-        print_error "WordNet/OMW ingestion failed (see logs/04b-ingest-wordnet-omw.log)"
-        exit 1
-    fi
+        # ═══════════════════════════════════════════════════════════
+        # DROP INDEXES ONCE (Master bulk-load optimization)
+        # ═══════════════════════════════════════════════════════════
+        ./scripts/linux/drop-substrate-indexes.sh
+
+        # ======================================================================
+        # STEP 4b: Ingest WordNet and OMW-data
+        # ======================================================================
+        CURRENT_STEP="Ingest WordNet/OMW"
+        print_info "STEP 4b: Ingest WordNet and OMW-data"
+        print_step "Populating Compositions and Relations from WordNet/OMW..."
+        timer_start
+        if ./scripts/linux/06-ingest-wordnet-omw.sh > "$LOG_DIR/04b-ingest-wordnet-omw.log" 2>&1; then
+            print_success "WordNet/OMW ingestion complete"
+            timer_end "Ingest WordNet/OMW"
+        else
+            print_error "WordNet/OMW ingestion failed (see logs/04b-ingest-wordnet-omw.log)"
+            # Ensure indexes are rebuilt even on failure to maintain DB integrity if possible
+            ./scripts/linux/rebuild-substrate-indexes.sh || true
+            exit 1
+        fi
+
+        # ======================================================================
+        # STEP 4c: Ingest Tatoeba (Translation Links)
+        # ======================================================================
+        CURRENT_STEP="Ingest Tatoeba"
+        print_info "STEP 4c: Ingest Tatoeba"
+        print_step "Ingesting 13M sentences + translation links from Tatoeba..."
+        timer_start
+        if ./scripts/linux/07-ingest-tatoeba.sh > "$LOG_DIR/04c-ingest-tatoeba.log" 2>&1; then
+            print_success "Tatoeba ingestion complete"
+            timer_end "Ingest Tatoeba"
+        else
+            print_error "Tatoeba ingestion failed (see logs/04c-ingest-tatoeba.log)"
+            ./scripts/linux/rebuild-substrate-indexes.sh || true
+            exit 1
+        fi
+
+        # ======================================================================
+        # STEP 4d: Ingest Universal Dependencies
+        # ======================================================================
+        CURRENT_STEP="Ingest UD"
+        print_info "STEP 4d: Ingest Universal Dependencies"
+        print_step "Ingesting dependency treebanks (syntactic/semantic trajectories)..."
+        timer_start
+        if ./scripts/linux/08-ingest-ud.sh > "$LOG_DIR/04d-ingest-ud.log" 2>&1; then
+            print_success "Universal Dependencies ingestion complete"
+            timer_end "Ingest UD"
+        else
+            print_error "Universal Dependencies ingestion failed (see logs/04d-ingest-ud.log)"
+            ./scripts/linux/rebuild-substrate-indexes.sh || true
+            exit 1
+        fi
+
+        # ======================================================================
+        # STEP 4e: Ingest Wiktionary
+        # ======================================================================
+        CURRENT_STEP="Ingest Wiktionary"
+        print_info "STEP 4e: Ingest Wiktionary"
+        print_step "Ingesting 11GB Wiktionary XML (Definitions, Synonyms, Links)..."
+        timer_start
+        if ./scripts/linux/09-ingest-wiktionary.sh > "$LOG_DIR/04e-ingest-wiktionary.log" 2>&1; then
+            print_success "Wiktionary ingestion complete"
+            timer_end "Ingest Wiktionary"
+        else
+            print_error "Wiktionary ingestion failed (see logs/04e-ingest-wiktionary.log)"
+            ./scripts/linux/rebuild-substrate-indexes.sh || true
+            exit 1
+        fi
+
+    # ═══════════════════════════════════════════════════════════
+    # REBUILD INDEXES ONCE (Consolidated finalization)
+    # ═══════════════════════════════════════════════════════════
+    ./scripts/linux/rebuild-substrate-indexes.sh
+
 else
     print_error "Unicode seeding failed (see logs/04-seed-unicode.log)"
     exit 1

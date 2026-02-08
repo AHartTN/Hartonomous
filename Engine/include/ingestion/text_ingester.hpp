@@ -1,31 +1,23 @@
 /**
  * @file text_ingester.hpp
  * @brief Universal text ingestion pipeline
- * 
- * Text ingestion IS the inference path. Every prompt, every conversation,
- * every document goes through here. It must be fast enough for real-time
- * interaction — ingestion is training, there is no context window.
  */
 
 #pragma once
 
 #include <hashing/blake3_pipeline.hpp>
 #include <database/postgres_connection.hpp>
-#include <unicode/codepoint_projection.hpp>
-#include <geometry/super_fibonacci.hpp>
 #include <spatial/hilbert_curve_4d.hpp>
 #include <storage/atom_lookup.hpp>
 #include <ingestion/ngram_extractor.hpp>
+#include <ingestion/substrate_service.hpp>
+#include <utils/unicode.hpp>
 #include <string>
 #include <vector>
 #include <unordered_set>
 #include <unordered_map>
 
 namespace Hartonomous {
-
-using Vec4 = Eigen::Vector4d;
-using hartonomous::unicode::CodepointProjection;
-using hartonomous::spatial::HilbertCurve4D;
 
 struct IngestionStats {
     size_t atoms_total = 0;
@@ -66,34 +58,16 @@ public:
     IngestionStats ingest_file(const std::string& path);
     void set_config(const IngestionConfig& config) { config_ = config; }
 
-    // Preload atom cache — call once at startup for fast subsequent ingestions
     void preload_atoms();
 
 private:
-    struct Physicality { BLAKE3Pipeline::Hash id; Vec4 centroid; HilbertCurve4D::HilbertIndex hilbert_index; };
-    struct Atom { char32_t codepoint; BLAKE3Pipeline::Hash id; Physicality physicality; };
-    struct SequenceItem { BLAKE3Pipeline::Hash id; uint32_t ordinal; uint32_t occurrences; };
-    struct Composition { std::u32string text; BLAKE3Pipeline::Hash id; Physicality physicality; std::vector<SequenceItem> sequence; };
-    struct Relation { BLAKE3Pipeline::Hash id; Physicality physicality; std::vector<SequenceItem> sequence; double initial_elo; bool is_forward; };
-
-    std::u32string utf8_to_utf32(const std::string& s);
-    std::string utf32_to_utf8(const std::u32string& s);
     BLAKE3Pipeline::Hash create_content_record(const std::string& text, BLAKE3Pipeline::Hash* content_hash);
-    std::vector<Atom> extract_atoms(const std::u32string& text);
-    std::vector<Composition> extract_compositions(const std::u32string& text, const std::unordered_map<BLAKE3Pipeline::Hash, Atom, HashHasher>& atom_map);
-    std::vector<Relation> extract_relations(const std::unordered_map<BLAKE3Pipeline::Hash, Composition, HashHasher>& comp_map);
-    Vec4 compute_centroid(const std::vector<Vec4>& positions);
-    Physicality compute_physicality(const Vec4& centroid);
-    void store_all(const BLAKE3Pipeline::Hash& content_id, const std::vector<Atom>& atoms, const std::vector<Composition>& compositions, const std::vector<Relation>& relations, IngestionStats& stats);
-    std::string hash_to_uuid(const BLAKE3Pipeline::Hash& hash);
-    std::string hash_to_hex(const BLAKE3Pipeline::Hash& hash);
-    BLAKE3Pipeline::Hash compute_sequence_hash(const std::vector<SequenceItem>& sequence, uint8_t type_tag);
 
     PostgresConnection& db_;
     IngestionConfig config_;
     NGramExtractor extractor_;
-    AtomLookup atom_lookup_;  // Long-lived, preloaded once
+    AtomLookup atom_lookup_;  
     bool atoms_preloaded_ = false;
 };
 
-}
+} // namespace Hartonomous

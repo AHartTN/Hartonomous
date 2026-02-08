@@ -8,45 +8,26 @@ namespace Hartonomous.Core.Services;
 /// Manages the lifetime of the native C++ engine connection.
 /// Registered as singleton — one connection per application lifetime.
 /// </summary>
-public sealed class EngineService : IDisposable
+public sealed class EngineService : NativeHandle
 {
-    private readonly IntPtr _dbHandle;
     private readonly ILogger<EngineService> _logger;
-    private bool _disposed;
 
     public EngineService(string connectionString, ILogger<EngineService> logger)
+        : base(NativeMethods.DbCreate(connectionString))
     {
         _logger = logger;
-        _dbHandle = NativeMethods.DbCreate(connectionString);
-        if (_dbHandle == IntPtr.Zero)
-            throw new InvalidOperationException($"Failed to connect to native engine: {GetLastError()}");
         _logger.LogInformation("Native engine connected");
     }
 
-    public IntPtr DbHandle
-    {
-        get
-        {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            return _dbHandle;
-        }
-    }
+    public IntPtr DbHandle => RawHandle;
 
-    public bool IsConnected => !_disposed && NativeMethods.DbIsConnected(_dbHandle);
+    public bool IsConnected => NativeMethods.DbIsConnected(RawHandle);
 
-    public static string GetLastError()
-    {
-        var ptr = NativeMethods.GetLastError();
-        return ptr != IntPtr.Zero
-            ? System.Runtime.InteropServices.Marshal.PtrToStringAnsi(ptr) ?? "Unknown error"
-            : "Unknown error";
-    }
+    public static string GetLastError() => GetNativeError();
 
-    public void Dispose()
+    protected override void DestroyNative(IntPtr handle)
     {
-        if (_disposed) return;
-        _disposed = true;
-        NativeMethods.DbDestroy(_dbHandle);
-        _logger.LogInformation("Native engine disconnected");
+        NativeMethods.DbDestroy(handle);
+        _logger?.LogInformation("Native engine disconnected");
     }
 }

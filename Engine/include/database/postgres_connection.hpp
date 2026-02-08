@@ -82,6 +82,12 @@ public:
                std::function<void(const std::vector<std::string>&)> callback);
 
     /**
+     * @brief Stream a large result set row-by-row
+     * Uses PQsetSingleRowMode to avoid memory exhaustion on massive tables.
+     */
+    void stream_query(const std::string& sql, std::function<void(const std::vector<std::string>&)> callback);
+
+    /**
      * @brief Send data for COPY command
      * 
      * @param buffer Data to send

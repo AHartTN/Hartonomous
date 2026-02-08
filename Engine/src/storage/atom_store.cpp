@@ -3,20 +3,25 @@
 
 namespace Hartonomous {
 
-AtomStore::AtomStore(PostgresConnection& db) : copy_(db) {
-    copy_.begin_table("hartonomous.atom", {"id", "codepoint", "physicalityid"});
-}
+AtomStore::AtomStore(PostgresConnection& db, bool use_temp_table, bool use_binary)
+    : SubstrateStore(db, "hartonomous.atom", {"id", "physicalityid", "codepoint"}, use_temp_table, use_binary) {}
 
 void AtomStore::store(const AtomRecord& rec) {
-    std::string uuid = hash_to_uuid(rec.id);
-    if (seen_.count(uuid)) return;
+    if (is_duplicate(rec.id)) return;
 
-    copy_.add_row({uuid, std::to_string(rec.codepoint), hash_to_uuid(rec.physicality_id)});
-    seen_.insert(uuid);
+    if (use_binary_) {
+        BulkCopy::BinaryRow row;
+        row.add_uuid(rec.id);
+        row.add_uuid(rec.physicality_id);
+        row.add_int32(static_cast<int32_t>(rec.codepoint));
+        copy_.add_row(row);
+    } else {
+        copy_.add_row({
+            hash_to_uuid(rec.id),
+            hash_to_uuid(rec.physicality_id),
+            std::to_string(rec.codepoint)
+        });
+    }
 }
 
-void AtomStore::flush() {
-    copy_.flush();
-}
-
-}
+} // namespace Hartonomous

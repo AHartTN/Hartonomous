@@ -31,12 +31,8 @@ public:
      */
     void process_and_ingest();
 
-    /**
-     * @brief Load all UCD metadata from the 'ucd' database schema.
-     */
-    void load_from_database();
-
 private:
+    void ingest_metadata();
     void ingest_assigned_codepoints();
     void ingest_unassigned_codepoints();
 

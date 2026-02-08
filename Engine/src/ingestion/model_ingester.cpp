@@ -1,4 +1,5 @@
 #include <ingestion/model_ingester.hpp>
+#include <storage/format_utils.hpp>
 #include <storage/physicality_store.hpp>
 #include <storage/atom_store.hpp>
 #include <storage/atom_lookup.hpp>
@@ -17,11 +18,14 @@
 #include <atomic>
 #include <chrono>
 #include <omp.h>
+#include <hnswlib/hnswlib.h>
 
 namespace Hartonomous {
 
+
 using namespace hartonomous::spatial;
 using namespace hartonomous::ml;
+
 using Clock = std::chrono::steady_clock;
 
 static double ms_since(Clock::time_point t0) {
@@ -93,6 +97,16 @@ static void flush_records(
               << std::fixed << std::setprecision(0) << ms_since(t0) << "ms" << std::endl;
 }
 
+// Helper to convert TensorData to Eigen Matrix
+static Eigen::MatrixXf tensor_to_matrix(const TensorData* t) {
+    if (!t || t->shape.size() != 2) return Eigen::MatrixXf(0, 0);
+    size_t rows = t->shape[0];
+    size_t cols = t->shape[1];
+    Eigen::MatrixXf mat(rows, cols);
+    std::memcpy(mat.data(), t->data.data(), rows * cols * sizeof(float));
+    return mat;
+}
+
 ModelIngester::ModelIngester(PostgresConnection& db, const ModelIngestionConfig& config)
     : db_(db), config_(config) {
     std::vector<uint8_t> id_data;
@@ -109,11 +123,10 @@ ModelIngestionStats ModelIngester::ingest_package(const std::filesystem::path& p
         SafetensorLoader loader(package_dir.string());
         auto& metadata = loader.metadata();
         stats.vocab_tokens = metadata.vocab.size();
-        std::cout << "Ingesting model with " << stats.vocab_tokens << " vocab tokens..." << std::endl;
+        std::cout << "Ingesting model: " << metadata.model_name << " (" << stats.vocab_tokens << " tokens)" << std::endl;
         std::cout << "  Content ID: " << hash_to_uuid(model_id_) << std::endl;
-        std::cout << "  Starting model ingestion pipeline..." << std::endl;
 
-        // Content record for provenance
+        // 1. Provenance
         try {
             PostgresConnection::Transaction txn(db_);
             ContentStore content_store(db_);
@@ -125,35 +138,80 @@ ModelIngestionStats ModelIngester::ingest_package(const std::filesystem::path& p
             txn.commit();
         } catch (...) {}
 
-        // Phase 1: Vocab → Compositions
+        // 2. Vocab -> Compositions
         auto t0 = Clock::now();
         auto token_to_comp = ingest_vocab_as_text(metadata.vocab, stats);
         std::cout << "  Phase 1 (vocab): " << std::fixed << std::setprecision(0)
                   << ms_since(t0) << "ms | " << stats.compositions_created << " compositions" << std::endl;
 
-        // Phase 2: Embedding KNN → Relations
-        // The embedding matrix IS the model's learned opinions about token relatedness.
-        // Cosine similarity between embedding rows = the model's pre-computed score.
-        // This is an OPINION, not an observed fact — ELO reflects that.
         auto embeddings = loader.get_embeddings();
-        if (embeddings.rows() > 0) {
-            auto t1 = Clock::now();
-            size_t n = std::min(metadata.vocab.size(), static_cast<size_t>(embeddings.rows()));
-            Eigen::MatrixXf norm_embeddings = embeddings.topRows(n);
-            norm_embeddings.rowwise().normalize();
+        if (embeddings.rows() == 0) {
+            std::cerr << "  Error: No embeddings found in model. Aborting." << std::endl;
+            return stats;
+        }
+        
+        // Normalize embeddings once for all passes
+        Eigen::MatrixXf norm_embeddings = embeddings.topRows(std::min(metadata.vocab.size(), (size_t)embeddings.rows()));
+        norm_embeddings.rowwise().normalize();
 
-            std::unordered_set<BLAKE3Pipeline::Hash, HashHasher> session_rel_seen;
-            extract_embedding_edges(metadata.vocab, norm_embeddings, token_to_comp, session_rel_seen, stats);
-            std::cout << "  Phase 2 (embedding KNN): " << ms_since(t1) << "ms" << std::endl;
+        std::unordered_set<BLAKE3Pipeline::Hash, HashHasher> session_rel_seen;
+
+        // 3. Static Embedding Pass (Baseline Similarity)
+        auto t1 = Clock::now();
+        extract_embedding_edges(metadata.vocab, norm_embeddings, token_to_comp, session_rel_seen, stats);
+        std::cout << "  Phase 2 (embedding KNN): " << ms_since(t1) << "ms" << std::endl;
+
+        // 4. Procedural Pass: Attention Mining (Functional Relationships)
+        auto attn_layers = loader.get_attention_layers();
+        if (!attn_layers.empty()) {
+            std::cout << "  Phase 3: Mining Attention layers (Functional paths)..." << std::endl;
+            auto t2 = Clock::now();
+            for (size_t i = 0; i < attn_layers.size(); i += 4) {
+                const auto& layer = attn_layers[i];
+                if (!layer.q_weight || !layer.k_weight) continue;
+
+                std::cout << "    Layer " << layer.layer_index << "..." << std::flush;
+                auto t_layer = Clock::now();
+
+                Eigen::MatrixXf WQ = tensor_to_matrix(layer.q_weight);
+                Eigen::MatrixXf WK = tensor_to_matrix(layer.k_weight);
+
+                Eigen::MatrixXf Q = norm_embeddings * WQ.transpose();
+                Eigen::MatrixXf K = norm_embeddings * WK.transpose();
+                
+                extract_procedural_knn(metadata.vocab, Q, K, token_to_comp, session_rel_seen, stats, 1600.0, "attention");
+                std::cout << " (" << ms_since(t_layer) << "ms)" << std::endl;
+            }
+            std::cout << "  Attention Mining Complete (" << ms_since(t2) << "ms)" << std::endl;
+        }
+
+        // 5. Procedural Pass: FFN Mining (Logical Categories)
+        auto ffn_layers = loader.get_ffn_layers();
+        if (!ffn_layers.empty()) {
+            std::cout << "  Phase 4: Mining FFN layers (Logical gates)..." << std::endl;
+            auto t3 = Clock::now();
+            for (size_t i = 0; i < ffn_layers.size(); i += 8) {
+                const auto& layer = ffn_layers[i];
+                if (!layer.gate_weight) continue;
+
+                std::cout << "    Layer " << layer.layer_index << "..." << std::flush;
+                auto t_layer = Clock::now();
+
+                Eigen::MatrixXf W_gate = tensor_to_matrix(layer.gate_weight);
+                Eigen::MatrixXf G = norm_embeddings * W_gate.transpose();
+                G = G.array() / (1.0f + (-G.array()).exp());
+
+                extract_procedural_knn(metadata.vocab, G, G, token_to_comp, session_rel_seen, stats, 1800.0, "ffn_logic");
+                std::cout << " (" << ms_since(t_layer) << "ms)" << std::endl;
+            }
+            std::cout << "  FFN Mining Complete (" << ms_since(t3) << "ms)" << std::endl;
         }
 
         double total_ms = ms_since(t_pipeline);
-        double rel_per_sec = (total_ms > 0) ? (stats.relations_created / (total_ms / 1000.0)) : 0;
-        std::cout << "\n  === Model Ingestion Complete ===" << std::endl;
-        std::cout << "  Total time:    " << std::fixed << std::setprecision(1) << (total_ms / 1000.0) << "s" << std::endl;
-        std::cout << "  Compositions:  " << stats.compositions_created << std::endl;
+        std::cout << "\n  === Substrate Reinforcement Complete ===" << std::endl;
+        std::cout << "  Total time:    " << (total_ms / 1000.0) << "s" << std::endl;
         std::cout << "  Relations:     " << stats.relations_created << std::endl;
-        std::cout << "  Throughput:    " << std::setprecision(0) << rel_per_sec << " relations/sec" << std::endl;
+        std::cout << "  Throughput:    " << (total_ms > 0 ? (stats.relations_created / (total_ms / 1000.0)) : 0) << " relations/sec" << std::endl;
 
     } catch (const std::exception& e) {
         std::cerr << "Model ingestion failed: " << e.what() << std::endl;
@@ -188,7 +246,7 @@ ModelIngester::ingest_vocab_as_text(const std::vector<std::string>& vocab, Model
     int num_threads = omp_get_max_threads();
     struct TokenMapping {
         std::string token;
-        BLAKE3Pipeline::Hash second; // composition ID (named to minimize other changes)
+        BLAKE3Pipeline::Hash second;
         Eigen::Vector4d centroid;
     };
     struct Local {
@@ -241,13 +299,16 @@ ModelIngester::ingest_vocab_as_text(const std::vector<std::string>& vocab, Model
 
         std::vector<uint8_t> pdata = {0x50};
         pdata.insert(pdata.end(), reinterpret_cast<const uint8_t*>(centroid.data()),
-                     reinterpret_cast<const uint8_t*>(centroid.data()) + 32);
+                     reinterpret_cast<const uint8_t*>(centroid.data()) + sizeof(double) * 4);
+        for (const auto& p : positions)
+            pdata.insert(pdata.end(), reinterpret_cast<const uint8_t*>(p.data()),
+                         reinterpret_cast<const uint8_t*>(p.data()) + sizeof(double) * 4);
         auto pid = BLAKE3Pipeline::hash(pdata);
 
         if (tl.phys_seen.insert(pid).second) {
             Eigen::Vector4d hc;
             for (int k = 0; k < 4; ++k) hc[k] = (centroid[k] + 1.0) / 2.0;
-            tl.phys.push_back({pid, HilbertCurve4D::encode(hc), centroid, positions});
+            tl.phys.push_back({pid, HilbertCurve4D::encode(hc, HilbertCurve4D::EntityType::Composition), centroid, positions});
         }
         tl.comp.push_back({cid, pid});
         tl.created++;
@@ -273,7 +334,6 @@ ModelIngester::ingest_vocab_as_text(const std::vector<std::string>& vocab, Model
         stats.compositions_created += tl.created;
     }
 
-    // Single transaction for all vocab stores
     PostgresConnection::Transaction txn(db_);
     {
         PhysicalityStore store(db_, true, true);
@@ -303,181 +363,232 @@ void ModelIngester::extract_embedding_edges(
 
     size_t n = static_cast<size_t>(norm_embeddings.rows());
     if (n < 2) return;
+    int dim = static_cast<int>(norm_embeddings.cols());
     size_t k = std::min(config_.max_neighbors_per_token, n - 1);
     float threshold = static_cast<float>(config_.embedding_similarity_threshold);
 
-    std::cout << "    Embedding KNN: " << n << " tokens, k=" << k
-              << ", threshold=" << std::fixed << std::setprecision(2) << threshold << std::endl;
+    std::cout << "    Building HNSW index for " << n << " tokens (dim=" << dim << ")..." << std::flush;
+    auto t_start = Clock::now();
 
-    auto t0 = Clock::now();
-    constexpr size_t BLOCK = 1024;
+    hnswlib::InnerProductSpace space(dim);
+    hnswlib::HierarchicalNSW<float>* alg_hnsw = new hnswlib::HierarchicalNSW<float>(&space, n, 16, 200);
+
+    #pragma omp parallel for schedule(dynamic, 1024)
+    for (size_t i = 0; i < n; ++i) {
+        alg_hnsw->addPoint(norm_embeddings.row(i).data(), i);
+    }
+    std::cout << " (" << ms_since(t_start) << "ms)" << std::endl;
+
+    std::cout << "    Extracting relations (k=" << k << ", threshold=" << threshold << ")..." << std::flush;
+    t_start = Clock::now();
+
+    double base_elo = 1000.0;
+    double elo_range = 500.0;
+    std::atomic<size_t> edges_found{0};
     int num_threads = omp_get_max_threads();
     std::vector<ThreadLocalRecords> locals(num_threads);
 
-    // Model opinions get moderate ELO — not as authoritative as observed text
-    // sim=0.4 → ELO=1200, sim=0.8 → ELO=1400, sim=1.0 → ELO=1500
-    double base_elo = 1000.0;
-    double elo_range = 500.0;
+    #pragma omp parallel for schedule(dynamic, 512)
+    for (size_t i = 0; i < n; ++i) {
+        auto& tl = locals[omp_get_thread_num()];
+        auto it_s = token_to_comp.find(vocab[i]);
+        if (it_s == token_to_comp.end()) continue;
+        const auto& scid = it_s->second;
 
-    std::atomic<size_t> edges_found{0};
-    size_t total_blocks = (n + BLOCK - 1) / BLOCK;
-    size_t blocks_processed = 0;
+        auto result = alg_hnsw->searchKnn(norm_embeddings.row(i).data(), k + 1);
+        
+        while (!result.empty()) {
+            auto top = result.top();
+            result.pop();
+            if (top.second == i) continue;
 
-    for (size_t block_start = 0; block_start < n; block_start += BLOCK) {
-        size_t block_end = std::min(block_start + BLOCK, n);
-        size_t block_rows = block_end - block_start;
+            float sim = 1.0f - top.first;
+            if (sim < threshold) continue;
 
-        // Blocked GEMM: cosine similarity for this block against all tokens
-        Eigen::MatrixXf scores = norm_embeddings.middleRows(block_start, block_rows) * norm_embeddings.topRows(n).transpose();
+            auto it_t = token_to_comp.find(vocab[top.second]);
+            if (it_t == token_to_comp.end()) continue;
+            const auto& tcid = it_t->second;
 
-        #pragma omp parallel for schedule(dynamic, 32)
-        for (size_t bi = 0; bi < block_rows; ++bi) {
-            size_t i = block_start + bi;
-            auto& tl = locals[omp_get_thread_num()];
-            auto it_s = token_to_comp.find(vocab[i]);
-            if (it_s == token_to_comp.end()) continue;
-            const auto& scid = it_s->second;
+            const auto& lo = (std::memcmp(scid.data(), tcid.data(), 16) < 0) ? scid : tcid;
+            const auto& hi = (&lo == &scid) ? tcid : scid;
 
-            // Collect above-threshold neighbors
-            struct Edge { size_t j; float sim; };
-            std::vector<Edge> candidates;
-            candidates.reserve(128);
+            uint8_t rdata[33];
+            rdata[0] = 0x52;
+            std::memcpy(rdata + 1, lo.data(), 16);
+            std::memcpy(rdata + 17, hi.data(), 16);
+            auto rid = BLAKE3Pipeline::hash(rdata, 33);
 
-            for (size_t j = 0; j < n; ++j) {
-                if (j == i) continue;
-                float sim = scores(bi, j);
-                if (sim < threshold) continue;
-                candidates.push_back({j, sim});
-            }
-
-            if (candidates.empty()) continue;
-
-            // Keep top-K
-            if (candidates.size() > k) {
-                std::partial_sort(candidates.begin(), candidates.begin() + k, candidates.end(),
-                                  [](const Edge& a, const Edge& b) { return a.sim > b.sim; });
-                candidates.resize(k);
-            }
-
-            for (auto& [j, sim] : candidates) {
-                auto it_t = token_to_comp.find(vocab[j]);
-                if (it_t == token_to_comp.end()) continue;
-                const auto& tcid = it_t->second;
-
-                // Canonical ordering for deterministic relation ID
-                const auto& lo = (std::memcmp(scid.data(), tcid.data(), 16) < 0) ? scid : tcid;
-                const auto& hi = (&lo == &scid) ? tcid : scid;
-
-                uint8_t rdata[33];
-                rdata[0] = 0x52;
-                std::memcpy(rdata + 1, lo.data(), 16);
-                std::memcpy(rdata + 17, hi.data(), 16);
-                auto rid = BLAKE3Pipeline::hash(rdata, 33);
-
-                if (tl.rel_seen.insert(rid).second && session_rel_seen.find(rid) == session_rel_seen.end()) {
-                    Eigen::Vector4d rel_centroid;
-                    auto it_sc = comp_centroids_.find(scid);
-                    auto it_tc = comp_centroids_.find(tcid);
-                    if (it_sc != comp_centroids_.end() && it_tc != comp_centroids_.end()) {
-                        rel_centroid = (it_sc->second + it_tc->second) * 0.5;
-                        double nrm = rel_centroid.norm();
-                        if (nrm > 1e-10) rel_centroid /= nrm;
-                        else rel_centroid = Eigen::Vector4d(1, 0, 0, 0);
-                    } else {
-                        rel_centroid = Eigen::Vector4d(0.5, 0.5, 0.5, 0.5);
-                        rel_centroid.normalize();
-                    }
-
-                    uint8_t pdata[33];
-                    pdata[0] = 0x50;
-                    std::memcpy(pdata + 1, rel_centroid.data(), sizeof(double) * 4);
-                    auto prid = BLAKE3Pipeline::hash(pdata, 33);
-
-                    if (tl.phys_seen.insert(prid).second) {
-                        Eigen::Vector4d hc;
-                        for (int d = 0; d < 4; ++d) hc[d] = (rel_centroid[d] + 1.0) / 2.0;
-                        std::vector<Eigen::Vector4d> traj;
-                        if (it_sc != comp_centroids_.end()) traj.push_back(it_sc->second);
-                        if (it_tc != comp_centroids_.end()) traj.push_back(it_tc->second);
-                        tl.phys.push_back({prid, HilbertCurve4D::encode(hc), rel_centroid, traj});
-                    }
-                    tl.rel.push_back({rid, prid});
-
-                    for (uint32_t ord = 0; ord < 2; ++ord) {
-                        const auto& cid = (ord == 0) ? scid : tcid;
-                        uint8_t sdata[37];
-                        sdata[0] = 0x54;
-                        std::memcpy(sdata + 1, rid.data(), 16);
-                        std::memcpy(sdata + 17, cid.data(), 16);
-                        std::memcpy(sdata + 33, &ord, 4);
-                        tl.rel_seq.push_back({BLAKE3Pipeline::hash(sdata, 37), rid, cid, ord, 1});
-                    }
-
-                    // Evidence: model opinion, signal_strength = cosine similarity [0,1]
-                    // Clamp to [0,1] to prevent DB constraint violations (floating point error can yield > 1.0)
-                    double clamped_sim = std::clamp(static_cast<double>(sim), 0.0, 1.0);
-
-                    uint8_t edata[32];
-                    std::memcpy(edata, model_id_.data(), 16);
-                    std::memcpy(edata + 16, rid.data(), 16);
-                    tl.ev.push_back({BLAKE3Pipeline::hash(edata, 32), model_id_, rid, true,
-                                     base_elo + elo_range * clamped_sim,
-                                     clamped_sim});
-                    tl.relations_created++;
+            if (tl.rel_seen.insert(rid).second && session_rel_seen.find(rid) == session_rel_seen.end()) {
+                Eigen::Vector4d rel_centroid;
+                auto it_sc = comp_centroids_.find(scid);
+                auto it_tc = comp_centroids_.find(tcid);
+                
+                if (it_sc != comp_centroids_.end() && it_tc != comp_centroids_.end()) {
+                    rel_centroid = (it_sc->second + it_tc->second) * 0.5;
+                    double nrm = rel_centroid.norm();
+                    if (nrm > 1e-10) rel_centroid /= nrm;
+                    else rel_centroid = Eigen::Vector4d(1, 0, 0, 0);
+                } else {
+                    rel_centroid = Eigen::Vector4d(1, 0, 0, 0);
                 }
 
-                // Rating: model opinion, moderate ELO
-                tl.rating.push_back({rid, 1, base_elo + elo_range * static_cast<double>(sim), 32.0});
+                std::vector<Eigen::Vector4d> traj;
+                if (it_sc != comp_centroids_.end()) traj.push_back(it_sc->second);
+                if (it_tc != comp_centroids_.end()) traj.push_back(it_tc->second);
+
+                size_t rel_phys_data_len = 1 + sizeof(double) * 4 + traj.size() * sizeof(double) * 4;
+                std::vector<uint8_t> pdata(rel_phys_data_len);
+                pdata[0] = 0x50;
+                std::memcpy(pdata.data() + 1, rel_centroid.data(), sizeof(double) * 4);
+                for (size_t pt_idx = 0; pt_idx < traj.size(); ++pt_idx)
+                    std::memcpy(pdata.data() + 1 + sizeof(double) * 4 + pt_idx * sizeof(double) * 4, traj[pt_idx].data(), sizeof(double) * 4);
+                auto prid = BLAKE3Pipeline::hash(pdata.data(), rel_phys_data_len);
+
+                if (tl.phys_seen.insert(prid).second) {
+                    Eigen::Vector4d hc;
+                    for (int d = 0; d < 4; ++d) hc[d] = (rel_centroid[d] + 1.0) / 2.0;
+                    tl.phys.push_back({prid, HilbertCurve4D::encode(hc, HilbertCurve4D::EntityType::Relation), rel_centroid, traj});
+                }
+                tl.rel.push_back({rid, prid});
+
+                for (uint32_t ord = 0; ord < 2; ++ord) {
+                    const auto& cid = (ord == 0) ? scid : tcid;
+                    uint8_t sdata[37];
+                    sdata[0] = 0x54;
+                    std::memcpy(sdata + 1, rid.data(), 16);
+                    std::memcpy(sdata + 17, cid.data(), 16);
+                    std::memcpy(sdata + 33, &ord, 4);
+                    tl.rel_seq.push_back({BLAKE3Pipeline::hash(sdata, 37), rid, cid, ord, 1});
+                }
+
+                double clamped_sim = std::clamp(static_cast<double>(sim), 0.0, 1.0);
+                uint8_t edata[32];
+                std::memcpy(edata, model_id_.data(), 16);
+                std::memcpy(edata + 16, rid.data(), 16);
+                tl.ev.push_back({BLAKE3Pipeline::hash(edata, 32), model_id_, rid, true,
+                                 base_elo + elo_range * clamped_sim, clamped_sim});
+                tl.relations_created++;
+                edges_found.fetch_add(1, std::memory_order_relaxed);
             }
-            edges_found.fetch_add(candidates.size(), std::memory_order_relaxed);
+            tl.rating.push_back({rid, 1, base_elo + elo_range * static_cast<double>(sim), 32.0});
         }
-
-        blocks_processed++;
-        double elapsed_s = ms_since(t0) / 1000.0;
-        double avg_block_time = elapsed_s / blocks_processed;
-        double eta_s = avg_block_time * (total_blocks - blocks_processed);
-        
-        std::cout << "    [KNN] " << std::setw(3) << (100 * blocks_processed / total_blocks) << "% " 
-                  << blocks_processed << "/" << total_blocks << " blocks | "
-                  << "Edges: " << edges_found.load() << " | "
-                  << "ETA: " << std::fixed << std::setprecision(0) << eta_s << "s    \r" << std::flush;
     }
-    std::cout << std::endl; // Clear line after progress bar
 
-    double total_ms = ms_since(t0);
-    std::cout << "    Embedding KNN (" << BLOCK << "-block GEMM): "
-              << std::fixed << std::setprecision(0) << total_ms << "ms | "
-              << edges_found.load() << " edges found" << std::endl;
-
+    delete alg_hnsw;
+    std::cout << " (" << ms_since(t_start) << "ms) | Edges: " << edges_found.load() << std::endl;
     flush_records(db_, locals, session_rel_seen, stats.relations_created);
 }
 
-// Stub implementations — attention/FFN weight matrices don't map to tokens
-void ModelIngester::extract_attention_layer_edges(
-    const std::vector<AttentionLayer>&, const std::vector<std::string>&,
-    const Eigen::MatrixXf&, const Eigen::MatrixXf&,
-    const std::unordered_map<std::string, BLAKE3Pipeline::Hash>&,
-    std::unordered_set<BLAKE3Pipeline::Hash, HashHasher>&,
-    ModelIngestionStats&) {}
+void ModelIngester::extract_procedural_knn(
+    const std::vector<std::string>& vocab, const Eigen::MatrixXf& Q, const Eigen::MatrixXf& K,
+    const std::unordered_map<std::string, BLAKE3Pipeline::Hash>& token_to_comp,
+    std::unordered_set<BLAKE3Pipeline::Hash, HashHasher>& session_rel_seen,
+    ModelIngestionStats& stats, double base_elo, const std::string& type_tag) {
 
-void ModelIngester::extract_ffn_layer_edges(
-    const std::vector<FFNLayer>&, const std::vector<std::string>&,
-    const Eigen::MatrixXf&, const Eigen::MatrixXf&,
-    const std::unordered_map<std::string, BLAKE3Pipeline::Hash>&,
-    std::unordered_set<BLAKE3Pipeline::Hash, HashHasher>&,
-    ModelIngestionStats&) {}
+    size_t n = static_cast<size_t>(Q.rows());
+    int dim = static_cast<int>(Q.cols());
+    size_t k = 16; 
+    float threshold = 0.5f;
 
-void ModelIngester::extract_attention_edges(const std::vector<Eigen::MatrixXd>&, const std::vector<std::string>&, const std::unordered_map<std::string, BLAKE3Pipeline::Hash>&, ModelIngestionStats&) {}
+    hnswlib::InnerProductSpace space(dim);
+    hnswlib::HierarchicalNSW<float>* alg_hnsw = new hnswlib::HierarchicalNSW<float>(&space, n, 16, 200);
 
-void ModelIngester::ingest_tensor(const std::string&, const TensorData&, ModelIngestionStats& stats) { stats.tensors_processed++; }
-
-std::string ModelIngester::hash_to_uuid(const BLAKE3Pipeline::Hash& hash) {
-    char buf[37]; char* p = buf; static const char* hex = "0123456789abcdef";
-    for (int i = 0; i < 16; ++i) {
-        if (i == 4 || i == 6 || i == 8 || i == 10) *p++ = '-';
-        *p++ = hex[(hash[i] >> 4) & 0xF]; *p++ = hex[hash[i] & 0xF];
+    #pragma omp parallel for schedule(dynamic, 1024)
+    for (size_t i = 0; i < n; ++i) {
+        Eigen::VectorXf row = K.row(i);
+        row.normalize();
+        alg_hnsw->addPoint(row.data(), i);
     }
-    *p = '\0'; return std::string(buf, 36);
+
+    int num_threads = omp_get_max_threads();
+    std::vector<ThreadLocalRecords> locals(num_threads);
+
+    #pragma omp parallel for schedule(dynamic, 512)
+    for (size_t i = 0; i < n; ++i) {
+        auto& tl = locals[omp_get_thread_num()];
+        auto it_s = token_to_comp.find(vocab[i]);
+        if (it_s == token_to_comp.end()) continue;
+        const auto& scid = it_s->second;
+
+        Eigen::VectorXf q_vec = Q.row(i);
+        q_vec.normalize();
+        auto result = alg_hnsw->searchKnn(q_vec.data(), k + 1);
+        
+        while (!result.empty()) {
+            auto top = result.top();
+            result.pop();
+            if (top.second == i) continue;
+
+            float sim = 1.0f - top.first;
+            if (sim < threshold) continue;
+
+            auto it_t = token_to_comp.find(vocab[top.second]);
+            if (it_t == token_to_comp.end()) continue;
+            const auto& tcid = it_t->second;
+
+            const auto& lo = (std::memcmp(scid.data(), tcid.data(), 16) < 0) ? scid : tcid;
+            const auto& hi = (&lo == &scid) ? tcid : scid;
+
+            uint8_t rdata[33];
+            rdata[0] = 0x52;
+            std::memcpy(rdata + 1, lo.data(), 16);
+            std::memcpy(rdata + 17, hi.data(), 16);
+            auto rid = BLAKE3Pipeline::hash(rdata, 33);
+
+            if (tl.rel_seen.insert(rid).second && session_rel_seen.find(rid) == session_rel_seen.end()) {
+                Eigen::Vector4d rel_centroid;
+                auto it_sc = comp_centroids_.find(scid);
+                auto it_tc = comp_centroids_.find(tcid);
+                if (it_sc != comp_centroids_.end() && it_tc != comp_centroids_.end()) {
+                    rel_centroid = (it_sc->second + it_tc->second) * 0.5;
+                    double nrm = rel_centroid.norm();
+                    if (nrm > 1e-10) rel_centroid /= nrm; else rel_centroid = Eigen::Vector4d(1, 0, 0, 0);
+                } else {
+                    rel_centroid = Eigen::Vector4d(1, 0, 0, 0);
+                }
+
+                std::vector<Eigen::Vector4d> traj;
+                if (it_sc != comp_centroids_.end()) traj.push_back(it_sc->second);
+                if (it_tc != comp_centroids_.end()) traj.push_back(it_tc->second);
+
+                size_t rel_phys_data_len = 1 + sizeof(double) * 4 + traj.size() * sizeof(double) * 4;
+                std::vector<uint8_t> pdata(rel_phys_data_len);
+                pdata[0] = 0x50;
+                std::memcpy(pdata.data() + 1, rel_centroid.data(), sizeof(double) * 4);
+                for (size_t pt_idx = 0; pt_idx < traj.size(); ++pt_idx)
+                    std::memcpy(pdata.data() + 1 + sizeof(double) * 4 + pt_idx * sizeof(double) * 4, traj[pt_idx].data(), sizeof(double) * 4);
+                auto prid = BLAKE3Pipeline::hash(pdata.data(), rel_phys_data_len);
+
+                if (tl.phys_seen.insert(prid).second) {
+                    Eigen::Vector4d hc;
+                    for (int d = 0; d < 4; ++d) hc[d] = (rel_centroid[d] + 1.0) / 2.0;
+                    tl.phys.push_back({prid, HilbertCurve4D::encode(hc, HilbertCurve4D::EntityType::Relation), rel_centroid, traj});
+                }
+                tl.rel.push_back({rid, prid});
+
+                for (uint32_t ord = 0; ord < 2; ++ord) {
+                    const auto& cid = (ord == 0) ? scid : tcid;
+                    uint8_t sdata[37]; sdata[0] = 0x54;
+                    std::memcpy(sdata + 1, rid.data(), 16);
+                    std::memcpy(sdata + 17, cid.data(), 16);
+                    std::memcpy(sdata + 33, &ord, 4);
+                    tl.rel_seq.push_back({BLAKE3Pipeline::hash(sdata, 37), rid, cid, ord, 1});
+                }
+
+                double clamped_sim = std::clamp(static_cast<double>(sim), 0.0, 1.0);
+                uint8_t edata[32];
+                std::memcpy(edata, model_id_.data(), 16);
+                std::memcpy(edata + 16, rid.data(), 16);
+                tl.ev.push_back({BLAKE3Pipeline::hash(edata, 32), model_id_, rid, true,
+                                 base_elo + 200.0 * clamped_sim, clamped_sim});
+                tl.relations_created++;
+            }
+            tl.rating.push_back({rid, 1, base_elo + 200.0 * static_cast<double>(sim), 32.0});
+        }
+    }
+
+    delete alg_hnsw;
+    flush_records(db_, locals, session_rel_seen, stats.relations_created);
 }
 
 }

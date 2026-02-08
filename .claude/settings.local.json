@@ -38,7 +38,8 @@
       "WebSearch",
       "WebFetch(domain:github.com)",
       "Bash(dmesg:*)",
-      "Bash(journalctl:*)"
+      "Bash(journalctl:*)",
+      "Bash(python3:*)"
     ]
   }
 }

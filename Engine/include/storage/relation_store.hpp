@@ -1,10 +1,7 @@
 #pragma once
 
-#include <hashing/blake3_pipeline.hpp>
-#include <database/bulk_copy.hpp>
-#include <unordered_set>
+#include <storage/substrate_store.hpp>
 #include <unordered_map>
-#include <vector>
 
 namespace Hartonomous {
 
@@ -28,32 +25,18 @@ struct RelationRatingRecord {
     double k_factor = 32.0;
 };
 
-class RelationStore {
+class RelationStore : public SubstrateStore<RelationRecord> {
 public:
     explicit RelationStore(PostgresConnection& db, bool use_temp_table = true, bool use_binary = false);
-    void store(const RelationRecord& rec);
-    void flush();
-    size_t count() const { return copy_.count(); }
-
-private:
-    BulkCopy copy_;
-    bool use_dedup_;
-    bool use_binary_;
-    std::unordered_set<BLAKE3Pipeline::Hash, HashHasher> seen_;
+    void store(const RelationRecord& rec) override;
 };
 
-class RelationSequenceStore {
+class RelationSequenceStore : public SubstrateStore<RelationSequenceRecord> {
 public:
     explicit RelationSequenceStore(PostgresConnection& db, bool use_temp_table = true, bool use_binary = false);
-    void store(const RelationSequenceRecord& rec);
-    void flush();
-    size_t count() const { return copy_.count(); }
+    void store(const RelationSequenceRecord& rec) override;
 
 private:
-    BulkCopy copy_;
-    bool use_dedup_;
-    bool use_binary_;
-    // Dedup key: (relation_id, ordinal) — matches the unique constraint
     struct SeqKey {
         BLAKE3Pipeline::Hash relation_id;
         uint32_t ordinal;
@@ -68,21 +51,17 @@ private:
             return h;
         }
     };
-    std::unordered_set<SeqKey, SeqKeyHasher> seen_;
+    std::unordered_set<SeqKey, SeqKeyHasher> seen_seq_;
 };
 
-class RelationRatingStore {
+class RelationRatingStore : public SubstrateStore<RelationRatingRecord> {
 public:
     explicit RelationRatingStore(PostgresConnection& db, bool use_binary = false);
-    void store(const RelationRatingRecord& rec);
-    void flush();
-    size_t count() const { return copy_.count(); }
+    void store(const RelationRatingRecord& rec) override;
+    void flush() override;
 
 private:
-    BulkCopy copy_;
-    bool use_binary_;
-    // Pre-aggregate ratings for same relation_id within a batch.
-    // Key = relation_id, Value = accumulated record.
+    void emit_pending();
     std::unordered_map<BLAKE3Pipeline::Hash, RelationRatingRecord, HashHasher> pending_;
 };
 

@@ -22,11 +22,23 @@ target_link_libraries(ingest_model PRIVATE engine_io)
 add_executable(ingest_wordnet_omw ingest_wordnet_omw.cpp)
 target_link_libraries(ingest_wordnet_omw PRIVATE engine_io)
 
+# --- Ingest Tatoeba: Translation-linked sentences ---
+add_executable(ingest_tatoeba ingest_tatoeba.cpp)
+target_link_libraries(ingest_tatoeba PRIVATE engine_io)
+
+# --- Ingest Universal Dependencies: Dependency treebanks ---
+add_executable(ingest_ud ingest_ud.cpp)
+target_link_libraries(ingest_ud PRIVATE engine_io)
+
+# --- Ingest Wiktionary XML: Dictionary definitions and relations ---
+add_executable(ingest_wiktionary_xml ingest_wiktionary_xml.cpp)
+target_link_libraries(ingest_wiktionary_xml PRIVATE engine_io)
+
 # --- Walk Test: Test graph navigation ---
 add_executable(walk_test walk_test.cpp)
 target_link_libraries(walk_test PRIVATE engine_io)
 
 # Install all tools
-install(TARGETS seed_unicode ingest_text ingest_model ingest_wordnet_omw walk_test
+install(TARGETS seed_unicode ingest_text ingest_model ingest_wordnet_omw ingest_tatoeba ingest_ud ingest_wiktionary_xml walk_test
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )

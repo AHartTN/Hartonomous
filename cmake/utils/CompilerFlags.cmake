@@ -43,6 +43,11 @@ function(apply_hartonomous_compiler_flags target)
             $<$<CONFIG:Release>:
                 -O3                      # Maximum optimization
                 -mtune=native            # Tune for this CPU
+                -mavx512f                # AVX-512 Foundation
+                -mavx512vl               # AVX-512 Vector Length
+                -mavx512bw               # AVX-512 Byte/Word
+                -mavx512dq               # AVX-512 Double/Quad
+                -mavx512vnni             # AVX-512 Vector Neural Network Instructions (14900KS)
                 -ffast-math              # Fast floating point
                 -funroll-loops           # Unroll loops
                 -fomit-frame-pointer     # Omit frame pointer

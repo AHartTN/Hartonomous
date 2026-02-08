@@ -65,45 +65,22 @@ private:
 
     void extract_embedding_edges(
         const std::vector<std::string>& vocab,
-        const Eigen::MatrixXf& embeddings,
-        const std::unordered_map<std::string, BLAKE3Pipeline::Hash>& token_to_comp,
-        std::unordered_set<BLAKE3Pipeline::Hash, HashHasher>& session_rel_seen,
-        ModelIngestionStats& stats
-    );
-
-    void extract_attention_edges(
-        const std::vector<Eigen::MatrixXd>& attention_weights,
-        const std::vector<std::string>& tokens,
-        const std::unordered_map<std::string, BLAKE3Pipeline::Hash>& token_to_comp,
-        ModelIngestionStats& stats
-    );
-
-    void extract_attention_layer_edges(
-        const std::vector<AttentionLayer>& layers,
-        const std::vector<std::string>& vocab,
-        const Eigen::MatrixXf& embeddings,
         const Eigen::MatrixXf& norm_embeddings,
         const std::unordered_map<std::string, BLAKE3Pipeline::Hash>& token_to_comp,
         std::unordered_set<BLAKE3Pipeline::Hash, HashHasher>& session_rel_seen,
         ModelIngestionStats& stats
     );
 
-    void extract_ffn_layer_edges(
-        const std::vector<FFNLayer>& layers,
+    void extract_procedural_knn(
         const std::vector<std::string>& vocab,
-        const Eigen::MatrixXf& embeddings,
-        const Eigen::MatrixXf& norm_embeddings,
+        const Eigen::MatrixXf& Q,
+        const Eigen::MatrixXf& K,
         const std::unordered_map<std::string, BLAKE3Pipeline::Hash>& token_to_comp,
         std::unordered_set<BLAKE3Pipeline::Hash, HashHasher>& session_rel_seen,
-        ModelIngestionStats& stats
+        ModelIngestionStats& stats,
+        double base_elo,
+        const std::string& type_tag
     );
-
-    void ingest_tensor(const std::string& name, const TensorData& tensor, ModelIngestionStats& stats);
-
-    // Deprecated - physicality comes from content, not embeddings
-    BLAKE3Pipeline::Hash create_physicality_from_unicode(const std::string& text);
-
-    std::string hash_to_uuid(const BLAKE3Pipeline::Hash& hash);
 
     std::unordered_map<BLAKE3Pipeline::Hash, Eigen::Vector4d, HashHasher> comp_centroids_;
 };

@@ -22,8 +22,8 @@ enable_pic(engine_core_objs)
 enable_pic(engine_io_objs)
 
 # Set compile definitions
-target_compile_definitions(engine_core_objs PRIVATE HARTONOMOUS_EXPORT)
-target_compile_definitions(engine_io_objs PRIVATE HARTONOMOUS_EXPORT)
+target_compile_definitions(engine_core_objs PRIVATE HARTONOMOUS_EXPORT EIGEN_USE_MKL_ALL)
+target_compile_definitions(engine_io_objs PRIVATE HARTONOMOUS_EXPORT EIGEN_USE_MKL_ALL)
 
 # Configure includes and dependencies for object libraries
 target_include_directories(engine_core_objs
@@ -50,8 +50,9 @@ target_link_libraries(engine_core_objs
         Eigen3::Eigen
         HNSW::HNSW
         OpenMP::OpenMP_CXX
-    PRIVATE
+        PostgreSQL::LibPQ
         Spectra::Spectra
+    PRIVATE
         MKL::MKL
 )
 

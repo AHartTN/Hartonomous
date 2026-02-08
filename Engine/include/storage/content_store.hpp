@@ -1,9 +1,6 @@
 #pragma once
 
-#include <hashing/blake3_pipeline.hpp>
-#include <database/bulk_copy.hpp>
-#include <unordered_set>
-#include <cstdint>
+#include <storage/substrate_store.hpp>
 
 namespace Hartonomous {
 
@@ -20,17 +17,10 @@ struct ContentRecord {
     std::string encoding;
 };
 
-class ContentStore {
+class ContentStore : public SubstrateStore<ContentRecord> {
 public:
     explicit ContentStore(PostgresConnection& db, bool use_temp_table = true, bool use_binary = false);
-    void store(const ContentRecord& rec);
-    void flush();
-    size_t count() const { return copy_.count(); }
-
-private:
-    BulkCopy copy_;
-    bool use_binary_;
-    std::unordered_set<std::string> seen_;
+    void store(const ContentRecord& rec) override;
 };
 
 }
