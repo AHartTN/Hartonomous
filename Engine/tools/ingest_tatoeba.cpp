@@ -1,6 +1,10 @@
 // ingest_tatoeba.cpp
 // High-performance bulk ingestion for Tatoeba translation sentences
-// Refactored to use centralized SubstrateService and AsyncFlusher.
+// Architecture: Word-level decomposition with adjacency relations.
+//   - Each sentence decomposed into word-level compositions
+//   - Adjacency relations capture word order (grammar patterns)
+//   - Translation links create cross-lingual word co-occurrence relations
+//   - CJK characters tokenized individually (they ARE semantic units)
 
 #include <database/postgres_connection.hpp>
 #include <storage/atom_lookup.hpp>
@@ -14,13 +18,14 @@
 #include <iostream>
 #include <iomanip>
 #include <fstream>
-#include <sstream>
 #include <string>
 #include <vector>
 #include <unordered_map>
 #include <unordered_set>
 #include <filesystem>
 #include <algorithm>
+#include <cstdlib>
+#include <cstring>
 #include <omp.h>
 #include <atomic>
 
@@ -48,7 +53,12 @@ struct EvidenceKeyHasher {
 };
 
 std::unordered_set<EvidenceKey, EvidenceKeyHasher> g_evidence_cache;
-std::unordered_map<uint32_t, Service::CachedComp> g_id_to_comp;
+
+// Per-sentence: store the word compositions for translation link processing
+struct SentenceWords {
+    std::vector<Service::CachedComp> words;
+};
+std::unordered_map<uint32_t, SentenceWords> g_id_to_words;
 
 std::atomic<size_t> g_comp_count{0};
 std::atomic<size_t> g_rel_count{0};
@@ -57,7 +67,7 @@ std::atomic<size_t> g_rel_count{0};
 // Merge Helper
 // ─────────────────────────────────────────────
 
-void merge_comp(const Service::ComputedComp& cc, const std::string& text, uint32_t sid, SubstrateBatch& batch) {
+void merge_comp(const Service::ComputedComp& cc, SubstrateBatch& batch) {
     if (!cc.valid) return;
     if (!g_cache.exists_comp(cc.comp.id)) {
         if (!g_cache.exists_phys(cc.comp.physicality_id)) {
@@ -69,8 +79,6 @@ void merge_comp(const Service::ComputedComp& cc, const std::string& text, uint32
         g_cache.add_comp(cc.comp.id);
         g_comp_count++;
     }
-    g_cache.cache_comp(text, cc.cache_entry);
-    g_id_to_comp[sid] = cc.cache_entry;
 }
 
 void merge_relation(const Service::ComputedRelation& cr, const BLAKE3Pipeline::Hash& content_id, SubstrateBatch& batch) {
@@ -82,10 +90,11 @@ void merge_relation(const Service::ComputedRelation& cr, const BLAKE3Pipeline::H
         }
         batch.rel.push_back(cr.rel);
         batch.rel_seq.insert(batch.rel_seq.end(), cr.seq.begin(), cr.seq.end());
-        batch.rating.push_back(cr.rating);
         g_cache.add_rel(cr.rel.id);
         g_rel_count++;
     }
+    // Always push rating — accumulates observations for repeated word pairs
+    batch.rating.push_back(cr.rating);
     EvidenceKey ev_key{content_id, cr.rel.id};
     if (g_evidence_cache.find(ev_key) == g_evidence_cache.end()) {
         batch.evidence.push_back(cr.evidence);
@@ -110,7 +119,6 @@ int main(int argc, char** argv) {
         AtomLookup lookup(db);
         std::cout << "[Phase 0] Preloading atoms..." << std::flush;
         Timer t0; lookup.preload_all();
-        // Caching handled by SubstrateCache
         std::cout << " (" << t0.elapsed_ms() << "ms)" << std::endl;
 
         g_cache.pre_populate(db);
@@ -124,129 +132,142 @@ int main(int argc, char** argv) {
 
         AsyncFlusher flusher;
 
-        // Phase 1: Sentences
-        std::cout << "[Phase 1] Parsing Tatoeba sentences (parallel compute)..." << std::endl;
+        // Phase 1: Decompose sentences into word-level compositions + adjacency relations
+        std::cout << "[Phase 1] Decomposing Tatoeba sentences (word-level, parallel)..." << std::endl;
         std::ifstream sin(sentences_file); std::string line;
-        static constexpr size_t CHUNK_SIZE = 100000;
-        std::vector<std::pair<uint32_t, std::string>> chunk;
+        static constexpr size_t CHUNK_SIZE = 200000;
+        g_id_to_words.reserve(14000000);
+
+        struct SentenceEntry { uint32_t sid; std::string text; };
+        std::vector<SentenceEntry> chunk;
+        chunk.reserve(CHUNK_SIZE);
         size_t total_sentences = 0;
+
+        auto process_chunk = [&]() {
+            // Parallel: decompose each sentence into words
+            std::vector<Service::SentenceDecomposition> decomps(chunk.size());
+            #pragma omp parallel for schedule(dynamic, 64)
+            for (size_t i = 0; i < chunk.size(); ++i)
+                decomps[i] = Service::decompose_sentence(chunk[i].text, lookup);
+
+            // Serial: merge word compositions + adjacency relations
+            auto batch = std::make_unique<SubstrateBatch>();
+            for (size_t i = 0; i < chunk.size(); ++i) {
+                auto& d = decomps[i];
+
+                // Store word CachedComps for Phase 2 translation links
+                SentenceWords sw;
+                for (const auto& wc : d.word_comps) {
+                    merge_comp(wc, *batch);
+                    if (wc.valid) sw.words.push_back(wc.cache_entry);
+                }
+                if (!sw.words.empty()) g_id_to_words[chunk[i].sid] = std::move(sw);
+
+                // Adjacency relations (word order patterns, ELO 1500)
+                for (const auto& [ai, bi] : d.adjacency) {
+                    merge_relation(Service::compute_relation(
+                        d.word_comps[ai].cache_entry,
+                        d.word_comps[bi].cache_entry,
+                        tatoeba_content_id, 1500.0), tatoeba_content_id, *batch);
+                }
+            }
+            flusher.enqueue(std::move(batch));
+            total_sentences += chunk.size();
+            if (total_sentences % 500000 == 0)
+                std::cout << "  Processed " << total_sentences << " sentences (" << g_comp_count << " comps, " << g_rel_count << " rels)" << std::endl;
+            chunk.clear();
+        };
 
         while (std::getline(sin, line)) {
             if (line.empty()) continue;
-            size_t t1 = line.find('	'), t2 = line.find('	', t1 + 1);
-            if (t2 == std::string::npos) continue;
-            uint32_t sid = std::stoul(line.substr(0, t1));
-            std::string text = line.substr(t2 + 1);
-            chunk.push_back({sid, text});
+            const char* p = line.c_str();
+            char* end;
+            uint32_t sid = static_cast<uint32_t>(std::strtoul(p, &end, 10));
+            if (*end != '\t') continue;
+            const char* t2 = std::strchr(end + 1, '\t');
+            if (!t2) continue;
+            chunk.push_back({sid, std::string(t2 + 1)});
 
-            if (chunk.size() >= CHUNK_SIZE) {
-                std::vector<Service::ComputedComp> results(chunk.size());
-                #pragma omp parallel for schedule(dynamic, 64)
-                for (size_t i = 0; i < chunk.size(); ++i) results[i] = Service::compute_comp(chunk[i].second, lookup);
-
-                auto batch = std::make_unique<SubstrateBatch>();
-                for (size_t i = 0; i < chunk.size(); ++i) merge_comp(results[i], chunk[i].second, chunk[i].first, *batch);
-                flusher.enqueue(std::move(batch));
-                total_sentences += chunk.size();
-                if (total_sentences % 500000 == 0) std::cout << "  Processed " << total_sentences << " sentences..." << std::endl;
-                chunk.clear();
-            }
+            if (chunk.size() >= CHUNK_SIZE) process_chunk();
         }
-        if (!chunk.empty()) {
-            std::vector<Service::ComputedComp> results(chunk.size());
-            #pragma omp parallel for schedule(dynamic, 64)
-            for (size_t i = 0; i < chunk.size(); ++i) results[i] = Service::compute_comp(chunk[i].second, lookup);
-            auto batch = std::make_unique<SubstrateBatch>();
-            for (size_t i = 0; i < chunk.size(); ++i) merge_comp(results[i], chunk[i].second, chunk[i].first, *batch);
-            flusher.enqueue(std::move(batch));
-            total_sentences += chunk.size();
-        }
+        if (!chunk.empty()) process_chunk();
         flusher.wait_all();
+        std::cout << "  Phase 1 complete: " << total_sentences << " sentences → "
+                  << g_comp_count << " compositions, " << g_rel_count << " relations" << std::endl;
 
-        // Phase 2: Links
-        std::cout << "[Phase 2] Parsing Tatoeba translation links (parallel compute)..." << std::endl;
+        // Phase 2: Translation links → cross-lingual word relations
+        // For each translation pair, create relations between overlapping word compositions.
+        // Uses "representative words" approach: relate first content word of each sentence.
+        std::cout << "[Phase 2] Processing Tatoeba translation links..." << std::endl;
         std::ifstream lin(links_file);
         std::vector<std::pair<uint32_t, uint32_t>> link_chunk;
-        size_t total_links = 0;
+        link_chunk.reserve(CHUNK_SIZE);
+        size_t total_links = 0, valid_links = 0;
+
+        auto process_links = [&]() {
+            // Parallel: compute relations between representative words of each pair
+            struct LinkResult { Service::ComputedRelation rel; bool valid = false; };
+            std::vector<LinkResult> results(link_chunk.size());
+
+            #pragma omp parallel for schedule(dynamic, 256)
+            for (size_t i = 0; i < link_chunk.size(); ++i) {
+                auto it1 = g_id_to_words.find(link_chunk[i].first);
+                auto it2 = g_id_to_words.find(link_chunk[i].second);
+                if (it1 == g_id_to_words.end() || it2 == g_id_to_words.end()) continue;
+                if (it1->second.words.empty() || it2->second.words.empty()) continue;
+
+                // Create cross-lingual relations between each word pair up to a budget
+                // This captures the translation signal at word level
+                const auto& w1 = it1->second.words;
+                const auto& w2 = it2->second.words;
+                size_t budget = std::min(size_t(4), std::min(w1.size(), w2.size()));
+                // Just mark the first pair for the parallel result; rest done in serial
+                results[i].rel = Service::compute_relation(w1[0], w2[0], tatoeba_content_id, 1400.0);
+                results[i].valid = true;
+            }
+
+            auto batch = std::make_unique<SubstrateBatch>();
+            for (size_t i = 0; i < link_chunk.size(); ++i) {
+                if (!results[i].valid) continue;
+                merge_relation(results[i].rel, tatoeba_content_id, *batch);
+
+                // Additional cross-lingual word pairs (serial, small budget)
+                auto it1 = g_id_to_words.find(link_chunk[i].first);
+                auto it2 = g_id_to_words.find(link_chunk[i].second);
+                if (it1 == g_id_to_words.end() || it2 == g_id_to_words.end()) continue;
+                const auto& w1 = it1->second.words;
+                const auto& w2 = it2->second.words;
+                size_t budget = std::min(size_t(4), std::min(w1.size(), w2.size()));
+                for (size_t j = 1; j < budget; ++j) {
+                    merge_relation(Service::compute_relation(w1[j], w2[j], tatoeba_content_id, 1300.0),
+                                   tatoeba_content_id, *batch);
+                }
+                valid_links++;
+            }
+            flusher.enqueue(std::move(batch));
+            total_links += link_chunk.size();
+            if (total_links % 2000000 == 0)
+                std::cout << "  Processed " << total_links << " links (" << valid_links << " valid)" << std::endl;
+            link_chunk.clear();
+        };
 
         while (std::getline(lin, line)) {
             if (line.empty()) continue;
-            size_t tab = line.find('	'); if (tab == std::string::npos) continue;
-            uint32_t id1 = std::stoul(line.substr(0, tab)), id2 = std::stoul(line.substr(tab + 1));
-            link_chunk.push_back({id1, id2});
+            const char* p = line.c_str();
+            char* end;
+            uint32_t id1 = static_cast<uint32_t>(std::strtoul(p, &end, 10));
+            if (*end != '\t') continue;
+            uint32_t id2 = static_cast<uint32_t>(std::strtoul(end + 1, &end, 10));
+            link_chunk.emplace_back(id1, id2);
 
-            if (link_chunk.size() >= CHUNK_SIZE) {
-                std::vector<Service::ComputedRelation> results(link_chunk.size());
-                #pragma omp parallel for schedule(dynamic, 64)
-                for (size_t i = 0; i < link_chunk.size(); ++i) {
-                    auto it1 = g_id_to_comp.find(link_chunk[i].first);
-                    auto it2 = g_id_to_comp.find(link_chunk[i].second);
-                    if (it1 != g_id_to_comp.end() && it2 != g_id_to_comp.end()) results[i] = Service::compute_relation(it1->second, it2->second, tatoeba_content_id, 1600.0);
-                }
-                auto batch = std::make_unique<SubstrateBatch>();
-                for (size_t i = 0; i < link_chunk.size(); ++i) merge_relation(results[i], tatoeba_content_id, *batch);
-                flusher.enqueue(std::move(batch));
-                total_links += link_chunk.size();
-                if (total_links % 1000000 == 0) std::cout << "  Processed " << total_links << " links..." << std::endl;
-                link_chunk.clear();
-            }
+            if (link_chunk.size() >= CHUNK_SIZE) process_links();
         }
-        if (!link_chunk.empty()) {
-            std::vector<Service::ComputedRelation> results(link_chunk.size());
-            #pragma omp parallel for schedule(dynamic, 64)
-            for (size_t i = 0; i < link_chunk.size(); ++i) {
-                auto it1 = g_id_to_comp.find(link_chunk[i].first);
-                auto it2 = g_id_to_comp.find(link_chunk[i].second);
-                if (it1 != g_id_to_comp.end() && it2 != g_id_to_comp.end()) results[i] = Service::compute_relation(it1->second, it2->second, tatoeba_content_id, 1600.0);
-            }
-            auto batch = std::make_unique<SubstrateBatch>();
-            for (size_t i = 0; i < link_chunk.size(); ++i) merge_relation(results[i], tatoeba_content_id, *batch);
-            flusher.enqueue(std::move(batch));
-            total_links += link_chunk.size();
-        }
+        if (!link_chunk.empty()) process_links();
         flusher.wait_all();
-
-        // Phase 3: Audio (NEW: Semantic Waveform Ingestion)
-        std::string audio_dir = "/data/models/tatoeba/audio";
-        if (std::filesystem::exists(audio_dir)) {
-            std::cout << "[Phase 3] Ingesting Tatoeba audio (waveform trajectories)..." << std::endl;
-            std::vector<std::string> audio_files;
-            for (const auto& entry : std::filesystem::recursive_directory_iterator(audio_dir)) {
-                if (entry.is_regular_file() && (entry.path().extension() == ".mp3" || entry.path().extension() == ".wav"))
-                    audio_files.push_back(entry.path().string());
-            }
-
-            size_t a_processed = 0;
-            for (size_t a_start = 0; a_start < audio_files.size(); a_start += CHUNK_SIZE / 10) {
-                size_t a_end = std::min(a_start + CHUNK_SIZE / 10, audio_files.size());
-                auto batch = std::make_unique<SubstrateBatch>();
-
-                for (size_t i = a_start; i < a_end; ++i) {
-                    std::string stem = std::filesystem::path(audio_files[i]).stem().string();
-                    try {
-                        uint32_t sid = std::stoul(stem);
-                        auto it = g_id_to_comp.find(sid);
-                        if (it != g_id_to_comp.end()) {
-                            // Decompose audio file into a trajectory of atoms (raw byte-range atoms)
-                            // In a real scenario, we'd use a proper DSP pass, but for the substrate seed,
-                            // we treat the audio binary as a composition of sample atoms.
-                            auto audio_hash = BLAKE3Pipeline::hash("audio:" + stem);
-                            Service::ComputedComp ac = Service::compute_comp("audio_blob_" + stem, lookup); 
-                            merge_comp(ac, "audio_blob_" + stem, 0, *batch);
-                            
-                            auto ait = g_cache.get_comp("audio_blob_" + stem);
-                            if (ait) merge_relation(Service::compute_relation(it->second, *ait, tatoeba_content_id, 1400.0), tatoeba_content_id, *batch);
-                        }
-                    } catch (...) { continue; }
-                }
-                flusher.enqueue(std::move(batch));
-                a_processed += (a_end - a_start);
-                if (a_processed % 1000 == 0) std::cout << "  Processed " << a_processed << " audio files..." << std::endl;
-            }
-            flusher.wait_all();
-        }
+        std::cout << "  Phase 2 complete: " << valid_links << " valid translation links → " << g_rel_count << " total relations" << std::endl;
 
         std::cout << "[SUCCESS] Tatoeba complete in " << total_timer.elapsed_sec() << "s" << std::endl;
+        std::cout << "  Total compositions: " << g_comp_count << " | Total relations: " << g_rel_count << std::endl;
 
     } catch (const std::exception& ex) { std::cerr << "[FATAL] " << ex.what() << std::endl; return 1; }
     return 0;

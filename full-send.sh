@@ -32,6 +32,24 @@ cd "$SCRIPT_DIR"
 LOG_DIR="$SCRIPT_DIR/logs"
 mkdir -p "$LOG_DIR"
 
+# ==============================================================================
+#  RUNTIME PERFORMANCE TUNING
+# ==============================================================================
+# jemalloc: 2-3x faster multi-threaded allocation than glibc malloc
+if [ -f /usr/lib/x86_64-linux-gnu/libjemalloc.so.2 ]; then
+    export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.2
+    print_info "jemalloc enabled via LD_PRELOAD"
+fi
+
+# OpenMP: bind threads to cores, avoid migration overhead
+export OMP_PROC_BIND=close          # Keep threads on nearby cores (same socket)
+export OMP_PLACES=cores             # One thread per physical core
+export OMP_SCHEDULE="dynamic,64"    # Match ingester loop scheduling
+
+# MKL: let it adapt thread count based on workload size
+export MKL_DYNAMIC=TRUE
+export MKL_NUM_THREADS=${OMP_NUM_THREADS:-$(nproc)}
+
 PIPELINE_START=$(date +%s)
 step_times=()
 

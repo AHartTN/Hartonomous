@@ -17,6 +17,10 @@ include(cmake/SourceLists.cmake)
 add_library(engine_core_objs OBJECT ${ENGINE_CORE_SOURCES} ${ENGINE_HEADERS})
 add_library(engine_io_objs OBJECT ${ENGINE_IO_SOURCES} ${ENGINE_HEADERS})
 
+# Apply optimized compiler flags to OBJECT targets (where compilation actually happens)
+apply_hartonomous_compiler_flags(engine_core_objs)
+apply_hartonomous_compiler_flags(engine_io_objs)
+
 # Enable PIC for shared library linking
 enable_pic(engine_core_objs)
 enable_pic(engine_io_objs)

@@ -77,15 +77,13 @@ RelationRatingStore::RelationRatingStore(PostgresConnection& db, bool use_binary
 }
 
 void RelationRatingStore::store(const RelationRatingRecord& rec) {
-    auto& p = pending_[rec.relation_id];
-    if (p.observations == 0) {
-        p = rec;
+    auto it = pending_.find(rec.relation_id);
+    if (it == pending_.end()) {
+        pending_[rec.relation_id] = rec;
     } else {
-        p.observations += rec.observations;
-        p.rating_value = rec.rating_value;
+        it->second.observations += rec.observations;
+        it->second.rating_value = rec.rating_value;
     }
-
-    if (pending_.size() >= 10000) emit_pending();
 }
 
 void RelationRatingStore::emit_pending() {
@@ -100,7 +98,7 @@ void RelationRatingStore::emit_pending() {
         } else {
             copy_.add_row({
                 hash_to_uuid(r.relation_id),
-                std::to_string(r.observations),
+                uint64_to_bytea_hex(r.observations),
                 std::to_string(r.rating_value),
                 std::to_string(r.k_factor)
             });

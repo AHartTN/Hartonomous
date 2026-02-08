@@ -49,7 +49,7 @@ IngestionStats TextIngester::ingest(const std::string& text) {
     stats.original_bytes = text.size();
 
     auto content_hash = BLAKE3Pipeline::hash(text);
-    if (db_.query_single("SELECT id FROM hartonomous.content WHERE contenthash = $1", {hash_to_uuid(content_hash)}).has_value()) {
+    if (db_.query_single("SELECT id FROM hartonomous.content WHERE contenthash = $1", {hash_to_bytea_hex(content_hash)}).has_value()) {
         std::cout << "  Content already ingested, skipping." << std::endl;
         return stats;
     }
@@ -68,15 +68,14 @@ IngestionStats TextIngester::ingest(const std::string& text) {
     stats.ngrams_extracted = extractor_.total_ngrams();
     stats.ngrams_significant = sig_ngrams.size();
 
-    std::unordered_map<BLAKE3Pipeline::Hash, Service::CachedComp, HashHasher> comp_map;
+    std::unordered_map<BLAKE3Pipeline::Hash, Service::ComputedComp, HashHasher> comp_map;
     std::unordered_map<BLAKE3Pipeline::Hash, BLAKE3Pipeline::Hash, HashHasher> ngram_to_comp;
-    std::unordered_set<BLAKE3Pipeline::Hash, HashHasher> phys_seen;
 
     for (const auto* ng : sig_ngrams) {
         auto cc = Service::compute_comp(utf32_to_utf8(ng->text), atom_lookup_);
         if (!cc.valid) continue;
         ngram_to_comp[ng->hash] = cc.cache_entry.comp_id;
-        comp_map[cc.cache_entry.comp_id] = cc.cache_entry;
+        comp_map[cc.cache_entry.comp_id] = cc;
     }
 
     struct PosComp { BLAKE3Pipeline::Hash ngram_hash; uint32_t length; };
@@ -128,18 +127,71 @@ IngestionStats TextIngester::ingest(const std::string& text) {
 
     PostgresConnection::Transaction txn(db_);
     ContentStore(db_).store({content_id, config_.tenant_id, config_.user_id, config_.content_type, content_hash, stats.original_bytes, config_.mime_type, config_.language, config_.source, config_.encoding});
-    
-    PhysicalityStore ps(db_); CompositionStore cs(db_); CompositionSequenceStore css(db_);
-    RelationStore rs(db_); RelationSequenceStore rss(db_); RelationRatingStore rrs(db_); RelationEvidenceStore es(db_);
 
-    for (auto& [id, ci] : comp_map) {
-        // Build actual records from CachedComp (manual for now to avoid re-hashing)
-        // In a full refactor, SubstrateService::compute_comp would return the records directly.
-        // For brevity, we use the store classes which now handle dedup.
+    // Store compositions (physicality first, then composition, then sequences)
+    {
+        PhysicalityStore ps(db_);
+        for (auto& [id, cc] : comp_map) {
+            ps.store(cc.phys);
+        }
+        ps.flush();
+    }
+    {
+        CompositionStore cs(db_);
+        for (auto& [id, cc] : comp_map) {
+            cs.store(cc.comp);
+            stats.compositions_total++;
+        }
+        cs.flush();
+    }
+    {
+        CompositionSequenceStore css(db_);
+        for (auto& [id, cc] : comp_map) {
+            for (const auto& s : cc.seq) {
+                css.store(s);
+            }
+        }
+        css.flush();
     }
 
-    // Adjacency to Relations ...
-    // ... logic would follow similar to previous implementation but using store.store() ...
+    // Compute and store relations from adjacency pairs
+    stats.cooccurrences_found = adj_pairs.size();
+    {
+        PhysicalityStore ps(db_);
+        RelationStore rs(db_);
+        RelationSequenceStore rss(db_);
+        RelationRatingStore rrs(db_);
+        RelationEvidenceStore es(db_);
+
+        for (auto& [pair, adj] : adj_pairs) {
+            auto it_a = comp_map.find(pair.comp_a);
+            auto it_b = comp_map.find(pair.comp_b);
+            if (it_a == comp_map.end() || it_b == comp_map.end()) continue;
+
+            auto cr = Service::compute_relation(it_a->second.cache_entry, it_b->second.cache_entry, content_id);
+            if (!cr.valid) continue;
+
+            ps.store(cr.phys);
+            rs.store(cr.rel);
+            for (const auto& s : cr.seq) rss.store(s);
+            cr.rating.observations = adj.count;
+            rrs.store(cr.rating);
+            es.store(cr.evidence);
+
+            stats.relations_total++;
+            stats.evidence_count++;
+        }
+
+        ps.flush();
+        rs.flush();
+        rss.flush();
+        rrs.flush();
+        es.flush();
+    }
+
+    stats.compositions_new = stats.compositions_total;
+    stats.stored_bytes = stats.original_bytes;
+    if (stats.original_bytes > 0) stats.compression_ratio = 1.0;
 
     txn.commit();
     std::cout << "  Text ingested in " << total_timer.elapsed_sec() << "s" << std::endl;

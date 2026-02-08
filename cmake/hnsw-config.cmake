@@ -78,14 +78,9 @@ if(NOT TARGET HNSW::HNSW)
         message(STATUS "HNSWLib: Non-x86 architecture, SIMD auto-detection disabled")
     endif()
 
-    # ==================== COMPILER-SPECIFIC OPTIONS ====================
-    if(MSVC)
-        # Enable intrinsics and aggressive optimization
-        target_compile_options(HNSW::HNSW INTERFACE /Oi /Ot)
-    else()
-        # GCC/Clang: Enable aggressive optimization
-        target_compile_options(HNSW::HNSW INTERFACE -O3)
-    endif()
+    # NOTE: No INTERFACE compile options here — optimization flags come from
+    # CompilerFlags.cmake via apply_hartonomous_compiler_flags() on consumers.
+    # Adding INTERFACE flags on header-only libs leaks into all consumers.
 
     # Note: HNSWLib is standalone. It does NOT depend on Eigen or MKL.
     message(STATUS "HNSWLib: Header-only ANN library configured")

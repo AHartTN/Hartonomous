@@ -1,6 +1,11 @@
 // ingest_wiktionary_xml.cpp
 // High-performance deep-dive streaming XML parser for Wiktionary
-// Refactored to use centralized SubstrateService and AsyncFlusher.
+// Architecture: Word-level decomposition with semantic relations.
+//   - Title words are single-word compositions (the hub)
+//   - Related terms (synonyms, antonyms, etc.) are single compositions linked to title
+//   - Definitions are decomposed into word-level compositions with:
+//     - Each definition word relates to title word (ELO per relation type)
+//     - Adjacency relations between consecutive definition words (ELO 1500)
 
 #include <database/postgres_connection.hpp>
 #include <storage/atom_lookup.hpp>
@@ -14,16 +19,12 @@
 #include <iostream>
 #include <iomanip>
 #include <fstream>
+#include <sstream>
 #include <string>
 #include <vector>
 #include <unordered_map>
 #include <unordered_set>
-#include <chrono>
 #include <regex>
-#include <thread>
-#include <mutex>
-#include <condition_variable>
-#include <queue>
 #include <algorithm>
 #include <cstring>
 #include <omp.h>
@@ -31,12 +32,10 @@
 
 namespace Hartonomous {
 
-using namespace hartonomous::spatial;
-using Clock = std::chrono::steady_clock;
 using Service = SubstrateService;
 
 // ─────────────────────────────────────────────
-// Substrate Integration
+// Global Caches
 // ─────────────────────────────────────────────
 
 SubstrateCache g_cache;
@@ -63,35 +62,43 @@ std::atomic<size_t> g_rel_count{0};
 // Merge Helper
 // ─────────────────────────────────────────────
 
-void merge_comp(const Service::ComputedComp& cc, const std::string& text, SubstrateBatch& batch) {
+void merge_comp(const Service::ComputedComp& cc, SubstrateBatch& batch) {
     if (!cc.valid) return;
     if (!g_cache.exists_comp(cc.comp.id)) {
         if (!g_cache.exists_phys(cc.comp.physicality_id)) {
-            batch.phys.push_back(cc.phys); g_cache.add_phys(cc.comp.physicality_id);
+            batch.phys.push_back(cc.phys);
+            g_cache.add_phys(cc.comp.physicality_id);
         }
-        batch.comp.push_back(cc.comp); batch.seq.insert(batch.seq.end(), cc.seq.begin(), cc.seq.end());
-        g_cache.add_comp(cc.comp.id); g_comp_count++;
+        batch.comp.push_back(cc.comp);
+        batch.seq.insert(batch.seq.end(), cc.seq.begin(), cc.seq.end());
+        g_cache.add_comp(cc.comp.id);
+        g_comp_count++;
     }
-    g_cache.cache_comp(text, cc.cache_entry);
 }
 
 void merge_relation(const Service::ComputedRelation& cr, const BLAKE3Pipeline::Hash& content_id, SubstrateBatch& batch) {
     if (!cr.valid) return;
     if (!g_cache.exists_rel(cr.rel.id)) {
         if (!g_cache.exists_phys(cr.rel.physicality_id)) {
-            batch.phys.push_back(cr.phys); g_cache.add_phys(cr.rel.physicality_id);
+            batch.phys.push_back(cr.phys);
+            g_cache.add_phys(cr.rel.physicality_id);
         }
-        batch.rel.push_back(cr.rel); batch.rel_seq.insert(batch.rel_seq.end(), cr.seq.begin(), cr.seq.end());
-        batch.rating.push_back(cr.rating); g_cache.add_rel(cr.rel.id); g_rel_count++;
+        batch.rel.push_back(cr.rel);
+        batch.rel_seq.insert(batch.rel_seq.end(), cr.seq.begin(), cr.seq.end());
+        g_cache.add_rel(cr.rel.id);
+        g_rel_count++;
     }
+    // Always push rating — accumulates observations for repeated word pairs
+    batch.rating.push_back(cr.rating);
     EvidenceKey ev_key{content_id, cr.rel.id};
     if (g_evidence_cache.find(ev_key) == g_evidence_cache.end()) {
-        batch.evidence.push_back(cr.evidence); g_evidence_cache.insert(ev_key);
+        batch.evidence.push_back(cr.evidence);
+        g_evidence_cache.insert(ev_key);
     }
 }
 
 // ─────────────────────────────────────────────
-// Wiktionary Advanced Parsing
+// Wiktionary Markup Cleaning
 // ─────────────────────────────────────────────
 
 std::string clean_markup(const std::string& input) {
@@ -113,39 +120,136 @@ std::string clean_markup(const std::string& input) {
     return s;
 }
 
+// ─────────────────────────────────────────────
+// Page Processing
+// ─────────────────────────────────────────────
+
 struct Page { std::string title; std::string text; };
-struct ProcessedPage { std::string title_word; Service::ComputedComp title_comp; struct Rel { std::string target; Service::ComputedComp t_comp; double rating; }; std::vector<Rel> rels; };
+
+struct ProcessedPage {
+    std::string title_word;
+    Service::ComputedComp title_comp;
+
+    // Single-word/term relations (synonyms, antonyms, categories, etc.)
+    struct TermRel {
+        Service::ComputedComp comp;
+        double rating;
+    };
+    std::vector<TermRel> term_rels;
+
+    // Decomposed definitions (# lines → word-level)
+    struct DefDecomp {
+        Service::SentenceDecomposition decomp;
+        double rating;
+    };
+    std::vector<DefDecomp> def_decomps;
+};
 
 ProcessedPage process_page_compute(const Page& page, AtomLookup& lookup) {
-    ProcessedPage res; std::string word = page.title;
+    ProcessedPage res;
+    std::string word = page.title;
     if (word.find("Thesaurus:") == 0) word = word.substr(10);
     if (word.find("Category:") == 0) word = word.substr(9);
-    res.title_word = word; res.title_comp = Service::compute_comp(word, lookup);
+    res.title_word = word;
+    res.title_comp = Service::compute_comp(word, lookup);
     if (!res.title_comp.valid) return res;
-    std::istringstream iss(page.text); std::string line; bool in_eng = false;
+
+    std::istringstream iss(page.text);
+    std::string line;
+    bool in_eng = false;
+
     while (std::getline(iss, line)) {
         if (line.compare(0, 10, "==English==") == 0) in_eng = true;
         else if (line.compare(0, 2, "==") == 0 && line.compare(0, 3, "===") != 0) in_eng = false;
         bool is_cat = (line.find("[[Category:") != std::string::npos);
         if (!in_eng && !is_cat) continue;
-        static const std::vector<std::pair<std::string, double>> rel_types = {{"synonyms", 1950.0}, {"antonyms", 1850.0}, {"hypernyms", 1900.0}, {"hyponyms", 1800.0}, {"meronyms", 1850.0}, {"holonyms", 1850.0}, {"coordinate terms", 1750.0}, {"derived terms", 1600.0}, {"related terms", 1550.0}};
+
+        // Semantic relation templates (synonyms, antonyms, etc.) → single terms
+        static const std::vector<std::pair<std::string, double>> rel_types = {
+            {"synonyms", 1950.0}, {"antonyms", 1850.0}, {"hypernyms", 1900.0},
+            {"hyponyms", 1800.0}, {"meronyms", 1850.0}, {"holonyms", 1850.0},
+            {"coordinate terms", 1750.0}, {"derived terms", 1600.0}, {"related terms", 1550.0}
+        };
         for (const auto& [rtype, rating] : rel_types) {
             if (line.find("{{" + rtype + "|") != std::string::npos) {
-                std::regex r_ext("\\{\\{" + rtype + "\\|[^|]+\\|([^}]+)\\}\\}"); std::smatch m;
+                std::regex r_ext("\\{\\{" + rtype + "\\|[^|]+\\|([^}]+)\\}\\}");
+                std::smatch m;
                 if (std::regex_search(line, m, r_ext)) {
-                    std::istringstream tiss(m[1].str()); std::string trg;
-                    while (std::getline(tiss, trg, '|')) { if (trg.find('=') == std::string::npos) { std::string clean = clean_markup(trg); res.rels.push_back({clean, Service::compute_comp(clean, lookup), rating}); } }
+                    std::istringstream tiss(m[1].str());
+                    std::string trg;
+                    while (std::getline(tiss, trg, '|')) {
+                        if (trg.find('=') == std::string::npos) {
+                            std::string clean = clean_markup(trg);
+                            if (!clean.empty())
+                                res.term_rels.push_back({Service::compute_comp(clean, lookup), rating});
+                        }
+                    }
                 }
             }
         }
+
+        // WordSense templates → single terms
         if (line.find("{{ws|") != std::string::npos) {
             static const std::regex r_ws("\\{\\{ws\\|[^|]+\\|([^}|]+)");
-            for (auto i = std::sregex_iterator(line.begin(), line.end(), r_ws); i != std::sregex_iterator(); ++i) { std::string clean = clean_markup((*i)[1].str()); res.rels.push_back({clean, Service::compute_comp(clean, lookup), 1850.0}); }
+            for (auto i = std::sregex_iterator(line.begin(), line.end(), r_ws); i != std::sregex_iterator(); ++i) {
+                std::string clean = clean_markup((*i)[1].str());
+                if (!clean.empty())
+                    res.term_rels.push_back({Service::compute_comp(clean, lookup), 1850.0});
+            }
         }
-        if (line.size() > 2 && line[0] == '#' && line[1] == ' ') { std::string def = clean_markup(line.substr(2)); if (!def.empty()) res.rels.push_back({def, Service::compute_comp(def, lookup), 1900.0}); }
-        if (is_cat) { static const std::regex r_cat("\\[\\[Category:([^|\\]]+)"); std::smatch m; if (std::regex_search(line, m, r_cat)) { std::string clean = m[1].str(); res.rels.push_back({clean, Service::compute_comp(clean, lookup), 1200.0}); } }
+
+        // Definitions → decompose into word-level
+        if (line.size() > 2 && line[0] == '#' && line[1] == ' ') {
+            std::string def = clean_markup(line.substr(2));
+            if (!def.empty())
+                res.def_decomps.push_back({Service::decompose_sentence(def, lookup), 1900.0});
+        }
+
+        // Categories → single terms
+        if (is_cat) {
+            static const std::regex r_cat("\\[\\[Category:([^|\\]]+)");
+            std::smatch m;
+            if (std::regex_search(line, m, r_cat)) {
+                std::string clean = m[1].str();
+                if (!clean.empty())
+                    res.term_rels.push_back({Service::compute_comp(clean, lookup), 1200.0});
+            }
+        }
     }
     return res;
+}
+
+void merge_page(const ProcessedPage& pr, const BLAKE3Pipeline::Hash& content_id, SubstrateBatch& batch) {
+    if (!pr.title_comp.valid) return;
+
+    // Title word composition
+    merge_comp(pr.title_comp, batch);
+    Service::CachedComp title_cached = pr.title_comp.cache_entry;
+
+    // Single-word/term relations (synonyms, antonyms, etc.)
+    for (const auto& tr : pr.term_rels) {
+        merge_comp(tr.comp, batch);
+        if (tr.comp.valid)
+            merge_relation(Service::compute_relation(title_cached, tr.comp.cache_entry, content_id, tr.rating), content_id, batch);
+    }
+
+    // Decomposed definitions: each word → title relation + adjacency
+    for (const auto& dd : pr.def_decomps) {
+        for (const auto& wc : dd.decomp.word_comps) {
+            merge_comp(wc, batch);
+            if (wc.valid && wc.comp.id != pr.title_comp.comp.id) {
+                merge_relation(Service::compute_relation(
+                    title_cached, wc.cache_entry, content_id, dd.rating), content_id, batch);
+            }
+        }
+        // Adjacency within definition (word order, ELO 1500)
+        for (const auto& [ai, bi] : dd.decomp.adjacency) {
+            merge_relation(Service::compute_relation(
+                dd.decomp.word_comps[ai].cache_entry,
+                dd.decomp.word_comps[bi].cache_entry,
+                content_id, 1500.0), content_id, batch);
+        }
+    }
 }
 
 } // namespace Hartonomous
@@ -173,7 +277,25 @@ int main(int argc, char** argv) {
         std::vector<Page> chunk;
         size_t page_count = 0; static constexpr size_t CHUNK_SIZE = 10000;
 
-        std::cout << "[Phase 1] Streaming Wiktionary (parallel)..." << std::endl;
+        std::cout << "[Phase 1] Streaming Wiktionary (word-level decomposition, parallel)..." << std::endl;
+
+        auto flush_chunk = [&]() {
+            std::vector<ProcessedPage> results(chunk.size());
+            #pragma omp parallel for schedule(dynamic, 16)
+            for (size_t i = 0; i < chunk.size(); ++i)
+                results[i] = process_page_compute(chunk[i], lookup);
+
+            auto batch = std::make_unique<SubstrateBatch>();
+            for (size_t i = 0; i < chunk.size(); ++i)
+                merge_page(results[i], content_id, *batch);
+
+            flusher.enqueue(std::move(batch));
+            page_count += chunk.size();
+            if (page_count % 50000 == 0)
+                std::cout << "  Processed " << page_count << " pages (" << g_comp_count << " comps, " << g_rel_count << " rels)" << std::endl;
+            chunk.clear();
+        };
+
         while (std::getline(in, line)) {
             if (line.find("<title>") != std::string::npos) {
                 size_t s = line.find("<title>") + 7, e = line.find("</title>");
@@ -190,36 +312,13 @@ int main(int argc, char** argv) {
                 else { cur_text += line + "\n"; }
             }
 
-            if (chunk.size() >= CHUNK_SIZE) {
-                std::vector<ProcessedPage> results(chunk.size());
-                #pragma omp parallel for schedule(dynamic, 16)
-                for (size_t i = 0; i < chunk.size(); ++i) results[i] = process_page_compute(chunk[i], lookup);
-                auto batch = std::make_unique<SubstrateBatch>();
-                for (size_t i = 0; i < chunk.size(); ++i) {
-                    const auto& pr = results[i]; merge_comp(pr.title_comp, pr.title_word, *batch);
-                    auto sit = g_cache.get_comp(pr.title_word); if (!sit) continue;
-                    for (const auto& rel : pr.rels) { merge_comp(rel.t_comp, rel.target, *batch); auto tit = g_cache.get_comp(rel.target); if (tit) merge_relation(Service::compute_relation(*sit, *tit, content_id, rel.rating), content_id, *batch); }
-                }
-                flusher.enqueue(std::move(batch));
-                page_count += chunk.size();
-                if (page_count % 50000 == 0) std::cout << "  Processed " << page_count << " pages..." << std::endl;
-                chunk.clear();
-            }
+            if (chunk.size() >= CHUNK_SIZE) flush_chunk();
         }
-        if (!chunk.empty()) {
-            std::vector<ProcessedPage> results(chunk.size());
-            #pragma omp parallel for schedule(dynamic, 16)
-            for (size_t i = 0; i < chunk.size(); ++i) results[i] = process_page_compute(chunk[i], lookup);
-            auto batch = std::make_unique<SubstrateBatch>();
-            for (size_t i = 0; i < chunk.size(); ++i) {
-                const auto& pr = results[i]; merge_comp(pr.title_comp, pr.title_word, *batch);
-                auto sit = g_cache.get_comp(pr.title_word); if (!sit) continue;
-                for (const auto& rel : pr.rels) { merge_comp(rel.t_comp, rel.target, *batch); auto tit = g_cache.get_comp(rel.target); if (tit) merge_relation(Service::compute_relation(*sit, *tit, content_id, rel.rating), content_id, *batch); }
-            }
-            flusher.enqueue(std::move(batch));
-        }
+        if (!chunk.empty()) flush_chunk();
+
         flusher.wait_all();
         std::cout << "[SUCCESS] Wiktionary complete in " << total_timer.elapsed_sec() << "s" << std::endl;
+        std::cout << "  Total compositions: " << g_comp_count << " | Total relations: " << g_rel_count << std::endl;
     } catch (const std::exception& ex) { std::cerr << "[FATAL] " << ex.what() << std::endl; return 1; }
     return 0;
 }

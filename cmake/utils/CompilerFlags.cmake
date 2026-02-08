@@ -15,7 +15,7 @@ function(apply_hartonomous_compiler_flags target)
         CXX_STANDARD_REQUIRED ON
         CXX_EXTENSIONS OFF
     )
-    
+
     # Platform-specific flags
     if(MSVC)
         target_compile_options(${target} PRIVATE
@@ -27,45 +27,45 @@ function(apply_hartonomous_compiler_flags target)
                 /Ot                      # Favor fast code
                 /GL                      # Whole program optimization
                 /fp:fast                 # Fast floating point
-                /arch:AVX512             # AVX-512 instructions
+                /arch:AVX2               # AVX2 (use AVX512 on 14900KS)
             >
         )
         target_link_options(${target} PRIVATE
             $<$<CONFIG:Release>:/LTCG>   # Link-time code generation
         )
     else()
-        # GCC/Clang flags
+        # GCC/Clang flags — -march=native auto-detects SIMD (AVX2+FMA on 6850K, AVX-512 on 14900KS)
         target_compile_options(${target} PRIVATE
-            -Wall                        # All warnings
-            -Wextra                      # Extra warnings
-            -Wpedantic                   # Pedantic warnings
-            -march=native               # SIMD support required by Eigen/HNSW
+            -Wall -Wextra -Wpedantic
+            -march=native                # Auto-detect: AVX2+FMA on Broadwell, AVX-512 on Raptor Lake
             $<$<CONFIG:Release>:
                 -O3                      # Maximum optimization
-                -mtune=native            # Tune for this CPU
-                -mavx512f                # AVX-512 Foundation
-                -mavx512vl               # AVX-512 Vector Length
-                -mavx512bw               # AVX-512 Byte/Word
-                -mavx512dq               # AVX-512 Double/Quad
-                -mavx512vnni             # AVX-512 Vector Neural Network Instructions (14900KS)
-                -ffast-math              # Fast floating point
-                -funroll-loops           # Unroll loops
-                -fomit-frame-pointer     # Omit frame pointer
+                -mtune=native            # Tune scheduling for this CPU
+                -ffast-math              # FMA fusion, reciprocal approx, reordering
+                -funroll-loops           # Unroll tight BLAKE3/Eigen loops
+                -fomit-frame-pointer     # Free up RBP for general use
+                -ftree-vectorize         # Auto-vectorize (implied by -O3 but be explicit)
+                -fvect-cost-model=unlimited  # Vectorize even when cost model says no
+                -fprefetch-loop-arrays   # Hardware prefetch in loops (helps 15MB L3)
             >
             $<$<CONFIG:Debug>:
-                -O0                      # No optimization for debugging
-                -g                       # Debug symbols
+                -O0 -g
             >
         )
     endif()
-    
+
     # Interprocedural Optimization (IPO/LTO) — Release only
+    # Use -flto=auto for parallel LTRANS (GCC default is serial!)
     if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
         include(CheckIPOSupported)
         check_ipo_supported(RESULT ipo_supported OUTPUT ipo_output)
         if(ipo_supported)
             set_property(TARGET ${target} PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
-            message(STATUS "IPO/LTO enabled for ${target}")
+            if(NOT MSVC)
+                target_compile_options(${target} PRIVATE -flto=auto)
+                target_link_options(${target} PRIVATE -flto=auto)
+            endif()
+            message(STATUS "IPO/LTO enabled for ${target} (parallel)")
         else()
             message(STATUS "IPO/LTO not supported for ${target}: ${ipo_output}")
         endif()

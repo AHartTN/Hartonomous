@@ -1,6 +1,10 @@
 // ingest_wordnet_omw.cpp
 // High-performance bulk ingestion for Princeton WordNet 3.0 + OMW-data
-// Centralized Architecture: SubstrateCache + SubstrateService + AsyncFlusher
+// Architecture: Word-level compositions with adjacency relations.
+//   - Synset keys are NOT compositions (they're database artifacts)
+//   - Primary lemma serves as the synset hub
+//   - Glosses decomposed into word-level compositions with adjacency chains
+//   - All relations connect real words, not codes
 
 #include <database/postgres_connection.hpp>
 #include <storage/atom_lookup.hpp>
@@ -51,6 +55,9 @@ struct OMWEntry {
 
 SubstrateCache g_cache;
 
+// Maps synset key → primary lemma's CachedComp (for Phase 3 pointers and Phase 5 OMW)
+std::unordered_map<std::string, Service::CachedComp> g_synset_to_primary;
+
 struct EvidenceKey {
     BLAKE3Pipeline::Hash content_id;
     BLAKE3Pipeline::Hash rel_id;
@@ -72,7 +79,7 @@ std::atomic<size_t> g_rel_count{0};
 // Merge Logic
 // ─────────────────────────────────────────────
 
-void merge_comp(const Service::ComputedComp& cc, const std::string& text, SubstrateBatch& batch) {
+void merge_comp(const Service::ComputedComp& cc, SubstrateBatch& batch) {
     if (!cc.valid) return;
     if (!g_cache.exists_comp(cc.comp.id)) {
         if (!g_cache.exists_phys(cc.comp.physicality_id)) {
@@ -84,7 +91,6 @@ void merge_comp(const Service::ComputedComp& cc, const std::string& text, Substr
         g_cache.add_comp(cc.comp.id);
         g_comp_count++;
     }
-    g_cache.cache_comp(text, cc.cache_entry);
 }
 
 void merge_relation(const Service::ComputedRelation& cr, const BLAKE3Pipeline::Hash& content_id, SubstrateBatch& batch) {
@@ -96,11 +102,12 @@ void merge_relation(const Service::ComputedRelation& cr, const BLAKE3Pipeline::H
         }
         batch.rel.push_back(cr.rel);
         batch.rel_seq.insert(batch.rel_seq.end(), cr.seq.begin(), cr.seq.end());
-        batch.rating.push_back(cr.rating);
         g_cache.add_rel(cr.rel.id);
         g_rel_count++;
     }
-
+    // Always push rating — RelationRatingStore accumulates observations via
+    // pending_ map (within batch) and ON CONFLICT (across batches)
+    batch.rating.push_back(cr.rating);
     EvidenceKey ev_key{content_id, cr.rel.id};
     if (g_evidence_cache.find(ev_key) == g_evidence_cache.end()) {
         batch.evidence.push_back(cr.evidence);
@@ -174,62 +181,110 @@ int main(int argc, char** argv) {
         parse_wordnet_file(wordnet_dir + "/data.adv",  'r', synsets);
         std::cout << " " << synsets.size() << " synsets (" << t1.elapsed_ms() << "ms)" << std::endl;
 
-        std::cout << "[Phase 2] Building WordNet (parallel compute)..." << std::endl;
+        // Phase 2: Build lemma compositions + decompose glosses
+        // No synset key compositions. Primary lemma = hub.
+        std::cout << "[Phase 2] Building WordNet compositions (word-level decomposition)..." << std::endl;
         static constexpr size_t CHUNK_SIZE = 25000;
+        g_synset_to_primary.reserve(synsets.size());
+
         for (size_t chunk_start = 0; chunk_start < synsets.size(); chunk_start += CHUNK_SIZE) {
             size_t chunk_end = std::min(chunk_start + CHUNK_SIZE, synsets.size());
-            struct SynResult { Service::ComputedComp sc; Service::ComputedComp gc; std::vector<Service::ComputedComp> lcs; };
-            std::vector<SynResult> chunk_results(chunk_end - chunk_start);
+
+            // Parallel: compute lemma compositions + gloss decompositions
+            struct SynResult {
+                std::vector<Service::ComputedComp> lemma_comps;
+                Service::SentenceDecomposition gloss_decomp;
+            };
+            std::vector<SynResult> results(chunk_end - chunk_start);
 
             #pragma omp parallel for schedule(dynamic, 64)
             for (size_t i = chunk_start; i < chunk_end; ++i) {
                 const auto& syn = synsets[i];
-                std::string key = syn.offset + "-" + static_cast<char>(syn.pos == 's' ? 'a' : syn.pos);
-                chunk_results[i - chunk_start].sc = Service::compute_comp(key, lookup);
-                if (!syn.gloss.empty()) chunk_results[i - chunk_start].gc = Service::compute_comp(syn.gloss, lookup);
-                for (const auto& lemma : syn.lemmas) chunk_results[i - chunk_start].lcs.push_back(Service::compute_comp(lemma, lookup));
+                auto& r = results[i - chunk_start];
+                r.lemma_comps.reserve(syn.lemmas.size());
+                for (const auto& lemma : syn.lemmas)
+                    r.lemma_comps.push_back(Service::compute_comp(lemma, lookup));
+                if (!syn.gloss.empty())
+                    r.gloss_decomp = Service::decompose_sentence(syn.gloss, lookup);
             }
 
+            // Serial: merge into batch
             auto batch = std::make_unique<SubstrateBatch>();
             for (size_t i = chunk_start; i < chunk_end; ++i) {
-                const auto& syn = synsets[i]; size_t ci = i - chunk_start;
+                const auto& syn = synsets[i];
+                auto& r = results[i - chunk_start];
                 std::string key = syn.offset + "-" + static_cast<char>(syn.pos == 's' ? 'a' : syn.pos);
-                merge_comp(chunk_results[ci].sc, key, *batch);
-                auto sit = g_cache.get_comp(key); if (!sit) continue;
-                if (!syn.gloss.empty()) {
-                    merge_comp(chunk_results[ci].gc, syn.gloss, *batch);
-                    auto git = g_cache.get_comp(syn.gloss);
-                    if (git) merge_relation(Service::compute_relation(*sit, *git, wn_content_id, 1800.0), wn_content_id, *batch);
+
+                // Merge lemma compositions; first valid lemma = primary hub
+                Service::CachedComp primary_cache{};
+                for (size_t li = 0; li < r.lemma_comps.size(); ++li) {
+                    merge_comp(r.lemma_comps[li], *batch);
+                    if (r.lemma_comps[li].valid) {
+                        if (!primary_cache.valid) {
+                            primary_cache = r.lemma_comps[li].cache_entry;
+                        } else {
+                            // Non-primary lemma → primary lemma (synonym relation, ELO 1900)
+                            merge_relation(Service::compute_relation(
+                                r.lemma_comps[li].cache_entry, primary_cache,
+                                wn_content_id, 1900.0), wn_content_id, *batch);
+                        }
+                    }
                 }
-                for (size_t li = 0; li < syn.lemmas.size(); ++li) {
-                    merge_comp(chunk_results[ci].lcs[li], syn.lemmas[li], *batch);
-                    auto lit = g_cache.get_comp(syn.lemmas[li]);
-                    if (lit) merge_relation(Service::compute_relation(*lit, *sit, wn_content_id, 1900.0), wn_content_id, *batch);
+                if (!primary_cache.valid) continue;
+
+                // Cache synset key → primary lemma for Phase 3 (pointers) and Phase 5 (OMW)
+                g_synset_to_primary[key] = primary_cache;
+
+                // Merge gloss word compositions + adjacency relations + word→primary relations
+                for (const auto& wc : r.gloss_decomp.word_comps) {
+                    merge_comp(wc, *batch);
+                    if (wc.valid) {
+                        // Each gloss word relates to the primary lemma (definition, ELO 1600)
+                        merge_relation(Service::compute_relation(
+                            wc.cache_entry, primary_cache,
+                            wn_content_id, 1600.0), wn_content_id, *batch);
+                    }
+                }
+                // Adjacency relations within the gloss (word order, ELO 1500)
+                for (const auto& [ai, bi] : r.gloss_decomp.adjacency) {
+                    merge_relation(Service::compute_relation(
+                        r.gloss_decomp.word_comps[ai].cache_entry,
+                        r.gloss_decomp.word_comps[bi].cache_entry,
+                        wn_content_id, 1500.0), wn_content_id, *batch);
                 }
             }
             flusher.enqueue(std::move(batch));
-            std::cout << "  [Phase 2] Processed " << chunk_end << "/" << synsets.size() << std::endl;
+            std::cout << "  Processed " << chunk_end << "/" << synsets.size() << " synsets" << std::endl;
         }
         flusher.wait_all();
+        std::cout << "  Compositions: " << g_comp_count << " | Relations: " << g_rel_count << std::endl;
 
-        std::cout << "[Phase 3] Linking relations..." << std::endl;
+        // Phase 3: Pointer relations (primary_lemma_A ↔ primary_lemma_B)
+        std::cout << "[Phase 3] Linking WordNet pointer relations..." << std::endl;
+        size_t pointer_rels = 0;
         for (size_t chunk_start = 0; chunk_start < synsets.size(); chunk_start += CHUNK_SIZE) {
             size_t chunk_end = std::min(chunk_start + CHUNK_SIZE, synsets.size());
             auto batch = std::make_unique<SubstrateBatch>();
             for (size_t i = chunk_start; i < chunk_end; ++i) {
                 const auto& syn = synsets[i];
                 std::string key = syn.offset + "-" + static_cast<char>(syn.pos == 's' ? 'a' : syn.pos);
-                auto sit = g_cache.get_comp(key); if (!sit) continue;
+                auto sit = g_synset_to_primary.find(key);
+                if (sit == g_synset_to_primary.end()) continue;
                 for (const auto& ptr : syn.pointers) {
                     std::string tkey = ptr.target_offset + "-" + static_cast<char>(ptr.target_pos == 's' ? 'a' : ptr.target_pos);
-                    auto tit = g_cache.get_comp(tkey);
-                    if (tit) merge_relation(Service::compute_relation(*sit, *tit, wn_content_id, 1700.0), wn_content_id, *batch);
+                    auto tit = g_synset_to_primary.find(tkey);
+                    if (tit != g_synset_to_primary.end()) {
+                        merge_relation(Service::compute_relation(sit->second, tit->second, wn_content_id, 1700.0), wn_content_id, *batch);
+                        pointer_rels++;
+                    }
                 }
             }
             flusher.enqueue(std::move(batch));
         }
         flusher.wait_all();
+        std::cout << "  Pointer relations: " << pointer_rels << std::endl;
 
+        // Phase 4: Parse OMW
         std::cout << "[Phase 4] Parsing OMW..." << std::flush;
         std::vector<std::string> omw_files;
         for (const auto& entry : std::filesystem::recursive_directory_iterator(omw_data_dir))
@@ -256,6 +311,7 @@ int main(int argc, char** argv) {
         omw_entries.erase(std::unique(omw_entries.begin(), omw_entries.end(), [](const OMWEntry& a, const OMWEntry& b) { return a.synset_id == b.synset_id && a.lemma == b.lemma; }), omw_entries.end());
         std::cout << " " << omw_entries.size() << " entries." << std::endl;
 
+        // Phase 5: OMW — foreign_lemma ↔ primary_lemma (cross-lingual, ELO 1600)
         std::cout << "[Phase 5] Ingesting OMW (parallel compute)..." << std::endl;
         for (size_t chunk_start = 0; chunk_start < omw_entries.size(); chunk_start += CHUNK_SIZE) {
             size_t chunk_end = std::min(chunk_start + CHUNK_SIZE, omw_entries.size());
@@ -264,17 +320,20 @@ int main(int argc, char** argv) {
             for (size_t i = chunk_start; i < chunk_end; ++i) l_comps[i - chunk_start] = Service::compute_comp(omw_entries[i].lemma, lookup);
             auto batch = std::make_unique<SubstrateBatch>();
             for (size_t i = chunk_start; i < chunk_end; ++i) {
-                const auto& entry = omw_entries[i]; auto sit = g_cache.get_comp(entry.synset_id);
-                if (!sit) continue;
-                merge_comp(l_comps[i - chunk_start], entry.lemma, *batch);
-                auto lit = g_cache.get_comp(entry.lemma);
-                if (lit) merge_relation(Service::compute_relation(*lit, *sit, omw_content_id, 1600.0), omw_content_id, *batch);
+                const auto& entry = omw_entries[i];
+                auto sit = g_synset_to_primary.find(entry.synset_id);
+                if (sit == g_synset_to_primary.end()) continue;
+                auto& lc = l_comps[i - chunk_start];
+                merge_comp(lc, *batch);
+                if (lc.valid)
+                    merge_relation(Service::compute_relation(lc.cache_entry, sit->second, omw_content_id, 1600.0), omw_content_id, *batch);
             }
             flusher.enqueue(std::move(batch));
         }
         flusher.wait_all();
 
         std::cout << "\n[SUCCESS] WordNet/OMW complete in " << total_timer.elapsed_sec() << "s" << std::endl;
+        std::cout << "  Total compositions: " << g_comp_count << " | Total relations: " << g_rel_count << std::endl;
 
     } catch (const std::exception& ex) { std::cerr << "[FATAL] " << ex.what() << std::endl; return 1; }
     return 0;

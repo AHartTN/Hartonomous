@@ -99,23 +99,45 @@ void UCDProcessor::ingest_metadata() {
 
 void UCDProcessor::ingest_assigned_codepoints() {
     PostgresConnection::Transaction txn(db_);
-    PhysicalityStore phys_store(db_, true, true);
-    AtomStore atom_store(db_, false, true);
+    
+    struct Record {
+        uint32_t codepoint;
+        Eigen::Vector4d position;
+        BLAKE3Pipeline::Hash phys_hash;
+        BLAKE3Pipeline::Hash atom_hash;
+        std::array<uint8_t, 16> hidx;
+    };
+    std::vector<Record> records;
+    records.reserve(sorted_codepoints_.size());
 
     for (auto* meta : sorted_codepoints_) {
-        auto atom_hash = BLAKE3Pipeline::hash_codepoint(meta->codepoint);
         std::vector<uint8_t> pdata(sizeof(double) * 4);
         std::memcpy(pdata.data(), meta->position.data(), sizeof(double) * 4);
         auto phys_hash = BLAKE3Pipeline::hash(pdata.data(), pdata.size());
+        auto atom_hash = BLAKE3Pipeline::hash_codepoint(meta->codepoint);
 
         Eigen::Vector4d hc = (meta->position.array() + 1.0) / 2.0;
         auto hidx = hartonomous::spatial::HilbertCurve4D::encode(hc, hartonomous::spatial::HilbertCurve4D::EntityType::Atom);
-
-        phys_store.store({phys_hash, hidx, meta->position, {meta->position}});
-        atom_store.store({atom_hash, phys_hash, meta->codepoint});
+        
+        records.push_back({meta->codepoint, meta->position, phys_hash, atom_hash, hidx});
     }
-    phys_store.flush();
-    atom_store.flush();
+
+    {
+        PhysicalityStore phys_store(db_, true, true);
+        for (const auto& rec : records) {
+             phys_store.store({rec.phys_hash, rec.hidx, rec.position, {rec.position}});
+        }
+        phys_store.flush();
+    }
+
+    {
+        AtomStore atom_store(db_, false, true);
+        for (const auto& rec : records) {
+            atom_store.store({rec.atom_hash, rec.phys_hash, rec.codepoint});
+        }
+        atom_store.flush();
+    }
+
     txn.commit();
 }
 
@@ -124,34 +146,67 @@ void UCDProcessor::ingest_unassigned_codepoints() {
     constexpr size_t BATCH = 100000;
     std::bitset<MAX_CP + 1> assigned;
     for (auto* meta : sorted_codepoints_) assigned.set(meta->codepoint);
-    
+
+    size_t total_unassigned = (MAX_CP + 1) - sorted_codepoints_.size();
     uint32_t base_seq = static_cast<uint32_t>(sorted_codepoints_.size());
     size_t total_processed = 0;
 
+    struct Record {
+        uint32_t codepoint;
+        Eigen::Vector4d position;
+        BLAKE3Pipeline::Hash phys_hash;
+        BLAKE3Pipeline::Hash atom_hash;
+        std::array<uint8_t, 16> hidx;
+    };
+    std::vector<Record> batch_records;
+    batch_records.reserve(BATCH);
+
     for (uint32_t cp_start = 0; cp_start <= MAX_CP; cp_start += BATCH) {
-        PostgresConnection::Transaction txn(db_);
-        PhysicalityStore phys_store(db_, true, true);
-        AtomStore atom_store(db_, false, true);
+        batch_records.clear();
 
         for (uint32_t cp = cp_start; cp < std::min(cp_start + (uint32_t)BATCH, MAX_CP + 1); ++cp) {
             if (assigned.test(cp)) continue;
-            
+
             uint32_t seq = base_seq + (uint32_t)total_processed++;
             Eigen::Vector4d pos = NodeGenerator::generate_node(seq, NodeGenerator::UNICODE_TOTAL);
+
             std::vector<uint8_t> pdata(sizeof(double) * 4);
             std::memcpy(pdata.data(), pos.data(), sizeof(double) * 4);
             auto phys_hash = BLAKE3Pipeline::hash(pdata.data(), pdata.size());
+            auto atom_hash = BLAKE3Pipeline::hash_codepoint(cp);
 
             Eigen::Vector4d hc = (pos.array() + 1.0) / 2.0;
             auto hidx = hartonomous::spatial::HilbertCurve4D::encode(hc, hartonomous::spatial::HilbertCurve4D::EntityType::Atom);
 
-            phys_store.store({phys_hash, hidx, pos, {pos}});
-            atom_store.store({BLAKE3Pipeline::hash_codepoint(cp), phys_hash, cp});
+            batch_records.push_back({cp, pos, phys_hash, atom_hash, hidx});
         }
-        phys_store.flush();
-        atom_store.flush();
+
+        if (batch_records.empty()) continue;
+
+        PostgresConnection::Transaction txn(db_);
+
+        {
+            PhysicalityStore phys_store(db_, true, true);
+            for (const auto& rec : batch_records) {
+                phys_store.store({rec.phys_hash, rec.hidx, rec.position, {rec.position}});
+            }
+            phys_store.flush();
+        }
+
+        {
+            AtomStore atom_store(db_, false, true);
+            for (const auto& rec : batch_records) {
+                atom_store.store({rec.atom_hash, rec.phys_hash, rec.codepoint});
+            }
+            atom_store.flush();
+        }
+
         txn.commit();
+
+        size_t pct = (total_processed * 100) / total_unassigned;
+        std::cout << "\r  Progress: " << pct << "% (" << total_processed << "/" << total_unassigned << ")" << std::flush;
     }
+    std::cout << "\r  Inserted " << total_processed << " unassigned codepoints.        " << std::endl;
 }
 
 } // namespace Hartonomous::unicode

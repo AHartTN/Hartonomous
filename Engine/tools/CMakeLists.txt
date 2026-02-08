@@ -6,37 +6,30 @@
 # PostGIS, BLAKE3, Eigen, etc.
 # ==============================================================================
 
-# --- Seed Unicode: Populate atom table with all 1.114M Unicode codepoints ---
-add_executable(seed_unicode seed_unicode.cpp)
-target_link_libraries(seed_unicode PRIVATE engine_io)
+# jemalloc: 2-3x faster multi-threaded allocation than glibc malloc.
+# Especially impactful for ingesters doing millions of small allocations.
+find_library(JEMALLOC_LIB jemalloc)
+if(JEMALLOC_LIB)
+    message(STATUS "jemalloc found: ${JEMALLOC_LIB} (linked to all tools)")
+endif()
 
-# --- Ingest Text: Text → Atoms → Compositions → Relations ---
-add_executable(ingest_text ingest_text.cpp)
-target_link_libraries(ingest_text PRIVATE engine_io)
+# Helper: create tool target with engine_io + jemalloc
+function(add_engine_tool name source)
+    add_executable(${name} ${source})
+    target_link_libraries(${name} PRIVATE engine_io)
+    if(JEMALLOC_LIB)
+        target_link_libraries(${name} PRIVATE ${JEMALLOC_LIB})
+    endif()
+endfunction()
 
-# --- Ingest Model: Extract relationships from AI model weights ---
-add_executable(ingest_model ingest_model.cpp)
-target_link_libraries(ingest_model PRIVATE engine_io)
-
-# --- Ingest WordNet/OMW: Multilingual semantic seed ---
-add_executable(ingest_wordnet_omw ingest_wordnet_omw.cpp)
-target_link_libraries(ingest_wordnet_omw PRIVATE engine_io)
-
-# --- Ingest Tatoeba: Translation-linked sentences ---
-add_executable(ingest_tatoeba ingest_tatoeba.cpp)
-target_link_libraries(ingest_tatoeba PRIVATE engine_io)
-
-# --- Ingest Universal Dependencies: Dependency treebanks ---
-add_executable(ingest_ud ingest_ud.cpp)
-target_link_libraries(ingest_ud PRIVATE engine_io)
-
-# --- Ingest Wiktionary XML: Dictionary definitions and relations ---
-add_executable(ingest_wiktionary_xml ingest_wiktionary_xml.cpp)
-target_link_libraries(ingest_wiktionary_xml PRIVATE engine_io)
-
-# --- Walk Test: Test graph navigation ---
-add_executable(walk_test walk_test.cpp)
-target_link_libraries(walk_test PRIVATE engine_io)
+add_engine_tool(seed_unicode seed_unicode.cpp)
+add_engine_tool(ingest_text ingest_text.cpp)
+add_engine_tool(ingest_model ingest_model.cpp)
+add_engine_tool(ingest_wordnet_omw ingest_wordnet_omw.cpp)
+add_engine_tool(ingest_tatoeba ingest_tatoeba.cpp)
+add_engine_tool(ingest_ud ingest_ud.cpp)
+add_engine_tool(ingest_wiktionary_xml ingest_wiktionary_xml.cpp)
+add_engine_tool(walk_test walk_test.cpp)
 
 # Install all tools
 install(TARGETS seed_unicode ingest_text ingest_model ingest_wordnet_omw ingest_tatoeba ingest_ud ingest_wiktionary_xml walk_test

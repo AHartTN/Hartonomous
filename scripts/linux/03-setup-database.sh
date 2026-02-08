@@ -173,10 +173,10 @@ print_info "Verifying installation..."
 VERIFY_SQL="SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'hartonomous';"
 TABLE_COUNT=$(psql -U "$DB_USER" -h "$DB_HOST" -p "$DB_PORT" -d "$DB_NAME" -t -c "$VERIFY_SQL" | xargs)
 
-if [ "$TABLE_COUNT" -ge "11" ]; then
+if [ "$TABLE_COUNT" -ge "12" ]; then
     print_success "✓ Verification complete: $TABLE_COUNT tables in hartonomous schema"
 else
-    print_error "✗ Verification failed: only $TABLE_COUNT tables found (expected >= 11)"
+    print_error "✗ Verification failed: only $TABLE_COUNT tables found (expected >= 12)"
     exit 1
 fi
 

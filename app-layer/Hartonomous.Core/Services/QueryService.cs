@@ -10,11 +10,13 @@ namespace Hartonomous.Core.Services;
 /// </summary>
 public sealed class QueryService : NativeService
 {
+    private readonly EngineService _engine;
     private readonly ILogger<QueryService> _logger;
 
     public QueryService(EngineService engine, ILogger<QueryService> logger)
         : base(NativeMethods.QueryCreate(engine.DbHandle))
     {
+        _engine = engine;
         _logger = logger;
     }
 

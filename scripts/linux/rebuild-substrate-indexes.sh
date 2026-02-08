@@ -4,7 +4,7 @@
 
 set -e
 DB_NAME="hartonomous"
-PSQL="psql -v ON_ERROR_STOP=1 -d $DB_NAME"
+PSQL="psql -q -v ON_ERROR_STOP=1 -d $DB_NAME"
 
 echo "[OPTIMIZE] Rebuilding substrate indexes (this may take several minutes)..."
 

@@ -8,11 +8,13 @@ namespace Hartonomous.Core.Services;
 /// </summary>
 public sealed class IngestionService : NativeService
 {
+    private readonly EngineService _engine;
     private readonly ILogger<IngestionService> _logger;
 
     public IngestionService(EngineService engine, ILogger<IngestionService> logger)
         : base(NativeMethods.IngesterCreate(engine.DbHandle))
     {
+        _engine = engine;
         _logger = logger;
     }
 

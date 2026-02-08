@@ -31,21 +31,29 @@ if(NOT TARGET BLAKE3::BLAKE3)
     )
 
     # ==================== SIMD VARIANTS ====================
-    # Each SIMD file is compiled separately with the correct flags
-    # to ensure the compiler generates proper vectorized code.
+    # Use hand-written assembly on Unix x86-64 (faster than C intrinsics).
+    # Falls back to C intrinsics on MSVC/other platforms.
 
-    # SSE2 (baseline for x64)
-    if(CMAKE_SYSTEM_PROCESSOR MATCHES "(x86_64|AMD64|i.86|amd64)")
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "(x86_64|AMD64|amd64)" AND UNIX AND NOT APPLE)
+        # Hand-written assembly — upstream default on Linux x86-64
+        enable_language(ASM)
+        target_sources(blake3_impl PRIVATE
+            "${BLAKE3_ROOT}/c/blake3_sse2_x86-64_unix.S"
+            "${BLAKE3_ROOT}/c/blake3_sse41_x86-64_unix.S"
+            "${BLAKE3_ROOT}/c/blake3_avx2_x86-64_unix.S"
+            "${BLAKE3_ROOT}/c/blake3_avx512_x86-64_unix.S"
+        )
+        target_compile_options(blake3_impl PRIVATE -O3)
+    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "(x86_64|AMD64|i.86|amd64)")
+        # C intrinsics fallback (MSVC, macOS, 32-bit)
         target_sources(blake3_impl PRIVATE "${BLAKE3_ROOT}/c/blake3_sse2.c")
         target_sources(blake3_impl PRIVATE "${BLAKE3_ROOT}/c/blake3_sse41.c")
         target_sources(blake3_impl PRIVATE "${BLAKE3_ROOT}/c/blake3_avx2.c")
         target_sources(blake3_impl PRIVATE "${BLAKE3_ROOT}/c/blake3_avx512.c")
 
         if(MSVC)
-            # MSVC: SSE2 is implicit on x64
             set_source_files_properties("${BLAKE3_ROOT}/c/blake3_sse2.c"
                 PROPERTIES COMPILE_FLAGS "/O2")
-            # MSVC doesn't have /arch:SSE4.1 - it's implied by later archs
             set_source_files_properties("${BLAKE3_ROOT}/c/blake3_sse41.c"
                 PROPERTIES COMPILE_FLAGS "/O2")
             set_source_files_properties("${BLAKE3_ROOT}/c/blake3_avx2.c"
@@ -69,5 +77,5 @@ if(NOT TARGET BLAKE3::BLAKE3)
     # Alias to the standard namespace
     add_library(BLAKE3::BLAKE3 ALIAS blake3_impl)
 
-    message(STATUS "BLAKE3: Runtime SIMD dispatch enabled (SSE2/SSE4.1/AVX2/AVX512)")
+    message(STATUS "BLAKE3: Runtime SIMD dispatch (hand-written asm on Linux x64, C intrinsics fallback)")
 endif()

@@ -237,6 +237,58 @@ HARTONOMOUS_API void hartonomous_godel_destroy(h_godel_t handle);
 HARTONOMOUS_API bool hartonomous_godel_analyze(h_godel_t handle, const char* problem, HResearchPlan* out_plan);
 HARTONOMOUS_API void hartonomous_godel_free_plan(HResearchPlan* plan);
 
+// =============================================================================
+//  Reasoning Engine (OODA + BDI + Tree of Thought + Reflexion)
+// =============================================================================
+
+typedef void* h_reasoning_t;
+
+typedef struct HReasoningConfig {
+    size_t beam_width;           // Tree of Thought parallel hypotheses (default 4)
+    size_t max_depth;            // Max reasoning depth per hypothesis (default 8)
+    size_t max_response_words;   // Target response length (default 200)
+    double temperature;          // Walk temperature for creative passages
+    double min_path_quality;     // Reflexion threshold (default 0.3)
+    int max_reflexion_rounds;    // Max re-search attempts (default 3)
+    bool include_trace;          // Include reasoning trace in output
+    const char* system_prompt;   // System prompt (NULL for none)
+} HReasoningConfig;
+
+typedef struct HReasoningResult {
+    char* response;              // Generated response (caller must free)
+    double confidence;           // Overall confidence (0-1)
+    size_t intentions_resolved;  // Sub-goals answered
+    size_t intentions_total;     // Total sub-goals identified
+    size_t reflexion_rounds;     // Re-search rounds used
+    size_t nodes_expanded;       // Total A* nodes expanded
+    char** reasoning_trace;      // Array of trace strings (NULL if not requested)
+    size_t trace_count;
+} HReasoningResult;
+
+typedef bool (*HReasoningStreamCallback)(const char* token, size_t step, void* user_data);
+
+HARTONOMOUS_API h_reasoning_t hartonomous_reasoning_create(h_db_connection_t db_handle);
+HARTONOMOUS_API void hartonomous_reasoning_destroy(h_reasoning_t handle);
+
+// Full reasoning pipeline: prompt → response
+HARTONOMOUS_API bool hartonomous_reason(h_reasoning_t handle, const char* prompt,
+                                         const HReasoningConfig* config,
+                                         HReasoningResult* out_result);
+
+// Streaming variant
+HARTONOMOUS_API bool hartonomous_reason_stream(h_reasoning_t handle, const char* prompt,
+                                                const HReasoningConfig* config,
+                                                HReasoningStreamCallback callback,
+                                                void* user_data,
+                                                HReasoningResult* out_result);
+
+// Quick answer (co-occurrence + A*, falls back to full reasoning)
+HARTONOMOUS_API bool hartonomous_quick_answer(h_reasoning_t handle, const char* prompt,
+                                               HReasoningResult* out_result);
+
+// Free reasoning result (text + trace)
+HARTONOMOUS_API void hartonomous_reasoning_free_result(HReasoningResult* result);
+
 #ifdef __cplusplus
 }
 #endif

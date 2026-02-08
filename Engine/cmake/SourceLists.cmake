@@ -41,8 +41,11 @@ set(ENGINE_IO_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/query/semantic_query.cpp
     
     # Cognitive
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/cognitive/astar_search.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/cognitive/godel_engine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/cognitive/ooda_loop.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/cognitive/reasoning_engine.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/cognitive/voronoi_analysis.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/cognitive/walk_engine.cpp
     
     # Storage
@@ -67,8 +70,11 @@ set(ENGINE_IO_SOURCES
 # --- HEADERS ---
 set(ENGINE_HEADERS
     # Cognitive
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/cognitive/astar_search.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/cognitive/godel_engine.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/cognitive/ooda_loop.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/cognitive/reasoning_engine.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/cognitive/voronoi_analysis.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/cognitive/walk_engine.hpp
     
     # Database

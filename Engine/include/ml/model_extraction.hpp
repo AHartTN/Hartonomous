@@ -231,62 +231,130 @@ public:
         using namespace Hartonomous;
         using namespace hartonomous::spatial;
 
-        PhysicalityStore phys_store(db, true, true);
-        CompositionStore comp_store(db, true, true);
-        CompositionSequenceStore seq_store(db, true, true);
-        RelationStore rel_store(db, true, true);
-        RelationSequenceStore rs_store(db, true, true);
-        RelationRatingStore rating_store(db, true);
-        RelationEvidenceStore ev_store(db, true, true);
+        if (graph.edges.empty()) return;
+
+        PostgresConnection::Transaction txn(db);
 
         auto get_comp_id = [&](const std::string& text) -> BLAKE3Pipeline::Hash {
-            // Build simple composition from text if no mapping exists
             std::vector<uint8_t> data = {0x43};
             data.insert(data.end(), text.begin(), text.end());
             return BLAKE3Pipeline::hash(data.data(), data.size());
         };
 
-        for (const auto& edge : graph.edges) {
-            BLAKE3Pipeline::Hash sid, tid;
-            if (!edge.source_token.empty()) sid = get_comp_id(edge.source_token);
-            else sid = get_comp_id(std::to_string(edge.source_id));
+        // Compute default centroid at origin of S3
+        Eigen::Vector4d default_centroid(1, 0, 0, 0);
 
-            if (!edge.target_token.empty()) tid = get_comp_id(edge.target_token);
-            else tid = get_comp_id(std::to_string(edge.target_id));
+        std::unordered_set<BLAKE3Pipeline::Hash, HashHasher> comp_seen;
+        std::unordered_set<BLAKE3Pipeline::Hash, HashHasher> phys_seen;
 
-            bool s_first = std::memcmp(sid.data(), tid.data(), 16) < 0;
-            const auto& lo = s_first ? sid : tid;
-            const auto& hi = s_first ? tid : sid;
+        // Phase 1: Physicalities + Compositions (must flush before relations)
+        {
+            PhysicalityStore phys_store(db, true, true);
+            CompositionStore comp_store(db, true, true);
 
-            uint8_t r_input[33];
-            r_input[0] = 0x52;
-            std::memcpy(r_input + 1, lo.data(), 16);
-            std::memcpy(r_input + 17, hi.data(), 16);
-            auto rid = BLAKE3Pipeline::hash(r_input, 33);
+            for (const auto& edge : graph.edges) {
+                for (int side = 0; side < 2; ++side) {
+                    std::string token = (side == 0)
+                        ? (!edge.source_token.empty() ? edge.source_token : std::to_string(edge.source_id))
+                        : (!edge.target_token.empty() ? edge.target_token : std::to_string(edge.target_id));
 
-            // Create Relation record
-            // For now, using default physicality until spatial projection is triggered
-            BLAKE3Pipeline::Hash default_pid = {}; 
-            rel_store.store({rid, default_pid});
+                    auto cid = get_comp_id(token);
+                    if (!comp_seen.insert(cid).second) continue;
 
-            // Store Evidence
-            double strength = std::clamp(edge.weight, 0.0, 1.0);
-            uint8_t ev_input[32];
-            std::memcpy(ev_input, model_id.data(), 16);
-            std::memcpy(ev_input + 16, rid.data(), 16);
-            auto evid = BLAKE3Pipeline::hash(ev_input, 32);
+                    // Physicality for this composition
+                    std::vector<uint8_t> pdata = {0x50};
+                    pdata.insert(pdata.end(), reinterpret_cast<const uint8_t*>(default_centroid.data()),
+                                 reinterpret_cast<const uint8_t*>(default_centroid.data()) + sizeof(double) * 4);
+                    auto pid = BLAKE3Pipeline::hash(pdata.data(), pdata.size());
 
-            ev_store.store({evid, model_id, rid, true, (double)edge.to_elo(), strength});
-            rating_store.store({rid, 1, (double)edge.to_elo(), 32.0});
+                    if (phys_seen.insert(pid).second) {
+                        Eigen::Vector4d hc;
+                        for (int d = 0; d < 4; ++d) hc[d] = (default_centroid[d] + 1.0) / 2.0;
+                        phys_store.store({pid, HilbertCurve4D::encode(hc, HilbertCurve4D::EntityType::Composition),
+                                          default_centroid, {}});
+                    }
+                    comp_store.store({cid, pid});
+                }
+            }
+            phys_store.flush();
+            comp_store.flush();
         }
-        
-        phys_store.flush();
-        comp_store.flush();
-        seq_store.flush();
-        rel_store.flush();
-        rs_store.flush();
-        rating_store.flush();
-        ev_store.flush();
+
+        // Phase 2: Relations, sequences, ratings, evidence
+        {
+            PhysicalityStore phys_store(db, true, true);
+            RelationStore rel_store(db, true, true);
+            RelationSequenceStore rs_store(db, true, true);
+            RelationRatingStore rating_store(db, true);
+            RelationEvidenceStore ev_store(db, true, true);
+
+            for (const auto& edge : graph.edges) {
+                BLAKE3Pipeline::Hash sid, tid;
+                if (!edge.source_token.empty()) sid = get_comp_id(edge.source_token);
+                else sid = get_comp_id(std::to_string(edge.source_id));
+
+                if (!edge.target_token.empty()) tid = get_comp_id(edge.target_token);
+                else tid = get_comp_id(std::to_string(edge.target_id));
+
+                bool s_first = std::memcmp(sid.data(), tid.data(), 16) < 0;
+                const auto& lo = s_first ? sid : tid;
+                const auto& hi = s_first ? tid : sid;
+
+                uint8_t r_input[33];
+                r_input[0] = 0x52;
+                std::memcpy(r_input + 1, lo.data(), 16);
+                std::memcpy(r_input + 17, hi.data(), 16);
+                auto rid = BLAKE3Pipeline::hash(r_input, 33);
+
+                // Relation physicality (centroid of source+target, both at default)
+                std::vector<uint8_t> rpdata = {0x50};
+                rpdata.insert(rpdata.end(), reinterpret_cast<const uint8_t*>(default_centroid.data()),
+                              reinterpret_cast<const uint8_t*>(default_centroid.data()) + sizeof(double) * 4);
+                auto rpid = BLAKE3Pipeline::hash(rpdata.data(), rpdata.size());
+
+                if (phys_seen.insert(rpid).second) {
+                    Eigen::Vector4d hc;
+                    for (int d = 0; d < 4; ++d) hc[d] = (default_centroid[d] + 1.0) / 2.0;
+                    phys_store.store({rpid, HilbertCurve4D::encode(hc, HilbertCurve4D::EntityType::Relation),
+                                      default_centroid, {}});
+                }
+
+                rel_store.store({rid, rpid});
+
+                // Relation sequence entries
+                for (uint32_t ord = 0; ord < 2; ++ord) {
+                    const auto& cid = (ord == 0) ? sid : tid;
+                    uint8_t sdata[37]; sdata[0] = 0x54;
+                    std::memcpy(sdata + 1, rid.data(), 16);
+                    std::memcpy(sdata + 17, cid.data(), 16);
+                    std::memcpy(sdata + 33, &ord, 4);
+                    rs_store.store({BLAKE3Pipeline::hash(sdata, 37), rid, cid, ord, 1});
+                }
+
+                // Evidence with context-aware hash
+                double strength = std::clamp(edge.weight, 0.0, 1.0);
+                std::string tag = edge.edge_type;
+                int32_t li = edge.layer_index;
+                std::vector<uint8_t> ev_input;
+                ev_input.insert(ev_input.end(), model_id.begin(), model_id.end());
+                ev_input.insert(ev_input.end(), rid.begin(), rid.end());
+                ev_input.insert(ev_input.end(), tag.begin(), tag.end());
+                ev_input.insert(ev_input.end(), reinterpret_cast<uint8_t*>(&li),
+                                reinterpret_cast<uint8_t*>(&li) + sizeof(li));
+                auto evid = BLAKE3Pipeline::hash(ev_input.data(), ev_input.size());
+
+                ev_store.store({evid, model_id, rid, true, (double)edge.to_elo(), strength});
+                rating_store.store({rid, 1, (double)edge.to_elo(), 32.0});
+            }
+
+            phys_store.flush();
+            rel_store.flush();
+            rs_store.flush();
+            rating_store.flush();
+            ev_store.flush();
+        }
+
+        txn.commit();
     }
 };
 

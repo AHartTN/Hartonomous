@@ -171,6 +171,60 @@ public:
     }
 
     /**
+     * @brief Tokenize text into word-level tokens for substrate decomposition.
+     * Splits on whitespace. CJK characters are individual tokens.
+     */
+    static std::vector<std::string> tokenize(const std::string& text) {
+        std::vector<std::string> tokens;
+        std::u32string utf32 = utf8_to_utf32(text);
+        std::u32string current;
+        for (char32_t c : utf32) {
+            if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+                if (!current.empty()) { tokens.push_back(utf32_to_utf8(current)); current.clear(); }
+            } else if ((c >= 0x4E00 && c <= 0x9FFF) ||   // CJK Unified Ideographs
+                       (c >= 0x3400 && c <= 0x4DBF) ||   // CJK Extension A
+                       (c >= 0x3040 && c <= 0x309F) ||   // Hiragana
+                       (c >= 0x30A0 && c <= 0x30FF) ||   // Katakana
+                       (c >= 0xAC00 && c <= 0xD7AF)) {   // Hangul Syllables
+                if (!current.empty()) { tokens.push_back(utf32_to_utf8(current)); current.clear(); }
+                tokens.push_back(utf32_to_utf8(std::u32string(1, c)));
+            } else {
+                current.push_back(c);
+            }
+        }
+        if (!current.empty()) tokens.push_back(utf32_to_utf8(current));
+        return tokens;
+    }
+
+    /**
+     * @brief Decomposition result: word-level compositions + adjacency relations.
+     */
+    struct SentenceDecomposition {
+        std::vector<ComputedComp> word_comps;
+        std::vector<std::pair<size_t, size_t>> adjacency; // indices into word_comps
+    };
+
+    /**
+     * @brief Decompose a sentence into word-level compositions with adjacency pairs.
+     * Each word becomes a composition. Adjacent word pairs are returned for relation creation.
+     */
+    static SentenceDecomposition decompose_sentence(const std::string& text, AtomLookup& lookup) {
+        SentenceDecomposition result;
+        auto tokens = tokenize(text);
+        result.word_comps.reserve(tokens.size());
+        for (const auto& tok : tokens) {
+            result.word_comps.push_back(compute_comp(tok, lookup));
+        }
+        for (size_t i = 0; i + 1 < result.word_comps.size(); ++i) {
+            if (result.word_comps[i].valid && result.word_comps[i + 1].valid &&
+                result.word_comps[i].comp.id != result.word_comps[i + 1].comp.id) {
+                result.adjacency.emplace_back(i, i + 1);
+            }
+        }
+        return result;
+    }
+
+    /**
      * @brief Decimate long trajectories to keep storage and GIST index costs constant.
      */
     static std::vector<Eigen::Vector4d> decimate_trajectory(const std::vector<Eigen::Vector4d>& pts) {

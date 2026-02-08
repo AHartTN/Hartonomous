@@ -15,6 +15,7 @@ SET search_path TO hartonomous, public;
 \i tables/09-RelationSequence.sql
 \i tables/10-RelationRating.sql
 \i tables/11-RelationEvidence.sql
+\i tables/12-ModelProjection.sql
 
 \i views/v_composition_text.sql
 \i views/v_composition_details.sql
@@ -37,4 +38,5 @@ BEGIN
     RAISE NOTICE '  - relations: % rows', (SELECT COUNT(*) FROM Relation);
     RAISE NOTICE '  - relation_rating: % rows', (SELECT COUNT(*) FROM RelationRating);
     RAISE NOTICE '  - relation_evidence: % rows', (SELECT COUNT(*) FROM RelationEvidence);
+    RAISE NOTICE '  - model_projection: % rows', (SELECT COUNT(*) FROM ModelProjection);
 END $$;

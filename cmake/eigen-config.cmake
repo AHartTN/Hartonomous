@@ -58,16 +58,17 @@ if(NOT TARGET Eigen3::Eigen)
 
     # ==================== PERFORMANCE TUNING ====================
     target_compile_definitions(Eigen3::Eigen INTERFACE
-        # Allow Eigen to use fast math (non-IEEE compliant for speed)
-        # Only enable if your use case can tolerate slightly different results
-        # EIGEN_FAST_MATH
+        # Allow Eigen to use fast math — FMA fusion, reciprocal approximations
+        # Safe for substrate geometry (S3 centroid, Hilbert, trajectory decimation)
+        EIGEN_FAST_MATH
 
         # Disable debug checks in Release builds
         $<$<CONFIG:Release>:EIGEN_NO_DEBUG>
         $<$<CONFIG:Release>:EIGEN_NO_STATIC_ASSERT>
 
-        # Enable parallelization via MKL threading
-        EIGEN_USE_THREADS
+        # NOTE: Do NOT set EIGEN_USE_THREADS — it adds a thread management layer
+        # on top of MKL's own OpenMP threading, causing oversubscription.
+        # MKL already parallelizes large BLAS/LAPACK calls via the GNU OMP layer.
     )
 
     # ==================== ALIGNMENT ====================

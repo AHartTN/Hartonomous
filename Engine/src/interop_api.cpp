@@ -1,6 +1,7 @@
 #include <interop_api.h>
 #include <cognitive/godel_engine.hpp>
 #include <cognitive/walk_engine.hpp>
+#include <cognitive/reasoning_engine.hpp>
 #include <query/semantic_query.hpp>
 #include <ingestion/universal_ingester.hpp>
 #include <database/postgres_connection.hpp>
@@ -664,4 +665,127 @@ void hartonomous_query_free_results(HQueryResult* results, size_t count) {
         if (results[i].text) free(results[i].text);
     }
     delete[] results;
+}
+
+// =============================================================================
+//  Reasoning Engine
+// =============================================================================
+
+h_reasoning_t hartonomous_reasoning_create(h_db_connection_t db_handle) {
+    try {
+        if (!db_handle) throw std::runtime_error("Invalid database handle");
+        auto* db = static_cast<Hartonomous::PostgresConnection*>(db_handle);
+        auto* engine = new Hartonomous::ReasoningEngine(*db);
+        return static_cast<h_reasoning_t>(engine);
+    } catch (const std::exception& e) {
+        set_error(e);
+        return nullptr;
+    }
+}
+
+void hartonomous_reasoning_destroy(h_reasoning_t handle) {
+    if (handle) {
+        delete static_cast<Hartonomous::ReasoningEngine*>(handle);
+    }
+}
+
+static Hartonomous::ReasoningConfig map_reasoning_config(const HReasoningConfig* c) {
+    Hartonomous::ReasoningConfig config;
+    if (c) {
+        if (c->beam_width > 0) config.beam_width = c->beam_width;
+        if (c->max_depth > 0) config.max_depth = c->max_depth;
+        if (c->max_response_words > 0) config.max_response_words = c->max_response_words;
+        if (c->temperature > 0.0) config.walk.base_temp = c->temperature;
+        if (c->min_path_quality > 0.0) config.min_path_quality = c->min_path_quality;
+        if (c->max_reflexion_rounds > 0) config.max_reflexion_rounds = c->max_reflexion_rounds;
+        config.include_reasoning_trace = c->include_trace;
+        if (c->system_prompt) config.system_prompt = c->system_prompt;
+    }
+    return config;
+}
+
+static void fill_reasoning_result(const Hartonomous::ReasoningResult& src, HReasoningResult* dst) {
+    dst->response = strdup_safe(src.response);
+    dst->confidence = src.confidence;
+    dst->intentions_resolved = src.intentions_resolved;
+    dst->intentions_total = src.intentions_total;
+    dst->reflexion_rounds = src.reflexion_rounds;
+    dst->nodes_expanded = src.nodes_expanded;
+
+    if (!src.reasoning_trace.empty()) {
+        dst->trace_count = src.reasoning_trace.size();
+        dst->reasoning_trace = new char*[dst->trace_count];
+        for (size_t i = 0; i < dst->trace_count; ++i) {
+            dst->reasoning_trace[i] = strdup_safe(src.reasoning_trace[i]);
+        }
+    } else {
+        dst->reasoning_trace = nullptr;
+        dst->trace_count = 0;
+    }
+}
+
+bool hartonomous_reason(h_reasoning_t handle, const char* prompt,
+                         const HReasoningConfig* config,
+                         HReasoningResult* out_result) {
+    try {
+        if (!handle || !prompt || !out_result) return false;
+        auto* engine = static_cast<Hartonomous::ReasoningEngine*>(handle);
+        auto cfg = map_reasoning_config(config);
+        auto result = engine->reason(prompt, cfg);
+        fill_reasoning_result(result, out_result);
+        return true;
+    } catch (const std::exception& e) {
+        set_error(e);
+        return false;
+    }
+}
+
+bool hartonomous_reason_stream(h_reasoning_t handle, const char* prompt,
+                                const HReasoningConfig* config,
+                                HReasoningStreamCallback callback,
+                                void* user_data,
+                                HReasoningResult* out_result) {
+    try {
+        if (!handle || !prompt || !callback || !out_result) return false;
+        auto* engine = static_cast<Hartonomous::ReasoningEngine*>(handle);
+        auto cfg = map_reasoning_config(config);
+
+        auto result = engine->reason_stream(prompt,
+            [&](const std::string& token, size_t step) -> bool {
+                return callback(token.c_str(), step, user_data);
+            }, cfg);
+
+        fill_reasoning_result(result, out_result);
+        return true;
+    } catch (const std::exception& e) {
+        set_error(e);
+        return false;
+    }
+}
+
+bool hartonomous_quick_answer(h_reasoning_t handle, const char* prompt,
+                               HReasoningResult* out_result) {
+    try {
+        if (!handle || !prompt || !out_result) return false;
+        auto* engine = static_cast<Hartonomous::ReasoningEngine*>(handle);
+        auto result = engine->quick_answer(prompt);
+        fill_reasoning_result(result, out_result);
+        return true;
+    } catch (const std::exception& e) {
+        set_error(e);
+        return false;
+    }
+}
+
+void hartonomous_reasoning_free_result(HReasoningResult* result) {
+    if (!result) return;
+    if (result->response) free(result->response);
+    if (result->reasoning_trace) {
+        for (size_t i = 0; i < result->trace_count; ++i) {
+            if (result->reasoning_trace[i]) free(result->reasoning_trace[i]);
+        }
+        delete[] result->reasoning_trace;
+    }
+    result->response = nullptr;
+    result->reasoning_trace = nullptr;
 }
